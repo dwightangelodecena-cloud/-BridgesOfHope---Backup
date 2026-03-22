@@ -1,0 +1,263 @@
+import React, { useState } from "react";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, SafeAreaView, Image } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+
+export default function ForgetPasswordScreen() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+
+  const handleSendVerification = () => {
+    if (!email.trim()) {
+      // For now just log; you can replace with real logic.
+      console.warn("Please enter an email address.");
+      return;
+    }
+
+    console.log("Sending password reset verification to:", email);
+    // TODO: Hook up to your password reset backend / auth flow.
+    // Navigate to verification screen after requesting code.
+    router.push("/verification");
+  };
+
+  const handleBackToLogin = () => {
+    router.replace("/login");
+  };
+
+  const handleGoToSignup = () => {
+    router.push("/signup");
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={25} color="#333" />
+        </TouchableOpacity>
+
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.headerContainer}>
+            <Text style={styles.screenTitle}>Forgot Password?</Text>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Enter your email address and we’ll send you a verification code.</Text>
+
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="mail-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your email address"
+                placeholderTextColor="#B0B0B0"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </View>
+
+            <TouchableOpacity
+              style={styles.backToLoginButton}
+              onPress={handleBackToLogin}
+            >
+              <Text style={styles.backToLoginText}>Back to Log In</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sendButton}
+              onPress={handleSendVerification}
+            >
+              <Text style={styles.sendButtonText}>Send Verification</Text>
+            </TouchableOpacity>
+
+            <View style={styles.dividerRow}>
+              <View style={styles.line} />
+              <Text style={styles.orText}>or</Text>
+              <View style={styles.line} />
+            </View>
+
+            <TouchableOpacity style={styles.googleButton}>
+              <Image
+                source={require("../assets/images/google-logo.png")}
+                style={styles.googleIcon}
+              />
+              <Text style={styles.googleText}>Continue with Google</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.signupContainer}>
+            <Text style={styles.signupText}>Don't have an account? </Text>
+            <TouchableOpacity onPress={handleGoToSignup}>
+              <Text style={styles.signupLink}>Sign Up</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  container: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 32,
+    paddingTop: 24,
+    paddingBottom: 32,
+    justifyContent: "flex-start",
+  },
+  backButton: {
+    position: "absolute",
+    left: 16,
+    top: 16,
+    padding: 6,
+    zIndex: 20,
+  },
+  headerContainer: {
+    alignItems: "center",
+    marginTop: 4,
+    marginBottom: 40,
+  },
+  screenTitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#444",
+  },
+  card: {
+    width: "100%",
+    alignItems: "stretch",
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#444",
+    marginBottom: 24,
+    textAlign: "center",
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 16,
+    borderWidth: 1.2,
+    borderColor: "#D3D3D3",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
+    height: 54,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  inputIcon: {
+    marginRight: 8,
+  },
+  input: {
+    flex: 1,
+    fontSize: 14,
+    color: "#000",
+  },
+  backToLoginButton: {
+    alignSelf: "center",
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  backToLoginText: {
+    fontSize: 13,
+    color: "#666",
+  },
+  sendButton: {
+    backgroundColor: "#F54E25",
+    height: 54,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    marginBottom: 16,
+    shadowColor: "#F54E25",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  sendButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+    marginBottom: 24,
+  },
+  line: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#000",
+  },
+  orText: {
+    marginHorizontal: 15,
+    color: "#AAA",
+    fontSize: 14,
+  },
+  googleButton: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: "#E8E8E8",
+    height: 54,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+  },
+  googleIcon: {
+    width: 20,
+    height: 20,
+    marginRight: 10,
+  },
+  googleText: {
+    fontWeight: "600",
+    color: "#444",
+    fontSize: 14,
+  },
+  signupContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 28,
+  },
+  signupText: {
+    fontSize: 14,
+    color: "#777",
+  },
+  signupLink: {
+    color: "#F54E25",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
+});
+

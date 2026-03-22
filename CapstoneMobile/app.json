@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "CapstoneMobile",
+    "slug": "CapstoneMobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/BOHLogo.png",
+    "scheme": "capstonemobile",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/BOHLogo.png",
+        "backgroundImage": "./assets/images/BOHLogo.png",
+        "monochromeImage": "./assets/images/BOHLogo.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.CapstoneMobile"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/BOHLogo.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/BOHLogo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
