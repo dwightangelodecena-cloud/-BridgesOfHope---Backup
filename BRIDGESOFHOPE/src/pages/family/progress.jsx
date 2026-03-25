@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, Calendar, Plus, X, Activity, Bed, UserCheck } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, Calendar, Plus, X, Activity, Bed, UserCheck, CheckCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 // Assets
@@ -13,41 +13,21 @@ const Progress = () => {
 
     // --- STATE ---
     const [isExpanded, setIsExpanded] = useState(false);
-    const [selectedPatient, setSelectedPatient] = useState(null); 
+    const [selectedPatient, setSelectedPatient] = useState(null);
+    const [showDischargeSuccessModal, setShowDischargeSuccessModal] = useState(false);
     const [patientImages, setPatientImages] = useState({});
     const fileInputRefs = useRef([]);
     const detailsFileInputRef = useRef(null);
 
     const [patients, setPatients] = useState(() => {
-        const defaultPatients = [
-            { id: 0, name: "John Doe", status: "Recovering", admissionDate: "Jan 15, 2026", successRate: "83%", progress: 65, reason: "Substance Abuse", admittedBy: "Mathil Doe", bedLevel: "Second Level" },
-            { id: 1, name: "Jay Doe", status: "Recovering", admissionDate: "Jan 31, 2026", successRate: "83%", progress: 34, reason: "Substance Abuse", admittedBy: "Mathil Doe", bedLevel: "First Level" },
-            { id: 2, name: "Ivan Doe", status: "Recovering", admissionDate: "Jan 26, 2026", successRate: "83%", progress: 44, reason: "Substance Abuse", admittedBy: "Mathil Doe", bedLevel: "Third Level" }
-        ];
-
         const saved = localStorage.getItem('bh_patients');
-        if (!saved) return defaultPatients;
-        const savedList = JSON.parse(saved);
-        const defaultIds = new Set(defaultPatients.map(p => p.id));
-        const newPatients = savedList.filter(p => !defaultIds.has(p.id));
-        const keptDefaults = defaultPatients.filter(p => savedList.some(s => s.id === p.id));
-        return [...keptDefaults, ...newPatients];
+        return saved ? JSON.parse(saved) : [];
     });
 
     useEffect(() => {
         const syncPatients = () => {
-            const defaultPatients = [
-                { id: 0, name: "John Doe", status: "Recovering", admissionDate: "Jan 15, 2026", successRate: "83%", progress: 65, reason: "Substance Abuse", admittedBy: "Mathil Doe", bedLevel: "Second Level" },
-                { id: 1, name: "Jay Doe", status: "Recovering", admissionDate: "Jan 31, 2026", successRate: "83%", progress: 34, reason: "Substance Abuse", admittedBy: "Mathil Doe", bedLevel: "First Level" },
-                { id: 2, name: "Ivan Doe", status: "Recovering", admissionDate: "Jan 26, 2026", successRate: "83%", progress: 44, reason: "Substance Abuse", admittedBy: "Mathil Doe", bedLevel: "Third Level" }
-            ];
             const saved = localStorage.getItem('bh_patients');
-            if (!saved) { setPatients(defaultPatients); return; }
-            const savedList = JSON.parse(saved);
-            const defaultIds = new Set(defaultPatients.map(p => p.id));
-            const newPatients = savedList.filter(p => !defaultIds.has(p.id));
-            const keptDefaults = defaultPatients.filter(p => savedList.some(s => s.id === p.id));
-            setPatients([...keptDefaults, ...newPatients]);
+            setPatients(saved ? JSON.parse(saved) : []);
         };
         window.addEventListener('storage', syncPatients);
         return () => window.removeEventListener('storage', syncPatients);
@@ -66,12 +46,31 @@ const Progress = () => {
     };
 
     const handleDischarge = (id) => {
-        const updatedPatients = patients.filter(p => p.id !== id);
-        setPatients(updatedPatients);
-        setSelectedPatient(null);
-        const saved = JSON.parse(localStorage.getItem('bh_patients') || '[]').filter(p => p.id !== id);
-        localStorage.setItem('bh_patients', JSON.stringify(saved));
+        const patientToDischarge = patients.find(p => p.id === id);
+        if (!patientToDischarge) return;
+
+        const savedPending = localStorage.getItem('bh_pending_discharges');
+        const currentPending = savedPending ? JSON.parse(savedPending) : [];
+        
+        // Prevent duplicate entries if already requested
+        if (currentPending.some(req => req.id === patientToDischarge.id || req.originalId === patientToDischarge.id)) {
+            setShowDischargeSuccessModal(true);
+            return;
+        }
+
+        const dischargeRequest = {
+            ...patientToDischarge,
+            requestTime: "Just now",
+            familyNumber: "09123456789", // Mocked for existing defaults
+            familyEmail: "Sample@email.com",
+            patientNumber: "09123456789"
+        };
+
+        const updatedPending = [...currentPending, dischargeRequest];
+        localStorage.setItem('bh_pending_discharges', JSON.stringify(updatedPending));
         window.dispatchEvent(new Event('storage'));
+
+        setShowDischargeSuccessModal(true);
     };
 
     return (
@@ -397,7 +396,7 @@ const Progress = () => {
                 <div className="content-area">
                     <div className="header-section">
                         <h1><span>Hello,</span> Jane Doe</h1>
-                        <p style={{color: '#A3AED0', marginTop: '5px', fontWeight: '500'}}>Here's an overview of your family members</p>
+                        <p style={{ color: '#A3AED0', marginTop: '5px', fontWeight: '500' }}>Here's an overview of your family members</p>
                     </div>
 
                     <div className="patient-grid">
@@ -488,12 +487,12 @@ const Progress = () => {
                                     <div className="profile-row">
                                         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                                             <div className="patient-img-wrapper" style={{ width: '70px', height: '70px', cursor: 'pointer' }} onClick={() => detailsFileInputRef.current.click()}>
-                                                <input type="file" hidden accept="image/*" ref={detailsFileInputRef} onChange={(e) => { const file = e.target.files[0]; if (file) { const url = URL.createObjectURL(file); setPatientImages(prev => ({ ...prev, ['detail_' + selectedPatient.id]: url })); }}} />
+                                                <input type="file" hidden accept="image/*" ref={detailsFileInputRef} onChange={(e) => { const file = e.target.files[0]; if (file) { const url = URL.createObjectURL(file); setPatientImages(prev => ({ ...prev, ['detail_' + selectedPatient.id]: url })); } }} />
                                                 {patientImages['detail_' + selectedPatient.id] ? <img src={patientImages['detail_' + selectedPatient.id]} alt="" className="patient-img" /> : <User size={32} color="#A3AED0" />}
                                             </div>
                                             <div>
                                                 <div className="patient-info-name" style={{ fontSize: '24px' }}>{selectedPatient.name}</div>
-                                                <span className="status-badge" style={{fontSize: '14px'}}>{selectedPatient.status}</span>
+                                                <span className="status-badge" style={{ fontSize: '14px' }}>{selectedPatient.status}</span>
                                             </div>
                                         </div>
                                         <button className="discharge-btn" onClick={() => handleDischarge(selectedPatient.id)}>
@@ -567,6 +566,21 @@ const Progress = () => {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {showDischargeSuccessModal && (
+                    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.5)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' }}>
+                        <div style={{ background: 'white', maxWidth: '400px', width: '90%', borderRadius: '24px', padding: '40px 30px', textAlign: 'center', animation: 'modalPop 0.3s ease-out' }}>
+                            <div style={{ width: '70px', height: '70px', borderRadius: '50%', background: '#d1fae5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 25px auto' }}>
+                                <CheckCircle size={40} />
+                            </div>
+                            <h2 style={{ fontSize: '24px', color: '#1B2559', margin: '0 0 15px 0', fontWeight: '800' }}>Request Sent!</h2>
+                            <p style={{ color: '#A3AED0', fontSize: '15px', marginBottom: '35px', lineHeight: '1.5', fontWeight: '500' }}>The admin will review your discharge request shortly.</p>
+                            <button style={{ width: '100%', background: '#F54E25', color: 'white', padding: '16px', border: 'none', borderRadius: '16px', fontSize: '16px', fontWeight: '700', cursor: 'pointer' }} onClick={() => { setShowDischargeSuccessModal(false); setSelectedPatient(null); }}>
+                                Continue
+                            </button>
                         </div>
                     </div>
                 )}

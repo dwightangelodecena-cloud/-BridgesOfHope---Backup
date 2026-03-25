@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { LayoutGrid, BarChart2, Store, LogOut, Search, Filter, Trash2, User, Check, X, Edit2, Plus, ChevronRight } from 'lucide-react';
+import { LayoutGrid, FileText, LogOut, Search, Filter, Trash2, User, Check, X, Edit2, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 
-const AdminPatientDatabase = () => {
+const PatientDatabasePage = () => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [deletingIndex, setDeletingIndex] = useState(null);
@@ -104,29 +104,9 @@ const AdminPatientDatabase = () => {
         .sidebar-label {
           display: ${isExpanded ? 'block' : 'none'};
           font-weight: 700;
-          font-size: 16px;
-          color: #A3AED0;
+          font-size: 18px;
+          color: #707EAE;
           white-space: nowrap;
-        }
-
-        .icon-box {
-          width: 44px;
-          height: 44px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-        }
-        
-        .icon-box.active {
-          background: #F54E25;
-          color: white;
-        }
-        
-        .icon-box.inactive {
-          background: transparent;
-          color: #A3AED0;
         }
 
         .db-main {
@@ -356,30 +336,27 @@ const AdminPatientDatabase = () => {
           <img src={logoBH} alt="BH" className="sidebar-logo" />
         </div>
 
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
-          <div className="icon-box inactive">
-            <LayoutGrid size={22} />
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}>
+          <div style={{ background: '#F4F7FE', padding: 12, borderRadius: 12, display: 'flex' }}>
+            <FileText size={22} color="#707EAE" />
           </div>
-          <span className="sidebar-label">Dashboard</span>
-        </div>
-
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/analytics'); }}>
-          <div className="icon-box inactive">
-            <BarChart2 size={24} />
-          </div>
-          <span className="sidebar-label">Analytics</span>
+          <span className="sidebar-label">Report</span>
         </div>
 
         <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
-          <div className="icon-box active">
-            <Store size={22} />
+          <div style={{ background: '#F54E25', color: 'white', padding: 12, borderRadius: 12, display: 'flex' }}>
+            <LayoutGrid size={22} />
           </div>
-          <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient Database</span>
+          <span className="sidebar-label" style={{ color: '#F54E25' }}>Dashboard</span>
         </div>
 
         <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '20px' }}>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
+            <User size={22} color="#707EAE" />
+            <span className="sidebar-label">Profile</span>
+          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? '0' : '10px' }} />
+            <LogOut size={22} color="#F54E25" style={{ cursor: 'pointer' }} />
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
           </div>
         </div>
@@ -707,23 +684,21 @@ const AdminPatientDatabase = () => {
 
       {/* MOBILE BOTTOM NAV */}
       <div className="db-mobile-only db-mobile-bottom-nav">
-        <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <LayoutGrid size={20} color="#A3AED0" />
+        <div className="mob-nav-item" onClick={() => navigate('/nurse-dashboard')}>
+          <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
+            <FileText size={20} color="#707EAE" />
           </div>
-          <span>Dashboard</span>
-        </div>
-        <div className="mob-nav-item" onClick={() => navigate('/analytics')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <BarChart2 size={20} color="#A3AED0" />
-          </div>
-          <span>Analytics</span>
+          <span>Report</span>
         </div>
         <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
           <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
-            <Store size={20} color="white" />
+            <LayoutGrid size={20} color="white" />
           </div>
-          <span style={{ color: '#F54E25' }}>Facility</span>
+          <span>Dashboard</span>
+        </div>
+        <div className="mob-nav-item" onClick={() => navigate('/nurseprofile')}>
+          <User size={22} />
+          <span>Profile</span>
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/login')}>
           <LogOut size={22} color="#F54E25" />
@@ -734,4 +709,4 @@ const AdminPatientDatabase = () => {
   );
 };
 
-export default AdminPatientDatabase;
+export default PatientDatabasePage;

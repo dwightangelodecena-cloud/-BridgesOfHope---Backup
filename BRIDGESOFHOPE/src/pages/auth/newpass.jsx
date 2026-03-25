@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Lock, CheckCircle, XCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '@/assets/logo.png';
@@ -14,6 +14,8 @@ const NewPass = () => {
   });
   const [isFocused, setIsFocused] = useState('');
 
+  const confirmRef = useRef(null);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -28,7 +30,18 @@ const NewPass = () => {
     if (!isLengthValid) return;
     if (passwordsMatch) {
       console.log("Password reset successful");
-      navigate(from === 'changepass' ? '/profile' : '/login');
+      navigate(from === 'changepass' ? '/profile' : from === 'nursechangepass' ? '/nurseprofile' : '/login');
+    }
+  };
+
+  const handleKeyDown = (e, field) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (field === 'password' && isLengthValid) {
+        confirmRef.current?.focus();
+      } else if (field === 'confirmPassword' && canSubmit) {
+        handleSubmit(e);
+      }
     }
   };
 
@@ -198,13 +211,14 @@ const NewPass = () => {
                     onChange={handleChange}
                     onFocus={() => setIsFocused('pass')}
                     onBlur={() => setIsFocused('')}
+                    onKeyDown={(e) => handleKeyDown(e, 'password')}
                     required
                   />
                   <Lock className="input-icon" size={20} style={{ color: isFocused === 'pass' ? '#F54E25' : '#94a3b8' }} />
                   {isLengthValid && <CheckCircle className="validation-icon" size={18} color="#10b981" />}
                 </div>
                 <span className="requirement-text">
-                  {isLengthValid ? <CheckCircle size={14} /> : <div style={{width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #94a3b8'}} />}
+                  {isLengthValid ? <CheckCircle size={14} /> : <div style={{ width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #94a3b8' }} />}
                   Minimum 8 characters
                 </span>
               </div>
@@ -213,6 +227,7 @@ const NewPass = () => {
                 <label className="input-label">Confirm New Password</label>
                 <div className="input-wrapper">
                   <input
+                    ref={confirmRef}
                     className="input-confirm"
                     name="confirmPassword"
                     type="password"
@@ -221,13 +236,14 @@ const NewPass = () => {
                     onChange={handleChange}
                     onFocus={() => setIsFocused('confirm')}
                     onBlur={() => setIsFocused('')}
+                    onKeyDown={(e) => handleKeyDown(e, 'confirmPassword')}
                     required
                   />
                   <Lock className="input-icon" size={20} style={{ color: isFocused === 'confirm' ? '#F54E25' : '#94a3b8' }} />
                   {formData.confirmPassword !== '' && (
                     passwordsMatch ?
-                    <CheckCircle className="validation-icon" size={18} color="#10b981" /> :
-                    <XCircle className="validation-icon" size={18} color="#ef4444" />
+                      <CheckCircle className="validation-icon" size={18} color="#10b981" /> :
+                      <XCircle className="validation-icon" size={18} color="#ef4444" />
                   )}
                 </div>
                 {formData.confirmPassword !== '' && !passwordsMatch && (

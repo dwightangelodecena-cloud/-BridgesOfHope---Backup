@@ -1,3 +1,9 @@
+/**
+ * GUIDE: verify.jsx
+ * System Part: Authentication Module
+ * 
+ * This file supports the Authentication Module of the Bridges of Hope system.
+ */
 import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '@/assets/logo.png';

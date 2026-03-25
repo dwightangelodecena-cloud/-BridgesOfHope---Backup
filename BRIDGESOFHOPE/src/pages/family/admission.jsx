@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { User, Mail, ArrowLeft, X, Calendar, ClipboardList, Phone } from 'lucide-react';
+import { User, Mail, ArrowLeft, X, Calendar, ClipboardList, Phone, CheckCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '@/assets/logo.png';
 
 const Admission = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   // Determine where the user came from (defaults to progress if unknown)
   const fromPage = location.state?.from || '/progress';
 
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [errors, setErrors] = useState({});
   const [formData, setFormData] = useState({
     fullName: '',
@@ -38,7 +39,7 @@ const Admission = () => {
     if (!formData.fullName.trim()) newErrors.fullName = "Full name is required";
     if (!formData.email.trim()) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = "Invalid email format";
-    
+
     if (!formData.phoneNumber.trim()) newErrors.phoneNumber = "Phone number is required";
     if (!formData.patientName.trim()) newErrors.patientName = "Patient name is required";
     if (!formData.patientBirthday) newErrors.patientBirthday = "Birthday is required";
@@ -55,31 +56,33 @@ const Admission = () => {
       const newPatient = {
         id: Date.now(),
         name: formData.patientName,
-        date: new Date().toLocaleDateString('en-US', { 
-          month: 'long', 
-          day: 'numeric', 
-          year: 'numeric' 
+        date: new Date().toLocaleDateString('en-US', {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric'
         }),
-        progress: 0, 
-        isNew: true 
+        progress: 0,
+        isNew: true
       };
 
-      const savedData = localStorage.getItem('bh_patients');
-      
-      const defaultPatients = [
-        { id: 0, name: "John Doe", date: "January 15, 2026", progress: 65 },
-        { id: 1, name: "Ivan Doe", date: "January 15, 2026", progress: 65 },
-        { id: 2, name: "Jay Doe",  date: "January 15, 2026", progress: 65 },
-      ];
-      
-      const currentList = savedData ? JSON.parse(savedData) : defaultPatients;
-      const updatedPatients = [...currentList, newPatient];
-      
-      localStorage.setItem('bh_patients', JSON.stringify(updatedPatients));
+      const savedPending = localStorage.getItem('bh_pending_admissions');
+      const currentPending = savedPending ? JSON.parse(savedPending) : [];
+
+      const admissionRequest = {
+        ...newPatient,
+        reason: formData.reasonForAdmission,
+        familyNumber: formData.phoneNumber,
+        familyEmail: formData.email,
+        patientNumber: formData.phoneNumber, // Reusing form phone number
+        requestTime: "Just now"
+      };
+
+      const updatedPending = [...currentPending, admissionRequest];
+
+      localStorage.setItem('bh_pending_admissions', JSON.stringify(updatedPending));
       window.dispatchEvent(new Event('storage'));
-      
-      // Navigate back to the specific page the user started from
-      navigate(fromPage);
+
+      setShowSuccessModal(true);
     }
   };
 
@@ -315,7 +318,7 @@ const Admission = () => {
               <ArrowLeft size={24} />
             </button>
             <img src={logo} alt="BH Logo" className="card-header-logo" />
-            
+
             <form onSubmit={handleSubmit} noValidate>
               <div className="form-group">
                 <label>Full Name</label>
@@ -379,7 +382,7 @@ const Admission = () => {
                 <input type="checkbox" name="agreeToTerms" checked={formData.agreeToTerms} onChange={handleChange} />
                 <p>I agree to the <span onClick={() => setShowTermsModal(true)}>Privacy Policy</span> and <span onClick={() => setShowTermsModal(true)}>Terms</span></p>
               </div>
-              {errors.agreeToTerms && <div className="error-message" style={{textAlign: 'center', marginBottom: '10px'}}>{errors.agreeToTerms}</div>}
+              {errors.agreeToTerms && <div className="error-message" style={{ textAlign: 'center', marginBottom: '10px' }}>{errors.agreeToTerms}</div>}
 
               <button type="submit" className="btn-primary">Submit Admission</button>
             </form>
@@ -470,6 +473,21 @@ const Admission = () => {
                 I agree to the Terms of Service
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showSuccessModal && (
+        <div className="modal-overlay" style={{ zIndex: 3000 }}>
+          <div className="modal-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '40px 30px', margin: 'auto' }}>
+            <div style={{ width: '70px', height: '70px', borderRadius: '50%', background: '#d1fae5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 25px auto' }}>
+              <CheckCircle size={40} />
+            </div>
+            <h2 style={{ fontSize: '1.6rem', color: '#1e293b', marginBottom: '15px', fontWeight: '800' }}>Application Submitted!</h2>
+            <p style={{ color: '#475569', fontSize: '1rem', marginBottom: '35px', lineHeight: '1.5' }}>Your request has been sent to the admin for approval.</p>
+            <button style={{ width: '100%', background: '#F54E25', color: 'white', padding: '16px', border: 'none', borderRadius: '14px', fontSize: '1.1rem', fontWeight: '700', cursor: 'pointer' }} onClick={() => { setShowSuccessModal(false); navigate(fromPage); }}>
+              Continue
+            </button>
           </div>
         </div>
       )}

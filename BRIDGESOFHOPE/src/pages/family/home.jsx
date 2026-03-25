@@ -12,8 +12,8 @@ const HomeDashboard = () => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [showReport, setShowReport] = useState(false); 
-  
+  const [showReport, setShowReport] = useState(false);
+
   // AI Chat Logic State
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -67,7 +67,7 @@ const HomeDashboard = () => {
     const defaultPatients = [
       { id: 0, name: "John Doe", date: "January 15, 2026", progress: 65 },
       { id: 1, name: "Ivan Doe", date: "January 15, 2026", progress: 65 },
-      { id: 2, name: "Jay Doe",  date: "January 15, 2026", progress: 65 },
+      { id: 2, name: "Jay Doe", date: "January 15, 2026", progress: 65 },
     ];
     return saved ? JSON.parse(saved) : defaultPatients;
   });
@@ -452,13 +452,13 @@ const HomeDashboard = () => {
       {showReport && (
         <div className="report-overlay" onClick={() => setShowReport(false)}>
           <div className="report-modal" onClick={e => e.stopPropagation()}>
-              <div style={{ padding: '20px 35px', background: 'white', borderTop: '1px solid #F1F1F1', textAlign: 'center' }}>
-                <button 
-                  onClick={() => setShowReport(false)}
-                  style={{ background: '#F54E25', color: 'white', border: 'none', width: '100%', padding: '15px', borderRadius: '12px', fontSize: '16px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 12px rgba(245,78,37,0.2)' }}>
-                  Close Report
-                </button>
-              </div>
+            <div style={{ padding: '20px 35px', background: 'white', borderTop: '1px solid #F1F1F1', textAlign: 'center' }}>
+              <button
+                onClick={() => setShowReport(false)}
+                style={{ background: '#F54E25', color: 'white', border: 'none', width: '100%', padding: '15px', borderRadius: '12px', fontSize: '16px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 12px rgba(245,78,37,0.2)' }}>
+                Close Report
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -467,7 +467,7 @@ const HomeDashboard = () => {
         <div className="sidebar-logo-container">
           <img src={logo} alt="BH" className="sidebar-logo" />
         </div>
-        
+
         <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
           <div style={{ background: '#F54E25', color: 'white', padding: 12, borderRadius: 12, display: 'flex' }}>
             <Home size={22} />
@@ -591,7 +591,7 @@ const HomeDashboard = () => {
             </div>
             <X size={20} color="#A3AED0" style={{ cursor: 'pointer' }} onClick={() => setIsChatOpen(false)} />
           </div>
-          
+
           <div className="chat-body" ref={chatBodyRef}>
             {messages.map(msg => (
               <div key={msg.id} className={`msg-bubble ${msg.sender === 'bot' ? 'msg-received' : 'msg-sent'}`}>
@@ -607,15 +607,15 @@ const HomeDashboard = () => {
           </div>
 
           <div style={{ padding: '15px 20px', background: 'white', display: 'flex', gap: 12, alignItems: 'center', borderTop: '1px solid #F1F1F1' }}>
-            <input 
+            <input
               style={{ flex: 1, border: 'none', background: '#F4F7FE', borderRadius: '15px', padding: '12px 18px', outline: 'none', fontSize: '13px', color: '#1B2559' }}
               placeholder="Type your message..."
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
             />
-            <button 
-              onClick={handleSendMessage} 
+            <button
+              onClick={handleSendMessage}
               disabled={!inputValue.trim() || isTyping}
               style={{ background: inputValue.trim() ? '#F54E25' : '#E9EDF7', width: 40, height: 40, borderRadius: '12px', border: 'none', cursor: 'pointer' }}
             >
@@ -626,8 +626,8 @@ const HomeDashboard = () => {
       )}
 
       {!showReport && (
-        <div 
-          onClick={() => setIsChatOpen(!isChatOpen)} 
+        <div
+          onClick={() => setIsChatOpen(!isChatOpen)}
           style={{ position: 'fixed', bottom: window.innerWidth < 768 ? 90 : 30, right: 20, width: 60, height: 60, background: '#F54E25', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', boxShadow: '0 10px 25px rgba(245,78,37,0.4)', zIndex: 1000, cursor: 'pointer' }}
         >
           {isChatOpen ? <X size={28} /> : <MessageCircle size={28} />}

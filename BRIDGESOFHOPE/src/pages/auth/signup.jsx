@@ -33,7 +33,7 @@ const SignUp = () => {
     if (!formData.fullName.trim()) newErrors.fullName = "Full name is required";
     if (!formData.email.trim()) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = "Invalid email format";
-    
+
     if (formData.password.length < 8) newErrors.password = "Password must be at least 8 digits";
     if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Passwords do not match";
     if (!formData.agreeToTerms) newErrors.agreeToTerms = "You must agree to the terms";
@@ -358,7 +358,7 @@ const SignUp = () => {
               <ArrowLeft size={24} />
             </button>
             <img src={logo} alt="BH Logo" className="card-header-logo" />
-            
+
             <form onSubmit={handleSubmit} noValidate>
               <div className="form-group">
                 <label>Full Name</label>
@@ -402,7 +402,7 @@ const SignUp = () => {
                 <input type="checkbox" name="agreeToTerms" checked={formData.agreeToTerms} onChange={handleChange} />
                 <p>I agree to the <span onClick={() => setShowTermsModal(true)}>Privacy Policy</span> and <span onClick={() => setShowTermsModal(true)}>Terms</span></p>
               </div>
-              {errors.agreeToTerms && <div className="error-message" style={{textAlign: 'center', marginBottom: '10px'}}>{errors.agreeToTerms}</div>}
+              {errors.agreeToTerms && <div className="error-message" style={{ textAlign: 'center', marginBottom: '10px' }}>{errors.agreeToTerms}</div>}
 
               <button type="submit" className="btn-primary">Create Account</button>
               <p className="login-prompt">Already have an account? <Link to="/login" style={{ textDecoration: 'none' }}><span>Sign In</span></Link></p>
@@ -417,7 +417,7 @@ const SignUp = () => {
             <button className="modal-close-btn" onClick={() => setShowTermsModal(false)}>
               <X size={28} />
             </button>
-            
+
             <div className="modal-content-area">
               <div className="modal-header">
                 <h1>TERMS AND CONDITION OF USE</h1>
@@ -490,14 +490,14 @@ const SignUp = () => {
                   <p>For questions, corrections to records, or concerns regarding these Terms, users may contact the clinic administration through the official communication channels provided within the System.</p>
                 </div>
 
-                <p style={{marginTop: '30px', fontWeight: '500'}}>
+                <p style={{ marginTop: '30px', fontWeight: '500' }}>
                   By selecting <strong>“I Agree”</strong> or <strong>continuing to use the System</strong>, you confirm your acceptance of these Terms and Conditions.
                 </p>
               </div>
             </div>
 
             <div className="modal-footer">
-              <button 
+              <button
                 className="btn-modal-agree"
                 onClick={() => {
                   setFormData(prev => ({ ...prev, agreeToTerms: true }));

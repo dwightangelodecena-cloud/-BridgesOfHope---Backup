@@ -1,3 +1,9 @@
+/**
+ * GUIDE: landingpage.jsx
+ * System Part: Public System Landing Page
+ * 
+ * This file supports the Public System Landing Page of the Bridges of Hope system.
+ */
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom'; // Added for navigation
 import { Phone, Globe, Smartphone, MapPin, Menu, X, Mail, Monitor } from 'lucide-react';
@@ -291,7 +297,7 @@ const LandingPage = () => {
         <img src={heroImg} className="hero-bg" alt="Hero Background" />
         <div className="hero-content">
           <h1>Start Your Journey to <br /><span className="text-orange">Recovery & Healing</span></h1>
-          <button className="cta-btn">Get Started Today →</button>
+          <button className="cta-btn" onClick={() => navigate('/login')}>Get Started Today →</button>
         </div>
       </section>
 
