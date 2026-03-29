@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, X } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import logo from '@/assets/logo.png';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { formatAuthError } from '@/lib/authErrors';
 
 const SignUp = () => {
   const navigate = useNavigate();
@@ -9,6 +11,8 @@ const SignUp = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -26,6 +30,7 @@ const SignUp = () => {
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
+    if (formError) setFormError('');
   };
 
   const validateForm = () => {
@@ -34,20 +39,61 @@ const SignUp = () => {
     if (!formData.email.trim()) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = "Invalid email format";
 
-    if (formData.password.length < 8) newErrors.password = "Password must be at least 8 digits";
-    if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Passwords do not match";
+    const p = formData.password;
+    if (!p.trim()) {
+      newErrors.password = "Password is required";
+    } else if (/\s/.test(p)) {
+      newErrors.password = "Password must not contain spaces.";
+    } else if (p.length < 8) {
+      newErrors.password = "Password must be at least 8 characters long.";
+    } else if (!/[A-Z]/.test(p)) {
+      newErrors.password = "Password must include at least one uppercase letter.";
+    } else if (!/\d/.test(p)) {
+      newErrors.password = "Password must include at least one number.";
+    }
+
+    if (!formData.confirmPassword.trim()) {
+      newErrors.confirmPassword = "Please confirm your password";
+    } else if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = "Passwords do not match";
+    }
     if (!formData.agreeToTerms) newErrors.agreeToTerms = "You must agree to the terms";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      console.log("Account created:", formData);
-      navigate('/login');
+    setFormError('');
+    if (!validateForm()) return;
+
+    if (!isSupabaseConfigured()) {
+      setFormError(
+        'Missing Supabase configuration. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.'
+      );
+      return;
     }
+
+    setSubmitting(true);
+    const { error } = await supabase.auth.signUp({
+      email: formData.email.trim(),
+      password: formData.password,
+      options: {
+        data: {
+          full_name: formData.fullName.trim(),
+          account_type: 'family'
+        }
+      }
+    });
+    setSubmitting(false);
+
+    if (error) {
+      setFormError(formatAuthError(error));
+      return;
+    }
+
+    navigate('/login');
   };
 
   return (
@@ -204,6 +250,11 @@ const SignUp = () => {
           font-weight: 600;
           cursor: pointer;
           margin-top: 10px;
+        }
+
+        .btn-primary:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
         }
 
         .login-prompt { font-size: 1rem; color: #64748b; margin-top: 25px; }
@@ -404,7 +455,15 @@ const SignUp = () => {
               </div>
               {errors.agreeToTerms && <div className="error-message" style={{ textAlign: 'center', marginBottom: '10px' }}>{errors.agreeToTerms}</div>}
 
-              <button type="submit" className="btn-primary">Create Account</button>
+              {formError && (
+                <div className="error-message" style={{ textAlign: 'center', marginBottom: '12px' }}>
+                  {formError}
+                </div>
+              )}
+
+              <button type="submit" className="btn-primary" disabled={submitting}>
+                {submitting ? 'Creating account…' : 'Create Account'}
+              </button>
               <p className="login-prompt">Already have an account? <Link to="/login" style={{ textDecoration: 'none' }}><span>Sign In</span></Link></p>
             </form>
           </div>

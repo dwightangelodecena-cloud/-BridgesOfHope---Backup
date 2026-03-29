@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Mail, Lock, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import logo from '@/assets/logo.png';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { formatAuthError } from '@/lib/authErrors';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -15,6 +17,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -26,7 +29,7 @@ const Login = () => {
     if (success) setSuccess(false);
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess(false);
@@ -36,31 +39,65 @@ const Login = () => {
       return;
     }
 
-    if (!formData.email.includes('@') || !formData.email.toLowerCase().endsWith('.com')) {
-      setError('Email is required');
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim());
+    if (!emailOk) {
+      setError('Please enter a valid email address.');
       return;
     }
 
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 digits long.');
+    const pwd = formData.password;
+    if (pwd.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      return;
+    }
+    if (!/[A-Z]/.test(pwd)) {
+      setError('Password must include at least one uppercase letter.');
+      return;
+    }
+    if (!/\d/.test(pwd)) {
+      setError('Password must include at least one number.');
       return;
     }
 
-    // SUCCESS LOGIC
+    if (!isSupabaseConfigured()) {
+      setError('Missing Supabase configuration. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.');
+      return;
+    }
+
+    setSubmitting(true);
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: formData.email.trim(),
+      password: formData.password
+    });
+    setSubmitting(false);
+
+    if (authError) {
+      setError(formatAuthError(authError));
+      return;
+    }
+
+    const metadataRole = (
+      data.user?.user_metadata?.account_type ?? 'family'
+    ).toLowerCase();
+    const selected = formData.accountType.toLowerCase();
+
+    if (metadataRole !== selected) {
+      await supabase.auth.signOut();
+      setError(
+        `This account is not registered as ${formData.accountType}. Contact an administrator if you need staff access.`
+      );
+      return;
+    }
+
     setSuccess(true);
-    console.log('Login attempt with:', formData);
 
-    // REDIRECT LOGIC: Matches your App.jsx routes
-    setTimeout(() => {
-      if (formData.accountType === 'nurse') {
-        navigate('/nurse-dashboard');
-      } else if (formData.accountType === 'admin') {
-        navigate('/admin-dashboard');
-      } else {
-        // Default for 'family' account type
-        navigate('/home');
-      }
-    }, 1000);
+    if (formData.accountType === 'nurse') {
+      navigate('/nurse-dashboard');
+    } else if (formData.accountType === 'admin') {
+      navigate('/admin-dashboard');
+    } else {
+      navigate('/home');
+    }
   };
 
   return (
@@ -294,6 +331,11 @@ const Login = () => {
           transform: scale(0.98);
         }
 
+        .btn-primary:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
         .or-divider {
           display: flex;
           align-items: center;
@@ -443,7 +485,9 @@ const Login = () => {
                 <Link to="/forgot" className="forgot-link">Forgot Password?</Link>
               </div>
 
-              <button type="submit" className="btn-primary">Sign In</button>
+              <button type="submit" className="btn-primary" disabled={submitting}>
+                {submitting ? 'Signing in…' : 'Sign In'}
+              </button>
 
               <div className="or-divider">
                 <span>or</span>

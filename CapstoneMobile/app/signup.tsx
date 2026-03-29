@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingVi
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useTerms } from "../contexts/TermsContext";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { formatAuthError } from "../lib/authErrors";
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -17,6 +19,8 @@ export default function SignupScreen() {
   const [hideConfirmPassword, setHideConfirmPassword] = useState(true);
 
   const [accountCreated, setAccountCreated] = useState(false);
+  const [signupInfoMessage, setSignupInfoMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
     firstName?: string;
@@ -34,15 +38,14 @@ export default function SignupScreen() {
 
   const getPasswordStrength = (value: string) => {
     const hasMinLength = value.length >= 8;
-    const hasLetter = /[A-Za-z]/.test(value);
+    const hasUpper = /[A-Z]/.test(value);
     const hasNumber = /\d/.test(value);
-    const hasSpecial = /[^A-Za-z0-9]/.test(value);
     const hasSpace = /\s/.test(value);
 
     if (!value) {
       return {
         message:
-          "Use at least 8 characters with letters, numbers, and a special character.",
+          "Use at least 8 characters with one uppercase letter and one number (special characters optional).",
         color: "#999999",
       };
     }
@@ -54,10 +57,10 @@ export default function SignupScreen() {
       };
     }
 
-    if (!hasMinLength || !hasLetter || !hasNumber || !hasSpecial) {
+    if (!hasMinLength || !hasUpper || !hasNumber) {
       return {
         message:
-          "Weak password. Add a letter, number, and special character (min 8 characters).",
+          "Weak password. Add uppercase, a number, and use at least 8 characters.",
         color: "#E53935",
       };
     }
@@ -68,7 +71,7 @@ export default function SignupScreen() {
     };
   };
 
-  const handleCreateAccount = () => {
+  const handleCreateAccount = async () => {
     const errors: typeof fieldErrors = {};
 
     if (!firstName.trim()) {
@@ -82,6 +85,14 @@ export default function SignupScreen() {
     }
     if (!password.trim()) {
       errors.password = "Please Create a password";
+    } else if (/\s/.test(password)) {
+      errors.password = "Password must not contain spaces.";
+    } else if (password.length < 8) {
+      errors.password = "Password must be at least 8 characters long.";
+    } else if (!/[A-Z]/.test(password)) {
+      errors.password = "Password must include at least one uppercase letter.";
+    } else if (!/\d/.test(password)) {
+      errors.password = "Password must include at least one number.";
     }
     if (!confirmPassword.trim()) {
       errors.confirmPassword = "Please confirm your password";
@@ -99,9 +110,39 @@ export default function SignupScreen() {
       return;
     }
 
+    if (!isSupabaseConfigured()) {
+      setBannerError(
+        "Missing Supabase configuration. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to .env."
+      );
+      return;
+    }
+
     setBannerError(null);
-    // TODO: Hook up to your backend / auth flow.
-    console.log("Account created:", { firstName, lastName, email });
+    setSubmitting(true);
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          full_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+          account_type: "family",
+        },
+      },
+    });
+    setSubmitting(false);
+
+    if (error) {
+      setBannerError(formatAuthError(error));
+      return;
+    }
+
+    setSignupInfoMessage(
+      data.session
+        ? "You are signed in. You can go to the home screen after continuing."
+        : "Check your email and confirm your address before signing in."
+    );
     setAccountCreated(true);
   };
 
@@ -381,10 +422,13 @@ export default function SignupScreen() {
 
             {/* Create Account Button */}
             <TouchableOpacity
-              style={styles.createButton}
+              style={[styles.createButton, submitting && { opacity: 0.7 }]}
               onPress={handleCreateAccount}
+              disabled={submitting}
             >
-              <Text style={styles.createButtonText}>Create Account</Text>
+              <Text style={styles.createButtonText}>
+                {submitting ? "Creating…" : "Create Account"}
+              </Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -394,12 +438,14 @@ export default function SignupScreen() {
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Account Created!</Text>
               <Text style={styles.modalMessage}>
-                Your account has been created successfully.
+                {signupInfoMessage ??
+                  "Your account has been created successfully."}
               </Text>
               <TouchableOpacity
                 style={styles.modalButton}
                 onPress={() => {
                   setAccountCreated(false);
+                  setSignupInfoMessage(null);
                   router.replace("/login");
                 }}
               >

@@ -1,13 +1,16 @@
 import React, { useState, useRef } from "react";
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Image, KeyboardAvoidingView, Platform, ScrollView, Animated } from "react-native";
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Image, KeyboardAvoidingView, Platform, ScrollView, Animated, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { formatAuthError } from "../lib/authErrors";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [hidePassword, setHidePassword] = useState(true);
   const [rememberMe, setRememberMe] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [error, setError] = useState("");
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -33,7 +36,7 @@ export default function LoginScreen() {
     }, 3000);
   };
 
-  const handleSignIn = () => {
+  const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
       showError("Please fill in all fields before signing in.");
       return;
@@ -44,11 +47,47 @@ export default function LoginScreen() {
       showError("Please enter a valid email (e.g. name@mail.com)");
       return;
     }
-    
-    console.log("Validation passed! Signing in...");
+
+    if (password.length < 8) {
+      showError("Password must be at least 8 characters long.");
+      return;
+    }
+    if (!/[A-Z]/.test(password)) {
+      showError("Password must include at least one uppercase letter.");
+      return;
+    }
+    if (!/\d/.test(password)) {
+      showError("Password must include at least one number.");
+      return;
+    }
+
+    if (!isSupabaseConfigured()) {
+      showError(
+        "Missing Supabase configuration. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to .env."
+      );
+      return;
+    }
+
+    setSubmitting(true);
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    setSubmitting(false);
+
+    if (authError) {
+      showError(formatAuthError(authError));
+      return;
+    }
+
+    const role = (data.user?.user_metadata?.account_type ?? "family") as string;
+    if (role !== "family") {
+      await supabase.auth.signOut();
+      showError("Use the web app to sign in as staff.");
+      return;
+    }
 
     router.replace("/tabs/home");
-
   };
 
   const handleGoToSignup = () => {
@@ -139,8 +178,16 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.signInButton} onPress={handleSignIn}>
-          <Text style={styles.signInText}>Sign In</Text>
+        <TouchableOpacity
+          style={[styles.signInButton, submitting && styles.signInButtonDisabled]}
+          onPress={handleSignIn}
+          disabled={submitting}
+        >
+          {submitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.signInText}>Sign In</Text>
+          )}
         </TouchableOpacity>
 
         <View style={styles.dividerRow}>
@@ -277,6 +324,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 5,
+  },
+  signInButtonDisabled: {
+    opacity: 0.7,
   },
   signInText: {
     color: "#fff",
