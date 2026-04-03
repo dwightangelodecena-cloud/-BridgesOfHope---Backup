@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, Calendar, Plus, X, Activity, Bed, UserCheck, CheckCircle } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, Calendar, Plus, X, Activity, Bed, UserCheck, CheckCircle, Bell, CheckCircle2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -37,6 +37,14 @@ const Progress = () => {
     const [userInitials, setUserInitials] = useState('FU');
     const fileInputRefs = useRef([]);
     const detailsFileInputRef = useRef(null);
+    const notificationsDesktopRef = useRef(null);
+    const notificationsMobileRef = useRef(null);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const notificationItems = [
+        'Submit missing laboratory result before Friday.',
+        'Family support session is scheduled on April 5, 10:00 AM.',
+        'Weekly report reviewed by your assigned counselor.',
+    ];
 
     const [patients, setPatients] = useState([]);
 
@@ -127,6 +135,18 @@ const Progress = () => {
             isMounted = false;
         };
     }, []);
+
+    useEffect(() => {
+        if (!showNotifications) return;
+        const onDoc = (e) => {
+            const t = e.target;
+            const inDesktop = notificationsDesktopRef.current?.contains(t);
+            const inMobile = notificationsMobileRef.current?.contains(t);
+            if (!inDesktop && !inMobile) setShowNotifications(false);
+        };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, [showNotifications]);
 
     const handleImageChange = (index, event) => {
         const file = event.target.files[0];
@@ -335,19 +355,116 @@ const Progress = () => {
                     cursor: pointer;
                     transition: all 0.2s ease;
                     color: #707EAE;
+                    box-sizing: border-box;
+                    border: 2px solid transparent;
+                    border-radius: 12px;
                 }
 
-                .nav-item-active { color: #F54E25 !important; }
-                .active-icon-box { background: #F54E25; color: white; padding: 12px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-                .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 700; font-size: 18px; white-space: nowrap; }
+                .sidebar-nav-item.sidebar-nav-active { border-color: #F54E25; }
+                .sidebar-icon-wrap {
+                    padding: 12px;
+                    border-radius: 12px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
+                }
+                .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 700; font-size: 18px; white-space: nowrap; color: #707EAE; }
 
                 .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
                 
-                .top-nav { height: 85px; background: white; display: flex; align-items: center; padding: 0 30px; border-bottom: 1px solid #F1F1F1; z-index: 300; }
-                .top-nav-left { display: flex; align-items: center; gap: 40px; }
+                .top-nav {
+                    height: 85px;
+                    background: white;
+                    display: flex;
+                    align-items: center;
+                    padding: 0 30px;
+                    border-bottom: 1px solid #F1F1F1;
+                    z-index: 300;
+                    box-sizing: border-box;
+                }
+                .top-nav-left { display: flex; align-items: center; gap: 40px; flex-wrap: wrap; min-width: 0; }
                 .view-title { color: #F54E25; font-weight: 700; font-size: 20px; }
                 .welcome-text { color: #1B2559; font-weight: 500; font-size: 16px; }
-                .user-avatar-top { margin-left: auto; width: 45px; height: 45px; background: #F54E25; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+                .top-nav-actions { margin-left: auto; display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+                .user-avatar-top {
+                    width: 40px;
+                    height: 40px;
+                    min-width: 40px;
+                    min-height: 40px;
+                    background: #F54E25;
+                    color: white;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: 700;
+                    font-size: 13px;
+                    box-sizing: border-box;
+                }
+
+                .notifications-dropdown {
+                    position: absolute;
+                    top: calc(100% + 10px);
+                    right: 0;
+                    width: min(360px, calc(100vw - 48px));
+                    background: white;
+                    border: 1px solid #E9EDF7;
+                    border-radius: 14px;
+                    box-shadow: 0 12px 40px rgba(27, 37, 89, 0.12);
+                    padding: 16px;
+                    z-index: 500;
+                }
+                .notifications-trigger {
+                    width: 40px;
+                    height: 40px;
+                    min-width: 40px;
+                    min-height: 40px;
+                    padding: 0;
+                    box-sizing: border-box;
+                    flex-shrink: 0;
+                    border-radius: 50%;
+                    border: none;
+                    background: #F54E25;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    color: white;
+                    box-shadow: 0 2px 10px rgba(245, 78, 37, 0.4);
+                }
+                .notifications-trigger svg {
+                    display: block;
+                    width: 21px;
+                    height: 21px;
+                    stroke: #ffffff;
+                    color: #ffffff;
+                    flex-shrink: 0;
+                }
+                .notifications-trigger:hover {
+                    background: #e0421a;
+                    box-shadow: 0 4px 14px rgba(245, 78, 37, 0.5);
+                }
+                .notifications-trigger:focus-visible {
+                    outline: 2px solid #1B2559;
+                    outline-offset: 2px;
+                }
+                .notif-dropdown-title {
+                    color: #1B2559;
+                    font-weight: 800;
+                    margin-bottom: 12px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .notif-dropdown-row {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 10px;
+                    margin-bottom: 10px;
+                    color: #334155;
+                    font-size: 13px;
+                }
                 
                 .content-area { 
                     flex: 1; 
@@ -578,6 +695,27 @@ const Progress = () => {
                         height: auto;
                         object-fit: contain;
                     }
+                    .mobile-top-bar-right {
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                    }
+                    .mobile-notifications-trigger.notifications-trigger {
+                        width: 38px;
+                        height: 38px;
+                        min-width: 38px;
+                        min-height: 38px;
+                        padding: 0;
+                    }
+                    .mobile-notifications-trigger.notifications-trigger svg {
+                        width: 18px;
+                        height: 18px;
+                    }
+                    .mobile-notifications-dropdown.notifications-dropdown {
+                        right: 0;
+                        left: auto;
+                        width: min(340px, calc(100vw - 40px));
+                    }
                     .mobile-top-bar-avatar {
                         width: 38px;
                         height: 38px;
@@ -705,12 +843,14 @@ const Progress = () => {
                     <img src={logo} alt="BH" className="sidebar-logo" />
                 </div>
                 <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
-                    <Home size={22} />
+                    <div className="sidebar-icon-wrap">
+                        <Home size={22} color="#707EAE" />
+                    </div>
                     <span className="sidebar-label">Dashboard</span>
                 </div>
-                <div className="sidebar-nav-item nav-item-active" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-                    <div className="active-icon-box">
-                        <TrendingUp size={22} />
+                <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
+                    <div className="sidebar-icon-wrap">
+                        <TrendingUp size={22} color="#707EAE" />
                     </div>
                     <span className="sidebar-label">Progress</span>
                 </div>
@@ -727,13 +867,65 @@ const Progress = () => {
                         <span className="view-title">Progress</span>
                     <span className="welcome-text">Welcome back, {displayName}</span>
                     </div>
-                    <div className="user-avatar-top">{userInitials}</div>
+                    <div className="top-nav-actions">
+                        <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
+                            <button
+                                type="button"
+                                className="notifications-trigger"
+                                aria-expanded={showNotifications}
+                                aria-label="Notifications"
+                                onClick={() => setShowNotifications((v) => !v)}
+                            >
+                                <Bell size={20} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
+                            </button>
+                            {showNotifications && (
+                                <div className="notifications-dropdown">
+                                    <div className="notif-dropdown-title">
+                                        <Bell size={16} color="#F54E25" /> Notifications
+                                    </div>
+                                    {notificationItems.map((item) => (
+                                        <div key={item} className="notif-dropdown-row">
+                                            <CheckCircle2 size={15} color="#2B31ED" />
+                                            <span>{item}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="user-avatar-top">{userInitials}</div>
+                    </div>
                 </header>
 
                 {/* Mobile top bar */}
                 <div className="mobile-top-bar">
                     <img src={logo} alt="BH" className="mobile-top-bar-logo" />
-                    <div className="mobile-top-bar-avatar">{userInitials}</div>
+                    <div className="mobile-top-bar-right">
+                        <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
+                            <button
+                                type="button"
+                                className="notifications-trigger mobile-notifications-trigger"
+                                aria-expanded={showNotifications}
+                                aria-label="Notifications"
+                                onClick={() => setShowNotifications((v) => !v)}
+                            >
+                                <Bell size={18} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
+                            </button>
+                            {showNotifications && (
+                                <div className="notifications-dropdown mobile-notifications-dropdown">
+                                    <div className="notif-dropdown-title">
+                                        <Bell size={16} color="#F54E25" /> Notifications
+                                    </div>
+                                    {notificationItems.map((item) => (
+                                        <div key={item} className="notif-dropdown-row">
+                                            <CheckCircle2 size={15} color="#2B31ED" />
+                                            <span>{item}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="mobile-top-bar-avatar">{userInitials}</div>
+                    </div>
                 </div>
 
                 <div className="content-area">
