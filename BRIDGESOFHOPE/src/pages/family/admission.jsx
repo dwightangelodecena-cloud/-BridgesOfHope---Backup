@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { User, Mail, ArrowLeft, X, Calendar, ClipboardList, Phone, CheckCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { appendActivityFeed } from '@/lib/activityFeed';
 import logo from '@/assets/logo.png';
 
 const Admission = () => {
@@ -13,6 +14,7 @@ const Admission = () => {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [errors, setErrors] = useState({});
+  const [saveBanner, setSaveBanner] = useState('');
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -22,6 +24,29 @@ const Admission = () => {
     reasonForAdmission: '',
     agreeToTerms: false
   });
+
+  const requiredFields = useMemo(() => ([
+    { key: 'fullName', label: 'Full Name' },
+    { key: 'email', label: 'Email Address' },
+    { key: 'phoneNumber', label: 'Phone Number' },
+    { key: 'patientName', label: 'Patient Name' },
+    { key: 'patientBirthday', label: 'Patient Birthday' },
+    { key: 'reasonForAdmission', label: 'Reason for Admission' },
+  ]), []);
+
+  const completedFields = requiredFields.filter((field) => String(formData[field.key]).trim()).length;
+  const progressPercent = Math.round((completedFields / requiredFields.length) * 100);
+
+  useEffect(() => {
+    const savedDraft = localStorage.getItem('bh_admission_draft');
+    if (savedDraft) {
+      try {
+        setFormData(JSON.parse(savedDraft));
+      } catch {
+        localStorage.removeItem('bh_admission_draft');
+      }
+    }
+  }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -82,8 +107,35 @@ const Admission = () => {
       localStorage.setItem('bh_pending_admissions', JSON.stringify(updatedPending));
       window.dispatchEvent(new Event('storage'));
 
+      appendActivityFeed(
+        `Admission request submitted for ${formData.patientName.trim()}. Pending admin review.`
+      );
+
       setShowSuccessModal(true);
     }
+  };
+
+  const saveDraft = () => {
+    localStorage.setItem('bh_admission_draft', JSON.stringify(formData));
+    setSaveBanner('Draft saved locally.');
+    setTimeout(() => setSaveBanner(''), 1800);
+  };
+
+  const clearForm = () => {
+    const resetState = {
+      fullName: '',
+      email: '',
+      phoneNumber: '',
+      patientName: '',
+      patientBirthday: '',
+      reasonForAdmission: '',
+      agreeToTerms: false
+    };
+    setFormData(resetState);
+    setErrors({});
+    localStorage.removeItem('bh_admission_draft');
+    setSaveBanner('Form has been reset.');
+    setTimeout(() => setSaveBanner(''), 1800);
   };
 
   return (
@@ -241,6 +293,39 @@ const Admission = () => {
           margin-top: 10px;
         }
 
+        .btn-secondary {
+          width: 100%;
+          background: #FFF4F1;
+          color: #F54E25;
+          padding: 14px;
+          border: 1px solid #FECACA;
+          border-radius: 14px;
+          font-size: 0.95rem;
+          font-weight: 700;
+          cursor: pointer;
+          margin-top: 10px;
+        }
+
+        .meta-card {
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+          padding: 14px;
+          text-align: left;
+          margin-bottom: 16px;
+          background: #F8FAFC;
+        }
+
+        .save-banner {
+          background: #ECFDF3;
+          color: #166534;
+          border: 1px solid #A7F3D0;
+          padding: 10px 12px;
+          border-radius: 10px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          margin-bottom: 12px;
+        }
+
         .modal-overlay {
           position: fixed;
           top: 0; left: 0;
@@ -319,6 +404,36 @@ const Admission = () => {
             </button>
             <img src={logo} alt="BH Logo" className="card-header-logo" />
 
+            {saveBanner && <div className="save-banner">{saveBanner}</div>}
+
+            <div className="meta-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.86rem' }}>Form Completion</span>
+                <span style={{ fontWeight: 700, color: '#F54E25', fontSize: '0.86rem' }}>{progressPercent}%</span>
+              </div>
+              <div style={{ height: 8, background: '#E2E8F0', borderRadius: 999 }}>
+                <div style={{ width: `${progressPercent}%`, height: '100%', background: '#F54E25', borderRadius: 999 }} />
+              </div>
+              <p style={{ marginTop: 8, color: '#64748b', fontSize: '0.8rem' }}>
+                {completedFields} of {requiredFields.length} required fields completed
+              </p>
+            </div>
+
+            <div className="meta-card">
+              <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.86rem', marginBottom: 6 }}>Admission Checklist</div>
+              {requiredFields.map((field) => (
+                <div key={field.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: 5 }}>
+                  <span style={{ color: '#475569' }}>{field.label}</span>
+                  <span style={{ color: String(formData[field.key]).trim() ? '#16a34a' : '#94a3b8', fontWeight: 700 }}>
+                    {String(formData[field.key]).trim() ? 'Done' : 'Pending'}
+                  </span>
+                </div>
+              ))}
+              <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#64748b' }}>
+                Estimated review: 1-3 business days after submission.
+              </div>
+            </div>
+
             <form onSubmit={handleSubmit} noValidate>
               <div className="form-group">
                 <label>Full Name</label>
@@ -385,6 +500,8 @@ const Admission = () => {
               {errors.agreeToTerms && <div className="error-message" style={{ textAlign: 'center', marginBottom: '10px' }}>{errors.agreeToTerms}</div>}
 
               <button type="submit" className="btn-primary">Submit Admission</button>
+              <button type="button" className="btn-secondary" onClick={saveDraft}>Save Draft</button>
+              <button type="button" className="btn-secondary" onClick={clearForm}>Reset Form</button>
             </form>
           </div>
         </div>

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Home, TrendingUp, User, LogOut, X, Landmark, Users, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
 
 // Asset import for the logo
 import logo from '@/assets/logo2.png';
@@ -9,6 +10,24 @@ const Service = () => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false); // State for monthly fees expansion
   const [isAdmissionExpanded, setIsAdmissionExpanded] = useState(false); // New state for admission card expansion
+  const [userInitials, setUserInitials] = useState('FU');
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadInitials = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      const name =
+        user?.user_metadata?.full_name ||
+        [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ') ||
+        'Family User';
+      const initials =
+        name.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || 'FU';
+      if (isMounted) setUserInitials(initials);
+    };
+    loadInitials();
+    return () => { isMounted = false; };
+  }, []);
 
   return (
     <div className="service-container">
@@ -497,7 +516,7 @@ const Service = () => {
             <span className="view-title">Services</span>
             <span className="welcome-text">Welcome back</span>
           </div>
-          <div className="user-avatar">JD</div>
+          <div className="user-avatar">{userInitials}</div>
         </header>
 
         <div className="content-area">

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, X } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, X, Phone, MapPin } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import logo from '@/assets/logo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -14,7 +14,14 @@ const SignUp = () => {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [formData, setFormData] = useState({
-    fullName: '',
+    firstName: '',
+    lastName: '',
+    middleInitial: '',
+    contactNumber: '',
+    province: '',
+    municipality: '',
+    street: '',
+    houseBlockLot: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -35,7 +42,20 @@ const SignUp = () => {
 
   const validateForm = () => {
     let newErrors = {};
-    if (!formData.fullName.trim()) newErrors.fullName = "Full name is required";
+    if (!formData.firstName.trim()) newErrors.firstName = "First name is required";
+    if (!formData.lastName.trim()) newErrors.lastName = "Last name is required";
+    if (formData.middleInitial && !/^[A-Za-z]$/.test(formData.middleInitial.trim())) {
+      newErrors.middleInitial = "Middle initial must be one letter";
+    }
+    if (!formData.contactNumber.trim()) {
+      newErrors.contactNumber = "Contact number is required";
+    } else if (!/^[0-9]{10,13}$/.test(formData.contactNumber.trim())) {
+      newErrors.contactNumber = "Contact number must be 10-13 digits";
+    }
+    if (!formData.province.trim()) newErrors.province = "Province is required";
+    if (!formData.municipality.trim()) newErrors.municipality = "Municipality / City is required";
+    if (!formData.street.trim()) newErrors.street = "Street / Barangay is required";
+    if (!formData.houseBlockLot.trim()) newErrors.houseBlockLot = "House # / Block / Lot is required";
     if (!formData.email.trim()) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = "Invalid email format";
 
@@ -76,12 +96,34 @@ const SignUp = () => {
     }
 
     setSubmitting(true);
-    const { error } = await supabase.auth.signUp({
+    const first = formData.firstName.trim();
+    const last = formData.lastName.trim();
+    const middle = formData.middleInitial.trim();
+    const fullName = middle
+      ? `${first} ${middle.toUpperCase()}. ${last}`
+      : `${first} ${last}`;
+
+    const province = formData.province.trim();
+    const municipality = formData.municipality.trim();
+    const street = formData.street.trim();
+    const houseBlockLot = formData.houseBlockLot.trim();
+    const addressLine = [houseBlockLot, street, municipality, province].filter(Boolean).join(', ');
+
+    const { data, error } = await supabase.auth.signUp({
       email: formData.email.trim(),
       password: formData.password,
       options: {
         data: {
-          full_name: formData.fullName.trim(),
+          first_name: first,
+          last_name: last,
+          middle_initial: middle.toUpperCase() || null,
+          full_name: fullName,
+          contact_number: formData.contactNumber.trim(),
+          province,
+          municipality,
+          street,
+          house_block_lot: houseBlockLot,
+          address: addressLine,
           account_type: 'family'
         }
       }
@@ -91,6 +133,26 @@ const SignUp = () => {
     if (error) {
       setFormError(formatAuthError(error));
       return;
+    }
+
+    // Best-effort profile write to `public.profiles` for app-level user data.
+    if (data.user?.id) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: data.user.id,
+          full_name: fullName,
+          phone: formData.contactNumber.trim(),
+          account_type: 'family',
+          province,
+          municipality,
+          street,
+          house_block_lot: houseBlockLot
+        }, { onConflict: 'id' });
+
+      if (profileError) {
+        console.warn('[signup] profile upsert failed:', profileError.message);
+      }
     }
 
     navigate('/login');
@@ -162,6 +224,16 @@ const SignUp = () => {
           color: #475569;
           margin-bottom: 8px;
           font-weight: 500;
+        }
+
+        .form-section-label {
+          text-align: left;
+          font-size: 0.8rem;
+          font-weight: 700;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          margin: 8px 0 4px 0;
         }
 
         .input-wrapper { position: relative; display: flex; align-items: center; }
@@ -412,12 +484,92 @@ const SignUp = () => {
 
             <form onSubmit={handleSubmit} noValidate>
               <div className="form-group">
-                <label>Full Name</label>
+                <label>First Name</label>
                 <div className="input-wrapper">
                   <User className="input-icon" size={22} />
-                  <input name="fullName" type="text" placeholder="Enter your name" className={errors.fullName ? 'input-error' : ''} value={formData.fullName} onChange={handleChange} />
+                  <input name="firstName" type="text" placeholder="Enter first name" className={errors.firstName ? 'input-error' : ''} value={formData.firstName} onChange={handleChange} />
                 </div>
-                {errors.fullName && <div className="error-message">{errors.fullName}</div>}
+                {errors.firstName && <div className="error-message">{errors.firstName}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Last Name</label>
+                <div className="input-wrapper">
+                  <User className="input-icon" size={22} />
+                  <input name="lastName" type="text" placeholder="Enter last name" className={errors.lastName ? 'input-error' : ''} value={formData.lastName} onChange={handleChange} />
+                </div>
+                {errors.lastName && <div className="error-message">{errors.lastName}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Middle Initial (Optional)</label>
+                <div className="input-wrapper">
+                  <User className="input-icon" size={22} />
+                  <input
+                    name="middleInitial"
+                    type="text"
+                    placeholder="e.g. A"
+                    maxLength={1}
+                    className={errors.middleInitial ? 'input-error' : ''}
+                    value={formData.middleInitial}
+                    onChange={handleChange}
+                  />
+                </div>
+                {errors.middleInitial && <div className="error-message">{errors.middleInitial}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Contact Number</label>
+                <div className="input-wrapper">
+                  <Phone className="input-icon" size={22} />
+                  <input
+                    name="contactNumber"
+                    type="text"
+                    placeholder="Enter contact number"
+                    className={errors.contactNumber ? 'input-error' : ''}
+                    value={formData.contactNumber}
+                    onChange={handleChange}
+                  />
+                </div>
+                {errors.contactNumber && <div className="error-message">{errors.contactNumber}</div>}
+              </div>
+
+              <p className="form-section-label">Address</p>
+
+              <div className="form-group">
+                <label>Province</label>
+                <div className="input-wrapper">
+                  <MapPin className="input-icon" size={22} />
+                  <input name="province" type="text" placeholder="e.g. Cavite" className={errors.province ? 'input-error' : ''} value={formData.province} onChange={handleChange} autoComplete="address-level1" />
+                </div>
+                {errors.province && <div className="error-message">{errors.province}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Municipality / City</label>
+                <div className="input-wrapper">
+                  <MapPin className="input-icon" size={22} />
+                  <input name="municipality" type="text" placeholder="e.g. Imus City" className={errors.municipality ? 'input-error' : ''} value={formData.municipality} onChange={handleChange} autoComplete="address-level2" />
+                </div>
+                {errors.municipality && <div className="error-message">{errors.municipality}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Street / Barangay</label>
+                <div className="input-wrapper">
+                  <MapPin className="input-icon" size={22} />
+                  <input name="street" type="text" placeholder="Street name or barangay" className={errors.street ? 'input-error' : ''} value={formData.street} onChange={handleChange} autoComplete="street-address" />
+                </div>
+                {errors.street && <div className="error-message">{errors.street}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>House # / Block / Lot</label>
+                <div className="input-wrapper">
+                  <MapPin className="input-icon" size={22} />
+                  <input name="houseBlockLot" type="text" placeholder="e.g. Blk 2 Lot 15" className={errors.houseBlockLot ? 'input-error' : ''} value={formData.houseBlockLot} onChange={handleChange} />
+                </div>
+                {errors.houseBlockLot && <div className="error-message">{errors.houseBlockLot}</div>}
               </div>
 
               <div className="form-group">

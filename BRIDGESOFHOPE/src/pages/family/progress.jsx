@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Home, TrendingUp, User, LogOut, Calendar, Plus, X, Activity, Bed, UserCheck, CheckCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { appendActivityFeed } from '@/lib/activityFeed';
 
 // Assets
 import logo from '@/assets/logo2.png';
@@ -15,7 +17,22 @@ const Progress = () => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [showDischargeSuccessModal, setShowDischargeSuccessModal] = useState(false);
+    const [showDischargeFormModal, setShowDischargeFormModal] = useState(false);
+    const [dischargeForm, setDischargeForm] = useState({
+        reasonCategory: '',
+        reasonDetails: '',
+        preferredDate: '',
+        pickupAuthorized: '',
+        followUpPhone: '',
+        otherInfo: ''
+    });
+    const [dischargeFormErrors, setDischargeFormErrors] = useState({});
     const [patientImages, setPatientImages] = useState({});
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [patientNotes, setPatientNotes] = useState({});
+    const [displayName, setDisplayName] = useState('Family User');
+    const [userInitials, setUserInitials] = useState('FU');
     const fileInputRefs = useRef([]);
     const detailsFileInputRef = useRef(null);
 
@@ -33,6 +50,52 @@ const Progress = () => {
         return () => window.removeEventListener('storage', syncPatients);
     }, []);
 
+    useEffect(() => {
+        let isMounted = true;
+
+        const deriveInitials = (name) =>
+            name
+                .split(' ')
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((part) => part[0]?.toUpperCase() || '')
+                .join('') || 'FU';
+
+        const loadUser = async () => {
+            const { data } = await supabase.auth.getUser();
+            const user = data?.user;
+
+            const fallbackProfile = localStorage.getItem('bh_family_profile');
+            const fallbackName = fallbackProfile ? JSON.parse(fallbackProfile).fullName : null;
+
+            let resolvedName =
+                user?.user_metadata?.full_name ||
+                [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ') ||
+                fallbackName ||
+                'Family User';
+
+            if (user?.id) {
+                const { data: profileRow } = await supabase
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                if (profileRow?.full_name) resolvedName = profileRow.full_name;
+            }
+
+            if (isMounted) {
+                setDisplayName(resolvedName);
+                setUserInitials(deriveInitials(resolvedName));
+            }
+        };
+
+        loadUser();
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
     const handleImageChange = (index, event) => {
         const file = event.target.files[0];
         if (file) {
@@ -45,33 +108,106 @@ const Progress = () => {
         fileInputRefs.current[index].click();
     };
 
-    const handleDischarge = (id) => {
-        const patientToDischarge = patients.find(p => p.id === id);
+    const openDischargeForm = () => {
+        const profile = JSON.parse(localStorage.getItem('bh_family_profile') || '{}');
+        setDischargeForm({
+            reasonCategory: '',
+            reasonDetails: '',
+            preferredDate: '',
+            pickupAuthorized: '',
+            followUpPhone: profile.phone || '',
+            otherInfo: ''
+        });
+        setDischargeFormErrors({});
+        setShowDischargeFormModal(true);
+    };
+
+    const handleDischargeFormChange = (e) => {
+        const { name, value } = e.target;
+        setDischargeForm((prev) => ({ ...prev, [name]: value }));
+        if (dischargeFormErrors[name]) {
+            setDischargeFormErrors((prev) => ({ ...prev, [name]: '' }));
+        }
+    };
+
+    const submitDischargeRequest = () => {
+        if (!selectedPatient) return;
+
+        const errs = {};
+        if (!dischargeForm.reasonCategory) {
+            errs.reasonCategory = 'Please select a reason for discharge.';
+        }
+        const details = dischargeForm.reasonDetails.trim();
+        if (!details) {
+            errs.reasonDetails = 'Please describe why the patient should be discharged.';
+        } else if (details.length < 15) {
+            errs.reasonDetails = 'Please add more detail (at least 15 characters).';
+        }
+        const phone = dischargeForm.followUpPhone.trim();
+        if (phone && !/^[0-9]{10,13}$/.test(phone)) {
+            errs.followUpPhone = 'Enter a valid contact number (10–13 digits).';
+        }
+        if (Object.keys(errs).length) {
+            setDischargeFormErrors(errs);
+            return;
+        }
+
+        const patientToDischarge = patients.find((p) => p.id === selectedPatient.id);
         if (!patientToDischarge) return;
 
         const savedPending = localStorage.getItem('bh_pending_discharges');
         const currentPending = savedPending ? JSON.parse(savedPending) : [];
-        
-        // Prevent duplicate entries if already requested
-        if (currentPending.some(req => req.id === patientToDischarge.id || req.originalId === patientToDischarge.id)) {
+
+        if (currentPending.some(
+            (req) => req.id === patientToDischarge.id || req.originalId === patientToDischarge.id
+        )) {
+            setShowDischargeFormModal(false);
             setShowDischargeSuccessModal(true);
             return;
         }
 
+        const profile = JSON.parse(localStorage.getItem('bh_family_profile') || '{}');
         const dischargeRequest = {
             ...patientToDischarge,
-            requestTime: "Just now",
-            familyNumber: "09123456789", // Mocked for existing defaults
-            familyEmail: "Sample@email.com",
-            patientNumber: "09123456789"
+            requestTime: new Date().toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            }),
+            familyNumber: phone || profile.phone || '09123456789',
+            familyEmail: profile.email || 'Sample@email.com',
+            patientNumber: profile.phone || '09123456789',
+            dischargeReasonCategory: dischargeForm.reasonCategory,
+            dischargeReasonDetails: details,
+            preferredDischargeDate: dischargeForm.preferredDate || null,
+            pickupAuthorized: dischargeForm.pickupAuthorized.trim() || null,
+            followUpPhone: phone || null,
+            dischargeOtherInfo: dischargeForm.otherInfo.trim() || null
         };
 
         const updatedPending = [...currentPending, dischargeRequest];
         localStorage.setItem('bh_pending_discharges', JSON.stringify(updatedPending));
         window.dispatchEvent(new Event('storage'));
 
+        appendActivityFeed(
+          `Discharge request submitted for ${patientToDischarge.name}. Awaiting admin review.`
+        );
+
+        setShowDischargeFormModal(false);
         setShowDischargeSuccessModal(true);
     };
+
+    const filteredPatients = patients.filter((patient) => {
+        const matchesSearch = patient.name?.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStatus = statusFilter === 'all' || (patient.status || '').toLowerCase() === statusFilter;
+        return matchesSearch && matchesStatus;
+    });
+
+    const avgProgress = patients.length
+        ? Math.round(patients.reduce((sum, patient) => sum + (Number(patient.progress) || 0), 0) / patients.length)
+        : 0;
 
     return (
         <div className="progress-container">
@@ -140,6 +276,33 @@ const Progress = () => {
                 .header-section { margin-bottom: 30px; }
                 .header-section h1 { font-size: 28px; color: #1B2559; font-weight: 800; }
                 .header-section h1 span { color: #F54E25; }
+                .header-tools {
+                    display: flex;
+                    gap: 10px;
+                    margin-top: 14px;
+                    flex-wrap: wrap;
+                }
+                .tool-input {
+                    background: white;
+                    border: 1px solid #E9EDF7;
+                    border-radius: 12px;
+                    padding: 10px 12px;
+                    font-size: 13px;
+                    color: #1B2559;
+                    min-width: 210px;
+                }
+                .summary-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 14px;
+                    margin-bottom: 22px;
+                }
+                .summary-card {
+                    background: white;
+                    border: 1px solid #E9EDF7;
+                    border-radius: 16px;
+                    padding: 14px 16px;
+                }
 
                 .patient-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(480px, 1fr)); gap: 25px; }
                 .patient-card { 
@@ -190,6 +353,101 @@ const Progress = () => {
                 .patient-main-info-card { background: white; border-radius: 20px; padding: 45px; box-shadow: 0 10px 30px rgba(0,0,0,0.04); }
                 .profile-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
                 .discharge-btn { background: #F54E25; color: white; border: none; padding: 14px 28px; border-radius: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 16px; }
+
+                .discharge-form-overlay {
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(15, 23, 42, 0.45);
+                    z-index: 7000;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                    backdrop-filter: blur(4px);
+                }
+                .discharge-form-box {
+                    background: white;
+                    border-radius: 20px;
+                    width: 100%;
+                    max-width: 520px;
+                    max-height: 90vh;
+                    overflow-y: auto;
+                    padding: 28px 28px 24px;
+                    box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+                    color-scheme: light;
+                }
+                .discharge-form-title {
+                    font-size: 22px;
+                    font-weight: 800;
+                    color: #1B2559;
+                    margin: 0 0 6px 0;
+                }
+                .discharge-form-sub {
+                    font-size: 13px;
+                    color: #64748B;
+                    margin-bottom: 20px;
+                }
+                .discharge-field { margin-bottom: 16px; text-align: left; }
+                .discharge-field label {
+                    display: block;
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #475569;
+                    margin-bottom: 6px;
+                }
+                .discharge-field .req { color: #F54E25; }
+                .discharge-field input,
+                .discharge-field select,
+                .discharge-field textarea {
+                    width: 100%;
+                    padding: 12px 14px;
+                    border: 1px solid #E2E8F0;
+                    border-radius: 12px;
+                    font-size: 14px;
+                    color: #1B2559;
+                    background: #fff;
+                    font-family: inherit;
+                    box-sizing: border-box;
+                }
+                .discharge-field textarea { min-height: 100px; resize: vertical; }
+                .discharge-field select { cursor: pointer; }
+                .discharge-field input:focus,
+                .discharge-field select:focus,
+                .discharge-field textarea:focus {
+                    outline: none;
+                    border-color: #F54E25;
+                    box-shadow: 0 0 0 3px rgba(245, 78, 37, 0.12);
+                }
+                .discharge-field-error {
+                    font-size: 12px;
+                    color: #DC2626;
+                    margin-top: 4px;
+                    font-weight: 500;
+                }
+                .discharge-form-actions {
+                    display: flex;
+                    gap: 12px;
+                    margin-top: 20px;
+                    flex-wrap: wrap;
+                }
+                .discharge-form-actions button {
+                    flex: 1;
+                    min-width: 120px;
+                    padding: 14px;
+                    border-radius: 12px;
+                    font-weight: 700;
+                    font-size: 15px;
+                    cursor: pointer;
+                    border: none;
+                }
+                .discharge-btn-cancel {
+                    background: #F1F5F9;
+                    color: #475569;
+                }
+                .discharge-btn-submit {
+                    background: #F54E25;
+                    color: white;
+                }
                 
                 .info-pill-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 40px 0; }
                 .info-pill { background: #F4F7FE; padding: 20px; border-radius: 15px; display: flex; flex-direction: column; gap: 8px; }
@@ -261,6 +519,8 @@ const Progress = () => {
                     .header-section { margin-bottom: 20px; }
                     .header-section h1 { font-size: 22px; }
                     .header-section p { font-size: 13px; }
+                    .summary-grid { grid-template-columns: 1fr; }
+                    .tool-input { width: 100%; min-width: 0; }
 
                     /* Patient cards - match home.jsx card style */
                     .patient-grid { grid-template-columns: 1fr; gap: 14px; }
@@ -382,25 +642,56 @@ const Progress = () => {
                 <header className="top-nav">
                     <div className="top-nav-left">
                         <span className="view-title">Progress</span>
-                        <span className="welcome-text">Welcome back</span>
+                    <span className="welcome-text">Welcome back, {displayName}</span>
                     </div>
-                    <div className="user-avatar-top">JD</div>
+                    <div className="user-avatar-top">{userInitials}</div>
                 </header>
 
                 {/* Mobile top bar */}
                 <div className="mobile-top-bar">
                     <img src={logo} alt="BH" className="mobile-top-bar-logo" />
-                    <div className="mobile-top-bar-avatar">JD</div>
+                    <div className="mobile-top-bar-avatar">{userInitials}</div>
                 </div>
 
                 <div className="content-area">
                     <div className="header-section">
-                        <h1><span>Hello,</span> Jane Doe</h1>
+                        <h1><span>Hello,</span> {displayName}</h1>
                         <p style={{ color: '#A3AED0', marginTop: '5px', fontWeight: '500' }}>Here's an overview of your family members</p>
+                        <div className="header-tools">
+                            <input
+                                className="tool-input"
+                                placeholder="Search patient by name..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                            <select className="tool-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                                <option value="all">All statuses</option>
+                                <option value="recovering">Recovering</option>
+                                <option value="in treatment">In Treatment</option>
+                                <option value="stable">Stable</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="summary-grid">
+                        <div className="summary-card">
+                            <div style={{ color: '#64748B', fontWeight: 700, fontSize: 12 }}>TOTAL PATIENTS</div>
+                            <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 26, marginTop: 8 }}>{patients.length}</div>
+                        </div>
+                        <div className="summary-card">
+                            <div style={{ color: '#64748B', fontWeight: 700, fontSize: 12 }}>AVERAGE PROGRESS</div>
+                            <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 26, marginTop: 8 }}>{avgProgress}%</div>
+                        </div>
+                        <div className="summary-card">
+                            <div style={{ color: '#64748B', fontWeight: 700, fontSize: 12 }}>DISCHARGE READY (ATLEAST 80% OF PATIENT PROGRESS)</div>
+                            <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 26, marginTop: 8 }}>
+                                {patients.filter((p) => (Number(p.progress) || 0) >= 80).length}
+                            </div>
+                        </div>
                     </div>
 
                     <div className="patient-grid">
-                        {patients.map((patient, i) => (
+                        {filteredPatients.map((patient, i) => (
                             <div key={patient.id} className="patient-card">
                                 <div className="card-header">
                                     <div className="patient-img-wrapper" onClick={() => triggerFileInput(i)}>
@@ -455,6 +746,11 @@ const Progress = () => {
                                 </button>
                             </div>
                         ))}
+                        {filteredPatients.length === 0 && (
+                            <div className="patient-card" style={{ minHeight: '180px', justifyContent: 'center', alignItems: 'center' }}>
+                                <p style={{ color: '#94A3B8', fontWeight: 600 }}>No patients found for your current filter.</p>
+                            </div>
+                        )}
 
                         <div className="patient-card admit-card-mobile" style={{ border: '2px dashed #E0E5F2', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'transparent' }} onClick={() => navigate('/admission')}>
                             <Plus size={48} color="#A3AED0" strokeWidth={1} />
@@ -495,8 +791,8 @@ const Progress = () => {
                                                 <span className="status-badge" style={{ fontSize: '14px' }}>{selectedPatient.status}</span>
                                             </div>
                                         </div>
-                                        <button className="discharge-btn" onClick={() => handleDischarge(selectedPatient.id)}>
-                                            <UserCheck size={20} /> Discharge Patient
+                                        <button type="button" className="discharge-btn" onClick={openDischargeForm}>
+                                            <UserCheck size={20} /> Request discharge
                                         </button>
                                     </div>
 
@@ -525,6 +821,15 @@ const Progress = () => {
                                             Activities
                                         </div>
                                         <span className="no-activities">No Current Activities</span>
+                                    </div>
+                                    <div style={{ marginTop: 18 }}>
+                                        <div style={{ color: '#64748B', fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Family Notes</div>
+                                        <textarea
+                                            value={patientNotes[selectedPatient.id] || ''}
+                                            onChange={(e) => setPatientNotes((prev) => ({ ...prev, [selectedPatient.id]: e.target.value }))}
+                                            placeholder="Add quick notes or reminders for this patient..."
+                                            style={{ width: '100%', minHeight: 90, border: '1px solid #E2E8F0', borderRadius: 12, padding: 12, resize: 'vertical', fontFamily: 'inherit', background: '#fff', color: '#1B2559', colorScheme: 'light' }}
+                                        />
                                     </div>
                                 </div>
 
@@ -565,6 +870,128 @@ const Progress = () => {
                                         <div className="progress-fill" style={{ width: `${selectedPatient.progress}%` }}></div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showDischargeFormModal && selectedPatient && (
+                    <div
+                        className="discharge-form-overlay"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="discharge-form-title"
+                        onClick={() => setShowDischargeFormModal(false)}
+                    >
+                        <div className="discharge-form-box" onClick={(e) => e.stopPropagation()}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                                <h2 id="discharge-form-title" className="discharge-form-title">Discharge request</h2>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowDischargeFormModal(false)}
+                                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: '#64748B' }}
+                                    aria-label="Close"
+                                >
+                                    <X size={24} />
+                                </button>
+                            </div>
+                            <p className="discharge-form-sub">
+                                For patient: <strong>{selectedPatient.name}</strong>. This will be sent to the administrator for review.
+                            </p>
+
+                            <div className="discharge-field">
+                                <label htmlFor="reasonCategory"><span className="req">*</span> Reason for discharge</label>
+                                <select
+                                    id="reasonCategory"
+                                    name="reasonCategory"
+                                    value={dischargeForm.reasonCategory}
+                                    onChange={handleDischargeFormChange}
+                                >
+                                    <option value="">Select a reason</option>
+                                    <option value="Treatment program completed">Treatment program completed</option>
+                                    <option value="Medical / clinical recommendation">Medical / clinical recommendation</option>
+                                    <option value="Family or guardian request">Family or guardian request</option>
+                                    <option value="Patient request">Patient request</option>
+                                    <option value="Transfer to another facility">Transfer to another facility</option>
+                                    <option value="Financial or insurance">Financial or insurance</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                {dischargeFormErrors.reasonCategory && (
+                                    <div className="discharge-field-error">{dischargeFormErrors.reasonCategory}</div>
+                                )}
+                            </div>
+
+                            <div className="discharge-field">
+                                <label htmlFor="reasonDetails"><span className="req">*</span> Detailed explanation</label>
+                                <textarea
+                                    id="reasonDetails"
+                                    name="reasonDetails"
+                                    value={dischargeForm.reasonDetails}
+                                    onChange={handleDischargeFormChange}
+                                    placeholder="Describe the situation and why discharge is appropriate at this time..."
+                                />
+                                {dischargeFormErrors.reasonDetails && (
+                                    <div className="discharge-field-error">{dischargeFormErrors.reasonDetails}</div>
+                                )}
+                            </div>
+
+                            <div className="discharge-field">
+                                <label htmlFor="preferredDate">Preferred discharge date</label>
+                                <input
+                                    id="preferredDate"
+                                    name="preferredDate"
+                                    type="date"
+                                    value={dischargeForm.preferredDate}
+                                    onChange={handleDischargeFormChange}
+                                />
+                            </div>
+
+                            <div className="discharge-field">
+                                <label htmlFor="pickupAuthorized">Person authorized to pick up patient (optional)</label>
+                                <input
+                                    id="pickupAuthorized"
+                                    name="pickupAuthorized"
+                                    type="text"
+                                    value={dischargeForm.pickupAuthorized}
+                                    onChange={handleDischargeFormChange}
+                                    placeholder="Full name and relationship"
+                                />
+                            </div>
+
+                            <div className="discharge-field">
+                                <label htmlFor="followUpPhone">Follow-up contact number</label>
+                                <input
+                                    id="followUpPhone"
+                                    name="followUpPhone"
+                                    type="tel"
+                                    value={dischargeForm.followUpPhone}
+                                    onChange={handleDischargeFormChange}
+                                    placeholder="10–13 digits"
+                                />
+                                {dischargeFormErrors.followUpPhone && (
+                                    <div className="discharge-field-error">{dischargeFormErrors.followUpPhone}</div>
+                                )}
+                            </div>
+
+                            <div className="discharge-field">
+                                <label htmlFor="otherInfo">Other information for the care team (optional)</label>
+                                <textarea
+                                    id="otherInfo"
+                                    name="otherInfo"
+                                    value={dischargeForm.otherInfo}
+                                    onChange={handleDischargeFormChange}
+                                    placeholder="Medications, aftercare needs, transportation, etc."
+                                    style={{ minHeight: 72 }}
+                                />
+                            </div>
+
+                            <div className="discharge-form-actions">
+                                <button type="button" className="discharge-btn-cancel" onClick={() => setShowDischargeFormModal(false)}>
+                                    Cancel
+                                </button>
+                                <button type="button" className="discharge-btn-submit" onClick={submitDischargeRequest}>
+                                    Submit request
+                                </button>
                             </div>
                         </div>
                     </div>

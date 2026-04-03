@@ -6,6 +6,30 @@ import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
+const statusItems = [
+  { title: 'Admission Request', status: 'In Review', color: '#F59E0B' },
+  { title: 'Medical Requirements', status: 'Needs Action', color: '#EF4444' },
+  { title: 'Weekly Report', status: 'Approved', color: '#10B981' },
+];
+
+const notifications = [
+  { icon: 'notifications-outline', text: 'Submit missing lab result before Friday.' },
+  { icon: 'calendar-outline', text: 'Family session scheduled on April 5, 10:00 AM.' },
+  { icon: 'checkmark-circle-outline', text: 'Weekly report was reviewed by your counselor.' },
+];
+
+const recentActivities = [
+  { time: 'Today', text: 'You submitted your weekly report.' },
+  { time: 'Yesterday', text: 'Admin updated your admission status.' },
+  { time: '2 days ago', text: 'You uploaded a supporting document.' },
+];
+
+const reminders = [
+  'Complete profile details',
+  'Upload latest medical test result',
+  'Review appointment schedule',
+];
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -53,6 +77,23 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        <Text style={styles.sectionTitle}>Your Dashboard</Text>
+        <View style={styles.metricsRow}>
+          <DashboardMetric icon="document-text-outline" label="Requests" value="3" />
+          <DashboardMetric icon="checkmark-done-circle-outline" label="Completed" value="1" />
+          <DashboardMetric icon="warning-outline" label="Pending" value="2" />
+        </View>
+
+        <View style={styles.suggestionCard}>
+          <Text style={styles.suggestionTitle}>Recommended Next Step</Text>
+          <Text style={styles.suggestionText}>
+            Update your profile and submit missing requirements to speed up approval.
+          </Text>
+          <TouchableOpacity style={styles.suggestionButton} onPress={() => router.push('../profile')}>
+            <Text style={styles.suggestionButtonText}>Update Profile</Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.grid}>
           <ActionButton 
@@ -79,6 +120,103 @@ export default function HomeScreen() {
             color="#F54E25" 
             onPress={() => router.push('../services')} 
           />
+        </View>
+
+        <Text style={styles.sectionTitle}>Request Status</Text>
+        <View style={styles.cardSection}>
+          {statusItems.map(item => (
+            <View key={item.title} style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: item.color }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.statusTitle}>{item.title}</Text>
+                <Text style={[styles.statusText, { color: item.color }]}>{item.status}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.sectionTitle}>Notification Center</Text>
+        <View style={styles.cardSection}>
+          {notifications.map(note => (
+            <View key={note.text} style={styles.infoRow}>
+              <Ionicons name={note.icon as any} size={18} color="#2B31ED" />
+              <Text style={styles.infoRowText}>{note.text}</Text>
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.sectionTitle}>Recent Activity</Text>
+        <View style={styles.cardSection}>
+          {recentActivities.map(activity => (
+            <View key={activity.text} style={styles.timelineRow}>
+              <View style={styles.timelineDot} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.timelineTime}>{activity.time}</Text>
+                <Text style={styles.timelineText}>{activity.text}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.sectionTitle}>Document Vault</Text>
+        <View style={styles.cardSection}>
+          <View style={styles.infoRow}>
+            <Ionicons name="folder-open-outline" size={18} color="#2B31ED" />
+            <Text style={styles.infoRowText}>3 documents uploaded</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="alert-circle-outline" size={18} color="#EF4444" />
+            <Text style={styles.infoRowText}>1 file needs re-upload due to low quality</Text>
+          </View>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push('../AdmissionForm')}>
+            <Text style={styles.secondaryButtonText}>Upload Documents</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.sectionTitle}>Calendar & Reminders</Text>
+        <View style={styles.cardSection}>
+          {reminders.map(item => (
+            <View key={item} style={styles.infoRow}>
+              <Ionicons name="time-outline" size={18} color="#2B31ED" />
+              <Text style={styles.infoRowText}>{item}</Text>
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.sectionTitle}>Resources & Support</Text>
+        <View style={styles.grid}>
+          <ActionButton
+            icon="help-circle"
+            label="FAQ"
+            color="#F54E25"
+            onPress={() => router.push('../services')}
+          />
+          <ActionButton
+            icon="chatbox-ellipses"
+            label="Support"
+            color="#F54E25"
+            onPress={() => router.push('../tabs/Messages')}
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>Community Updates</Text>
+        <View style={styles.cardSection}>
+          <Text style={styles.announcementTitle}>Family Wellness Talk - April 9</Text>
+          <Text style={styles.announcementText}>
+            Join the monthly support session to learn practical ways families can help recovery.
+          </Text>
+        </View>
+
+        <Text style={styles.sectionTitle}>Feedback</Text>
+        <View style={styles.cardSection}>
+          <Text style={styles.feedbackTitle}>How was your recent service experience?</Text>
+          <View style={styles.feedbackRow}>
+            {['😟', '😐', '🙂', '😀', '😍'].map(rate => (
+              <TouchableOpacity key={rate} style={styles.feedbackEmoji}>
+                <Text style={styles.feedbackEmojiText}>{rate}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Patient Admission Card */}
@@ -171,6 +309,14 @@ const ActionButton = ({ icon, label, color, onPress }: any) => (
     </View>
     <Text style={styles.actionLabel}>{label}</Text>
   </TouchableOpacity>
+);
+
+const DashboardMetric = ({ icon, label, value }: any) => (
+  <View style={styles.metricCard}>
+    <Ionicons name={icon} size={20} color="#F54E25" />
+    <Text style={styles.metricValue}>{value}</Text>
+    <Text style={styles.metricLabel}>{label}</Text>
+  </View>
 );
 
 const styles = StyleSheet.create({
@@ -269,7 +415,67 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 15,
-    marginLeft: 5
+    marginLeft: 5,
+    marginTop: 4
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginHorizontal: 4,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4
+  },
+  metricValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 6,
+    color: '#111827'
+  },
+  metricLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2
+  },
+  suggestionCard: {
+    backgroundColor: '#FFF7ED',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#FED7AA'
+  },
+  suggestionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#9A3412'
+  },
+  suggestionText: {
+    fontSize: 12,
+    color: '#7C2D12',
+    marginTop: 6
+  },
+  suggestionButton: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    backgroundColor: '#F54E25',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  suggestionButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 12
   },
   grid: {
     flexDirection: 'row',
@@ -295,6 +501,115 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#333333'
+  },
+  cardSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10
+  },
+  statusTitle: {
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '600'
+  },
+  statusText: {
+    fontSize: 12,
+    marginTop: 2
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 10
+  },
+  infoRowText: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 12,
+    color: '#374151'
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 10
+  },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F54E25',
+    marginTop: 6,
+    marginRight: 10
+  },
+  timelineTime: {
+    fontSize: 11,
+    color: '#6B7280'
+  },
+  timelineText: {
+    fontSize: 12,
+    color: '#111827',
+    marginTop: 2
+  },
+  secondaryButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#F54E25',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  secondaryButtonText: {
+    color: '#F54E25',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  announcementTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4
+  },
+  announcementText: {
+    fontSize: 12,
+    color: '#4B5563'
+  },
+  feedbackTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827'
+  },
+  feedbackRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10
+  },
+  feedbackEmoji: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  feedbackEmojiText: {
+    fontSize: 20
   },
   detailsCard: {
     backgroundColor: '#FFFFFF',

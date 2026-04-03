@@ -9,7 +9,7 @@ const Login = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     accountType: '',
-    email: '',
+    identifier: '',
     password: '',
     rememberMe: false
   });
@@ -39,9 +39,11 @@ const Login = () => {
       return;
     }
 
-    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim());
-    if (!emailOk) {
-      setError('Please enter a valid email address.');
+    const identifier = formData.identifier.trim();
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    const phoneOk = /^[0-9]{10,13}$/.test(identifier);
+    if (!emailOk && !phoneOk) {
+      setError('Enter a valid email or contact number (10-13 digits).');
       return;
     }
 
@@ -65,10 +67,44 @@ const Login = () => {
     }
 
     setSubmitting(true);
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email: formData.email.trim(),
-      password: formData.password
-    });
+    let data;
+    let authError;
+
+    if (emailOk) {
+      const result = await supabase.auth.signInWithPassword({
+        email: identifier,
+        password: formData.password
+      });
+      data = result.data;
+      authError = result.error;
+    } else {
+      // Contact-number login: attempt direct phone auth first.
+      const phoneAttempt = await supabase.auth.signInWithPassword({
+        phone: identifier,
+        password: formData.password
+      });
+
+      data = phoneAttempt.data;
+      authError = phoneAttempt.error;
+
+      // If phone auth fails, try resolving contact number -> email via profiles table.
+      if (authError) {
+        const profileLookup = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('phone', identifier)
+          .maybeSingle();
+
+        if (!profileLookup.error && profileLookup.data?.email) {
+          const emailAttempt = await supabase.auth.signInWithPassword({
+            email: profileLookup.data.email,
+            password: formData.password
+          });
+          data = emailAttempt.data;
+          authError = emailAttempt.error;
+        }
+      }
+    }
     setSubmitting(false);
 
     if (authError) {
@@ -437,14 +473,14 @@ const Login = () => {
               </div>
 
               <div className="form-group">
-                <label>Email Address</label>
+                <label>Email or Contact Number</label>
                 <div className="input-wrapper">
                   <Mail className="input-icon" size={22} />
                   <input
-                    name="email"
+                    name="identifier"
                     type="text"
-                    placeholder="your.email@example.com"
-                    value={formData.email}
+                    placeholder="your.email@example.com or 09xxxxxxxxx"
+                    value={formData.identifier}
                     onChange={handleChange}
                   />
                 </div>

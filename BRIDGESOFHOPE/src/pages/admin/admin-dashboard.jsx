@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { LayoutGrid, BarChart2, Store, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
+import { appendActivityFeed } from '@/lib/activityFeed';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -87,12 +88,18 @@ const AdminDashboard = () => {
       localStorage.setItem('bh_pending_admissions', JSON.stringify(updated));
       window.dispatchEvent(new Event('storage'));
       setModalView(updated.length > 0 ? 'admissions' : null);
+      appendActivityFeed(
+        `Admission request for ${req.name || 'patient'} was declined by the admin.`
+      );
     } else {
       const updated = pendingDischarges.filter(p => p.id !== req.id);
       setPendingDischarges(updated);
       localStorage.setItem('bh_pending_discharges', JSON.stringify(updated));
       window.dispatchEvent(new Event('storage'));
       setModalView(updated.length > 0 ? 'discharges' : null);
+      appendActivityFeed(
+        `Discharge request for ${req.name || 'patient'} was declined by the admin.`
+      );
     }
   };
 
@@ -141,6 +148,9 @@ const AdminDashboard = () => {
       localStorage.setItem('bh_pending_admissions', JSON.stringify(updatedPending));
 
       addActivity('New Patient is added', `${selectedRequest.name} - ${selectedRequest.reason}`, 'users');
+      appendActivityFeed(
+        `Admission approved: ${selectedRequest.name || 'Patient'} is now admitted.`
+      );
 
       window.dispatchEvent(new Event('storage'));
 
@@ -161,6 +171,9 @@ const AdminDashboard = () => {
       localStorage.setItem('bh_pending_discharges', JSON.stringify(updatedPending));
 
       addActivity('Patient discharged successfully', `${selectedRequest.name} - Treatment completed`, 'check');
+      appendActivityFeed(
+        `Discharge approved: ${selectedRequest.name || 'Patient'} has been discharged.`
+      );
 
       window.dispatchEvent(new Event('storage'));
 
@@ -506,7 +519,12 @@ const AdminDashboard = () => {
                   <div className="req-top-row">
                     <div className="req-user-block">
                       <div className="req-user-icon"><Users size={18} /></div>
-                      <div className="req-name">{req.name} - {req.reason || 'Treatment completed'}</div>
+                      <div className="req-name">
+                        {req.name}
+                        {req.dischargeReasonCategory
+                          ? ` · ${req.dischargeReasonCategory}`
+                          : ` - ${req.reason || 'Discharge request'}`}
+                      </div>
                     </div>
                     <div className="req-time">{req.requestTime || '2 hours ago'}</div>
                   </div>
@@ -514,6 +532,25 @@ const AdminDashboard = () => {
                     <div>Family Member's Number: {req.familyNumber || '09123456789'}</div>
                     <div>Family Member's E-Mail Address: {req.familyEmail || 'Sample@email.com'}</div>
                     <div>Patient Number: {req.patientNumber || '09123456789'}</div>
+                    {req.dischargeReasonDetails && (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #E2E8F0' }}>
+                        <div style={{ fontWeight: 700, color: '#1B2559', marginBottom: 4 }}>Discharge details</div>
+                        <div><strong>Category:</strong> {req.dischargeReasonCategory || '—'}</div>
+                        <div><strong>Explanation:</strong> {req.dischargeReasonDetails}</div>
+                        {req.preferredDischargeDate && (
+                          <div><strong>Preferred date:</strong> {req.preferredDischargeDate}</div>
+                        )}
+                        {req.pickupAuthorized && (
+                          <div><strong>Authorized pickup:</strong> {req.pickupAuthorized}</div>
+                        )}
+                        {req.followUpPhone && (
+                          <div><strong>Follow-up contact:</strong> {req.followUpPhone}</div>
+                        )}
+                        {req.dischargeOtherInfo && (
+                          <div><strong>Other info:</strong> {req.dischargeOtherInfo}</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="req-buttons">
                     <button className="btn-approve" onClick={() => handleApproveClick(req, 'discharge')}>Approve</button>
@@ -538,7 +575,12 @@ const AdminDashboard = () => {
               <div className="req-top-row">
                 <div className="req-user-block">
                   <div className="req-user-icon"><Users size={18} /></div>
-                  <div className="req-name">{selectedRequest.name} - {selectedRequest.reason || (requestType === 'admission' ? 'Admission' : 'Treatment completed')}</div>
+                  <div className="req-name">
+                    {selectedRequest.name}
+                    {requestType === 'discharge' && selectedRequest.dischargeReasonCategory
+                      ? ` · ${selectedRequest.dischargeReasonCategory}`
+                      : ` - ${selectedRequest.reason || (requestType === 'admission' ? 'Admission' : 'Discharge request')}`}
+                  </div>
                 </div>
                 <div className="req-time">{selectedRequest.requestTime || '2 hours ago'}</div>
               </div>
@@ -546,6 +588,24 @@ const AdminDashboard = () => {
                 <div>Family Member's Number: {selectedRequest.familyNumber || '09123456789'}</div>
                 <div>Family Member's E-Mail Address: {selectedRequest.familyEmail || 'Sample@email.com'}</div>
                 <div>Patient Number: {selectedRequest.patientNumber || '09123456789'}</div>
+                {requestType === 'discharge' && selectedRequest.dischargeReasonDetails && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #E2E8F0' }}>
+                    <div style={{ fontWeight: 700, color: '#1B2559', marginBottom: 4 }}>Discharge details</div>
+                    <div><strong>Explanation:</strong> {selectedRequest.dischargeReasonDetails}</div>
+                    {selectedRequest.preferredDischargeDate && (
+                      <div><strong>Preferred date:</strong> {selectedRequest.preferredDischargeDate}</div>
+                    )}
+                    {selectedRequest.pickupAuthorized && (
+                      <div><strong>Authorized pickup:</strong> {selectedRequest.pickupAuthorized}</div>
+                    )}
+                    {selectedRequest.followUpPhone && (
+                      <div><strong>Follow-up contact:</strong> {selectedRequest.followUpPhone}</div>
+                    )}
+                    {selectedRequest.dischargeOtherInfo && (
+                      <div><strong>Other info:</strong> {selectedRequest.dischargeOtherInfo}</div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="req-buttons">
                 <button className="btn-approve" onClick={handleProceedClick}>Proceed</button>

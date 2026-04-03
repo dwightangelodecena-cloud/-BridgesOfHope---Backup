@@ -1,12 +1,129 @@
-import React, { useState } from 'react';
-import { Home, TrendingUp, User, LogOut, FileText, ChevronDown, LayoutGrid } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { User, LogOut, FileText, ChevronDown, LayoutGrid } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/logo2.png';
+import { appendActivityFeed } from '@/lib/activityFeed';
+
+const INITIAL_BASICS = {
+  weekLabel: '',
+  admissionDate: '',
+  patientName: '',
+  age: '',
+  primaryConcern: '',
+};
+
+const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
+
+const patientInitials = (name) => {
+  if (!name || !String(name).trim()) return '?';
+  return String(name)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join('');
+};
 
 const WeeklyReport = () => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [reportBasics, setReportBasics] = useState(INITIAL_BASICS);
+  const [admittedPatients, setAdmittedPatients] = useState([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [expandedPatientId, setExpandedPatientId] = useState(null);
+  const [activeReportPatientId, setActiveReportPatientId] = useState(null);
+  const pickerRef = useRef(null);
+  const nurseNameInputRef = useRef(null);
+  const nurseReportDateInputRef = useRef(null);
+
+  useEffect(() => {
+    const load = () => {
+      try {
+        const raw = localStorage.getItem('bh_patients');
+        setAdmittedPatients(raw ? JSON.parse(raw) : []);
+      } catch {
+        setAdmittedPatients([]);
+      }
+    };
+    load();
+    window.addEventListener('storage', load);
+    return () => window.removeEventListener('storage', load);
+  }, []);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onDown = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
+        setPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [pickerOpen]);
+
+  const togglePatientWeeks = (id, e) => {
+    e.stopPropagation();
+    setExpandedPatientId((prev) => (prev === id ? null : id));
+  };
+
+  const applyPatientAndWeek = (patient, weekNum) => {
+    setActiveReportPatientId(patient.id);
+    setReportBasics((prev) => ({
+      ...prev,
+      weekLabel: `Week ${weekNum}`,
+      admissionDate: patient.date || '',
+      patientName: patient.name || '',
+      primaryConcern: patient.reason || patient.primaryConcern || '',
+    }));
+    setPickerOpen(false);
+    setExpandedPatientId(null);
+  };
+
+  const persistWeeklyReport = useCallback(() => {
+    const weekMatch = String(reportBasics.weekLabel || '').match(/(\d+)/);
+    const weekNum = weekMatch ? weekMatch[1] : null;
+
+    let patientId = activeReportPatientId;
+    if (!patientId && reportBasics.patientName) {
+      try {
+        const pts = JSON.parse(localStorage.getItem('bh_patients') || '[]');
+        const n = String(reportBasics.patientName).trim().toLowerCase();
+        const match = pts.find((x) => String(x.name || '').trim().toLowerCase() === n);
+        if (match) patientId = match.id;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (patientId != null && weekNum) {
+      try {
+        const raw = localStorage.getItem(WEEKLY_REPORTS_STORAGE_KEY);
+        const all = raw ? JSON.parse(raw) : {};
+        const key = String(patientId);
+        const nurseName = nurseNameInputRef.current?.value?.trim() || '';
+        const reportDateField = nurseReportDateInputRef.current?.value?.trim() || '';
+        const entry = {
+          submittedAt: new Date().toISOString(),
+          patientName: reportBasics.patientName,
+          nurseName,
+          reportDate: reportDateField,
+        };
+        all[key] = { ...(all[key] || {}), [weekNum]: entry };
+        localStorage.setItem(WEEKLY_REPORTS_STORAGE_KEY, JSON.stringify(all));
+        window.dispatchEvent(new Event('storage'));
+        const pname = (reportBasics.patientName || 'Patient').trim();
+        appendActivityFeed(
+          `Weekly care report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+
+    setShowConfirm(false);
+    navigate('/home');
+  }, [activeReportPatientId, reportBasics.patientName, reportBasics.weekLabel, navigate]);
 
   return (
     <div className="wr-container">
@@ -89,6 +206,7 @@ const WeeklyReport = () => {
           justify-content: space-between;
           align-items: flex-start;
           margin-bottom: 40px;
+          position: relative;
         }
 
         .wr-header h1 {
@@ -117,6 +235,163 @@ const WeeklyReport = () => {
           color: #1B2559;
           cursor: pointer;
           box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+          font-family: 'Inter', sans-serif;
+        }
+
+        .wr-picker-wrap { position: relative; align-self: flex-start; }
+
+        .wr-patient-picker {
+          position: absolute;
+          top: calc(100% + 10px);
+          right: 0;
+          width: min(400px, 92vw);
+          max-height: min(440px, 72vh);
+          overflow-y: auto;
+          background: white;
+          border: 1px solid #E9EDF7;
+          border-radius: 16px;
+          box-shadow: 0 20px 50px rgba(15, 23, 42, 0.14);
+          z-index: 500;
+          padding: 8px;
+          color-scheme: light;
+        }
+
+        .wr-patient-picker-title {
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #A3AED0;
+          padding: 8px 10px 6px;
+        }
+
+        .wr-patient-block {
+          border-radius: 12px;
+          border: 1px solid #E9EDF7;
+          margin-bottom: 8px;
+          overflow: hidden;
+          background: #FAFBFF;
+        }
+
+        .wr-patient-block:last-child { margin-bottom: 0; }
+
+        .wr-patient-row-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
+          padding: 12px;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          text-align: left;
+          font-family: 'Inter', sans-serif;
+        }
+
+        .wr-patient-row-header:hover { background: #F4F7FE; }
+
+        .wr-patient-avatar {
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
+          background: #FFF0ED;
+          color: #F54E25;
+          font-weight: 800;
+          font-size: 13px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .wr-patient-info-text { flex: 1; min-width: 0; }
+
+        .wr-patient-name {
+          font-size: 14px;
+          font-weight: 800;
+          color: #1B2559;
+        }
+
+        .wr-patient-meta {
+          font-size: 11px;
+          color: #64748B;
+          margin-top: 3px;
+          line-height: 1.4;
+        }
+
+        .wr-patient-chevron {
+          color: #A3AED0;
+          flex-shrink: 0;
+          transition: transform 0.2s ease;
+        }
+
+        .wr-patient-chevron.open { transform: rotate(180deg); }
+
+        .wr-weeks-panel {
+          border-top: 1px solid #E9EDF7;
+          background: white;
+          padding: 10px 12px 14px;
+        }
+
+        .wr-weeks-label {
+          font-size: 10px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #A3AED0;
+          margin-bottom: 10px;
+        }
+
+        .wr-weeks-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .wr-week-chip {
+          border: 1px solid #E9EDF7;
+          background: white;
+          border-radius: 10px;
+          padding: 8px 14px;
+          font-size: 12px;
+          font-weight: 700;
+          color: #1B2559;
+          cursor: pointer;
+          font-family: 'Inter', sans-serif;
+          transition: border-color 0.15s, background 0.15s;
+        }
+
+        .wr-week-chip:hover {
+          border-color: #F54E25;
+          background: #FFF9F7;
+          color: #F54E25;
+        }
+
+        .wr-picker-empty {
+          padding: 22px 14px;
+          text-align: center;
+          font-size: 13px;
+          color: #64748B;
+          line-height: 1.55;
+        }
+
+        .wr-patient-picker-btn {
+          display: none;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          margin-top: 12px;
+          background: white;
+          border: 1px solid #E9EDF7;
+          border-radius: 12px;
+          padding: 12px 16px;
+          font-size: 13px;
+          font-weight: 700;
+          color: #1B2559;
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+          font-family: 'Inter', sans-serif;
         }
 
         /* ---- FORM PAPER ---- */
@@ -354,6 +629,20 @@ const WeeklyReport = () => {
           .wr-header p { font-size: 12px; }
           .wr-header-btn { display: none; }
 
+          .wr-patient-picker-btn { display: flex !important; }
+
+          .wr-picker-wrap {
+            width: 100%;
+            align-self: stretch;
+          }
+
+          .wr-patient-picker {
+            right: auto;
+            left: 0;
+            width: 100%;
+            max-height: min(380px, 58vh);
+          }
+
           /* Paper */
           .wr-paper {
             padding: 24px 18px;
@@ -474,11 +763,84 @@ const WeeklyReport = () => {
             <h1>Weekly Report</h1>
             <p>Write your Weekly Reports</p>
           </div>
-          <button className="wr-header-btn">
-            <FileText size={18} color="#F54E25" />
-            Weekly Report
-            <ChevronDown size={16} />
-          </button>
+          <div ref={pickerRef} className="wr-picker-wrap">
+            <button
+              type="button"
+              className="wr-header-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPickerOpen((v) => !v);
+              }}
+            >
+              <FileText size={18} color="#F54E25" />
+              Weekly Report
+              <ChevronDown size={16} style={{ transform: pickerOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.2s' }} />
+            </button>
+            <button
+              type="button"
+              className="wr-patient-picker-btn mobile-only"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPickerOpen((v) => !v);
+              }}
+            >
+              <FileText size={18} color="#F54E25" />
+              Select patient and week
+              <ChevronDown size={16} style={{ transform: pickerOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.2s' }} />
+            </button>
+            {pickerOpen && (
+              <div className="wr-patient-picker" role="listbox" aria-label="Admitted patients">
+                <div className="wr-patient-picker-title">Admitted patients</div>
+                {admittedPatients.length === 0 ? (
+                  <div className="wr-picker-empty">
+                    No admitted patients yet. After the admin approves an admission, the patient will appear here.
+                  </div>
+                ) : (
+                  admittedPatients.map((p) => (
+                    <div key={p.id} className="wr-patient-block">
+                      <button
+                        type="button"
+                        className="wr-patient-row-header"
+                        onClick={(e) => togglePatientWeeks(p.id, e)}
+                        aria-expanded={expandedPatientId === p.id}
+                      >
+                        <div className="wr-patient-avatar">{patientInitials(p.name)}</div>
+                        <div className="wr-patient-info-text">
+                          <div className="wr-patient-name">{p.name || 'Patient'}</div>
+                          <div className="wr-patient-meta">
+                            Admitted {p.date || '—'}
+                            {p.reason ? ` · ${p.reason}` : ''}
+                            {p.progress != null && p.progress !== '' ? ` · Progress ${p.progress}%` : ''}
+                          </div>
+                        </div>
+                        <ChevronDown size={18} className={`wr-patient-chevron${expandedPatientId === p.id ? ' open' : ''}`} />
+                      </button>
+                      {expandedPatientId === p.id && (
+                        <div className="wr-weeks-panel">
+                          <div className="wr-weeks-label">Weekly reports — tap a week to load the form</div>
+                          <div className="wr-weeks-grid">
+                            {[1, 2, 3, 4, 5, 6, 7].map((w) => (
+                              <button
+                                key={w}
+                                type="button"
+                                className="wr-week-chip"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  applyPatientAndWeek(p, w);
+                                }}
+                              >
+                                Week {w}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Paper */}
@@ -491,11 +853,22 @@ const WeeklyReport = () => {
             <div className="form-grid-2">
               <div className="form-field">
                 <label className="form-label">Week:</label>
-                <input type="text" className="form-underline-input" />
+                <input
+                  type="text"
+                  className="form-underline-input"
+                  placeholder="Use Weekly Report above"
+                  value={reportBasics.weekLabel}
+                  onChange={(e) => setReportBasics((prev) => ({ ...prev, weekLabel: e.target.value }))}
+                />
               </div>
               <div className="form-field">
                 <label className="form-label">Admission Date:</label>
-                <input type="text" className="form-underline-input" />
+                <input
+                  type="text"
+                  className="form-underline-input"
+                  value={reportBasics.admissionDate}
+                  onChange={(e) => setReportBasics((prev) => ({ ...prev, admissionDate: e.target.value }))}
+                />
               </div>
             </div>
 
@@ -505,16 +878,31 @@ const WeeklyReport = () => {
               <div className="section-fields">
                 <div className="form-field">
                   <label className="form-label">Patient Name:</label>
-                  <input type="text" className="form-underline-input" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    value={reportBasics.patientName}
+                    onChange={(e) => setReportBasics((prev) => ({ ...prev, patientName: e.target.value }))}
+                  />
                 </div>
                 <div className="form-grid-2">
                   <div className="form-field">
                     <label className="form-label">Age:</label>
-                    <input type="text" className="form-underline-input" />
+                    <input
+                      type="text"
+                      className="form-underline-input"
+                      value={reportBasics.age}
+                      onChange={(e) => setReportBasics((prev) => ({ ...prev, age: e.target.value }))}
+                    />
                   </div>
                   <div className="form-field">
                     <label className="form-label">Primary Concern:</label>
-                    <input type="text" className="form-underline-input" />
+                    <input
+                      type="text"
+                      className="form-underline-input"
+                      value={reportBasics.primaryConcern}
+                      onChange={(e) => setReportBasics((prev) => ({ ...prev, primaryConcern: e.target.value }))}
+                    />
                   </div>
                 </div>
               </div>
@@ -635,11 +1023,11 @@ const WeeklyReport = () => {
             <div className="form-grid-2" style={{ marginBottom: 0 }}>
               <div className="form-field">
                 <label className="form-label">Nurse's Name:</label>
-                <input type="text" className="form-underline-input" />
+                <input ref={nurseNameInputRef} type="text" className="form-underline-input" />
               </div>
               <div className="form-field">
                 <label className="form-label">Date:</label>
-                <input type="text" className="form-underline-input" />
+                <input ref={nurseReportDateInputRef} type="text" className="form-underline-input" />
               </div>
             </div>
 
@@ -649,7 +1037,7 @@ const WeeklyReport = () => {
                 <div className="confirm-bar">
                   <span className="confirm-text">Ready to submit the Report?</span>
                   <button type="button" className="confirm-btn-cancel" onClick={() => setShowConfirm(false)}>Cancel</button>
-                  <button type="button" className="confirm-btn-ok" onClick={() => { setShowConfirm(false); navigate('/home'); }}>Confirm</button>
+                  <button type="button" className="confirm-btn-ok" onClick={persistWeeklyReport}>Confirm</button>
                 </div>
               ) : (
                 <button type="submit" className="btn-submit">Submit Report</button>

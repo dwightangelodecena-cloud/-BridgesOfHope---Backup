@@ -7,6 +7,10 @@ export interface Profile {
   full_name: string | null;
   phone: string | null;
   account_type: AccountType;
+  province: string | null;
+  municipality: string | null;
+  street: string | null;
+  house_block_lot: string | null;
   created_at: string;
   updated_at: string;
 }

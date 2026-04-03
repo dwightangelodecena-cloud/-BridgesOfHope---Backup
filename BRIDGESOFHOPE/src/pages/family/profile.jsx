@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
 
 import logo from '@/assets/logo2.png';
 
@@ -14,6 +15,18 @@ const Profile = () => {
   const [notificationSounds, setNotificationSounds] = useState(false);
   const [muteOption, setMuteOption] = useState('Until I change it');
   const [showMuteDropdown, setShowMuteDropdown] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [saveNotice, setSaveNotice] = useState('');
+  const [profileForm, setProfileForm] = useState(() => {
+    const saved = localStorage.getItem('bh_family_profile');
+    return saved ? JSON.parse(saved) : {
+      fullName: 'Family User',
+      email: '',
+      phone: '',
+      address: 'Cavite, Philippines',
+    };
+  });
+  const [draftProfile, setDraftProfile] = useState(profileForm);
   const fileInputRef = useRef(null);
 
   const handleImageChange = (e) => {
@@ -23,6 +36,74 @@ const Profile = () => {
       setProfileImage(url);
     }
   };
+
+  const handleProfileInput = (e) => {
+    const { name, value } = e.target;
+    setDraftProfile((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditToggle = () => {
+    setDraftProfile(profileForm);
+    setIsEditingProfile(true);
+  };
+
+  const handleCancelEdit = () => {
+    setDraftProfile(profileForm);
+    setIsEditingProfile(false);
+  };
+
+  const handleSaveProfile = () => {
+    setProfileForm(draftProfile);
+    localStorage.setItem('bh_family_profile', JSON.stringify(draftProfile));
+    setIsEditingProfile(false);
+    setSaveNotice('Profile updated successfully.');
+    setTimeout(() => setSaveNotice(''), 1800);
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncProfileFromSupabase = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      if (!user) return;
+
+      const metadataName =
+        user.user_metadata?.full_name ||
+        [user.user_metadata?.first_name, user.user_metadata?.last_name].filter(Boolean).join(' ');
+      const metadataPhone = user.user_metadata?.contact_number || '';
+
+      let profileName = '';
+      let profilePhone = '';
+      if (user.id) {
+        const { data: profileRow } = await supabase
+          .from('profiles')
+          .select('full_name, phone')
+          .eq('id', user.id)
+          .maybeSingle();
+        profileName = profileRow?.full_name || '';
+        profilePhone = profileRow?.phone || '';
+      }
+
+      const resolved = {
+        fullName: profileName || metadataName || 'Family User',
+        email: user.email || '',
+        phone: profilePhone || metadataPhone || '',
+        address: profileForm.address || 'Cavite, Philippines',
+      };
+
+      if (isMounted) {
+        setProfileForm(resolved);
+        setDraftProfile(resolved);
+        localStorage.setItem('bh_family_profile', JSON.stringify(resolved));
+      }
+    };
+
+    syncProfileFromSupabase();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div className="app-container">
@@ -109,11 +190,12 @@ const Profile = () => {
         /* PROFILE CARD */
         .profile-card {
           background: white;
-          border-radius: 20px;
-          box-shadow: 0 8px 40px rgba(0,0,0,0.07);
-          padding: 50px 50px 50px 50px;
+          border-radius: 50px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+          padding: 50px 45px;
+          border: 1px solid #f1f5f9;
           width: 100%;
-          max-width: 700px;
+          max-width: 540px;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -162,7 +244,93 @@ const Profile = () => {
           font-size: 22px;
           font-weight: 700;
           color: #1B2559;
-          margin-bottom: 32px;
+          margin-bottom: 20px;
+        }
+
+        .save-notice {
+          width: 100%;
+          background: #ECFDF3;
+          border: 1px solid #A7F3D0;
+          color: #166534;
+          border-radius: 12px;
+          padding: 10px 12px;
+          font-size: 13px;
+          font-weight: 600;
+          margin-bottom: 14px;
+          text-align: center;
+        }
+
+        .profile-info-box {
+          width: 100%;
+          border: 1px solid #E8E8E8;
+          border-radius: 14px;
+          padding: 20px;
+          margin-bottom: 16px;
+          background: #ffffff;
+        }
+
+        .info-title-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 14px;
+        }
+
+        .profile-input-group {
+          margin-bottom: 10px;
+          text-align: left;
+        }
+
+        .profile-input-group:last-child {
+          margin-bottom: 0;
+        }
+
+        .profile-input-label {
+          display: block;
+          font-size: 12px;
+          color: #64748b;
+          font-weight: 600;
+          margin-bottom: 6px;
+        }
+
+        .profile-input {
+          width: 100%;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 11px 12px;
+          font-size: 14px;
+          color: #1e293b;
+          outline: none;
+          transition: all 0.2s;
+          background: #fff;
+        }
+
+        .profile-input:focus {
+          border-color: #F54E25;
+          box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.1);
+        }
+
+        .profile-input[disabled] {
+          background: #F8FAFC;
+          color: #334155;
+          cursor: not-allowed;
+        }
+
+        .btn-inline {
+          border: 1px solid #E2E8F0;
+          background: #FFFFFF;
+          color: #334155;
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .btn-primary-inline {
+          border: 1px solid #F54E25;
+          background: #F54E25;
+          color: #FFFFFF;
         }
 
         /* SETTINGS BOX */
@@ -440,13 +608,17 @@ const Profile = () => {
             <span style={{ color: '#F54E25', fontWeight: 800, fontSize: 23 }}>Profile</span>
             <span style={{ color: '#1B2559', fontWeight: 600, fontSize: 20 }}>Welcome back</span>
           </div>
-          <div style={{ marginLeft: 'auto', width: 38, height: 38, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>JD</div>
+          <div style={{ marginLeft: 'auto', width: 38, height: 38, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+            {profileForm.fullName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase()).join('') || 'FU'}
+          </div>
         </header>
 
         {/* MOBILE TOP BAR — exact copy from home.jsx */}
         <div className="mobile-only mobile-top-bar">
           <img src={logo} alt="BH" style={{ width: 50 }} />
-          <div style={{ width: 34, height: 34, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>JD</div>
+          <div style={{ width: 34, height: 34, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>
+            {profileForm.fullName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase()).join('') || 'FU'}
+          </div>
         </div>
 
         <div className="scroll-content">
@@ -483,7 +655,65 @@ const Profile = () => {
             )}
 
             {/* Name */}
-            <div className="profile-name">Jane Doe</div>
+            <div className="profile-name">{profileForm.fullName}</div>
+
+            {saveNotice && <div className="save-notice">{saveNotice}</div>}
+
+            {/* Editable Profile */}
+            <div className="profile-info-box">
+              <div className="info-title-row">
+                <div className="settings-box-title" style={{ marginBottom: 0 }}>Profile Information</div>
+                {!isEditingProfile ? (
+                  <button className="btn-inline" onClick={handleEditToggle}>Edit Profile</button>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn-inline" onClick={handleCancelEdit}>Cancel</button>
+                    <button className="btn-inline btn-primary-inline" onClick={handleSaveProfile}>Save</button>
+                  </div>
+                )}
+              </div>
+
+              <div className="profile-input-group">
+                <label className="profile-input-label">Full Name</label>
+                <input
+                  className="profile-input"
+                  name="fullName"
+                  value={draftProfile.fullName}
+                  onChange={handleProfileInput}
+                  disabled={!isEditingProfile}
+                />
+              </div>
+              <div className="profile-input-group">
+                <label className="profile-input-label">Email</label>
+                <input
+                  className="profile-input"
+                  name="email"
+                  value={draftProfile.email}
+                  onChange={handleProfileInput}
+                  disabled={!isEditingProfile}
+                />
+              </div>
+              <div className="profile-input-group">
+                <label className="profile-input-label">Phone Number</label>
+                <input
+                  className="profile-input"
+                  name="phone"
+                  value={draftProfile.phone}
+                  onChange={handleProfileInput}
+                  disabled={!isEditingProfile}
+                />
+              </div>
+              <div className="profile-input-group">
+                <label className="profile-input-label">Address</label>
+                <input
+                  className="profile-input"
+                  name="address"
+                  value={draftProfile.address}
+                  onChange={handleProfileInput}
+                  disabled={!isEditingProfile}
+                />
+              </div>
+            </div>
 
             {/* Settings */}
             <div className="settings-box">
@@ -531,7 +761,7 @@ const Profile = () => {
             <div className="preferences-box">
               <div className="preferences-box-title">Preferences</div>
               <div className="pref-row">
-                <span className="pref-label">Dark Mode</span>
+                <span className="pref-label">Translate to Tagalog</span>
                 <div className="toggle-track" onClick={() => setDarkMode(!darkMode)}>
                   <div className="toggle-thumb" />
                 </div>
