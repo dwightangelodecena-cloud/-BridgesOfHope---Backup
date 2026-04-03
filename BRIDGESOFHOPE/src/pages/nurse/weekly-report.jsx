@@ -3,6 +3,8 @@ import { User, LogOut, FileText, ChevronDown, LayoutGrid } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/logo2.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 
 const INITIAL_BASICS = {
   weekLabel: '',
@@ -38,17 +40,48 @@ const WeeklyReport = () => {
   const nurseReportDateInputRef = useRef(null);
 
   useEffect(() => {
-    const load = () => {
-      try {
-        const raw = localStorage.getItem('bh_patients');
-        setAdmittedPatients(raw ? JSON.parse(raw) : []);
-      } catch {
-        setAdmittedPatients([]);
+    const load = async () => {
+      if (!isSupabaseConfigured()) {
+        try {
+          const raw = localStorage.getItem('bh_patients');
+          setAdmittedPatients(raw ? JSON.parse(raw) : []);
+        } catch {
+          setAdmittedPatients([]);
+        }
+        return;
       }
+      const { data, error } = await supabase
+        .from('patients')
+        .select('id, full_name, admitted_at, primary_concern, discharged_at')
+        .is('discharged_at', null)
+        .order('admitted_at', { ascending: false });
+      if (error) {
+        console.warn('[weekly-report patients]', error.message);
+        setAdmittedPatients([]);
+        return;
+      }
+      setAdmittedPatients(
+        (data || []).map((r) => ({
+          id: r.id,
+          name: r.full_name,
+          date: r.admitted_at
+            ? new Date(r.admitted_at).toLocaleDateString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+              })
+            : '',
+          reason: r.primary_concern || '',
+        }))
+      );
     };
     load();
     window.addEventListener('storage', load);
-    return () => window.removeEventListener('storage', load);
+    window.addEventListener(APP_DATA_REFRESH, load);
+    return () => {
+      window.removeEventListener('storage', load);
+      window.removeEventListener(APP_DATA_REFRESH, load);
+    };
   }, []);
 
   useEffect(() => {
@@ -80,31 +113,46 @@ const WeeklyReport = () => {
     setExpandedPatientId(null);
   };
 
-  const persistWeeklyReport = useCallback(() => {
+  const persistWeeklyReport = useCallback(async () => {
     const weekMatch = String(reportBasics.weekLabel || '').match(/(\d+)/);
     const weekNum = weekMatch ? weekMatch[1] : null;
 
     let patientId = activeReportPatientId;
     if (!patientId && reportBasics.patientName) {
-      try {
-        const pts = JSON.parse(localStorage.getItem('bh_patients') || '[]');
+      if (!isSupabaseConfigured()) {
+        try {
+          const pts = JSON.parse(localStorage.getItem('bh_patients') || '[]');
+          const n = String(reportBasics.patientName).trim().toLowerCase();
+          const match = pts.find((x) => String(x.name || '').trim().toLowerCase() === n);
+          if (match) patientId = match.id;
+        } catch {
+          /* ignore */
+        }
+      } else {
         const n = String(reportBasics.patientName).trim().toLowerCase();
-        const match = pts.find((x) => String(x.name || '').trim().toLowerCase() === n);
+        const match = admittedPatients.find((x) => String(x.name || '').trim().toLowerCase() === n);
         if (match) patientId = match.id;
-      } catch {
-        /* ignore */
       }
     }
 
-    if (patientId != null && weekNum) {
+    if (patientId == null || !weekNum) {
+      setShowConfirm(false);
+      navigate('/home');
+      return;
+    }
+
+    const nurseName = nurseNameInputRef.current?.value?.trim() || '';
+    const reportDateField = nurseReportDateInputRef.current?.value?.trim() || '';
+    const pname = (reportBasics.patientName || 'Patient').trim();
+    const submittedAt = new Date().toISOString();
+
+    if (!isSupabaseConfigured()) {
       try {
         const raw = localStorage.getItem(WEEKLY_REPORTS_STORAGE_KEY);
         const all = raw ? JSON.parse(raw) : {};
         const key = String(patientId);
-        const nurseName = nurseNameInputRef.current?.value?.trim() || '';
-        const reportDateField = nurseReportDateInputRef.current?.value?.trim() || '';
         const entry = {
-          submittedAt: new Date().toISOString(),
+          submittedAt,
           patientName: reportBasics.patientName,
           nurseName,
           reportDate: reportDateField,
@@ -112,18 +160,47 @@ const WeeklyReport = () => {
         all[key] = { ...(all[key] || {}), [weekNum]: entry };
         localStorage.setItem(WEEKLY_REPORTS_STORAGE_KEY, JSON.stringify(all));
         window.dispatchEvent(new Event('storage'));
-        const pname = (reportBasics.patientName || 'Patient').trim();
-        appendActivityFeed(
+        await appendActivityFeed(
           `Weekly care report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`
         );
       } catch {
         /* ignore */
       }
+      setShowConfirm(false);
+      navigate('/home');
+      return;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: patientRow } = await supabase.from('patients').select('family_id').eq('id', patientId).maybeSingle();
+
+    const { error } = await supabase.from('weekly_reports').upsert(
+      {
+        patient_id: patientId,
+        week_number: parseInt(weekNum, 10),
+        nurse_name: nurseName || null,
+        report_date: reportDateField || null,
+        created_by: user?.id ?? null,
+        submitted_at: submittedAt,
+      },
+      { onConflict: 'patient_id,week_number' }
+    );
+
+    if (error) {
+      console.warn('[weekly_reports upsert]', error.message);
+    } else {
+      window.dispatchEvent(new Event('storage'));
+      await appendActivityFeed(
+        `Weekly care report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`,
+        { familyId: patientRow?.family_id ?? null }
+      );
     }
 
     setShowConfirm(false);
     navigate('/home');
-  }, [activeReportPatientId, reportBasics.patientName, reportBasics.weekLabel, navigate]);
+  }, [activeReportPatientId, admittedPatients, reportBasics.patientName, reportBasics.weekLabel, navigate]);
 
   return (
     <div className="wr-container">

@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { User, Mail, ArrowLeft, X, Calendar, ClipboardList, Phone, CheckCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { appendActivityFeed } from '@/lib/activityFeed';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { refreshAppData } from '@/lib/appDataRefresh';
 import logo from '@/assets/logo.png';
 
 const Admission = () => {
@@ -75,44 +77,50 @@ const Admission = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      const newPatient = {
-        id: Date.now(),
-        name: formData.patientName,
-        date: new Date().toLocaleDateString('en-US', {
-          month: 'long',
-          day: 'numeric',
-          year: 'numeric'
-        }),
-        progress: 0,
-        isNew: true
-      };
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.submit;
+      return next;
+    });
+    if (!validateForm()) return;
 
-      const savedPending = localStorage.getItem('bh_pending_admissions');
-      const currentPending = savedPending ? JSON.parse(savedPending) : [];
-
-      const admissionRequest = {
-        ...newPatient,
-        reason: formData.reasonForAdmission,
-        familyNumber: formData.phoneNumber,
-        familyEmail: formData.email,
-        patientNumber: formData.phoneNumber, // Reusing form phone number
-        requestTime: "Just now"
-      };
-
-      const updatedPending = [...currentPending, admissionRequest];
-
-      localStorage.setItem('bh_pending_admissions', JSON.stringify(updatedPending));
-      window.dispatchEvent(new Event('storage'));
-
-      appendActivityFeed(
-        `Admission request submitted for ${formData.patientName.trim()}. Pending admin review.`
-      );
-
-      setShowSuccessModal(true);
+    if (!isSupabaseConfigured()) {
+      setErrors({ submit: 'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.' });
+      return;
     }
+
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      setErrors({ submit: 'Please sign in to submit an admission request.' });
+      return;
+    }
+
+    const { error } = await supabase.from('admission_requests').insert({
+      family_id: user.id,
+      guardian_full_name: formData.fullName.trim(),
+      guardian_email: formData.email.trim(),
+      guardian_phone: formData.phoneNumber.trim(),
+      patient_name: formData.patientName.trim(),
+      patient_birth_date: formData.patientBirthday,
+      reason_for_admission: formData.reasonForAdmission,
+    });
+
+    if (error) {
+      setErrors({ submit: error.message || 'Could not submit request.' });
+      return;
+    }
+
+    await appendActivityFeed(
+      `Admission request submitted for ${formData.patientName.trim()}. Pending admin review.`,
+      { familyId: user.id }
+    );
+    refreshAppData();
+    setShowSuccessModal(true);
   };
 
   const saveDraft = () => {
@@ -498,6 +506,11 @@ const Admission = () => {
                 <p>I agree to the <span onClick={() => setShowTermsModal(true)}>Privacy Policy</span> and <span onClick={() => setShowTermsModal(true)}>Terms</span></p>
               </div>
               {errors.agreeToTerms && <div className="error-message" style={{ textAlign: 'center', marginBottom: '10px' }}>{errors.agreeToTerms}</div>}
+              {errors.submit && (
+                <div className="error-message" style={{ textAlign: 'center', marginBottom: '12px' }}>
+                  {errors.submit}
+                </div>
+              )}
 
               <button type="submit" className="btn-primary">Submit Admission</button>
               <button type="button" className="btn-secondary" onClick={saveDraft}>Save Draft</button>

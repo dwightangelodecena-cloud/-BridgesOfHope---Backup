@@ -1,12 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Home, TrendingUp, User, LogOut, MessageCircle, X, Send, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
-  getActivityFeed,
+  fetchActivityFeedForCurrentUser,
   activityDayLabel,
   ACTIVITY_FEED_UPDATED,
 } from '@/lib/activityFeed';
+import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import {
+  uiPatientFromRow,
+  uiAdmissionRequestFromRow,
+  uiDischargeRequestFromRow,
+} from '@/lib/dbMappers';
 
 // Asset imports
 import logo from '@/assets/logo2.png';
@@ -123,7 +129,8 @@ const HomeDashboard = () => {
     'Family support session is scheduled on April 5, 10:00 AM.',
     'Weekly report reviewed by your assigned counselor.',
   ];
-  const [activityFeed, setActivityFeed] = useState(() => getActivityFeed());
+  const [activityFeed, setActivityFeed] = useState([]);
+  const [supabaseReadError, setSupabaseReadError] = useState(null);
 
   const reminderItems = [
     'Complete profile details',
@@ -131,66 +138,152 @@ const HomeDashboard = () => {
     'Review appointment schedule',
   ];
 
-  // --- START OF SYNC LOGIC ---
-  const [patients, setPatients] = useState(() => {
-    const saved = localStorage.getItem('bh_patients');
-    const defaultPatients = [
-      { id: 0, name: "John Doe", date: "January 15, 2026", progress: 65 },
-      { id: 1, name: "Ivan Doe", date: "January 15, 2026", progress: 65 },
-      { id: 2, name: "Jay Doe", date: "January 15, 2026", progress: 65 },
-    ];
-    return saved ? JSON.parse(saved) : defaultPatients;
-  });
-
-  // Listen for storage changes (updates from admission.jsx)
-  useEffect(() => {
-    const syncPatients = () => {
-      const saved = localStorage.getItem('bh_patients');
-      if (saved) {
-        setPatients(JSON.parse(saved));
-      }
-    };
-
-    window.addEventListener('storage', syncPatients);
-    // Also sync when the component focuses/mounts
-    syncPatients();
-
-    return () => window.removeEventListener('storage', syncPatients);
-  }, []);
-  // --- END OF SYNC LOGIC ---
-
+  // --- SYNC: patients, pending requests, weekly reports, activity (Supabase or legacy) ---
+  const PENDING_ADMISSIONS_KEY = 'bh_pending_admissions';
+  const PENDING_DISCHARGES_KEY = 'bh_pending_discharges';
   const NURSE_REPORTS_KEY = 'bh_nurse_weekly_reports';
-  const [nurseWeeklyReportsByPatient, setNurseWeeklyReportsByPatient] = useState(() => {
+
+  const defaultDemoPatients = [
+    { id: 0, name: 'John Doe', date: 'January 15, 2026', progress: 65 },
+    { id: 1, name: 'Ivan Doe', date: 'January 15, 2026', progress: 65 },
+    { id: 2, name: 'Jay Doe', date: 'January 15, 2026', progress: 65 },
+  ];
+
+  const parseJsonArray = (raw, fallback = []) => {
     try {
-      const raw = localStorage.getItem(NURSE_REPORTS_KEY);
-      return raw ? JSON.parse(raw) : {};
+      const v = JSON.parse(raw || 'null');
+      return Array.isArray(v) ? v : fallback;
     } catch {
-      return {};
+      return fallback;
     }
-  });
+  };
+
+  const [patients, setPatients] = useState([]);
+  const [pendingAdmissions, setPendingAdmissions] = useState([]);
+  const [pendingDischarges, setPendingDischarges] = useState([]);
+  const [nurseWeeklyReportsByPatient, setNurseWeeklyReportsByPatient] = useState({});
 
   useEffect(() => {
-    const load = () => {
+    let cancelled = false;
+
+    const loadLegacy = async () => {
+      const saved = localStorage.getItem('bh_patients');
+      if (!cancelled) {
+        setPatients(saved ? JSON.parse(saved) : defaultDemoPatients);
+      }
+      if (!cancelled) {
+        setPendingAdmissions(parseJsonArray(localStorage.getItem(PENDING_ADMISSIONS_KEY), []));
+        setPendingDischarges(parseJsonArray(localStorage.getItem(PENDING_DISCHARGES_KEY), []));
+      }
       try {
         const raw = localStorage.getItem(NURSE_REPORTS_KEY);
-        setNurseWeeklyReportsByPatient(raw ? JSON.parse(raw) : {});
+        if (!cancelled) setNurseWeeklyReportsByPatient(raw ? JSON.parse(raw) : {});
       } catch {
-        setNurseWeeklyReportsByPatient({});
+        if (!cancelled) setNurseWeeklyReportsByPatient({});
       }
+      const feed = await fetchActivityFeedForCurrentUser();
+      if (!cancelled) setActivityFeed(feed);
     };
+
+    const loadSupabase = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        if (!cancelled) {
+          setPatients([]);
+          setPendingAdmissions([]);
+          setPendingDischarges([]);
+          setNurseWeeklyReportsByPatient({});
+        }
+        const feed = await fetchActivityFeedForCurrentUser();
+        if (!cancelled) setActivityFeed(feed);
+        return;
+      }
+
+      if (!cancelled) setSupabaseReadError(null);
+
+      const { data: pRows, error: pErr } = await supabase
+        .from('patients')
+        .select('id, full_name, admitted_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at')
+        .eq('family_id', user.id)
+        .is('discharged_at', null)
+        .order('admitted_at', { ascending: false });
+
+      if (cancelled) return;
+      if (pErr) {
+        console.warn('[home patients]', pErr.message);
+        setPatients([]);
+      } else {
+        setPatients((pRows || []).map((r) => uiPatientFromRow(r)).filter(Boolean));
+      }
+
+      const [{ data: aRows, error: aErr }, { data: dRows, error: dErr }] =
+        await Promise.all([
+          supabase
+            .from('admission_requests')
+            .select('*')
+            .eq('family_id', user.id)
+            .eq('status', 'pending'),
+          supabase
+            .from('discharge_requests')
+            .select('*, patients(full_name)')
+            .eq('family_id', user.id)
+            .eq('status', 'pending'),
+        ]);
+
+      if (!cancelled) {
+        if (aErr) {
+          console.warn('[home admission_requests]', aErr.message);
+          setSupabaseReadError(aErr.message);
+        }
+        if (dErr) {
+          console.warn('[home discharge_requests]', dErr.message);
+          setSupabaseReadError((prev) => prev || dErr.message);
+        }
+        setPendingAdmissions((aRows || []).map((r) => uiAdmissionRequestFromRow(r)).filter(Boolean));
+        setPendingDischarges((dRows || []).map((r) => uiDischargeRequestFromRow(r)).filter(Boolean));
+      }
+
+      const ids = (pRows || []).map((r) => r.id).filter(Boolean);
+      let byPatient = {};
+      if (ids.length) {
+        const { data: wRows, error: wErr } = await supabase.from('weekly_reports').select('*').in('patient_id', ids);
+        if (!cancelled && !wErr && wRows) {
+          for (const row of wRows) {
+            const pid = String(row.patient_id);
+            if (!byPatient[pid]) byPatient[pid] = {};
+            byPatient[pid][String(row.week_number)] = {
+              submittedAt: row.submitted_at,
+              nurseName: row.nurse_name || '',
+              reportDate: row.report_date || '',
+            };
+          }
+        }
+      }
+      if (!cancelled) setNurseWeeklyReportsByPatient(byPatient);
+
+      const feed = await fetchActivityFeedForCurrentUser();
+      if (!cancelled) setActivityFeed(feed);
+    };
+
+    const load = async () => {
+      if (!isSupabaseConfigured()) {
+        await loadLegacy();
+        return;
+      }
+      await loadSupabase();
+    };
+
     load();
     window.addEventListener('storage', load);
-    return () => window.removeEventListener('storage', load);
-  }, []);
-
-  useEffect(() => {
-    const syncFeed = () => setActivityFeed(getActivityFeed());
-    syncFeed();
-    window.addEventListener('storage', syncFeed);
-    window.addEventListener(ACTIVITY_FEED_UPDATED, syncFeed);
+    window.addEventListener(APP_DATA_REFRESH, load);
+    window.addEventListener(ACTIVITY_FEED_UPDATED, load);
     return () => {
-      window.removeEventListener('storage', syncFeed);
-      window.removeEventListener(ACTIVITY_FEED_UPDATED, syncFeed);
+      cancelled = true;
+      window.removeEventListener('storage', load);
+      window.removeEventListener(APP_DATA_REFRESH, load);
+      window.removeEventListener(ACTIVITY_FEED_UPDATED, load);
     };
   }, []);
 
@@ -380,8 +473,8 @@ const HomeDashboard = () => {
 
         .dashboard-grid {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 14px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
           margin-bottom: 20px;
         }
 
@@ -389,7 +482,7 @@ const HomeDashboard = () => {
           background: white;
           border: 1px solid #E9EDF7;
           border-radius: 14px;
-          padding: 14px;
+          padding: 12px;
           box-shadow: 0 4px 12px rgba(0,0,0,0.02);
         }
 
@@ -1301,9 +1394,23 @@ const HomeDashboard = () => {
 
           <div className="dashboard-grid">
             <div className="metric-card">
-              <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>REQUESTS</div>
-              <div style={{ color: '#1B2559', fontSize: 28, fontWeight: 800, marginTop: 6 }}>3</div>
-              <div style={{ color: '#22C55E', fontSize: 12, fontWeight: 700 }}>+1 this week</div>
+              <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>ADMISSION REQUESTS</div>
+              <div style={{ color: '#1B2559', fontSize: 28, fontWeight: 800, marginTop: 6 }}>{pendingAdmissions.length}</div>
+              <div style={{ color: '#F54E25', fontSize: 12, fontWeight: 700 }}>
+                {pendingAdmissions.length ? 'Awaiting admin review' : 'No pending admissions'}
+              </div>
+              {isSupabaseConfigured() && supabaseReadError && (
+                <div style={{ color: '#ef4444', fontSize: 11, fontWeight: 700, marginTop: 6 }}>
+                  {String(supabaseReadError).slice(0, 80)}
+                </div>
+              )}
+            </div>
+            <div className="metric-card">
+              <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>DISCHARGE REQUESTS</div>
+              <div style={{ color: '#1B2559', fontSize: 28, fontWeight: 800, marginTop: 6 }}>{pendingDischarges.length}</div>
+              <div style={{ color: '#F54E25', fontSize: 12, fontWeight: 700 }}>
+                {pendingDischarges.length ? 'Awaiting admin review' : 'No pending discharges'}
+              </div>
             </div>
             <div className="metric-card">
               <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>PROGRESS COMPLETION RATE</div>

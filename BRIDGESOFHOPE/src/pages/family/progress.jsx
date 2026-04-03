@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Home, TrendingUp, User, LogOut, Calendar, Plus, X, Activity, Bed, UserCheck, CheckCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { appendActivityFeed } from '@/lib/activityFeed';
+import { refreshAppData, APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import { uiPatientFromRow } from '@/lib/dbMappers';
 
 // Assets
 import logo from '@/assets/logo2.png';
@@ -36,18 +38,48 @@ const Progress = () => {
     const fileInputRefs = useRef([]);
     const detailsFileInputRef = useRef(null);
 
-    const [patients, setPatients] = useState(() => {
-        const saved = localStorage.getItem('bh_patients');
-        return saved ? JSON.parse(saved) : [];
-    });
+    const [patients, setPatients] = useState([]);
 
     useEffect(() => {
-        const syncPatients = () => {
-            const saved = localStorage.getItem('bh_patients');
-            setPatients(saved ? JSON.parse(saved) : []);
+        let cancelled = false;
+
+        const loadPatients = async () => {
+            if (!isSupabaseConfigured()) {
+                const saved = localStorage.getItem('bh_patients');
+                setPatients(saved ? JSON.parse(saved) : []);
+                return;
+            }
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
+            if (!user) {
+                setPatients([]);
+                return;
+            }
+            const { data, error } = await supabase
+                .from('patients')
+                .select('id, full_name, admitted_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at')
+                .eq('family_id', user.id)
+                .is('discharged_at', null)
+                .order('admitted_at', { ascending: false });
+
+            if (cancelled) return;
+            if (error) {
+                console.warn('[patients]', error.message);
+                setPatients([]);
+                return;
+            }
+            setPatients((data || []).map((r) => uiPatientFromRow(r)).filter(Boolean));
         };
-        window.addEventListener('storage', syncPatients);
-        return () => window.removeEventListener('storage', syncPatients);
+
+        loadPatients();
+        window.addEventListener('storage', loadPatients);
+        window.addEventListener(APP_DATA_REFRESH, loadPatients);
+        return () => {
+            cancelled = true;
+            window.removeEventListener('storage', loadPatients);
+            window.removeEventListener(APP_DATA_REFRESH, loadPatients);
+        };
     }, []);
 
     useEffect(() => {
@@ -125,12 +157,16 @@ const Progress = () => {
     const handleDischargeFormChange = (e) => {
         const { name, value } = e.target;
         setDischargeForm((prev) => ({ ...prev, [name]: value }));
-        if (dischargeFormErrors[name]) {
-            setDischargeFormErrors((prev) => ({ ...prev, [name]: '' }));
+        if (dischargeFormErrors[name] || dischargeFormErrors.submit) {
+            setDischargeFormErrors((prev) => {
+                const next = { ...prev, [name]: '' };
+                delete next.submit;
+                return next;
+            });
         }
     };
 
-    const submitDischargeRequest = () => {
+    const submitDischargeRequest = async () => {
         if (!selectedPatient) return;
 
         const errs = {};
@@ -155,46 +191,93 @@ const Progress = () => {
         const patientToDischarge = patients.find((p) => p.id === selectedPatient.id);
         if (!patientToDischarge) return;
 
-        const savedPending = localStorage.getItem('bh_pending_discharges');
-        const currentPending = savedPending ? JSON.parse(savedPending) : [];
-
-        if (currentPending.some(
-            (req) => req.id === patientToDischarge.id || req.originalId === patientToDischarge.id
-        )) {
+        if (!isSupabaseConfigured()) {
+            const savedPending = localStorage.getItem('bh_pending_discharges');
+            const currentPending = savedPending ? JSON.parse(savedPending) : [];
+            if (currentPending.some((req) => req.id === patientToDischarge.id || req.originalId === patientToDischarge.id)) {
+                setShowDischargeFormModal(false);
+                setShowDischargeSuccessModal(true);
+                return;
+            }
+            const profile = JSON.parse(localStorage.getItem('bh_family_profile') || '{}');
+            const dischargeRequest = {
+                ...patientToDischarge,
+                requestTime: new Date().toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                }),
+                familyNumber: phone || profile.phone || '09123456789',
+                familyEmail: profile.email || 'Sample@email.com',
+                patientNumber: profile.phone || '09123456789',
+                dischargeReasonCategory: dischargeForm.reasonCategory,
+                dischargeReasonDetails: details,
+                preferredDischargeDate: dischargeForm.preferredDate || null,
+                pickupAuthorized: dischargeForm.pickupAuthorized.trim() || null,
+                followUpPhone: phone || null,
+                dischargeOtherInfo: dischargeForm.otherInfo.trim() || null,
+            };
+            localStorage.setItem('bh_pending_discharges', JSON.stringify([...currentPending, dischargeRequest]));
+            window.dispatchEvent(new Event('storage'));
+            await appendActivityFeed(`Discharge request submitted for ${patientToDischarge.name}. Awaiting admin review.`);
             setShowDischargeFormModal(false);
             setShowDischargeSuccessModal(true);
             return;
         }
 
-        const profile = JSON.parse(localStorage.getItem('bh_family_profile') || '{}');
-        const dischargeRequest = {
-            ...patientToDischarge,
-            requestTime: new Date().toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            }),
-            familyNumber: phone || profile.phone || '09123456789',
-            familyEmail: profile.email || 'Sample@email.com',
-            patientNumber: profile.phone || '09123456789',
-            dischargeReasonCategory: dischargeForm.reasonCategory,
-            dischargeReasonDetails: details,
-            preferredDischargeDate: dischargeForm.preferredDate || null,
-            pickupAuthorized: dischargeForm.pickupAuthorized.trim() || null,
-            followUpPhone: phone || null,
-            dischargeOtherInfo: dischargeForm.otherInfo.trim() || null
-        };
+        const {
+            data: { user },
+            error: userErr,
+        } = await supabase.auth.getUser();
+        if (userErr || !user) {
+            setDischargeFormErrors({ submit: 'Please sign in to submit a discharge request.' });
+            return;
+        }
 
-        const updatedPending = [...currentPending, dischargeRequest];
-        localStorage.setItem('bh_pending_discharges', JSON.stringify(updatedPending));
-        window.dispatchEvent(new Event('storage'));
+        const { count: pendingCount, error: cntErr } = await supabase
+            .from('discharge_requests')
+            .select('*', { count: 'exact', head: true })
+            .eq('patient_id', patientToDischarge.id)
+            .eq('status', 'pending');
 
-        appendActivityFeed(
-          `Discharge request submitted for ${patientToDischarge.name}. Awaiting admin review.`
+        if (cntErr) {
+            setDischargeFormErrors({ submit: cntErr.message });
+            return;
+        }
+        if ((pendingCount || 0) > 0) {
+            setShowDischargeFormModal(false);
+            setShowDischargeSuccessModal(true);
+            return;
+        }
+
+        const { data: profileRow } = await supabase.from('profiles').select('phone').eq('id', user.id).maybeSingle();
+        const profilePhone = profileRow?.phone?.trim() || '';
+
+        const { error } = await supabase.from('discharge_requests').insert({
+            patient_id: patientToDischarge.id,
+            family_id: user.id,
+            reason_category: dischargeForm.reasonCategory,
+            reason_details: details,
+            preferred_discharge_date: dischargeForm.preferredDate || null,
+            pickup_authorized: dischargeForm.pickupAuthorized.trim() || null,
+            follow_up_phone: phone || null,
+            other_info: dischargeForm.otherInfo.trim() || null,
+            guardian_phone: phone || profilePhone || null,
+            guardian_email: user.email || null,
+        });
+
+        if (error) {
+            setDischargeFormErrors({ submit: error.message });
+            return;
+        }
+
+        await appendActivityFeed(
+            `Discharge request submitted for ${patientToDischarge.name}. Awaiting admin review.`,
+            { familyId: user.id }
         );
-
+        refreshAppData();
         setShowDischargeFormModal(false);
         setShowDischargeSuccessModal(true);
     };
@@ -984,6 +1067,12 @@ const Progress = () => {
                                     style={{ minHeight: 72 }}
                                 />
                             </div>
+
+                            {dischargeFormErrors.submit && (
+                                <div className="discharge-field-error" style={{ marginBottom: 8 }}>
+                                    {dischargeFormErrors.submit}
+                                </div>
+                            )}
 
                             <div className="discharge-form-actions">
                                 <button type="button" className="discharge-btn-cancel" onClick={() => setShowDischargeFormModal(false)}>

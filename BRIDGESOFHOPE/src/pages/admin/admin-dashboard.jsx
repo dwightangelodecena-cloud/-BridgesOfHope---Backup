@@ -3,6 +3,13 @@ import { LayoutGrid, BarChart2, Store, LogOut, CheckCircle2, Users, Clock, Bed, 
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { refreshAppData, APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import {
+  uiPatientFromRow,
+  uiAdmissionRequestFromRow,
+  uiDischargeRequestFromRow,
+} from '@/lib/dbMappers';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -13,14 +20,23 @@ const AdminDashboard = () => {
   const [pendingAdmissions, setPendingAdmissions] = useState([]);
   const [pendingDischarges, setPendingDischarges] = useState([]);
 
-  // Recent activity default state
-  const [recentActivities, setRecentActivities] = useState(() => {
-    const saved = localStorage.getItem('bh_recent_activities');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [recentActivities, setRecentActivities] = useState([]);
 
-  // Load data immediately and hook into storage events
-  const syncData = () => {
+  const formatActTime = (iso) => {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return '';
+    }
+  };
+
+  const syncDataLegacy = () => {
     const p = JSON.parse(localStorage.getItem('bh_patients') || '[]');
     const a = JSON.parse(localStorage.getItem('bh_pending_admissions') || '[]');
     const d = JSON.parse(localStorage.getItem('bh_pending_discharges') || '[]');
@@ -31,29 +47,85 @@ const AdminDashboard = () => {
     if (act) setRecentActivities(act);
   };
 
+  const loadFromSupabase = async () => {
+    const { data: p } = await supabase
+      .from('patients')
+      .select('*')
+      .is('discharged_at', null)
+      .order('admitted_at', { ascending: false });
+    const { data: a } = await supabase
+      .from('admission_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    const { data: d } = await supabase
+      .from('discharge_requests')
+      .select('*, patients(full_name)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    const { data: acts } = await supabase
+      .from('activity_log')
+      .select('id, title, description, icon_name, created_at')
+      .order('created_at', { ascending: false })
+      .limit(12);
+
+    setPatients((p || []).map((r) => uiPatientFromRow(r)).filter(Boolean));
+    setPendingAdmissions((a || []).map((r) => uiAdmissionRequestFromRow(r)).filter(Boolean));
+    setPendingDischarges((d || []).map((r) => uiDischargeRequestFromRow(r)).filter(Boolean));
+    setRecentActivities(
+      (acts || []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        desc: row.description || '',
+        time: formatActTime(row.created_at),
+        icon: row.icon_name || 'users',
+      }))
+    );
+  };
+
+  const syncData = async () => {
+    if (!isSupabaseConfigured()) {
+      syncDataLegacy();
+      return;
+    }
+    try {
+      await loadFromSupabase();
+    } catch (e) {
+      console.warn(e);
+      syncDataLegacy();
+    }
+  };
+
   useEffect(() => {
     syncData();
     window.addEventListener('storage', syncData);
-    return () => window.removeEventListener('storage', syncData);
+    window.addEventListener(APP_DATA_REFRESH, syncData);
+    return () => {
+      window.removeEventListener('storage', syncData);
+      window.removeEventListener(APP_DATA_REFRESH, syncData);
+    };
   }, []);
 
-  const addActivity = (title, desc, iconName) => {
-    const newAct = {
-      id: Date.now(),
+  const addActivity = async (title, desc, iconName) => {
+    if (!isSupabaseConfigured()) {
+      const newAct = { id: Date.now(), title, desc, time: 'Just now', icon: iconName };
+      setRecentActivities((prev) => [newAct, ...prev].slice(0, 12));
+      return;
+    }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    await supabase.from('activity_log').insert({
       title,
-      desc,
-      time: 'Just now',
-      icon: iconName
-    };
-    const updated = [newAct, ...recentActivities].slice(0, 10);
-    setRecentActivities(updated);
-    localStorage.setItem('bh_recent_activities', JSON.stringify(updated));
+      description: desc,
+      icon_name: iconName,
+      actor_id: user?.id ?? null,
+    });
+    await loadFromSupabase();
   };
 
   const handleClearActivities = () => {
     setRecentActivities([]);
-    localStorage.removeItem('bh_recent_activities');
-    window.dispatchEvent(new Event('storage'));
   };
 
   // --- MODALS STATE ---
@@ -61,6 +133,8 @@ const AdminDashboard = () => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestType, setRequestType] = useState(null); // 'admission' or 'discharge'
   const [twoFactorCode, setTwoFactorCode] = useState(['', '', '', '']);
+  const [twoFAError, setTwoFAError] = useState('');
+  const [twoFAConfirming, setTwoFAConfirming] = useState(false);
 
   const tfaRefs = [useRef(), useRef(), useRef(), useRef()];
 
@@ -76,34 +150,80 @@ const AdminDashboard = () => {
     setModalView('confirm');
   };
 
-  const handleDeclineClick = (req, type) => {
-    // Save to declined history
-    const declinedList = JSON.parse(localStorage.getItem('bh_declined_requests') || '[]');
-    declinedList.push({ ...req, declinedAt: new Date().toISOString(), type });
-    localStorage.setItem('bh_declined_requests', JSON.stringify(declinedList));
+  const handleDeclineClick = async (req, type) => {
+    if (!isSupabaseConfigured()) {
+      const declinedList = JSON.parse(localStorage.getItem('bh_declined_requests') || '[]');
+      declinedList.push({ ...req, declinedAt: new Date().toISOString(), type });
+      localStorage.setItem('bh_declined_requests', JSON.stringify(declinedList));
+      if (type === 'admission') {
+        const updated = pendingAdmissions.filter((p) => p.id !== req.id);
+        setPendingAdmissions(updated);
+        localStorage.setItem('bh_pending_admissions', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+        setModalView(updated.length > 0 ? 'admissions' : null);
+      } else {
+        const updated = pendingDischarges.filter((p) => p.id !== req.id);
+        setPendingDischarges(updated);
+        localStorage.setItem('bh_pending_discharges', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+        setModalView(updated.length > 0 ? 'discharges' : null);
+      }
+      await appendActivityFeed(
+        type === 'admission'
+          ? `Admission request for ${req.name || 'patient'} was declined by the admin.`
+          : `Discharge request for ${req.name || 'patient'} was declined by the admin.`,
+        { familyId: req.family_id }
+      );
+      return;
+    }
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    let decidedBy = user?.id ?? null;
+    if (decidedBy) {
+      const { data: profileRow } = await supabase.from('profiles').select('id').eq('id', decidedBy).maybeSingle();
+      if (!profileRow) decidedBy = null;
+    }
+    const decidedAt = new Date().toISOString();
     if (type === 'admission') {
-      const updated = pendingAdmissions.filter(p => p.id !== req.id);
-      setPendingAdmissions(updated);
-      localStorage.setItem('bh_pending_admissions', JSON.stringify(updated));
-      window.dispatchEvent(new Event('storage'));
-      setModalView(updated.length > 0 ? 'admissions' : null);
-      appendActivityFeed(
-        `Admission request for ${req.name || 'patient'} was declined by the admin.`
+      await supabase
+        .from('admission_requests')
+        .update({ status: 'declined', decided_at: decidedAt, decided_by: decidedBy })
+        .eq('id', req.requestId ?? req.id);
+      await appendActivityFeed(
+        `Admission request for ${req.name || 'patient'} was declined by the admin.`,
+        { familyId: req.family_id }
       );
     } else {
-      const updated = pendingDischarges.filter(p => p.id !== req.id);
-      setPendingDischarges(updated);
-      localStorage.setItem('bh_pending_discharges', JSON.stringify(updated));
-      window.dispatchEvent(new Event('storage'));
-      setModalView(updated.length > 0 ? 'discharges' : null);
-      appendActivityFeed(
-        `Discharge request for ${req.name || 'patient'} was declined by the admin.`
+      await supabase
+        .from('discharge_requests')
+        .update({ status: 'declined', decided_at: decidedAt, decided_by: decidedBy })
+        .eq('id', req.dischargeRequestId);
+      await appendActivityFeed(
+        `Discharge request for ${req.name || 'patient'} was declined by the admin.`,
+        { familyId: req.family_id }
       );
+    }
+    refreshAppData();
+    await syncData();
+    if (type === 'admission') {
+      const { count } = await supabase
+        .from('admission_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      setModalView((count || 0) > 0 ? 'admissions' : null);
+    } else {
+      const { count } = await supabase
+        .from('discharge_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      setModalView((count || 0) > 0 ? 'discharges' : null);
     }
   };
 
   const handleProceedClick = () => {
+    setTwoFAError('');
     setTwoFactorCode(['', '', '', '']);
     setModalView('2fa');
     // Focus first input automatically after slight delay to ensure it's rendered
@@ -134,58 +254,179 @@ const AdminDashboard = () => {
     }
   };
 
-  const handle2FAConfirm = () => {
+  const handle2FAConfirm = async () => {
+    if (!selectedRequest || !requestType) return;
+    setTwoFAError('');
+
     // We accept any logic since user said: "make the password clear dont put any password on it when it already done you can proceed to it"
 
+    if (!isSupabaseConfigured()) {
+      if (requestType === 'admission') {
+        const newPatients = [...patients, { ...selectedRequest, progress: 0 }];
+        setPatients(newPatients);
+        localStorage.setItem('bh_patients', JSON.stringify(newPatients));
+        const updatedPending = pendingAdmissions.filter((p) => p.id !== selectedRequest.id);
+        setPendingAdmissions(updatedPending);
+        localStorage.setItem('bh_pending_admissions', JSON.stringify(updatedPending));
+        await addActivity('New Patient is added', `${selectedRequest.name} - ${selectedRequest.reason}`, 'users');
+        await appendActivityFeed(
+          `Admission approved: ${selectedRequest.name || 'Patient'} is now admitted.`,
+          { familyId: selectedRequest.family_id }
+        );
+        window.dispatchEvent(new Event('storage'));
+        setModalView(updatedPending.length > 0 ? 'admissions' : null);
+      } else if (requestType === 'discharge') {
+        const newPatients = patients.filter((p) => p.id !== selectedRequest.id);
+        setPatients(newPatients);
+        localStorage.setItem('bh_patients', JSON.stringify(newPatients));
+        const updatedPending = pendingDischarges.filter((p) => p.id !== selectedRequest.id);
+        setPendingDischarges(updatedPending);
+        localStorage.setItem('bh_pending_discharges', JSON.stringify(updatedPending));
+        await addActivity('Patient discharged successfully', `${selectedRequest.name} - Treatment completed`, 'check');
+        await appendActivityFeed(
+          `Discharge approved: ${selectedRequest.name || 'Patient'} has been discharged.`,
+          { familyId: selectedRequest.family_id }
+        );
+        window.dispatchEvent(new Event('storage'));
+        setModalView(updatedPending.length > 0 ? 'discharges' : null);
+      }
+      setSelectedRequest(null);
+      setRequestType(null);
+      return;
+    }
+
+    setTwoFAConfirming(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setTwoFAError('You are not signed in. Log in again as admin.');
+      setTwoFAConfirming(false);
+      return;
+    }
+    const adminId = user?.id ?? null;
+    let decidedBy = adminId;
+    if (adminId) {
+      const { data: profileRow } = await supabase.from('profiles').select('id').eq('id', adminId).maybeSingle();
+      if (!profileRow) decidedBy = null;
+    }
+    const decidedAt = new Date().toISOString();
+    const req = selectedRequest;
+
     if (requestType === 'admission') {
-      // Move from pending to patients
-      const newPatients = [...patients, { ...selectedRequest, progress: 0 }];
-      setPatients(newPatients);
-      localStorage.setItem('bh_patients', JSON.stringify(newPatients));
-
-      const updatedPending = pendingAdmissions.filter(p => p.id !== selectedRequest.id);
-      setPendingAdmissions(updatedPending);
-      localStorage.setItem('bh_pending_admissions', JSON.stringify(updatedPending));
-
-      addActivity('New Patient is added', `${selectedRequest.name} - ${selectedRequest.reason}`, 'users');
-      appendActivityFeed(
-        `Admission approved: ${selectedRequest.name || 'Patient'} is now admitted.`
-      );
-
-      window.dispatchEvent(new Event('storage'));
-
-      if (updatedPending.length > 0) {
-        setModalView('admissions');
-      } else {
-        setModalView(null);
+      const admissionId = req.requestId ?? req.id;
+      if (!admissionId) {
+        setTwoFAError('Missing request id. Reload the dashboard and try again.');
+        setTwoFAConfirming(false);
+        return;
       }
-
+      const { data: admissionUpdated, error: upErr } = await supabase
+        .from('admission_requests')
+        .update({ status: 'approved', decided_at: decidedAt, decided_by: decidedBy })
+        .eq('id', admissionId)
+        .eq('status', 'pending')
+        .select('id');
+      if (upErr) {
+        console.error(upErr);
+        setTwoFAError(upErr.message || 'Could not approve admission request.');
+        setTwoFAConfirming(false);
+        return;
+      }
+      if (!admissionUpdated?.length) {
+        refreshAppData();
+        await syncData();
+        setModalView(null);
+        setSelectedRequest(null);
+        setRequestType(null);
+        setTwoFAConfirming(false);
+        return;
+      }
+      const { error: insErr } = await supabase.from('patients').insert({
+        full_name: req.patient_name || req.name,
+        date_of_birth: req.patient_birth_date || null,
+        primary_concern: req.reason_for_admission || req.reason || null,
+        clinical_status: 'Stable',
+        progress_percent: 0,
+        family_id: req.family_id,
+      });
+      if (insErr) {
+        console.error(insErr);
+        setTwoFAError(insErr.message || 'Could not create patient record.');
+        setTwoFAConfirming(false);
+        return;
+      }
+      await addActivity(
+        'New Patient is added',
+        `${req.name || req.patient_name} - ${req.reason || req.reason_for_admission}`,
+        'users'
+      );
+      await appendActivityFeed(
+        `Admission approved: ${req.name || req.patient_name || 'Patient'} is now admitted.`,
+        { familyId: req.family_id }
+      );
     } else if (requestType === 'discharge') {
-      // Remove from patients
-      const newPatients = patients.filter(p => p.id !== selectedRequest.id);
-      setPatients(newPatients);
-      localStorage.setItem('bh_patients', JSON.stringify(newPatients));
-
-      const updatedPending = pendingDischarges.filter(p => p.id !== selectedRequest.id);
-      setPendingDischarges(updatedPending);
-      localStorage.setItem('bh_pending_discharges', JSON.stringify(updatedPending));
-
-      addActivity('Patient discharged successfully', `${selectedRequest.name} - Treatment completed`, 'check');
-      appendActivityFeed(
-        `Discharge approved: ${selectedRequest.name || 'Patient'} has been discharged.`
-      );
-
-      window.dispatchEvent(new Event('storage'));
-
-      if (updatedPending.length > 0) {
-        setModalView('discharges');
-      } else {
-        setModalView(null);
+      if (!req.dischargeRequestId || !req.patientId) {
+        setTwoFAError('Missing discharge or patient id. Reload the dashboard and try again.');
+        setTwoFAConfirming(false);
+        return;
       }
+      const { data: dischargeUpdated, error: upReqErr } = await supabase
+        .from('discharge_requests')
+        .update({ status: 'approved', decided_at: decidedAt, decided_by: decidedBy })
+        .eq('id', req.dischargeRequestId)
+        .eq('status', 'pending')
+        .select('id');
+      if (upReqErr) {
+        console.error(upReqErr);
+        setTwoFAError(upReqErr.message || 'Could not approve discharge request.');
+        setTwoFAConfirming(false);
+        return;
+      }
+      if (!dischargeUpdated?.length) {
+        refreshAppData();
+        await syncData();
+        setModalView(null);
+        setSelectedRequest(null);
+        setRequestType(null);
+        setTwoFAConfirming(false);
+        return;
+      }
+      const { error: upPatErr } = await supabase
+        .from('patients')
+        .update({ discharged_at: decidedAt })
+        .eq('id', req.patientId);
+      if (upPatErr) {
+        console.error(upPatErr);
+        setTwoFAError(upPatErr.message || 'Could not update patient discharge.');
+        setTwoFAConfirming(false);
+        return;
+      }
+      await addActivity('Patient discharged successfully', `${req.name} - Treatment completed`, 'check');
+      await appendActivityFeed(
+        `Discharge approved: ${req.name || 'Patient'} has been discharged.`,
+        { familyId: req.family_id }
+      );
+    }
+
+    refreshAppData();
+    await syncData();
+    if (requestType === 'admission') {
+      const { count } = await supabase
+        .from('admission_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      setModalView((count || 0) > 0 ? 'admissions' : null);
+    } else {
+      const { count } = await supabase
+        .from('discharge_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      setModalView((count || 0) > 0 ? 'discharges' : null);
     }
 
     setSelectedRequest(null);
     setRequestType(null);
+    setTwoFAConfirming(false);
   };
 
   return (
@@ -617,9 +858,9 @@ const AdminDashboard = () => {
       )}
 
       {modalView === '2fa' && (
-        <div className="modal-overlay" onClick={() => setModalView(null)}>
+        <div className="modal-overlay" onClick={() => { setModalView(null); setTwoFAError(''); }}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ padding: '40px 30px', textAlign: 'center' }}>
-            <X className="close-btn" size={24} onClick={() => setModalView(null)} />
+            <X className="close-btn" size={24} onClick={() => { setModalView(null); setTwoFAError(''); }} />
             <div className="modal-title" style={{ fontSize: '20px', marginBottom: '10px' }}>Enter 2FA Password to Approve</div>
             <div className="tfa-box">
               <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[0]} ref={tfaRefs[0]} onChange={e => handle2FAChange(0, e.target.value)} onKeyDown={e => handle2FAKeyDown(0, e)} />
@@ -627,8 +868,19 @@ const AdminDashboard = () => {
               <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[2]} ref={tfaRefs[2]} onChange={e => handle2FAChange(2, e.target.value)} onKeyDown={e => handle2FAKeyDown(2, e)} />
               <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[3]} ref={tfaRefs[3]} onChange={e => handle2FAChange(3, e.target.value)} onKeyDown={e => handle2FAKeyDown(3, e)} />
             </div>
-            <button className="btn-approve" style={{ padding: '12px 40px', fontSize: '15px' }} onClick={handle2FAConfirm}>
-              Confirm
+            {twoFAError && (
+              <div style={{ color: '#dc2626', fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 8, maxWidth: 360, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.45 }}>
+                {twoFAError}
+              </div>
+            )}
+            <button
+              type="button"
+              className="btn-approve"
+              style={{ padding: '12px 40px', fontSize: '15px' }}
+              disabled={twoFAConfirming}
+              onClick={() => void handle2FAConfirm()}
+            >
+              {twoFAConfirming ? 'Saving…' : 'Confirm'}
             </button>
           </div>
         </div>
