@@ -12,6 +12,7 @@ export default function SignupScreen() {
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [contactNumber, setContactNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -25,11 +26,20 @@ export default function SignupScreen() {
   const [fieldErrors, setFieldErrors] = useState<{
     firstName?: string;
     lastName?: string;
+    contactNumber?: string;
     email?: string;
     password?: string;
     confirmPassword?: string;
     terms?: string;
   }>({});
+
+  const handleContactNumberChange = (text: string) => {
+    const cleaned = text.replace(/\D/g, "");
+    setContactNumber(cleaned);
+    if (fieldErrors.contactNumber) {
+      setFieldErrors((prev) => ({ ...prev, contactNumber: undefined }));
+    }
+  };
 
   const validateEmail = (value: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -80,6 +90,11 @@ export default function SignupScreen() {
     if (!lastName.trim()) {
       errors.lastName = "Please Enter your Last Name";
     }
+    if (!contactNumber.trim()) {
+      errors.contactNumber = "Please enter your contact number";
+    } else if (contactNumber.length < 11) {
+      errors.contactNumber = "Contact number must be 11 digits";
+    }
     if (!email.trim() || !validateEmail(email.trim())) {
       errors.email = "Please Enter a Valid Email Address";
     }
@@ -127,6 +142,8 @@ export default function SignupScreen() {
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           full_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+          phone: contactNumber.trim(),
+          contact_number: contactNumber.trim(),
           account_type: "family",
         },
       },
@@ -248,6 +265,35 @@ export default function SignupScreen() {
             </View>
             {fieldErrors.lastName && (
               <Text style={styles.errorText}>{fieldErrors.lastName}</Text>
+            )}
+
+            {/* Contact Number */}
+            <Text style={styles.label}>Contact Number</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                hasError("contactNumber") && styles.inputErrorBorder,
+              ]}
+            >
+              <Ionicons
+                name="call-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="09XXXXXXXXX (11 digits)"
+                placeholderTextColor="#B0B0B0"
+                value={contactNumber}
+                onChangeText={handleContactNumberChange}
+                keyboardType="phone-pad"
+                maxLength={11}
+                textContentType="telephoneNumber"
+              />
+            </View>
+            {fieldErrors.contactNumber && (
+              <Text style={styles.errorText}>{fieldErrors.contactNumber}</Text>
             )}
 
             {/* Email */}
