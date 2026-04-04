@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboa
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TAB_ROUTES } from '../../lib/navigationConfig';
 
 export default function AdmissionForm() {
   const router = useRouter();
@@ -87,7 +88,7 @@ export default function AdmissionForm() {
     }).start(() => {
       Alert.alert("Success", "Admission request submitted!");
       setIsSubmitting(false);
-      router.replace('/tabs/home');
+      router.replace(TAB_ROUTES.home);
     });
   };
 
@@ -100,7 +101,7 @@ export default function AdmissionForm() {
     return (
       <View style={styles.splashContainer}>
         <Image 
-          source={require('../assets/images/checkedenvelope.png')} 
+          source={require('../../assets/images/checkedenvelope.png')} 
           style={styles.splashIcon}
           resizeMode="contain"
         />
@@ -125,7 +126,7 @@ export default function AdmissionForm() {
         }
       ]}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={() => router.navigate(TAB_ROUTES.home)} 
           style={styles.backButton}
           activeOpacity={0.7}
         >
@@ -133,7 +134,7 @@ export default function AdmissionForm() {
         </TouchableOpacity>
         
         <Image 
-          source={require('../assets/images/BOHLogo.png')}
+          source={require('../../assets/images/BOHLogo.png')}
           style={styles.headerLogo} 
           resizeMode="contain" 
         />

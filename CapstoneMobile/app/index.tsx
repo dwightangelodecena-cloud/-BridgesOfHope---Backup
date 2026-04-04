@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase } from "../lib/supabase";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { TAB_ROUTES } from "../lib/navigationConfig";
 
 export default function Index() {
   const [loading, setLoading] = useState(true);
@@ -11,13 +12,15 @@ export default function Index() {
   useEffect(() => {
     const checkNavigation = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        if (isSupabaseConfigured()) {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
 
-        if (session) {
-          router.replace("/tabs/home");
-          return;
+          if (session) {
+            router.replace(TAB_ROUTES.home);
+            return;
+          }
         }
 
         const hasOpened = await AsyncStorage.getItem("hasOpened");

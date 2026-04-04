@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Dimensions } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { TAB_ROUTES } from '../../lib/navigationConfig';
 
 const { width } = Dimensions.get('window');
 
@@ -89,7 +90,7 @@ export default function HomeScreen() {
           <Text style={styles.suggestionText}>
             Update your profile and submit missing requirements to speed up approval.
           </Text>
-          <TouchableOpacity style={styles.suggestionButton} onPress={() => router.push('../profile')}>
+          <TouchableOpacity style={styles.suggestionButton} onPress={() => router.navigate(TAB_ROUTES.profile)}>
             <Text style={styles.suggestionButtonText}>Update Profile</Text>
           </TouchableOpacity>
         </View>
@@ -100,25 +101,25 @@ export default function HomeScreen() {
             icon="document-text" 
             label="Admission" 
             color="#F54E25" 
-            onPress={() => router.push('../AdmissionForm')} 
+            onPress={() => router.navigate(TAB_ROUTES.admission)}
           />
           <ActionButton 
             icon="reader" 
             label="Weekly Report" 
             color="#F54E25" 
-            onPress={() => router.push('./ViewDetailPage')}
+            onPress={() => router.navigate(TAB_ROUTES.weeklyReport)}
           />
           <ActionButton 
             icon="chatbubble" 
             label="Chat" 
             color="#F54E25" 
-            onPress={() => router.push('../tabs/Messages')}
+            onPress={() => router.navigate(TAB_ROUTES.messages)}
           />
           <ActionButton 
             icon="cube" 
             label="Services" 
             color="#F54E25" 
-            onPress={() => router.push('../services')} 
+            onPress={() => router.navigate(TAB_ROUTES.services)}
           />
         </View>
 
@@ -168,7 +169,7 @@ export default function HomeScreen() {
             <Ionicons name="alert-circle-outline" size={18} color="#EF4444" />
             <Text style={styles.infoRowText}>1 file needs re-upload due to low quality</Text>
           </View>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push('../AdmissionForm')}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => router.navigate(TAB_ROUTES.admission)}>
             <Text style={styles.secondaryButtonText}>Upload Documents</Text>
           </TouchableOpacity>
         </View>
@@ -189,13 +190,13 @@ export default function HomeScreen() {
             icon="help-circle"
             label="FAQ"
             color="#F54E25"
-            onPress={() => router.push('../services')}
+            onPress={() => router.navigate(TAB_ROUTES.services)}
           />
           <ActionButton
             icon="chatbox-ellipses"
             label="Support"
             color="#F54E25"
-            onPress={() => router.push('../tabs/Messages')}
+            onPress={() => router.navigate(TAB_ROUTES.messages)}
           />
         </View>
 
@@ -255,7 +256,7 @@ export default function HomeScreen() {
 
           <TouchableOpacity 
             style={styles.admitButton}
-            onPress={() => router.push('../AdmissionForm')}
+            onPress={() => router.navigate(TAB_ROUTES.admission)}
           >
             <Ionicons name="add-circle-outline" size={24} color="#FFFFFF" />
             <Text style={styles.admitButtonText}>Admit a Patient</Text>
@@ -269,22 +270,22 @@ export default function HomeScreen() {
           img={require('../../assets/images/home-icon.png')}
           label="Home"
           active
-          onPress={() => router.push('./home')}
+          onPress={() => router.navigate(TAB_ROUTES.home)}
         />
         <TabItem
           img={require('../../assets/images/progress-icon.png')}
           label="Progress"
-          onPress={() => router.push('./progress')}
+          onPress={() => router.navigate(TAB_ROUTES.progress)}
         />
         <TabItem
           img={require('../../assets/images/messages-icon.png')}
           label="Message"
-          onPress={() => router.push('../tabs/Messages')}
+          onPress={() => router.navigate(TAB_ROUTES.messages)}
         />
         <TabItem
           img={require('../../assets/images/profile-icon.png')}
           label="Profile"
-          onPress={() => router.push('../profile')}
+          onPress={() => router.navigate(TAB_ROUTES.profile)}
         />
       </View>
     </View>

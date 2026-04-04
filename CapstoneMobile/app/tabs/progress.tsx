@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Dimensions
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { TAB_ROUTES } from '../../lib/navigationConfig';
 
 const { width } = Dimensions.get('window');
 
@@ -87,7 +88,7 @@ export default function ProgressScreen() {
           <View style={styles.buttonRow}>
             <TouchableOpacity 
               style={styles.viewDetailsBtn}
-              onPress={() => router.push('./ViewDetailPage')}
+              onPress={() => router.navigate(TAB_ROUTES.weeklyReport)}
             >
               <MaterialCommunityIcons name="pulse" size={20} color="#FFFFFF" />
               <Text style={styles.buttonText}>View Details</Text>
@@ -96,7 +97,7 @@ export default function ProgressScreen() {
             {/* UPDATED DISCHARGE BUTTON */}
             <TouchableOpacity 
               style={styles.dischargeBtn}
-              onPress={() => router.push('/DischargeForm')} // Navigates to the Discharge Form
+              onPress={() => router.navigate(TAB_ROUTES.discharge)}
               activeOpacity={0.7}
             >
               <Ionicons name="person-remove" size={18} color="#FFFFFF" />
@@ -108,7 +109,7 @@ export default function ProgressScreen() {
         {/* Dashed Admit Button */}
         <TouchableOpacity 
           style={styles.dashedButton}
-          onPress={() => router.push('../AdmissionForm')}
+          onPress={() => router.navigate(TAB_ROUTES.admission)}
         >
           <Ionicons name="add" size={30} color="#CCCCCC" />
           <Text style={styles.dashedButtonText}>Admit a Patient</Text>
@@ -119,23 +120,23 @@ export default function ProgressScreen() {
         <TabItem
           img={require('../../assets/images/home-icon.png')}
           label="Home"
-          onPress={() => router.push('./home')}
+          onPress={() => router.navigate(TAB_ROUTES.home)}
         />
         <TabItem
           img={require('../../assets/images/progress-icon.png')}
           label="Progress"
           active
-          onPress={() => router.push('/tabs/progress')} 
+          onPress={() => router.navigate(TAB_ROUTES.progress)}
         />
         <TabItem
           img={require('../../assets/images/messages-icon.png')}
           label="Message"
-          onPress={() => {}} 
+          onPress={() => router.navigate(TAB_ROUTES.messages)}
         />
         <TabItem
           img={require('../../assets/images/profile-icon.png')}
           label="Profile"
-          onPress={() => router.push('../profile')}
+          onPress={() => router.navigate(TAB_ROUTES.profile)}
         />
       </View>
     </View>

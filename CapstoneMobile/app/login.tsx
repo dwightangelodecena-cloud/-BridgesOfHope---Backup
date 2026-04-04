@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatAuthError } from "../lib/authErrors";
+import { TAB_ROUTES } from "../lib/navigationConfig";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -87,7 +88,7 @@ export default function LoginScreen() {
       return;
     }
 
-    router.replace("/tabs/home");
+    router.replace(TAB_ROUTES.home);
   };
 
   const handleGoToSignup = () => {

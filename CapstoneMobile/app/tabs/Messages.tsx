@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,13 +13,19 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { TAB_ROUTES } from '../../lib/navigationConfig';
 
 interface Message {
   id: string;
   text: string;
   sender: 'user' | 'support';
   timestamp: string;
-  showTime: boolean;
+  /** Support: tap bubble to show sent time */
+  showTime?: boolean;
+  /** User: before read receipt — only shown under the latest outgoing message */
+  receipt?: 'sent' | 'delivered';
+  /** User: when staff saw this message (replaces Sent/Delivered) */
+  seenAt?: string;
 }
 
 export default function MessageScreen() {
@@ -27,6 +33,8 @@ export default function MessageScreen() {
   const router = useRouter();
   const [inputText, setInputText] = useState('');
   const flatListRef = useRef<FlatList>(null);
+  /** Ignore delayed "seen" updates if the user sent a newer message since */
+  const latestPendingSeenIdRef = useRef<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -41,7 +49,6 @@ export default function MessageScreen() {
       text: "Hi! I'm having trouble accessing my account dashboard. Can you help?",
       sender: 'user',
       timestamp: '3:19 PM',
-      showTime: false,
     },
     {
       id: '3',
@@ -52,20 +59,59 @@ export default function MessageScreen() {
     },
   ]);
 
+  const lastUserMessageIndex = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].sender === 'user') return i;
+    }
+    return -1;
+  }, [messages]);
+
   const sendMessage = () => {
     if (inputText.trim().length === 0) return;
 
+    const sentAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const messageId = `${Date.now()}`;
     const newMessage: Message = {
-      id: Date.now().toString(),
-      text: inputText,
+      id: messageId,
+      text: inputText.trim(),
       sender: 'user',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      showTime: false,
+      timestamp: sentAt,
+      receipt: 'sent',
     };
 
-    setMessages((prev) => [...prev, newMessage]);
+    setMessages((prev) => {
+      const cleared = prev.map((m) =>
+        m.sender === 'user'
+          ? { ...m, seenAt: undefined, receipt: undefined }
+          : m
+      );
+      return [...cleared, newMessage];
+    });
     setInputText('');
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+
+    latestPendingSeenIdRef.current = messageId;
+
+    setTimeout(() => {
+      if (latestPendingSeenIdRef.current !== messageId) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, receipt: 'delivered' as const } : m
+        )
+      );
+    }, 450);
+
+    setTimeout(() => {
+      if (latestPendingSeenIdRef.current !== messageId) return;
+      const seenTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, seenAt: seenTime, receipt: undefined }
+            : m
+        )
+      );
+    }, 2200);
   };
 
   const toggleTime = (id: string) => {
@@ -76,24 +122,45 @@ export default function MessageScreen() {
     );
   };
 
-  const renderMessage = ({ item }: { item: Message }) => {
+  const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isUser = item.sender === 'user';
+    const next = messages[index + 1];
+    const followedBySameSender = Boolean(next && next.sender === item.sender);
+    const showUserReceiptRow =
+      isUser &&
+      index === lastUserMessageIndex &&
+      (item.seenAt || item.receipt);
+
+    let receiptLabel: string | null = null;
+    if (showUserReceiptRow) {
+      if (item.seenAt) receiptLabel = `Seen · ${item.seenAt}`;
+      else if (item.receipt === 'sent') receiptLabel = 'Sent';
+      else if (item.receipt === 'delivered') receiptLabel = 'Delivered';
+    }
+
     return (
-      <View style={[styles.messageWrapper, isUser ? styles.userWrapper : styles.supportWrapper]}>
-        <TouchableOpacity 
-          activeOpacity={0.8} 
-          onPress={() => toggleTime(item.id)}
+      <View
+        style={[
+          styles.messageWrapper,
+          isUser ? styles.userWrapper : styles.supportWrapper,
+          followedBySameSender ? styles.stackTight : styles.stackLoose,
+        ]}
+      >
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => !isUser && toggleTime(item.id)}
           style={[styles.messageBubble, isUser ? styles.userBubble : styles.supportBubble]}
         >
           <Text style={[styles.messageText, isUser ? styles.userText : styles.supportText]}>
             {item.text}
           </Text>
         </TouchableOpacity>
-        {(item.showTime || isUser) && (
-          <Text style={[styles.timestamp, isUser ? styles.userTimestamp : styles.supportTimestamp]}>
-            {item.showTime ? item.timestamp : (isUser ? 'Seen ' + item.timestamp : '')}
-          </Text>
-        )}
+        {receiptLabel ? (
+          <Text style={[styles.userReceipt, styles.userTimestamp]}>{receiptLabel}</Text>
+        ) : null}
+        {!isUser && item.showTime ? (
+          <Text style={[styles.timestamp, styles.supportTimestamp]}>{item.timestamp}</Text>
+        ) : null}
       </View>
     );
   };
@@ -128,7 +195,7 @@ export default function MessageScreen() {
         ref={flatListRef}
         data={messages}
         keyExtractor={(item) => item.id}
-        renderItem={renderMessage}
+        renderItem={({ item, index }) => renderMessage({ item, index })}
         contentContainerStyle={styles.chatList}
         showsVerticalScrollIndicator={false}
       />
@@ -157,12 +224,12 @@ export default function MessageScreen() {
         <TabItem
           img={require('../../assets/images/home-icon.png')}
           label="Home"
-          onPress={() => router.push('./home')}
+          onPress={() => router.navigate(TAB_ROUTES.home)}
         />
         <TabItem
           img={require('../../assets/images/progress-icon.png')}
           label="Progress"
-          onPress={() => router.push('./progress')}
+          onPress={() => router.navigate(TAB_ROUTES.progress)}
         />
         <TabItem
           img={require('../../assets/images/messages-icon.png')}
@@ -173,7 +240,7 @@ export default function MessageScreen() {
         <TabItem
           img={require('../../assets/images/profile-icon.png')}
           label="Profile"
-          onPress={() => router.push('../profile')}
+          onPress={() => router.navigate(TAB_ROUTES.profile)}
         />
       </View>
     </View>
@@ -251,8 +318,13 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   messageWrapper: {
-    marginBottom: 20,
     maxWidth: '85%',
+  },
+  stackTight: {
+    marginBottom: 3,
+  },
+  stackLoose: {
+    marginBottom: 18,
   },
   userWrapper: {
     alignSelf: 'flex-end',
@@ -290,6 +362,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#999',
     marginTop: 5,
+  },
+  userReceipt: {
+    fontSize: 11,
+    color: '#333',
+    marginTop: 3,
+    fontWeight: '500',
   },
   userTimestamp: {
     marginRight: 5,

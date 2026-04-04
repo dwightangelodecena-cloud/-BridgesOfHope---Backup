@@ -13,6 +13,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { TAB_ROUTES } from '../../lib/navigationConfig';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -75,7 +76,7 @@ export default function ProfileScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push('/tabs/home')}>
+        <TouchableOpacity onPress={() => router.navigate(TAB_ROUTES.home)}>
           <Ionicons name="chevron-back" size={22} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
@@ -127,7 +128,7 @@ export default function ProfileScreen() {
           <View style={styles.rowDivider} />
           <TouchableOpacity
             style={styles.row}
-            onPress={() => router.push('../notification')}
+            onPress={() => router.push('/notification')}
           >
             <Text style={styles.rowLabel}>Notification Settings</Text>
             <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
@@ -245,24 +246,25 @@ export default function ProfileScreen() {
       {/* Bottom Nav */}
       <View style={[styles.bottomNav, { paddingBottom: insets.bottom + 10 }]}>
         <TabItem
-          img={require('../assets/images/home-icon.png')}
+          img={require('../../assets/images/home-icon.png')}
           label="Home"
-          onPress={() => router.push('/tabs/home')}
+          onPress={() => router.navigate(TAB_ROUTES.home)}
         />
         <TabItem
-          img={require('../assets/images/progress-icon.png')}
+          img={require('../../assets/images/progress-icon.png')}
           label="Progress"
-          onPress={() => router.push('/tabs/progress')}
+          onPress={() => router.navigate(TAB_ROUTES.progress)}
         />
         <TabItem
-          img={require('../assets/images/messages-icon.png')}
+          img={require('../../assets/images/messages-icon.png')}
           label="Message"
-          onPress={() => router.push('../Messages')}
+          onPress={() => router.navigate(TAB_ROUTES.messages)}
         />
         <TabItem
-          img={require('../assets/images/profile-icon.png')}
+          img={require('../../assets/images/profile-icon.png')}
           label="Profile"
           active
+          onPress={() => router.navigate(TAB_ROUTES.profile)}
         />
       </View>
     </View>

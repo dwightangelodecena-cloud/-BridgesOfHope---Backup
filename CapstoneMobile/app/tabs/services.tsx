@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'rea
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function ServicesScreen() {
@@ -17,7 +18,7 @@ export default function ServicesScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Image
-          source={require('../assets/images/BOHLogo.png')}
+          source={require('../../assets/images/BOHLogo.png')}
           style={styles.headerLogo}
           resizeMode="contain"
         />
@@ -36,7 +37,7 @@ export default function ServicesScreen() {
         <View style={styles.mainCard}>
           {/* Close / Back */}
           <View style={styles.closeRow}>
-            <TouchableOpacity onPress={() => router.push('/tabs/home')}>
+            <TouchableOpacity onPress={() => router.navigate(TAB_ROUTES.home)}>
               <Ionicons name="close" size={22} color="#111827" />
             </TouchableOpacity>
           </View>
@@ -257,7 +258,7 @@ export default function ServicesScreen() {
           {/* CTA button */}
           <TouchableOpacity
             style={styles.ctaButton}
-            onPress={() => router.push('/AdmissionForm')}
+            onPress={() => router.navigate(TAB_ROUTES.admission)}
           >
             <Text style={styles.ctaButtonText}>Admit a patient</Text>
           </TouchableOpacity>

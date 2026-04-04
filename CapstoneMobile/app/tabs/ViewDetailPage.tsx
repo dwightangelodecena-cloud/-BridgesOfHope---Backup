@@ -4,6 +4,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import WeeklyReportModal from '../WeeklyReport';
+import { TAB_ROUTES } from '../../lib/navigationConfig';
 
 const { width } = Dimensions.get('window');
 
@@ -85,7 +86,7 @@ export default function ViewDetailsPage() {
         <View style={styles.mainInfoCard}>
           <TouchableOpacity 
             style={styles.closeButton} 
-            onPress={() => router.back()}
+            onPress={() => router.navigate(TAB_ROUTES.home)}
           >
             <Ionicons name="close" size={24} color="#333" />
           </TouchableOpacity>
@@ -185,10 +186,10 @@ export default function ViewDetailsPage() {
       </ScrollView>
 
       <View style={[styles.bottomNav, { paddingBottom: insets.bottom + 10 }]}>
-        <TabItem img={require('../../assets/images/home-icon.png')} label="Home" onPress={() => router.push('./home')} />
-        <TabItem img={require('../../assets/images/progress-icon.png')} label="Progress" active onPress={() => {}} />
-        <TabItem img={require('../../assets/images/messages-icon.png')} label="Message" onPress={() => {}} />
-        <TabItem img={require('../../assets/images/profile-icon.png')} label="Profile" onPress={() => {}} />
+        <TabItem img={require('../../assets/images/home-icon.png')} label="Home" onPress={() => router.navigate(TAB_ROUTES.home)} />
+        <TabItem img={require('../../assets/images/progress-icon.png')} label="Progress" active onPress={() => router.navigate(TAB_ROUTES.progress)} />
+        <TabItem img={require('../../assets/images/messages-icon.png')} label="Message" onPress={() => router.navigate(TAB_ROUTES.messages)} />
+        <TabItem img={require('../../assets/images/profile-icon.png')} label="Profile" onPress={() => router.navigate(TAB_ROUTES.profile)} />
       </View>
 
       <WeeklyReportModal 
