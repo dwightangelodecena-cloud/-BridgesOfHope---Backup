@@ -4,9 +4,9 @@
  * 
  * This file supports the Public System Landing Page of the Bridges of Hope system.
  */
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom'; // Added for navigation
-import { Phone, Globe, Smartphone, MapPin, Menu, X, Mail, Monitor } from 'lucide-react';
+import { Phone, Globe, Smartphone, MapPin, Menu, X, Mail, Monitor, ChevronUp } from 'lucide-react';
 // Import Swiper components
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Pagination } from 'swiper/modules';
@@ -29,9 +29,81 @@ import prog1 from '@/assets/landingpage1.png';
 import prog2 from '@/assets/landingpage2.png';
 import hopeLogo from '@/assets/hoperecoverylogo.png';
 
+const NAV_BAR_OFFSET_PX = 100;
+const SCROLL_DURATION_MS = 950;
+const BACK_TO_TOP_SCROLL_THRESHOLD_PX = 200;
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
 const LandingPage = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const navigate = useNavigate(); // Hook to handle the redirection
+  const scrollRafRef = useRef(null);
+
+  const animateScrollToY = useCallback((targetY) => {
+    if (scrollRafRef.current != null) {
+      cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = null;
+    }
+
+    const clampedTarget = Math.max(0, targetY);
+    const startY = window.scrollY;
+    const distance = clampedTarget - startY;
+    const startTime = performance.now();
+
+    const step = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / SCROLL_DURATION_MS, 1);
+      const eased = easeInOutCubic(progress);
+      window.scrollTo(0, startY + distance * eased);
+      if (progress < 1) {
+        scrollRafRef.current = requestAnimationFrame(step);
+      } else {
+        scrollRafRef.current = null;
+      }
+    };
+
+    scrollRafRef.current = requestAnimationFrame(step);
+  }, []);
+
+  const scrollToSection = useCallback(
+    (sectionId) => {
+      const el = document.getElementById(sectionId);
+      if (!el) return;
+      const targetY =
+        el.getBoundingClientRect().top + window.scrollY - NAV_BAR_OFFSET_PX;
+      animateScrollToY(targetY);
+    },
+    [animateScrollToY]
+  );
+
+  const scrollToTop = useCallback(() => {
+    animateScrollToY(0);
+  }, [animateScrollToY]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => {
+      setShowBackToTop(window.scrollY > BACK_TO_TOP_SCROLL_THRESHOLD_PX);
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const onNavSectionClick = (e, sectionId) => {
+    e.preventDefault();
+    setIsMenuOpen(false);
+    scrollToSection(sectionId);
+  };
 
   const partnerLinks = {
     [gma]: "https://bridgesofhope.com.ph/index.php/news-gma7s-brigada-features-bridges-of-hope-in-episode-on-alcoholism/",
@@ -51,6 +123,13 @@ const LandingPage = () => {
           padding: 0;
           width: 100%;
           overflow-x: hidden;
+        }
+
+        #about,
+        #programs,
+        #testimonials,
+        #contact {
+          scroll-margin-top: 100px;
         }
 
         .lp-wrapper { 
@@ -83,6 +162,41 @@ const LandingPage = () => {
         }
 
         .text-orange { color: #f24e1e; }
+
+        .back-to-top-btn {
+          position: fixed;
+          bottom: 28px;
+          right: 24px;
+          z-index: 2100;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 14px 18px;
+          background: #ff5733;
+          color: white;
+          border: none;
+          border-radius: 12px;
+          font-family: 'Inter', sans-serif;
+          font-size: 0.95rem;
+          font-weight: 600;
+          cursor: pointer;
+          box-shadow: 0 8px 24px rgba(242, 78, 30, 0.35);
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transform: translateY(14px);
+          transition: opacity 0.28s ease, visibility 0.28s ease, transform 0.28s ease;
+        }
+        .back-to-top-btn:hover {
+          background: #e84720;
+          box-shadow: 0 10px 28px rgba(242, 78, 30, 0.42);
+        }
+        .back-to-top-btn.back-to-top-btn--visible {
+          opacity: 1;
+          visibility: visible;
+          pointer-events: auto;
+          transform: translateY(0);
+        }
         
         /* 2. NAVIGATION */
         .nav-bar { 
@@ -95,8 +209,10 @@ const LandingPage = () => {
           box-sizing: border-box !important;
           border-bottom: 1px solid #f1f5f9 !important;
           height: 100px !important; 
-          position: sticky;
+          position: fixed;
           top: 0;
+          left: 0;
+          right: 0;
           z-index: 1000;
         }
 
@@ -143,7 +259,7 @@ const LandingPage = () => {
           height: 90vh; 
           display: flex; 
           align-items: center; 
-          padding: 0 10%; 
+          padding: 100px 10% 0 10%; 
           color: white;
           width: 100%;
           box-sizing: border-box;
@@ -247,7 +363,7 @@ const LandingPage = () => {
           .mobile-login { display: block !important; margin-top: 20px; }
           
           .hero-content h1 { font-size: 2.5rem !important; }
-          .hero { height: 70vh; padding: 0 5%; justify-content: center; text-align: center; }
+          .hero { height: 70vh; padding: 100px 5% 0 5%; justify-content: center; text-align: center; }
 
           .about-flex { flex-direction: column !important; padding: 60px 0 !important; gap: 40px !important; text-align: center; }
           .about-img { width: 300px !important; height: 300px !important; }
@@ -268,6 +384,14 @@ const LandingPage = () => {
         @media (min-width: 1025px) {
           .mobile-login { display: none !important; }
         }
+        @media (max-width: 480px) {
+          .back-to-top-btn {
+            right: 16px;
+            bottom: 20px;
+            padding: 12px 14px;
+            font-size: 0.85rem;
+          }
+        }
       `}</style>
 
       {/* Nav */}
@@ -276,10 +400,10 @@ const LandingPage = () => {
           <img src={logo} alt="Bridges of Hope" height="60" /> 
         </div>
         <nav className="nav-links">
-          <a href="#" onClick={() => setIsMenuOpen(false)}>About Us</a>
-          <a href="#" onClick={() => setIsMenuOpen(false)}>Programs</a>
-          <a href="#" onClick={() => setIsMenuOpen(false)}>Testimonials</a>
-          <a href="#" onClick={() => setIsMenuOpen(false)}>Contact</a>
+          <a href="#about" onClick={(e) => onNavSectionClick(e, 'about')}>About Us</a>
+          <a href="#programs" onClick={(e) => onNavSectionClick(e, 'programs')}>Programs</a>
+          <a href="#testimonials" onClick={(e) => onNavSectionClick(e, 'testimonials')}>Testimonials</a>
+          <a href="#contact" onClick={(e) => onNavSectionClick(e, 'contact')}>Contact</a>
           {/* Mobile login redirects to /login */}
           <button className="login-btn mobile-login" onClick={() => navigate('/login')}>Login</button>
         </nav>
@@ -311,7 +435,7 @@ const LandingPage = () => {
       </section>
 
       {/* About */}
-      <section className="full-screen-section" style={{background: '#fcfcfc'}}>
+      <section id="about" className="full-screen-section" style={{background: '#fcfcfc'}}>
         <div className="content-limit about-flex" style={{display:'flex', padding:'120px 0', alignItems:'center', gap:'100px'}}>
           <img src={containerImg} className="about-img" style={{width:'500px', height:'500px', borderRadius:'50%', objectFit:'cover', flexShrink: 0}} alt="Circle About" />
           <div>
@@ -323,7 +447,7 @@ const LandingPage = () => {
       </section>
 
       {/* Programs Slider */}
-      <section className="programs-section">
+      <section id="programs" className="programs-section">
         <h2 style={{fontSize: '3.5rem', marginBottom: '10px'}}>Our <span className="text-orange">Treatment Programs</span></h2>
         <p style={{fontSize: '1.3rem', color: '#64748b'}}>Comprehensive care tailored to your unique needs and recovery journey</p>
         <div className="slider-isolation-box">
@@ -354,7 +478,7 @@ const LandingPage = () => {
       </section>
 
       {/* Stories of Hope */}
-      <section className="full-screen-section" style={{ padding: '100px 0', background: '#ffffff' }}>
+      <section id="testimonials" className="full-screen-section" style={{ padding: '100px 0', background: '#ffffff' }}>
         <div className="content-limit" style={{textAlign: 'center'}}> 
           <h2 style={{ fontSize: '3.5rem', fontWeight: '700', marginBottom: '10px' }}>Stories of <span className="text-orange">Hope & Recovery</span></h2>
           <p style={{ color: '#64748b', fontSize: '1.1rem', marginBottom: '60px' }}>Real stories from real people who found their path to sobriety</p>
@@ -391,7 +515,7 @@ const LandingPage = () => {
       </footer>
 
       {/* Footer Info */}
-      <footer className="footer-info-part full-screen-section">
+      <footer id="contact" className="footer-info-part full-screen-section">
         <div className="content-limit info-grid" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '60px' }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
@@ -419,6 +543,15 @@ const LandingPage = () => {
           </div>
         </div>
       </footer>
+
+      <button
+        type="button"
+        className={`back-to-top-btn${showBackToTop ? ' back-to-top-btn--visible' : ''}`}
+        onClick={scrollToTop}
+      >
+        <ChevronUp size={20} strokeWidth={2.5} aria-hidden />
+        Back to top
+      </button>
     </div>
   );
 };
