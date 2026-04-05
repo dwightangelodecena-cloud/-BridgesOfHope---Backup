@@ -4,9 +4,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatAuthError } from "../lib/authErrors";
+import { TAB_ROUTES } from "../lib/navigationConfig";
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState("");
+  const [loginIdentifier, setLoginIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [hidePassword, setHidePassword] = useState(true);
   const [rememberMe, setRememberMe] = useState(false);
@@ -37,15 +38,25 @@ export default function LoginScreen() {
   };
 
   const handleSignIn = async () => {
-    if (!email.trim() || !password.trim()) {
+    if (!loginIdentifier.trim() || !password.trim()) {
       showError("Please fill in all fields before signing in.");
       return;
     }
 
+    const trimmedId = loginIdentifier.trim();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      showError("Please enter a valid email (e.g. name@mail.com)");
-      return;
+    let signInEmail = trimmedId;
+
+    if (!emailRegex.test(trimmedId)) {
+      const digits = trimmedId.replace(/\D/g, "");
+      if (digits.length < 11) {
+        showError("Enter a valid email or an 11-digit contact number.");
+        return;
+      }
+      if (digits.length > 11) {
+        showError("Contact number must be 11 digits.");
+        return;
+      }
     }
 
     if (password.length < 8) {
@@ -69,8 +80,28 @@ export default function LoginScreen() {
     }
 
     setSubmitting(true);
+
+    if (!emailRegex.test(trimmedId)) {
+      const digits = trimmedId.replace(/\D/g, "");
+      const { data: rows, error: rpcError } = await supabase.rpc("resolve_login_email", {
+        login_input: digits,
+      });
+      if (rpcError) {
+        setSubmitting(false);
+        showError(formatAuthError(rpcError));
+        return;
+      }
+      const resolved = Array.isArray(rows) && rows.length > 0 ? rows[0]?.email : null;
+      if (!resolved || typeof resolved !== "string") {
+        setSubmitting(false);
+        showError("No account found with that email or contact number.");
+        return;
+      }
+      signInEmail = resolved;
+    }
+
     const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: signInEmail.trim(),
       password,
     });
     setSubmitting(false);
@@ -87,7 +118,7 @@ export default function LoginScreen() {
       return;
     }
 
-    router.replace("/tabs/home");
+    router.replace(TAB_ROUTES.home);
   };
 
   const handleGoToSignup = () => {
@@ -121,19 +152,19 @@ export default function LoginScreen() {
           resizeMode="contain"
         />
 
-        <Text style={styles.label}>Email Address</Text>
+        <Text style={styles.label}>Email Address or Contact Number</Text>
         <View style={styles.inputContainer}>
-          <Ionicons name="mail-outline" size={20} color="#888" style={styles.inputIcon} />
+          <Ionicons name="person-outline" size={20} color="#888" style={styles.inputIcon} />
           <TextInput
-            placeholder="Please enter your Email Address"
+            placeholder="Email or 11-digit contact number"
             placeholderTextColor="#AAA"
-            value={email}
-            onChangeText={setEmail}
+            value={loginIdentifier}
+            onChangeText={setLoginIdentifier}
             style={styles.input}
-            keyboardType="email-address"
+            keyboardType="default"
             autoCapitalize="none"
             autoCorrect={false}
-            textContentType="emailAddress"
+            textContentType="username"
           />
         </View>
 

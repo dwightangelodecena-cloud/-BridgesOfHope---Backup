@@ -1,64 +1,156 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  Pressable,
+  Dimensions,
+  Image,
+} from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { TAB_ROUTES } from '../../lib/navigationConfig';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
+
+const { width } = Dimensions.get('window');
+
+const NOTIFICATION_ITEMS = [
+  'Submit missing laboratory result before Friday.',
+  'Family support session is scheduled on April 5, 10:00 AM.',
+  'Weekly report reviewed by your assigned counselor.',
+];
+
+function deriveInitials(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
+  return parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('') || 'FU';
+}
 
 export default function ServicesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [displayName, setDisplayName] = useState('Family User');
+  const [userInitials, setUserInitials] = useState('FU');
   const [showAdmissionDetails, setShowAdmissionDetails] = useState(false);
   const [showMonthlySections, setShowMonthlySections] = useState(false);
 
+  useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!isSupabaseConfigured()) return;
+      try {
+        const { data } = await supabase.auth.getUser();
+        const user = data?.user;
+        let resolved =
+          (user?.user_metadata?.full_name as string | undefined)?.trim() ||
+          [user?.user_metadata?.first_name, user?.user_metadata?.last_name]
+            .filter(Boolean)
+            .join(' ')
+            .trim() ||
+          'Family User';
+        if (user?.id) {
+          const { data: profileRow } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
+        }
+        if (mounted) {
+          setDisplayName(resolved);
+          setUserInitials(deriveInitials(resolved));
+        }
+      } catch {
+        /* keep defaults */
+      }
+    };
+    loadUser();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <Modal
+        visible={showNotifications}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNotifications(false)}
+      >
+        <View style={styles.notifModalRoot}>
+          <Pressable style={styles.notifModalBackdrop} onPress={() => setShowNotifications(false)} />
+          <View style={[styles.notificationsDropdown, { top: insets.top + 52, right: 16 }]}>
+            <View style={styles.notificationsDropdownTitleRow}>
+              <Ionicons name="notifications" size={16} color="#F54E25" />
+              <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
+            </View>
+            {NOTIFICATION_ITEMS.map((item) => (
+              <View key={item} style={styles.notificationsDropdownRow}>
+                <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
+                <Text style={styles.notificationsDropdownText}>{item}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.header}>
-        <Image
-          source={require('../assets/images/BOHLogo.png')}
-          style={styles.headerLogo}
-          resizeMode="contain"
-        />
-        <Text style={styles.headerTitle}>Services</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerBrandTitle}>Services</Text>
+          <Text style={styles.headerWelcomeLine} numberOfLines={1}>
+            Welcome back, {displayName}
+          </Text>
+        </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerCircleBtn}
+            onPress={() => setShowNotifications((v) => !v)}
+            accessibilityLabel="Notifications"
+          >
+            <Ionicons name="notifications" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerCircleBtn}
+            onPress={() => router.navigate(TAB_ROUTES.profile)}
+            accessibilityLabel="Profile"
+          >
+            <Text style={styles.headerAvatarText}>{userInitials}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 120 },
-        ]}
+        style={styles.bodyScroll}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Fees & Inclusions Card */}
+        <View style={styles.feesTitleRow}>
+          <View style={styles.feesTitleTextWrap}>
+            <Text style={styles.feesPageTitle}>
+              Fees &amp; <Text style={styles.feesPageAccent}>Inclusions</Text>
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.feesCloseBtn}
+            onPress={() => router.navigate(TAB_ROUTES.home)}
+            accessibilityRole="button"
+            accessibilityLabel="Close and go to home"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="close" size={22} color="#1B2559" />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.feesPageSubtitle}>Transparent pricing for your peace of mind</Text>
+
         <View style={styles.mainCard}>
-          {/* Close / Back */}
-          <View style={styles.closeRow}>
-            <TouchableOpacity onPress={() => router.push('/tabs/home')}>
-              <Ionicons name="close" size={22} color="#111827" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Title */}
-          <View style={styles.titleRow}>
-            <LinearGradient
-              colors={['#FF9A73', '#F54E25']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.iconBadge}
-            >
-              <MaterialCommunityIcons name="currency-usd" size={30} color="#FFFFFF" />
-            </LinearGradient>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardTitle}>Fees &amp; Inclusions</Text>
-              <Text style={styles.cardSubtitle}>
-                Transparent pricing for your peace of mind
-              </Text>
-            </View>
-          </View>
-
           {/* Admission Fee */}
           <TouchableOpacity
             activeOpacity={0.9}
@@ -257,15 +349,50 @@ export default function ServicesScreen() {
           {/* CTA button */}
           <TouchableOpacity
             style={styles.ctaButton}
-            onPress={() => router.push('/AdmissionForm')}
+            onPress={() => router.navigate(TAB_ROUTES.admission)}
           >
             <Text style={styles.ctaButtonText}>Admit a patient</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <View style={[styles.bottomNav, { paddingBottom: insets.bottom + 10 }]}>
+        <TabItem
+          img={require('../../assets/images/home-icon.png')}
+          label="Home"
+          active
+          onPress={() => router.navigate(TAB_ROUTES.home)}
+        />
+        <TabItem
+          img={require('../../assets/images/progress-icon.png')}
+          label="Progress"
+          onPress={() => router.navigate(TAB_ROUTES.progress)}
+        />
+        <TabItem
+          img={require('../../assets/images/messages-icon.png')}
+          label="Message"
+          onPress={() => router.navigate(TAB_ROUTES.messages)}
+        />
+        <TabItem
+          img={require('../../assets/images/profile-icon.png')}
+          label="Profile"
+          onPress={() => router.navigate(TAB_ROUTES.profile)}
+        />
+      </View>
     </View>
   );
 }
+
+const TabItem = ({ img, label, active, onPress }: any) => (
+  <TouchableOpacity style={styles.tabItem} onPress={onPress}>
+    <Image
+      source={img}
+      style={[styles.tabIcon, { tintColor: active ? '#F54E25' : '#999999' }]}
+      resizeMode="contain"
+    />
+    <Text style={[styles.tabLabel, active && styles.activeTabLabel]}>{label}</Text>
+  </TouchableOpacity>
+);
 
 type FeeSectionProps = {
   title: string;
@@ -285,30 +412,146 @@ const FeeSection = ({ title, items }: FeeSectionProps) => (
 );
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    height: 60,
-    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+    minHeight: 56,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F1F1',
+    zIndex: 10,
   },
-  headerLogo: {
-    width: 60,
-    height: 30,
+  headerCenter: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: 18,
+  headerBrandTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#F54E25',
+  },
+  headerWelcomeLine: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#111827',
+    color: '#64748B',
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerCircleBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F54E25',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#F54E25',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  headerAvatarText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  notifModalRoot: {
+    flex: 1,
+  },
+  notifModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  notificationsDropdown: {
+    position: 'absolute',
+    width: Math.min(340, width - 32),
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+    borderRadius: 14,
+    padding: 16,
+    shadowColor: '#1B2559',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  notificationsDropdownTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  notificationsDropdownTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1B2559',
+  },
+  notificationsDropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
+  notificationsDropdownText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 18,
+  },
+  bodyScroll: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 10,
+    paddingTop: 8,
+    overflow: 'visible',
+  },
+  feesTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  feesTitleTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  feesCloseBtn: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  feesPageTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    lineHeight: 30,
+    color: '#1B2559',
+  },
+  feesPageAccent: {
+    color: '#F54E25',
+  },
+  feesPageSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#A3AED0',
+    marginTop: 6,
+    marginBottom: 14,
   },
   mainCard: {
     backgroundColor: '#FFFFFF',
@@ -319,33 +562,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
-  },
-  closeRow: {
-    alignItems: 'flex-end',
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  iconBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  cardTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  cardSubtitle: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
   },
   admissionWrapper: {
     marginTop: 4,
@@ -543,6 +759,35 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  bottomNav: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    borderTopWidth: 1,
+    borderColor: '#F1F1F1',
+    backgroundColor: '#FFFFFF',
+    paddingTop: 10,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  tabItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  tabIcon: {
+    width: 24,
+    height: 24,
+    marginBottom: 4,
+  },
+  tabLabel: {
+    fontSize: 12,
+    color: '#999999',
+  },
+  activeTabLabel: {
+    color: '#F54E25',
+    fontWeight: '600',
   },
 });
 

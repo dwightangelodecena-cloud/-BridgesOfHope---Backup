@@ -1,117 +1,416 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  Dimensions,
+  TextInput,
+  Modal,
+  Pressable,
+  ActivityIndicator,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { TAB_ROUTES } from '../../lib/navigationConfig';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
 
 const { width } = Dimensions.get('window');
+
+/** UI labels match web Progress filter; values map to `clinical_status` in DB. */
+const STATUS_FILTER_OPTIONS = [
+  { label: 'All statuses', value: 'all' },
+  { label: 'Recovering', value: 'recovering' },
+  { label: 'In Treatment', value: 'in_treatment' },
+  { label: 'Stable', value: 'stable' },
+] as const;
+
+const NOTIFICATION_ITEMS = [
+  'Submit missing laboratory result before Friday.',
+  'Family support session is scheduled on April 5, 10:00 AM.',
+  'Weekly report reviewed by your assigned counselor.',
+];
+
+function deriveInitials(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
+  return parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('') || 'FU';
+}
+
+function statusMatchesFilter(filter: string, clinicalStatus: string): boolean {
+  if (filter === 'all') return true;
+  const c = (clinicalStatus || '').toLowerCase();
+  if (filter === 'stable') return c === 'stable';
+  if (filter === 'recovering') return c === 'improving';
+  if (filter === 'in_treatment') return c === 'improving' || c === 'declining';
+  return false;
+}
 
 export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [displayName, setDisplayName] = useState('Family User');
+  const [userInitials, setUserInitials] = useState('FU');
+  const [patients, setPatients] = useState<UIPatient[]>([]);
+  const [patientsLoading, setPatientsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+
+  const loadPatients = useCallback(async () => {
+    if (!isSupabaseConfigured()) {
+      setPatients([]);
+      setPatientsLoading(false);
+      return;
+    }
+    setPatientsLoading(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user?.id) {
+        setPatients([]);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('patients')
+        .select(
+          'id, full_name, admitted_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at'
+        )
+        .eq('family_id', user.id)
+        .is('discharged_at', null)
+        .order('admitted_at', { ascending: false });
+
+      if (error) {
+        console.warn('[progress patients]', error.message);
+        setPatients([]);
+        return;
+      }
+      const list = (data || [])
+        .map((r) => uiPatientFromRow(r as unknown as PatientRow))
+        .filter((x): x is UIPatient => x != null);
+      setPatients(list);
+    } catch {
+      setPatients([]);
+    } finally {
+      setPatientsLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPatients();
+    }, [loadPatients])
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!isSupabaseConfigured()) return;
+      try {
+        const { data } = await supabase.auth.getUser();
+        const user = data?.user;
+        let resolved =
+          (user?.user_metadata?.full_name as string | undefined)?.trim() ||
+          [user?.user_metadata?.first_name, user?.user_metadata?.last_name]
+            .filter(Boolean)
+            .join(' ')
+            .trim() ||
+          'Family User';
+        if (user?.id) {
+          const { data: profileRow } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
+        }
+        if (mounted) {
+          setDisplayName(resolved);
+          setUserInitials(deriveInitials(resolved));
+        }
+      } catch {
+        /* keep defaults */
+      }
+    };
+    loadUser();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const filteredPatients = patients.filter((p) => {
+    const q = searchTerm.trim().toLowerCase();
+    const matchesSearch = !q || (p.name || '').toLowerCase().includes(q);
+    const matchesStatus = statusMatchesFilter(statusFilter, p.status);
+    return matchesSearch && matchesStatus;
+  });
+
+  const avgProgress = patients.length
+    ? Math.round(
+        patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length
+      )
+    : 0;
+
+  const dischargeReadyCount = patients.filter((p) => (Number(p.progress) || 0) >= 80).length;
+
+  const statusFilterLabel =
+    STATUS_FILTER_OPTIONS.find((o) => o.value === statusFilter)?.label ?? 'All statuses';
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <Modal
+        visible={showNotifications}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNotifications(false)}
+      >
+        <View style={styles.notifModalRoot}>
+          <Pressable style={styles.notifModalBackdrop} onPress={() => setShowNotifications(false)} />
+          <View style={[styles.notificationsDropdown, { top: insets.top + 52, right: 16 }]}>
+            <View style={styles.notificationsDropdownTitleRow}>
+              <Ionicons name="notifications" size={16} color="#F54E25" />
+              <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
+            </View>
+            {NOTIFICATION_ITEMS.map((item) => (
+              <View key={item} style={styles.notificationsDropdownRow}>
+                <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
+                <Text style={styles.notificationsDropdownText}>{item}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.header}>
-        <Image
-          source={require('../../assets/images/BOHLogo.png')}
-          style={styles.headerLogo}
-          resizeMode="contain"
-        />
-        <Text style={styles.headerTitle}>Progress</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerBrandTitle}>Progress</Text>
+          <Text style={styles.headerWelcomeLine} numberOfLines={1}>
+            Welcome back, {displayName}
+          </Text>
+        </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerCircleBtn}
+            onPress={() => setShowNotifications((v) => !v)}
+            accessibilityLabel="Notifications"
+          >
+            <Ionicons name="notifications" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerCircleBtn}
+            onPress={() => router.navigate(TAB_ROUTES.profile)}
+            accessibilityLabel="Profile"
+          >
+            <Text style={styles.headerAvatarText}>{userInitials}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={() => setStatusMenuOpen(false)}
       >
-        <Text style={styles.greetingText}>
-          <Text style={styles.highlightText}>Hello,</Text> Jane Doe
+        <Text style={styles.helloTitle}>
+          <Text style={styles.helloAccent}>Hello,</Text> {displayName}
         </Text>
-        <Text style={styles.subGreeting}>Here's an overview of your family members</Text>
+        <Text style={styles.helloSubtitle}>{"Here's an overview of your family members"}</Text>
 
-        {/* Patient Card */}
-        <View style={styles.patientCard}>
-          <View style={styles.patientHeader}>
-            <View style={styles.avatarContainer}>
-              <Ionicons name="person" size={30} color="#FFFFFF" />
-            </View>
-            <View>
-              <Text style={styles.patientName}>John Doe</Text>
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>Recovering</Text>
+        <View style={styles.toolsRow}>
+          <View style={styles.searchWrap}>
+            <Ionicons name="search-outline" size={18} color="#A3AED0" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search patient by name..."
+              placeholderTextColor="#A3AED0"
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+            />
+          </View>
+
+          <View style={styles.statusDropdownWrap}>
+            <View style={styles.statusShell}>
+              <TouchableOpacity
+                style={[
+                  styles.statusTriggerInner,
+                  statusMenuOpen && styles.statusTriggerInnerOpen,
+                ]}
+                onPress={() => setStatusMenuOpen((o) => !o)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: statusMenuOpen }}
+              >
+                <Text style={styles.statusTriggerText} numberOfLines={1}>
+                  {statusFilterLabel}
+                </Text>
+                <Ionicons
+                  name={statusMenuOpen ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#1B2559"
+                />
+              </TouchableOpacity>
+            {statusMenuOpen && (
+              <View style={styles.statusMenuList}>
+                {STATUS_FILTER_OPTIONS.map((opt, idx) => {
+                  const selected = statusFilter === opt.value;
+                  const isLast = idx === STATUS_FILTER_OPTIONS.length - 1;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[
+                        styles.statusMenuItem,
+                        selected && styles.statusMenuItemSelected,
+                        isLast && styles.statusMenuItemLast,
+                      ]}
+                      onPress={() => {
+                        setStatusFilter(opt.value);
+                        setStatusMenuOpen(false);
+                      }}
+                    >
+                      <Text
+                        style={[styles.statusMenuItemText, selected && styles.statusMenuItemTextSelected]}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
+            )}
             </View>
-          </View>
-
-          <View style={styles.infoGrid}>
-            <InfoItem 
-              icon="calendar" 
-              label="Date of Admission" 
-              value="January 15, 2026" 
-              iconColor="#2B31ED" 
-            />
-            <InfoItem 
-              icon="target" 
-              label="Success Rate" 
-              value="83%" 
-              iconColor="#E91E63" 
-              isCommunityIcon 
-            />
-            <View style={styles.progressSection}>
-               <View style={styles.infoIconBox}>
-                  <MaterialCommunityIcons name="trending-up" size={20} color="#4CAF50" />
-               </View>
-               <View style={{ flex: 1 }}>
-                  <View style={styles.progressLabelRow}>
-                    <Text style={styles.infoLabel}>Recovery Progress</Text>
-                    <Text style={styles.progressPercent}>65%</Text>
-                  </View>
-                  <View style={styles.progressBarBg}>
-                    <View style={[styles.progressBarFill, { width: '65%' }]} />
-                  </View>
-               </View>
-            </View>
-            <InfoItem 
-              icon="puzzle-outline" 
-              label="Activities" 
-              value="View list" 
-              iconColor="#2196F3" 
-              isCommunityIcon
-              hideValue 
-            />
-          </View>
-
-          <View style={styles.buttonRow}>
-            <TouchableOpacity 
-              style={styles.viewDetailsBtn}
-              onPress={() => router.push('./ViewDetailPage')}
-            >
-              <MaterialCommunityIcons name="pulse" size={20} color="#FFFFFF" />
-              <Text style={styles.buttonText}>View Details</Text>
-            </TouchableOpacity>
-            
-            {/* UPDATED DISCHARGE BUTTON */}
-            <TouchableOpacity 
-              style={styles.dischargeBtn}
-              onPress={() => router.push('/DischargeForm')} // Navigates to the Discharge Form
-              activeOpacity={0.7}
-            >
-              <Ionicons name="person-remove" size={18} color="#FFFFFF" />
-              <Text style={styles.buttonText}>Discharge</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Dashed Admit Button */}
-        <TouchableOpacity 
-          style={styles.dashedButton}
-          onPress={() => router.push('../AdmissionForm')}
+        <View style={styles.summaryRow}>
+          <ProgressMetricCard
+            icon="document-text-outline"
+            value={String(patients.length)}
+            label="Total Patients"
+          />
+          <ProgressMetricCard
+            icon="checkmark-done-circle-outline"
+            value={`${avgProgress}%`}
+            label="Average Progress"
+          />
+          <ProgressMetricCard
+            icon="warning-outline"
+            value={String(dischargeReadyCount)}
+            label="Discharge Ready"
+          />
+        </View>
+
+        {patientsLoading ? (
+          <View style={styles.loadingBlock}>
+            <ActivityIndicator color="#F54E25" />
+            <Text style={styles.loadingText}>Loading patients…</Text>
+          </View>
+        ) : (
+          <>
+            {filteredPatients.map((patient) => (
+              <View key={patient.id} style={styles.patientCard}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.patientAvatarRing}>
+                    <Ionicons name="person-outline" size={28} color="#A3AED0" />
+                  </View>
+                  <View style={styles.cardHeaderText}>
+                    <Text style={styles.patientName}>{patient.name}</Text>
+                    <View style={styles.statusBadge}>
+                      <Text style={styles.statusBadgeText}>{patient.status || '—'}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.statsGrid}>
+                  <View style={styles.statCell}>
+                    <Ionicons name="calendar-outline" size={20} color="#4318FF" />
+                    <View style={styles.statTextCol}>
+                      <Text style={styles.statLabel}>Date of Admission</Text>
+                      <Text style={styles.statValue}>{patient.date || '—'}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.statCell}>
+                    <Ionicons name="extension-puzzle-outline" size={20} color="#4318FF" />
+                    <View style={styles.statTextCol}>
+                      <Text style={styles.statLabel}>Success Rate</Text>
+                      <Text style={styles.statValue}>
+                        {patient.progress != null ? `${patient.progress}%` : '—'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={[styles.statCell, styles.statCellFull]}>
+                    <View style={styles.recoveryBlock}>
+                      <View style={styles.recoveryLabelRow}>
+                        <Ionicons name="trending-up" size={16} color="#22C55E" />
+                        <Text style={styles.statLabel}>Recovery Progress</Text>
+                      </View>
+                      <View style={styles.progressRow}>
+                        <View style={styles.progressTrack}>
+                          <View
+                            style={[styles.progressFill, { width: `${patient.progress}%` }]}
+                          />
+                        </View>
+                        <Text style={styles.progressPct}>{patient.progress}%</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.statCell}>
+                    <Ionicons name="locate-outline" size={20} color="#4318FF" />
+                    <View style={styles.statTextCol}>
+                      <Text style={styles.statLabel}>Activities</Text>
+                      <Text style={styles.activitiesMuted}>No Current Activities</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.viewDetailsBtn}
+                  onPress={() =>
+                    router.push({
+                      pathname: TAB_ROUTES.weeklyReport,
+                      params: { patientId: patient.id, patientName: patient.name },
+                    })
+                  }
+                >
+                  <Ionicons name="pulse" size={18} color="#FFFFFF" />
+                  <Text style={styles.viewDetailsBtnText}>View Details</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+
+            {!patientsLoading && filteredPatients.length === 0 && patients.length > 0 && (
+              <View style={styles.emptyFilterCard}>
+                <Text style={styles.emptyFilterText}>
+                  No patients found for your current filter.
+                </Text>
+              </View>
+            )}
+
+            {!patientsLoading && patients.length === 0 && (
+              <View style={styles.emptyFilterCard}>
+                <Text style={styles.emptyFilterText}>
+                  {isSupabaseConfigured()
+                    ? 'No admitted patients yet. Submit an admission request to add a family member.'
+                    : 'Connect Supabase to load patients linked to your account.'}
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+
+        <TouchableOpacity
+          style={styles.admitCard}
+          onPress={() => router.navigate(TAB_ROUTES.admission)}
+          activeOpacity={0.85}
         >
-          <Ionicons name="add" size={30} color="#CCCCCC" />
-          <Text style={styles.dashedButtonText}>Admit a Patient</Text>
+          <Ionicons name="add" size={44} color="#A3AED0" />
+          <Text style={styles.admitCardText}>Admit a Patient</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -119,55 +418,52 @@ export default function ProgressScreen() {
         <TabItem
           img={require('../../assets/images/home-icon.png')}
           label="Home"
-          onPress={() => router.push('./home')}
+          onPress={() => router.navigate(TAB_ROUTES.home)}
         />
         <TabItem
           img={require('../../assets/images/progress-icon.png')}
           label="Progress"
           active
-          onPress={() => router.push('/tabs/progress')} 
+          onPress={() => router.navigate(TAB_ROUTES.progress)}
         />
         <TabItem
           img={require('../../assets/images/messages-icon.png')}
           label="Message"
-          onPress={() => {}} 
+          onPress={() => router.navigate(TAB_ROUTES.messages)}
         />
         <TabItem
           img={require('../../assets/images/profile-icon.png')}
           label="Profile"
-          onPress={() => router.push('../profile')}
+          onPress={() => router.navigate(TAB_ROUTES.profile)}
         />
       </View>
     </View>
   );
 }
 
-const InfoItem = ({ icon, label, value, iconColor, isCommunityIcon, hideValue }: any) => (
-  <View style={styles.infoItem}>
-    <View style={[styles.infoIconBox, { backgroundColor: '#F5F5F5' }]}>
-      {isCommunityIcon ? (
-        <MaterialCommunityIcons name={icon} size={20} color={iconColor} />
-      ) : (
-        <Ionicons name={icon} size={20} color={iconColor} />
-      )}
+function ProgressMetricCard({
+  icon,
+  value,
+  label,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  value: string;
+  label: string;
+}) {
+  return (
+    <View style={styles.metricCard}>
+      <Ionicons name={icon} size={22} color="#F54E25" />
+      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
     </View>
-    <View>
-      <Text style={styles.infoLabel}>{label}</Text>
-      {!hideValue && <Text style={styles.infoValue}>{value}</Text>}
-      {label === "Activities" && (
-        <View style={styles.activitiesIconRow}>
-           <MaterialCommunityIcons name="puzzle-outline" size={16} color="#2196F3" />
-        </View>
-      )}
-    </View>
-  </View>
-);
+  );
+}
 
 const TabItem = ({ img, label, active, onPress }: any) => (
   <TouchableOpacity style={styles.tabItem} onPress={onPress}>
     <Image
       source={img}
-      style={[styles.tabIcon, { tintColor: active ? "#F54E25" : "#999999" }]}
+      style={[styles.tabIcon, { tintColor: active ? '#F54E25' : '#999999' }]}
       resizeMode="contain"
     />
     <Text style={[styles.tabLabel, active && styles.activeTabLabel]}>{label}</Text>
@@ -175,7 +471,7 @@ const TabItem = ({ img, label, active, onPress }: any) => (
 );
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
@@ -183,182 +479,421 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    height: 60,
+    paddingHorizontal: 16,
+    minHeight: 56,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F1F1',
+    zIndex: 10,
   },
-  headerLogo: {
-    width: 60,
-    height: 30,
+  headerCenter: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333333',
-  },
-  scrollContent: {
-    paddingHorizontal: 25,
-    paddingTop: 20,
-  },
-  greetingText: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  highlightText: {
+  headerBrandTitle: {
+    fontSize: 17,
+    fontWeight: '800',
     color: '#F54E25',
   },
-  subGreeting: {
+  headerWelcomeLine: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerCircleBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F54E25',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#F54E25',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  headerAvatarText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  notifModalRoot: {
+    flex: 1,
+  },
+  notifModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  notificationsDropdown: {
+    position: 'absolute',
+    width: Math.min(340, width - 32),
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+    borderRadius: 14,
+    padding: 16,
+    shadowColor: '#1B2559',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  notificationsDropdownTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  notificationsDropdownTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1B2559',
+  },
+  notificationsDropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
+  notificationsDropdownText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 18,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    overflow: 'visible',
+  },
+  helloTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1B2559',
+  },
+  helloAccent: {
+    color: '#F54E25',
+  },
+  helloSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#A3AED0',
+    marginTop: 6,
+    marginBottom: 14,
+  },
+  toolsRow: {
+    gap: 12,
+    marginBottom: 18,
+    zIndex: 20,
+  },
+  statusDropdownWrap: {
+    position: 'relative',
+    zIndex: 30,
+  },
+  statusShell: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+    backgroundColor: '#FAFAFA',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  statusTriggerInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    minHeight: 48,
+    backgroundColor: '#FAFAFA',
+  },
+  statusTriggerInnerOpen: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+  },
+  statusTriggerText: {
+    flex: 1,
     fontSize: 14,
-    color: '#666',
-    marginTop: 5,
-    marginBottom: 30,
+    fontWeight: '600',
+    color: '#1B2559',
+    marginRight: 8,
+  },
+  statusMenuList: {
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  statusMenuItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EEF2F6',
+  },
+  statusMenuItemLast: {
+    borderBottomWidth: 0,
+  },
+  statusMenuItemSelected: {
+    backgroundColor: '#DBEAFE',
+  },
+  statusMenuItemText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1B2559',
+  },
+  statusMenuItemTextSelected: {
+    fontWeight: '700',
+    color: '#1E40AF',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 18,
+    justifyContent: 'space-between',
+  },
+  metricCard: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingVertical: 16,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#F0F2F8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  metricValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111827',
+    marginTop: 10,
+  },
+  metricLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1B2559',
+    paddingVertical: 0,
+  },
+  loadingBlock: {
+    paddingVertical: 28,
+    alignItems: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '600',
   },
   patientCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 30,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
     padding: 20,
-    elevation: 10,
+    marginBottom: 14,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    marginBottom: 20,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  patientHeader: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    gap: 14,
+    marginBottom: 16,
   },
-  avatarContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#F54E25',
-    justifyContent: 'center',
+  patientAvatarRing: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: '#D0D5E8',
+    borderStyle: 'dashed',
+    backgroundColor: 'transparent',
     alignItems: 'center',
-    marginRight: 15,
+    justifyContent: 'center',
+  },
+  cardHeaderText: {
+    flex: 1,
+    minWidth: 0,
   },
   patientName: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1B2559',
   },
   statusBadge: {
-    backgroundColor: '#FFF9C4',
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFF9E6',
     paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: 15,
-    alignSelf: 'flex-start',
-    marginTop: 4,
+    borderRadius: 12,
+    marginTop: 6,
   },
-  statusText: {
+  statusBadgeText: {
     fontSize: 12,
-    color: '#FBC02D',
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: '#E6A500',
   },
-  infoGrid: {
+  statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 18,
   },
-  infoItem: {
-    flexDirection: 'row',
+  statCell: {
     width: '48%',
-    marginBottom: 20,
-    alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
   },
-  infoIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
+  statCellFull: {
+    width: '100%',
   },
-  infoLabel: {
-    fontSize: 10,
-    color: '#999',
+  statTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
-  infoValue: {
-    fontSize: 12,
+  statLabel: {
+    fontSize: 11,
     fontWeight: '600',
-    color: '#333',
+    color: '#A3AED0',
   },
-  progressSection: {
-    width: '48%',
+  statValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1B2559',
+    marginTop: 2,
+  },
+  activitiesMuted: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#A3AED0',
+    marginTop: 2,
+  },
+  recoveryBlock: {
+    width: '100%',
+  },
+  recoveryLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    gap: 8,
+    marginBottom: 6,
   },
-  progressLabelRow: {
+  progressRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 10,
   },
-  progressPercent: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  progressBarBg: {
-    height: 6,
-    backgroundColor: '#EEE',
-    borderRadius: 3,
-    marginTop: 5,
+  progressTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#E9EDF7',
+    borderRadius: 10,
     overflow: 'hidden',
   },
-  progressBarFill: {
+  progressFill: {
     height: '100%',
-    backgroundColor: '#2B31ED',
+    backgroundColor: '#4318FF',
+    borderRadius: 10,
   },
-  buttonRow: {
-    marginTop: 10,
+  progressPct: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#707EAE',
+    minWidth: 36,
   },
   viewDetailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
     backgroundColor: '#F54E25',
-    flexDirection: 'row',
-    height: 55,
-    borderRadius: 15,
-    justifyContent: 'center',
+    borderRadius: 14,
+    paddingVertical: 14,
+  },
+  viewDetailsBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  emptyFilterCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+    padding: 24,
+    marginBottom: 14,
     alignItems: 'center',
-    marginBottom: 12,
   },
-  dischargeBtn: {
-    backgroundColor: '#F54E25',
-    flexDirection: 'row',
-    height: 55,
-    borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#FFF',
-    fontWeight: 'bold',
-    marginLeft: 10,
-    fontSize: 16,
-  },
-  dashedButton: {
-    height: 70,
-    borderWidth: 2,
-    borderColor: '#EEE',
-    borderStyle: 'dashed',
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  dashedButtonText: {
-    color: '#BBB',
+  emptyFilterText: {
+    fontSize: 14,
     fontWeight: '600',
-    marginLeft: 10,
-    fontSize: 16,
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 20,
   },
-  activitiesIconRow: {
-    marginTop: 2,
+  admitCard: {
+    minHeight: 120,
+    borderWidth: 2,
+    borderColor: '#E0E5F2',
+    borderStyle: 'dashed',
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    backgroundColor: 'transparent',
+  },
+  admitCardText: {
+    marginTop: 8,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#A3AED0',
   },
   bottomNav: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     borderTopWidth: 1,
-    borderColor: '#F5F5F5',
+    borderColor: '#F1F1F1',
     backgroundColor: '#FFFFFF',
     paddingTop: 10,
     position: 'absolute',

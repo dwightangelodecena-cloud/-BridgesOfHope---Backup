@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboa
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TAB_ROUTES } from '../../lib/navigationConfig';
 
 export default function DischargeForm() {
   const router = useRouter();
@@ -79,7 +80,7 @@ export default function DischargeForm() {
     }).start(() => {
       Alert.alert("Success", "Discharge request processed successfully!");
       setIsSubmitting(false);
-      router.replace('/tabs/home');
+      router.replace(TAB_ROUTES.home);
     });
   };
 
@@ -92,7 +93,7 @@ export default function DischargeForm() {
     return (
       <View style={styles.splashContainer}>
         <Image 
-          source={require('../assets/images/checkedenvelope.png')} 
+          source={require('../../assets/images/checkedenvelope.png')} 
           style={styles.splashIcon}
           resizeMode="contain"
         />
@@ -109,11 +110,11 @@ export default function DischargeForm() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top, height: 70 + insets.top }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.navigate(TAB_ROUTES.progress)} style={styles.backButton}>
           <Ionicons name="arrow-back" size={28} color="#333" />
         </TouchableOpacity>
         <Image 
-          source={require('../assets/images/BOHLogo.png')}
+          source={require('../../assets/images/BOHLogo.png')}
           style={styles.headerLogo} 
           resizeMode="contain" 
         />
