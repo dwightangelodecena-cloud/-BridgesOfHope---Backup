@@ -30,25 +30,38 @@ import vice from '@/assets/vicenews.png';
 import rappler from '@/assets/rappler.png';
 import reaksyon from '@/assets/reaksyon.png';
 import containerImg from '@/assets/Container.png';
-import prog1 from '@/assets/landingpage1.png';
-import prog2 from '@/assets/landingpage2.png';
+import prog1 from '@/assets/carousel1.png';
+import prog2 from '@/assets/carousel2.png';
+import prog3 from '@/assets/carousel3.jpg';
+import prog4 from '@/assets/carousel4.png';
+import prog5 from '@/assets/carousel5.jpg';
 import hopeLogo from '@/assets/hoperecoverylogo.png';
 
 const PROGRAM_SLIDES = [
   {
-    title: 'Lifetime aftercare',
-    text: 'Access to medical specialists and facilitators to support your sobriety long after the program ends.',
+    title: 'Comprehensive Health Exams',
+    text: 'A complete evaluation of your physical and mental health to understand your condition and guide a personalized path to recovery.',
     img: prog1,
   },
   {
-    title: 'Counseling & therapy',
-    text: 'Professional one-on-one and group sessions led by credentialed therapists.',
-    img: prog1,
-  },
-  {
-    title: 'In-patient recovery',
-    text: 'A safe, residential environment where you can focus entirely on healing.',
+    title: 'Medically Supervised Detox',
+    text: 'A safe, medically guided detox process designed to manage withdrawal symptoms and support your body’s natural healing.',
     img: prog2,
+  },
+  {
+    title: 'Counseling and Therapy',
+    text: 'Professional counseling and therapy services tailored to help you address emotional, psychological, and behavioral challenges.',
+    img: prog3,
+  },
+  {
+    title: 'Personalized Treatment Plan',
+    text: 'A customized recovery plan built around your unique experiences, needs, and goals for lasting change.',
+    img: prog4,
+  },
+  {
+    title: 'Lifetime Aftercare & Halfway Privileges',
+    text: 'Ongoing support and counseling even after your program, helping you maintain sobriety and stay connected for life.',
+    img: prog5,
   },
 ];
 const HERO_ROTATE_WORDS = ['recovery', 'hope', 'sobriety', 'renewal'];
