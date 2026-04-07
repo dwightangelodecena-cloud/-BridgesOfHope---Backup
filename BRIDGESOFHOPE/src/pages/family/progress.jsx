@@ -5,6 +5,9 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { refreshAppData, APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { uiPatientFromRow } from '@/lib/dbMappers';
+import { useAsyncData } from '@/hooks/useAsyncData';
+import { familyDataService } from '@/services/familyDataService';
+import { FAMILY_COLORS, StatusBadge, Timeline, AuditLine, LoadingState, ErrorState } from '@/components/family/shared/ui';
 
 // Assets
 import logo from '@/assets/logo2.png';
@@ -47,6 +50,12 @@ const Progress = () => {
     ];
 
     const [patients, setPatients] = useState([]);
+    const {
+        data: sharedSummary,
+        loading: summaryLoading,
+        error: summaryError,
+        refresh: refreshSummary,
+    } = useAsyncData(async () => familyDataService.getRequestsSummary(), []);
 
     useEffect(() => {
         let cancelled = false;
@@ -928,7 +937,7 @@ const Progress = () => {
                     </div>
                 </div>
 
-                <div className="content-area">
+                <div className="content-area" style={{ background: FAMILY_COLORS.background }}>
                     <div className="header-section">
                         <h1><span>Hello,</span> {displayName}</h1>
                         <p style={{ color: '#A3AED0', marginTop: '5px', fontWeight: '500' }}>Here's an overview of your family members</p>
@@ -946,6 +955,35 @@ const Progress = () => {
                                 <option value="stable">Stable</option>
                             </select>
                         </div>
+                    </div>
+                    <div
+                        style={{
+                            background: '#fff',
+                            border: `1px solid ${FAMILY_COLORS.surface}`,
+                            borderRadius: 16,
+                            padding: 14,
+                            marginBottom: 14,
+                        }}
+                        tabIndex={0}
+                        aria-label="Progress and request overview"
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <div style={{ color: FAMILY_COLORS.text, fontWeight: 800 }}>Care Request Overview</div>
+                            <StatusBadge label={(sharedSummary?.total || 0) > 0 ? 'Needs attention' : 'Stable'} tone={(sharedSummary?.total || 0) > 0 ? 'warning' : 'success'} />
+                        </div>
+                        {summaryLoading ? <LoadingState label="Loading request overview..." /> : null}
+                        {summaryError ? <ErrorState label={summaryError} onRetry={refreshSummary} /> : null}
+                        {!summaryLoading && !summaryError ? (
+                            <>
+                                <Timeline
+                                    items={[
+                                        { label: `Admission requests: ${sharedSummary?.admissions || 0}`, active: (sharedSummary?.admissions || 0) > 0, meta: 'Family initiated' },
+                                        { label: `Discharge requests: ${sharedSummary?.discharges || 0}`, active: (sharedSummary?.discharges || 0) > 0, meta: 'Awaiting staff confirmation' },
+                                    ]}
+                                />
+                                <AuditLine text={`Viewed ${new Date().toLocaleString()}`} />
+                            </>
+                        ) : null}
                     </div>
 
                     <div className="summary-grid">

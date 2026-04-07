@@ -2,6 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { useAsyncData } from '@/hooks/useAsyncData';
+import { familyDataService } from '@/services/familyDataService';
+import { FAMILY_COLORS, StatusBadge, AuditLine, LoadingState, ErrorState } from '@/components/family/shared/ui';
 
 import logo from '@/assets/logo2.png';
 
@@ -28,6 +31,12 @@ const Profile = () => {
   });
   const [draftProfile, setDraftProfile] = useState(profileForm);
   const fileInputRef = useRef(null);
+  const {
+    data: profileSnapshot,
+    loading: snapshotLoading,
+    error: snapshotError,
+    refresh: refreshSnapshot,
+  } = useAsyncData(async () => familyDataService.getProfileSnapshot(), []);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -112,7 +121,7 @@ const Profile = () => {
           display: flex;
           width: 100vw;
           height: 100vh;
-          background: #F8F9FD;
+          background: ${FAMILY_COLORS.background};
           font-family: 'Inter', -apple-system, sans-serif;
           overflow: hidden;
           touch-action: manipulation;
@@ -183,6 +192,7 @@ const Profile = () => {
           padding: 30px 40px;
           overflow-y: auto;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
         }
@@ -622,6 +632,19 @@ const Profile = () => {
         </div>
 
         <div className="scroll-content">
+          <div style={{ width: '100%', maxWidth: 540, marginBottom: 14 }}>
+            <div style={{ background: '#fff', border: `1px solid ${FAMILY_COLORS.surface}`, borderRadius: 16, padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <strong style={{ color: FAMILY_COLORS.text }}>Profile Completeness</strong>
+                <StatusBadge label={draftProfile?.email && draftProfile?.phone ? 'Complete' : 'Incomplete'} tone={draftProfile?.email && draftProfile?.phone ? 'success' : 'warning'} />
+              </div>
+              {snapshotLoading ? <LoadingState label="Checking profile snapshot..." /> : null}
+              {snapshotError ? <ErrorState label={snapshotError} onRetry={refreshSnapshot} /> : null}
+              {!snapshotLoading && !snapshotError ? (
+                <AuditLine text={`Profile source: ${profileSnapshot?.fullName || 'Family User'} | last viewed ${new Date().toLocaleString()}`} />
+              ) : null}
+            </div>
+          </div>
           <div className="profile-card">
 
             {/* Avatar */}

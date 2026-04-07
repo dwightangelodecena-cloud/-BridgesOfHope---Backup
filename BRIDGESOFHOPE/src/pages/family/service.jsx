@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Home, TrendingUp, User, LogOut, X, Landmark, Users, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { useAsyncData } from '@/hooks/useAsyncData';
+import { familyDataService } from '@/services/familyDataService';
+import { FAMILY_COLORS, StatusBadge, AuditLine, LoadingState } from '@/components/family/shared/ui';
 
 // Asset import for the logo
 import logo from '@/assets/logo2.png';
@@ -11,6 +14,7 @@ const Service = () => {
   const [isExpanded, setIsExpanded] = useState(false); // State for monthly fees expansion
   const [isAdmissionExpanded, setIsAdmissionExpanded] = useState(false); // New state for admission card expansion
   const [userInitials, setUserInitials] = useState('FU');
+  const { data: billingSnapshot, loading: billingLoading } = useAsyncData(async () => familyDataService.getBillingSnapshot(), []);
 
   useEffect(() => {
     let isMounted = true;
@@ -44,7 +48,7 @@ const Service = () => {
           display: flex;
           width: 100vw;
           height: 100vh;
-          background: #F8F9FD;
+          background: ${FAMILY_COLORS.background};
           font-family: 'Plus Jakarta Sans', sans-serif;
           overflow: hidden;
         }
@@ -122,7 +126,7 @@ const Service = () => {
 
         .view-title {
           align-items: stretch;
-          color: #F54E25;
+          color: ${FAMILY_COLORS.accent};
           font-weight: 800;
           font-size: 22px;
           display: flex;
@@ -139,7 +143,7 @@ const Service = () => {
           margin-left: auto;
           width: 45px;
           height: 45px;
-          background: #F54E25;
+          background: ${FAMILY_COLORS.accent};
           color: white;
           border-radius: 50%;
           display: flex;
@@ -229,7 +233,7 @@ const Service = () => {
         }
 
         .admission-fee-card {
-          background: linear-gradient(135deg, #FF7E5F 0%, #F54E25 100%);
+          background: linear-gradient(135deg, #F95C4B 0%, #D94F42 100%);
           border-radius: 24px;
           padding: 40px;
           color: white;
@@ -520,6 +524,22 @@ const Service = () => {
         </header>
 
         <div className="content-area">
+          <div style={{ background: '#fff', border: `1px solid ${FAMILY_COLORS.surface}`, borderRadius: 16, padding: 14, marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <strong style={{ color: FAMILY_COLORS.text }}>Billing Snapshot</strong>
+              <StatusBadge label={billingSnapshot?.status || 'Pending'} tone="warning" />
+            </div>
+            {billingLoading ? <LoadingState label="Loading billing snapshot..." /> : null}
+            {!billingLoading && billingSnapshot ? (
+              <>
+                <div style={{ display: 'flex', gap: 18, color: '#4A443A', fontSize: 13, fontWeight: 600 }}>
+                  <span>Outstanding: PHP {billingSnapshot.outstanding?.toLocaleString?.() || billingSnapshot.outstanding}</span>
+                  <span>Next due: {billingSnapshot.nextDue}</span>
+                </div>
+                <AuditLine text="Front-end preview for family billing transparency." />
+              </>
+            ) : null}
+          </div>
           <div className="page-header">
             <div className="header-main">
               <div className="header-icon-box"><DollarSign size={42} strokeWidth={2.5} /></div>

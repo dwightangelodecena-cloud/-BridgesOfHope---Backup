@@ -13,6 +13,17 @@ import {
   uiAdmissionRequestFromRow,
   uiDischargeRequestFromRow,
 } from '@/lib/dbMappers';
+import { useAsyncData } from '@/hooks/useAsyncData';
+import { familyDataService } from '@/services/familyDataService';
+import {
+  FAMILY_COLORS,
+  StatusBadge,
+  Timeline,
+  AuditLine,
+  EmptyState,
+  LoadingState,
+  ErrorState,
+} from '@/components/family/shared/ui';
 
 // Asset imports
 import logo from '@/assets/logo2.png';
@@ -134,6 +145,12 @@ const HomeDashboard = () => {
   ];
   const [activityFeed, setActivityFeed] = useState([]);
   const [supabaseReadError, setSupabaseReadError] = useState(null);
+  const {
+    data: sharedSummary,
+    loading: sharedLoading,
+    error: sharedError,
+    refresh: refreshSharedSummary,
+  } = useAsyncData(async () => familyDataService.getRequestsSummary(), []);
 
   const reminderItems = [
     'Complete profile details',
@@ -1549,8 +1566,41 @@ const HomeDashboard = () => {
           </div>
         </div>
 
-        <div className="scroll-content">
+        <div className="scroll-content" style={{ background: FAMILY_COLORS.background }}>
           <div className="content-wrap">
+          <div
+            className="panel-card"
+            style={{ marginBottom: 16, borderColor: FAMILY_COLORS.surface, background: '#fff', outline: `2px solid ${FAMILY_COLORS.surface}` }}
+            tabIndex={0}
+            aria-label="Family portal summary"
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+              <h3 style={{ margin: 0, color: FAMILY_COLORS.text }}>Family Portal Summary</h3>
+              <StatusBadge
+                label={(sharedSummary?.total || 0) > 0 ? 'Action Needed' : 'Up to Date'}
+                tone={(sharedSummary?.total || 0) > 0 ? 'warning' : 'success'}
+              />
+            </div>
+            {sharedLoading ? <LoadingState label="Loading summary..." /> : null}
+            {sharedError ? <ErrorState label={sharedError} onRetry={refreshSharedSummary} /> : null}
+            {!sharedLoading && !sharedError && !sharedSummary?.total ? (
+              <EmptyState
+                title="No pending requests"
+                description="You are all caught up. New admission or discharge requests will appear here."
+              />
+            ) : null}
+            {!sharedLoading && !sharedError && (sharedSummary?.total || 0) > 0 ? (
+              <>
+                <Timeline
+                  items={[
+                    { label: `Pending admissions: ${sharedSummary.admissions}`, active: sharedSummary.admissions > 0, meta: 'Review in progress' },
+                    { label: `Pending discharges: ${sharedSummary.discharges}`, active: sharedSummary.discharges > 0, meta: 'Awaiting approval' },
+                  ]}
+                />
+                <AuditLine text={`Updated ${new Date().toLocaleString()}`} />
+              </>
+            ) : null}
+          </div>
           <div className="panel-card" style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h2 className="recovery-text-mobile" style={{ fontSize: '30px', fontWeight: 800, color: '#1B2559', margin: 0 }}>

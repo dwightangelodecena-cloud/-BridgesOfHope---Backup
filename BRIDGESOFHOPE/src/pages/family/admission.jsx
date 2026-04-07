@@ -5,6 +5,7 @@ import { appendActivityFeed } from '@/lib/activityFeed';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { refreshAppData } from '@/lib/appDataRefresh';
 import logo from '@/assets/logo.png';
+import { FAMILY_COLORS, AuditLine, StatusBadge } from '@/components/family/shared/ui';
 
 const Admission = () => {
   const navigate = useNavigate();
@@ -157,7 +158,7 @@ const Admission = () => {
           display: flex;
           align-items: center;
           justify-content: center;
-          background-color: #ffffff;
+          background-color: ${FAMILY_COLORS.background};
           font-family: 'Inter', sans-serif;
           margin: 0;
           padding: 0;
@@ -185,7 +186,7 @@ const Admission = () => {
           width: 100%;
           max-width: 480px;
           text-align: center;
-          border: 1px solid #f1f5f9;
+          border: 1px solid ${FAMILY_COLORS.surface};
           position: relative;
         }
 
@@ -202,7 +203,7 @@ const Admission = () => {
           transition: color 0.2s;
         }
 
-        .back-button:hover { color: #F54E25; }
+        .back-button:hover { color: ${FAMILY_COLORS.accent}; }
         .card-header-logo { height: 70px; margin-bottom: 35px; object-fit: contain; }
 
         .form-group { text-align: left; margin-bottom: 20px; position: relative; }
@@ -243,8 +244,8 @@ const Admission = () => {
         }
 
         .input-wrapper input:focus, .input-wrapper select:focus {
-          border-color: #F54E25;
-          box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.1);
+          border-color: ${FAMILY_COLORS.accent};
+          box-shadow: 0 0 0 4px rgba(249, 92, 75, 0.15);
         }
 
         .input-icon { position: absolute; left: 18px; color: #94a3b8; pointer-events: none; z-index: 1; }
@@ -290,7 +291,7 @@ const Admission = () => {
 
         .btn-primary {
           width: 100%;
-          background: #F54E25;
+          background: ${FAMILY_COLORS.accent};
           color: white;
           padding: 16px;
           border: none;
@@ -417,10 +418,10 @@ const Admission = () => {
             <div className="meta-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.86rem' }}>Form Completion</span>
-                <span style={{ fontWeight: 700, color: '#F54E25', fontSize: '0.86rem' }}>{progressPercent}%</span>
+                <span style={{ fontWeight: 700, color: FAMILY_COLORS.accent, fontSize: '0.86rem' }}>{progressPercent}%</span>
               </div>
               <div style={{ height: 8, background: '#E2E8F0', borderRadius: 999 }}>
-                <div style={{ width: `${progressPercent}%`, height: '100%', background: '#F54E25', borderRadius: 999 }} />
+                <div style={{ width: `${progressPercent}%`, height: '100%', background: FAMILY_COLORS.accent, borderRadius: 999 }} />
               </div>
               <p style={{ marginTop: 8, color: '#64748b', fontSize: '0.8rem' }}>
                 {completedFields} of {requiredFields.length} required fields completed
@@ -428,6 +429,9 @@ const Admission = () => {
             </div>
 
             <div className="meta-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <StatusBadge label={progressPercent === 100 ? 'Ready' : 'Needs Review'} tone={progressPercent === 100 ? 'success' : 'warning'} />
+              </div>
               <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.86rem', marginBottom: 6 }}>Admission Checklist</div>
               {requiredFields.map((field) => (
                 <div key={field.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: 5 }}>
@@ -440,6 +444,7 @@ const Admission = () => {
               <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#64748b' }}>
                 Estimated review: 1-3 business days after submission.
               </div>
+              <AuditLine text="Front-end helper: review required fields before submitting." />
             </div>
 
             <form onSubmit={handleSubmit} noValidate>
