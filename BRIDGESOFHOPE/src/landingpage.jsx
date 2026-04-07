@@ -186,6 +186,7 @@ const LandingPage = () => {
 
 
 
+        #hero,
         #about,
         #programs,
         #testimonials,
@@ -345,9 +346,6 @@ const LandingPage = () => {
           background: rgba(255, 255, 255, 0.94) !important;
           border-bottom-color: rgba(15, 23, 42, 0.06) !important;
         }
-
-
-
         .nav-links {
           display: flex !important;
           align-items: center !important;
@@ -356,9 +354,6 @@ const LandingPage = () => {
           left: 50% !important;
           transform: translateX(-50%) !important;
         }
-
-
-
         .nav-links a {
           text-decoration: none !important;
           color: #475569 !important;
@@ -384,9 +379,6 @@ const LandingPage = () => {
           transform: scaleX(1);
           transform-origin: left;
         }
-
-
-
         .login-btn {
           background: var(--lp-accent) !important;
           color: white !important;
@@ -399,15 +391,13 @@ const LandingPage = () => {
           white-space: nowrap !important;
           box-shadow: 0 4px 14px rgba(234, 74, 31, 0.35);
           transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+          font-family: inherit !important;
         }
         .login-btn:hover {
           background: var(--lp-accent-hover) !important;
           transform: translateY(-1px);
           box-shadow: 0 6px 20px rgba(234, 74, 31, 0.4);
         }
-
-
-
         .hamburger {
           display: none;
           background: none;
@@ -429,6 +419,7 @@ const LandingPage = () => {
           min-height: 88vh;
           display: flex;
           align-items: center;
+          justify-content: flex-start;
           padding: 120px clamp(1.25rem, 5vw, 4rem) 4rem;
           color: white;
           width: 100%;
@@ -442,30 +433,28 @@ const LandingPage = () => {
           object-fit: cover;
           z-index: 0;
         }
-        .hero-overlay {
-          position: absolute;
-          inset: 0;
-          z-index: 1;
-          background: linear-gradient(
-            115deg,
-            rgba(15, 23, 42, 0.88) 0%,
-            rgba(15, 23, 42, 0.55) 45%,
-            rgba(15, 23, 42, 0.35) 100%
-          );
-        }
         .hero-inner {
           position: relative;
           z-index: 2;
-          max-width: 1200px;
-          margin: 0 auto;
           width: 100%;
+          max-width: 1200px;
+          margin: 0;
+          margin-right: auto;
+          box-sizing: border-box;
+        }
+        .hero-content {
+          text-align: left;
+          max-width: 38rem;
+          margin: 0;
+          padding-left: clamp(0.75rem, 4vw, 2.5rem);
         }
         .hero-lead {
           font-size: clamp(1rem, 2vw, 1.2rem);
           line-height: 1.65;
-          opacity: 0.92;
+          opacity: 0.95;
           max-width: 32rem;
           margin: 0 0 2rem 0;
+          text-shadow: 0 1px 18px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.35);
         }
         .hero-actions {
           display: flex;
@@ -518,6 +507,7 @@ const LandingPage = () => {
           border: 1px solid rgba(255, 255, 255, 0.22);
           margin-bottom: 1.25rem;
           backdrop-filter: blur(10px);
+          text-shadow: 0 1px 14px rgba(0, 0, 0, 0.4);
         }
         .hero-title {
           display: flex;
@@ -525,14 +515,16 @@ const LandingPage = () => {
           align-items: flex-start;
           gap: 0.2rem;
           margin: 0 0 1.25rem 0;
-          max-width: 22ch;
+          max-width: 100%;
         }
         .hero-title-line {
-          font-size: clamp(2.5rem, 6vw, 4.25rem);
+          font-size: clamp(1.75rem, 5.5vw, 4.25rem);
           line-height: 1.08;
           font-weight: 800;
           letter-spacing: -0.03em;
           display: block;
+          white-space: nowrap;
+          text-shadow: 0 2px 28px rgba(0, 0, 0, 0.5), 0 1px 10px rgba(0, 0, 0, 0.4);
         }
         .hero-title-rotate-wrap {
           display: block;
@@ -543,6 +535,7 @@ const LandingPage = () => {
           line-height: 1.08;
           font-weight: 800;
           letter-spacing: -0.03em;
+          text-align: left;
         }
         .hero-title-rotate {
           display: inline-block;
@@ -551,13 +544,15 @@ const LandingPage = () => {
           background-clip: text;
           color: transparent;
           -webkit-text-fill-color: transparent;
+          filter: drop-shadow(0 2px 18px rgba(0, 0, 0, 0.45));
         }
         .hero-title-suffix {
           font-size: clamp(1.35rem, 3.5vw, 2rem);
           font-weight: 600;
-          opacity: 0.92;
+          opacity: 0.95;
           letter-spacing: -0.02em;
           margin-top: 0.15rem;
+          text-shadow: 0 2px 22px rgba(0, 0, 0, 0.48), 0 1px 8px rgba(0, 0, 0, 0.38);
         }
         .hero-badges {
           display: flex;
@@ -810,10 +805,10 @@ const LandingPage = () => {
 
 
 
-        /* Footer CTA */
+        /* Footer — palette only: #f6f4f1 #e4ded2 #f95c4b #000000 */
         .footer-cta-part {
-          background: linear-gradient(160deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-          color: white;
+          background: linear-gradient(180deg, #f6f4f1 0%, #e4ded2 100%);
+          color: #000000;
           padding: clamp(4rem, 10vw, 5.5rem) 0;
           width: 100vw;
           position: relative;
@@ -826,7 +821,11 @@ const LandingPage = () => {
           right: -10%;
           width: 50%;
           height: 120%;
-          background: radial-gradient(ellipse, rgba(234, 74, 31, 0.15) 0%, transparent 70%);
+          background: radial-gradient(
+            ellipse,
+            rgba(249, 92, 75, 0.2) 0%,
+            transparent 68%
+          );
           pointer-events: none;
         }
         .footer-cta-inner {
@@ -839,9 +838,10 @@ const LandingPage = () => {
           font-weight: 800;
           letter-spacing: -0.02em;
           margin: 0 0 0.75rem 0;
+          color: #000000;
         }
         .footer-cta-part .footer-lead {
-          color: #94a3b8;
+          color: rgba(0, 0, 0, 0.62);
           font-size: 1.0625rem;
           margin: 0 0 2.5rem 0;
           max-width: 32rem;
@@ -854,8 +854,8 @@ const LandingPage = () => {
           gap: 1rem;
         }
         .footer-cta-box {
-          background: rgba(255, 255, 255, 0.06);
-          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: #f6f4f1;
+          border: 1px solid rgba(0, 0, 0, 0.1);
           border-radius: var(--lp-radius);
           padding: 1.25rem 1rem;
           display: flex;
@@ -864,25 +864,30 @@ const LandingPage = () => {
           gap: 0.75rem;
           font-weight: 600;
           font-size: 0.9375rem;
-          color: white;
+          color: #000000;
           cursor: pointer;
           width: 100%;
           transition: background 0.2s, border-color 0.2s, transform 0.15s;
         }
         .footer-cta-box:hover {
-          background: rgba(255, 255, 255, 0.12);
-          border-color: rgba(234, 74, 31, 0.45);
+          background: #e4ded2;
+          border-color: #f95c4b;
           transform: translateY(-2px);
         }
-        .footer-cta-box svg { flex-shrink: 0; opacity: 0.9; }
-
-
+        .footer-cta-box svg {
+          flex-shrink: 0;
+          color: #f95c4b;
+        }
 
         .footer-info-part {
-          background: #0b1120;
-          color: #e2e8f8;
+          background: #e4ded2;
+          color: #000000;
           padding: 3.5rem 0 4rem 0;
           width: 100vw;
+          border-top: 1px solid rgba(0, 0, 0, 0.08);
+        }
+        .footer-info-part .text-orange {
+          color: #f95c4b !important;
         }
         .info-grid {
           display: grid;
@@ -890,7 +895,7 @@ const LandingPage = () => {
           gap: clamp(2rem, 5vw, 3.5rem);
         }
         .footer-brand-block p {
-          color: #94a3b8;
+          color: rgba(0, 0, 0, 0.62);
           line-height: 1.65;
           font-size: 1rem;
           max-width: 22rem;
@@ -906,11 +911,11 @@ const LandingPage = () => {
           margin: 0;
           font-size: 1.125rem;
           font-weight: 700;
-          color: white;
+          color: #000000;
         }
         .footer-col-title {
           margin: 0 0 1.25rem 0;
-          color: #64748b;
+          color: rgba(0, 0, 0, 0.48);
           font-size: 0.75rem;
           font-weight: 600;
           letter-spacing: 0.1em;
@@ -921,20 +926,20 @@ const LandingPage = () => {
           align-items: center;
           gap: 0.75rem;
           margin-bottom: 1rem;
-          color: #94a3b8;
+          color: #000000;
           font-size: 0.9375rem;
         }
         .footer-contact-item a {
           color: inherit;
           text-decoration: none;
         }
-        .footer-contact-item a:hover { color: white; }
+        .footer-contact-item a:hover { color: #f95c4b; }
         .footer-legal a {
-          color: #94a3b8;
+          color: rgba(0, 0, 0, 0.55);
           text-decoration: none;
           font-size: 0.875rem;
         }
-        .footer-legal a:hover { color: white; }
+        .footer-legal a:hover { color: #000000; }
 
 
 
@@ -959,20 +964,15 @@ const LandingPage = () => {
             padding: 2rem;
           }
           .nav-links a::after { display: none; }
-
-
-
           .desktop-login { display: none !important; }
           .mobile-login { display: block !important; margin-top: 0.5rem; width: 100%; max-width: 200px; }
-
-
-
-          .hero { min-height: 78vh; text-align: center; justify-content: center; }
-          .hero-title { align-items: center; max-width: none; margin-left: auto; margin-right: auto; }
-          .hero-title-rotate-wrap { text-align: center; }
-          .hero-badges { justify-content: center; margin-left: auto; margin-right: auto; }
-          .hero-lead { margin-left: auto; margin-right: auto; }
-          .hero-actions { justify-content: center; }
+          .hero { min-height: 78vh; text-align: left; justify-content: center; }
+          .hero-content { padding-left: clamp(0.5rem, 3.5vw, 2rem); }
+          .hero-title { align-items: flex-start; max-width: none; margin-left: 0; margin-right: 0; }
+          .hero-title-rotate-wrap { text-align: left; }
+          .hero-badges { justify-content: flex-start; margin-left: 0; margin-right: 0; }
+          .hero-lead { margin-left: 0; margin-right: 0; }
+          .hero-actions { justify-content: flex-start; }
 
 
 
@@ -1065,7 +1065,7 @@ const LandingPage = () => {
           </button>
         </div>
       </header>
-      <section className="hero">
+      <section className="hero" id="hero">
         <motion.img
           src={heroImg}
           className="hero-bg"
@@ -1087,19 +1087,6 @@ const LandingPage = () => {
           }}
         >
           <div className="hero-content">
-            <motion.span
-              className="hero-eyebrow"
-              variants={{
-                hidden: { opacity: 0, y: 22 },
-                visible: {
-                  opacity: 1,
-                  y: 0,
-                  transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] },
-                },
-              }}
-            >
-              Bridges of Hope
-            </motion.span>
             <motion.h1
               className="hero-title"
               variants={{
