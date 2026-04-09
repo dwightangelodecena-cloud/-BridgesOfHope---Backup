@@ -25,6 +25,10 @@ import AdminDashboard from '@/pages/admin/admin-dashboard';
 import PatientDatabasePage from './pages/nurse/patient-database';
 import AdminPatientDatabase from '@/pages/admin/patient-database';
 import Analytics from './pages/admin/analytics';
+import UserManagement from '@/pages/admin/user-management';
+import AdmissionManagement from '@/pages/admin/admission-management';
+import DischargeManagement from '@/pages/admin/discharge-management';
+import StaffManagement from '@/pages/admin/staff-management';
 
 function App() {
   return (
@@ -54,6 +58,10 @@ function App() {
         <Route path="/patient-database" element={<PatientDatabasePage />} />
         <Route path="/admin-patient-database" element={<AdminPatientDatabase />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/admin-user-management" element={<UserManagement />} />
+        <Route path="/admin-staff-management" element={<StaffManagement />} />
+        <Route path="/admin-admission-management" element={<AdmissionManagement />} />
+        <Route path="/admin-discharge-management" element={<DischargeManagement />} />
       </Routes>
     </Router>
   );

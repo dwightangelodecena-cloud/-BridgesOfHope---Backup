@@ -13,11 +13,11 @@ const VerifyStep2 = () => {
   const location = useLocation();
   const from = location.state?.from || 'forgot';
   
-  // State to hold the 4-digit code
-  const [otp, setOtp] = useState(['', '', '', '']);
+  // State to hold the 6-digit code
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   
   // References for each input field to handle auto-focus
-  const inputRefs = [useRef(), useRef(), useRef(), useRef()];
+  const inputRefs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
 
   const handleChange = (index, value) => {
     // Only allow numbers
@@ -29,7 +29,7 @@ const VerifyStep2 = () => {
     setOtp(newOtp);
 
     // Auto-focus to next input if value is entered
-    if (value && index < 3) {
+    if (value && index < otp.length - 1) {
       inputRefs[index + 1].current.focus();
     }
   };
@@ -44,7 +44,7 @@ const VerifyStep2 = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     const finalCode = otp.join('');
-    if (finalCode.length === 4) {
+    if (finalCode.length === 6) {
       // Navigates to newpass.jsx
       navigate('/newpass', { state: { from } });
     }

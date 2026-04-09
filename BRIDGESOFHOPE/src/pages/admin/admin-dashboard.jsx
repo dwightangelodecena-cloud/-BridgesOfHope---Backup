@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, BarChart2, Store, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle } from 'lucide-react';
+import { LayoutGrid, BarChart2, HeartPulse, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -10,6 +10,7 @@ import {
   uiAdmissionRequestFromRow,
   uiDischargeRequestFromRow,
 } from '@/lib/dbMappers';
+import { loadWorkflowOverrides, loadDischargeRecords } from '@/lib/admissionDischargeStore';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -21,6 +22,12 @@ const AdminDashboard = () => {
   const [pendingDischarges, setPendingDischarges] = useState([]);
 
   const [recentActivities, setRecentActivities] = useState([]);
+  const [pipelineMetrics, setPipelineMetrics] = useState({
+    totalAdmissions: 0,
+    forDischarge: 0,
+    readyDischarge: 0,
+    dischargedDone: 0,
+  });
 
   const formatActTime = (iso) => {
     if (!iso) return '';
@@ -45,6 +52,19 @@ const AdminDashboard = () => {
     setPendingAdmissions(a);
     setPendingDischarges(d);
     if (act) setRecentActivities(act);
+    const ov = loadWorkflowOverrides();
+    const forDischargeCount = Object.values(ov).filter((x) => x.workflowStatus === 'For Discharge' && !x.archived).length;
+    const dr = loadDischargeRecords();
+    const ready = dr.filter((r) => !r.archived && r.finalStatus === 'Ready for Discharge').length;
+    const done = dr.filter(
+      (r) => !r.archived && (r.finalStatus === 'Completed' || r.finalStatus === 'Discharged')
+    ).length;
+    setPipelineMetrics({
+      totalAdmissions: 0,
+      forDischarge: forDischargeCount,
+      readyDischarge: ready,
+      dischargedDone: done,
+    });
   };
 
   const loadFromSupabase = async () => {
@@ -81,6 +101,21 @@ const AdminDashboard = () => {
         icon: row.icon_name || 'users',
       }))
     );
+
+    const { count: admTotal } = await supabase.from('admission_requests').select('*', { count: 'exact', head: true });
+    const ov = loadWorkflowOverrides();
+    const forDischargeCount = Object.values(ov).filter((x) => x.workflowStatus === 'For Discharge' && !x.archived).length;
+    const dr = loadDischargeRecords();
+    const ready = dr.filter((r) => !r.archived && r.finalStatus === 'Ready for Discharge').length;
+    const done = dr.filter(
+      (r) => !r.archived && (r.finalStatus === 'Completed' || r.finalStatus === 'Discharged')
+    ).length;
+    setPipelineMetrics({
+      totalAdmissions: admTotal ?? 0,
+      forDischarge: forDischargeCount,
+      readyDischarge: ready,
+      dischargedDone: done,
+    });
   };
 
   const syncData = async () => {
@@ -132,11 +167,11 @@ const AdminDashboard = () => {
   const [modalView, setModalView] = useState(null); // 'admissions', 'discharges', 'confirm', '2fa'
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestType, setRequestType] = useState(null); // 'admission' or 'discharge'
-  const [twoFactorCode, setTwoFactorCode] = useState(['', '', '', '']);
+  const [twoFactorCode, setTwoFactorCode] = useState(['', '', '', '', '', '']);
   const [twoFAError, setTwoFAError] = useState('');
   const [twoFAConfirming, setTwoFAConfirming] = useState(false);
 
-  const tfaRefs = [useRef(), useRef(), useRef(), useRef()];
+  const tfaRefs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
 
   // Computed metrics
   const totalPatients = patients.length;
@@ -224,7 +259,7 @@ const AdminDashboard = () => {
 
   const handleProceedClick = () => {
     setTwoFAError('');
-    setTwoFactorCode(['', '', '', '']);
+    setTwoFactorCode(['', '', '', '', '', '']);
     setModalView('2fa');
     // Focus first input automatically after slight delay to ensure it's rendered
     setTimeout(() => { if (tfaRefs[0].current) tfaRefs[0].current.focus(); }, 100);
@@ -238,7 +273,7 @@ const AdminDashboard = () => {
     setTwoFactorCode(nw);
 
     // Auto-focus to next input
-    if (value && index < 3) {
+    if (value && index < twoFactorCode.length - 1) {
       tfaRefs[index + 1].current.focus();
     }
   };
@@ -248,7 +283,7 @@ const AdminDashboard = () => {
     if (e.key === 'Backspace' && !twoFactorCode[index] && index > 0) {
       tfaRefs[index - 1].current.focus();
     } else if (e.key === 'Enter') {
-      if (twoFactorCode.join('').length === 4) {
+      if (twoFactorCode.join('').length === 6) {
         handle2FAConfirm();
       }
     }
@@ -435,7 +470,7 @@ const AdminDashboard = () => {
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .dashboard-outer { width: 100vw; overflow-x: hidden; }
+        .dashboard-outer { width: 100%; max-width: 100%; overflow-x: hidden; }
 
         .desktop-sidebar {
           width: ${isExpanded ? '280px' : '110px'};
@@ -443,45 +478,91 @@ const AdminDashboard = () => {
           border-right: 1px solid #F1F1F1;
           display: flex;
           flex-direction: column;
-          align-items: center;
-          padding: 25px 0;
+          align-items: stretch;
+          padding: 25px 0 0;
           z-index: 100;
           transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           cursor: pointer;
+          position: fixed;
+          top: 0;
+          left: 0;
+          height: 100vh;
+          overflow: hidden;
+          flex-shrink: 0;
+          box-shadow: 4px 0 24px rgba(27, 37, 89, 0.06);
         }
 
-        .sidebar-logo-container { display: flex; justify-content: center; width: 100%; margin-bottom: 40px; }
+        .sidebar-logo-container { display: flex; justify-content: center; width: 100%; margin-bottom: 28px; align-self: center; }
         .sidebar-logo { width: ${isExpanded ? '120px' : '70px'}; transition: width 0.3s ease; }
+
+        .sidebar-nav-scroll {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+        }
 
         .sidebar-nav-item {
           display: flex; align-items: center; width: 100%;
-          padding: 0 ${isExpanded ? '35px' : '0'};
+          padding: 0 ${isExpanded ? '28px' : '0'};
           justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 20px; margin-bottom: 25px; box-sizing: border-box;
+          gap: 14px; margin-bottom: 6px; min-height: 48px; box-sizing: border-box;
         }
 
         .sidebar-label {
           display: ${isExpanded ? 'block' : 'none'};
-          font-weight: 700; font-size: 18px; color: #707EAE; white-space: nowrap;
+          font-weight: 600; font-size: 15px; color: #707EAE;
+          line-height: 1.25; white-space: normal; max-width: 210px;
+        }
+
+        .sidebar-footer {
+          flex-shrink: 0;
+          width: 100%;
+          padding: 16px 0 20px;
+          margin-top: auto;
+          border-top: 1px solid #f1f5f9;
         }
 
         .icon-box {
           width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
           transition: all 0.2s; background: #E9EDF7; color: #1B2559;
         }
         .icon-box.active { background: #F54E25; color: white; }
         .icon-box.inactive { background: transparent; color: #A3AED0; }
 
         .dashboard-main {
-          flex: 1; min-height: 100vh;
+          flex: 1 1 0;
+          min-height: 100vh;
+          min-width: 0;
           margin-left: ${isExpanded ? '280px' : '110px'};
           transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          padding: 40px;
+          padding: 32px 28px 48px;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
+          overflow-x: hidden;
+        }
+
+        .dashboard-inner {
+          min-width: 0;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
+        }
+
+        .metric-cards-container {
+          width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
         }
 
         .metric-card {
           background: white; border-radius: 16px; padding: 24px; border: 1px solid #E9EDF7;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 16px; flex: 1; min-width: 200px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 16px;
+          flex: 1 1 200px; min-width: 0; max-width: 100%;
           cursor: pointer; transition: transform 0.2s;
         }
         .metric-card:hover { transform: translateY(-2px); }
@@ -501,12 +582,56 @@ const AdminDashboard = () => {
         .recent-activity-card {
           background: white; border-radius: 16px; padding: 32px; border: 1px solid #E9EDF7;
           box-shadow: 0 4px 12px rgba(0,0,0,0.02); margin-top: 32px;
+          min-width: 0;
+          max-width: 100%;
+          box-sizing: border-box;
+          overflow-x: hidden;
         }
-          
+
+        .recent-activity-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+          gap: 12px;
+          flex-wrap: wrap;
+          min-width: 0;
+        }
+
         .activity-row {
-          display: flex; align-items: center; justify-content: space-between; padding: 20px 0; border-bottom: 1px solid #F4F7FE;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 20px 0;
+          border-bottom: 1px solid #F4F7FE;
+          min-width: 0;
         }
         .activity-row:last-child { border-bottom: none; padding-bottom: 0; }
+
+        .activity-row-left {
+          display: flex;
+          align-items: flex-start;
+          gap: 16px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .activity-row-text {
+          flex: 1;
+          min-width: 0;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .activity-row-time {
+          flex-shrink: 0;
+          font-size: 12px;
+          font-weight: 500;
+          color: #A3AED0;
+          white-space: nowrap;
+          padding-top: 2px;
+        }
 
         /* MODAL STYLES */
         .modal-overlay {
@@ -562,6 +687,7 @@ const AdminDashboard = () => {
           .metric-card { width: 100% !important; min-width: unset !important; }
           .recent-activity-card { padding: 20px !important; }
           .activity-row { flex-direction: column; align-items: flex-start; gap: 10px; padding: 15px 0; }
+          .activity-row-time { align-self: flex-end; white-space: normal; text-align: right; width: 100%; }
           .modal-box { width: 95% !important; padding: 20px !important; margin: 10px; max-height: 90vh; overflow-y: auto; }
           .req-top-row { flex-direction: column; gap: 10px; }
           .req-buttons { flex-direction: column; gap: 10px; }
@@ -577,21 +703,39 @@ const AdminDashboard = () => {
         <div className="sidebar-logo-container">
           <img src={logoBH} alt="BH" className="sidebar-logo" />
         </div>
-        <div className="sidebar-nav-item">
-          <div className="icon-box active"><LayoutGrid size={22} /></div>
-          <span className="sidebar-label" style={{ color: '#F54E25' }}>Dashboard</span>
-        </div>
-        <div className="sidebar-nav-item" onClick={() => navigate('/analytics')}>
-          <div className="icon-box inactive"><BarChart2 size={24} /></div>
-          <span className="sidebar-label">Analytics</span>
-        </div>
-        <div className="sidebar-nav-item" onClick={() => navigate('/admin-patient-database')}>
-          <div className="icon-box inactive"><Store size={22} /></div>
-          <span className="sidebar-label">Patient Database</span>
-        </div>
-        <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '20px' }}>
+        <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
+          <div className="sidebar-nav-item">
+            <div className="icon-box active"><LayoutGrid size={22} /></div>
+            <span className="sidebar-label" style={{ color: '#F54E25' }}>Dashboard</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/analytics'); }}>
+            <div className="icon-box inactive"><BarChart2 size={24} /></div>
+            <span className="sidebar-label">Analytics</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
+            <div className="icon-box inactive"><HeartPulse size={22} /></div>
+            <span className="sidebar-label">Patient Management</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
+            <div className="icon-box inactive"><ClipboardList size={22} /></div>
+            <span className="sidebar-label">Admission Management</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}>
+            <div className="icon-box inactive"><ArrowRightSquare size={22} /></div>
+            <span className="sidebar-label">Discharge Management</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}>
+            <div className="icon-box inactive"><Users size={22} /></div>
+            <span className="sidebar-label">User Management</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
+            <div className="icon-box inactive"><Stethoscope size={22} /></div>
+            <span className="sidebar-label">Staff Management</span>
+          </div>
+        </nav>
+        <div className="sidebar-footer">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? '0' : '10px' }} />
+            <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? '0' : '10px', flexShrink: 0 }} />
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
           </div>
         </div>
@@ -606,7 +750,7 @@ const AdminDashboard = () => {
 
       {/* MAIN CONTENT */}
       <main className="dashboard-main">
-        <div style={{ maxWidth: '1500px', margin: '0 auto 0 0', width: '100%' }}>
+        <div className="dashboard-inner">
           <h1 className="dashboard-title-desktop" style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', marginBottom: 32 }}>Dashboard</h1>
 
           <div className="metric-cards-container" style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
@@ -678,12 +822,60 @@ const AdminDashboard = () => {
             </div>
           </div>
 
+          <div className="metric-cards-container" style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 16 }}>
+            <div className="metric-card" onClick={() => navigate('/admin-admission-management')} style={{ cursor: 'pointer' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div className="metric-icon-box"><ClipboardList size={24} /></div>
+                <span className="metric-badge" style={{ background: '#EEF2FF', color: '#4338CA' }}>Admissions</span>
+              </div>
+              <div>
+                <div className="metric-value">{pipelineMetrics.totalAdmissions}</div>
+                <div className="metric-title">Total admission records</div>
+                <div className="metric-subtitle">Open admission management</div>
+              </div>
+            </div>
+            <div className="metric-card" onClick={() => navigate('/admin-admission-management')} style={{ cursor: 'pointer' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div className="metric-icon-box"><ArrowRightSquare size={24} /></div>
+                <span className="metric-badge" style={{ background: '#FFF7ED', color: '#C2410C' }}>Pipeline</span>
+              </div>
+              <div>
+                <div className="metric-value">{pipelineMetrics.forDischarge}</div>
+                <div className="metric-title">For discharge</div>
+                <div className="metric-subtitle">Marked in admission workflow</div>
+              </div>
+            </div>
+            <div className="metric-card" onClick={() => navigate('/admin-discharge-management')} style={{ cursor: 'pointer' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div className="metric-icon-box"><Clock size={24} /></div>
+                <span className="metric-badge" style={{ background: '#ECFDF3', color: '#166534' }}>Queue</span>
+              </div>
+              <div>
+                <div className="metric-value">{pipelineMetrics.readyDischarge}</div>
+                <div className="metric-title">Ready in discharge</div>
+                <div className="metric-subtitle">Awaiting finalization</div>
+              </div>
+            </div>
+            <div className="metric-card" onClick={() => navigate('/admin-discharge-management')} style={{ cursor: 'pointer' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div className="metric-icon-box"><CheckCircle2 size={24} /></div>
+                <span className="metric-badge" style={{ background: '#F4F7FE', color: '#4A628A' }}>Done</span>
+              </div>
+              <div>
+                <div className="metric-value">{pipelineMetrics.dischargedDone}</div>
+                <div className="metric-title">Discharged / completed</div>
+                <div className="metric-subtitle">In discharge module</div>
+              </div>
+            </div>
+          </div>
+
           {/* Recent Activity */}
           <div className="recent-activity-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div className="recent-activity-header">
               <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1B2559' }}>Recent Activity</h2>
               {recentActivities.length > 0 && (
                 <button
+                  type="button"
                   onClick={handleClearActivities}
                   style={{ background: '#F4F7FE', color: '#1B2559', border: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}
                 >
@@ -695,16 +887,16 @@ const AdminDashboard = () => {
               <div style={{ padding: '20px 0', textAlign: 'center', color: '#A3AED0', fontSize: 14 }}>No recent activities.</div>
             ) : recentActivities.map((act) => (
               <div key={act.id} className="activity-row">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ width: 40, height: 40, background: '#FFF0ED', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F54E25' }}>
+                <div className="activity-row-left">
+                  <div style={{ width: 40, height: 40, flexShrink: 0, background: '#FFF0ED', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F54E25' }}>
                     {act.icon === 'check' ? <CheckCircle2 size={20} /> : act.icon === 'bed' ? <Bed size={20} /> : <Users size={20} />}
                   </div>
-                  <div>
+                  <div className="activity-row-text">
                     <p style={{ fontSize: 13, fontWeight: 700, color: '#1B2559', marginBottom: 2 }}>{act.title}</p>
                     <p style={{ fontSize: 12, fontWeight: 500, color: '#A3AED0' }}>{act.desc}</p>
                   </div>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 500, color: '#A3AED0' }}>{act.time}</div>
+                <div className="activity-row-time">{act.time}</div>
               </div>
             ))}
           </div>
@@ -867,6 +1059,8 @@ const AdminDashboard = () => {
               <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[1]} ref={tfaRefs[1]} onChange={e => handle2FAChange(1, e.target.value)} onKeyDown={e => handle2FAKeyDown(1, e)} />
               <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[2]} ref={tfaRefs[2]} onChange={e => handle2FAChange(2, e.target.value)} onKeyDown={e => handle2FAKeyDown(2, e)} />
               <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[3]} ref={tfaRefs[3]} onChange={e => handle2FAChange(3, e.target.value)} onKeyDown={e => handle2FAKeyDown(3, e)} />
+              <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[4]} ref={tfaRefs[4]} onChange={e => handle2FAChange(4, e.target.value)} onKeyDown={e => handle2FAKeyDown(4, e)} />
+              <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[5]} ref={tfaRefs[5]} onChange={e => handle2FAChange(5, e.target.value)} onKeyDown={e => handle2FAKeyDown(5, e)} />
             </div>
             {twoFAError && (
               <div style={{ color: '#dc2626', fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 8, maxWidth: 360, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.45 }}>
@@ -902,9 +1096,21 @@ const AdminDashboard = () => {
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}>
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <Store size={20} color="#A3AED0" />
+            <HeartPulse size={20} color="#A3AED0" />
           </div>
-          <span>Facility</span>
+          <span>Patient Management</span>
+        </div>
+        <div className="mob-nav-item" onClick={() => navigate('/admin-user-management')}>
+          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+            <Users size={20} color="#A3AED0" />
+          </div>
+          <span>Users</span>
+        </div>
+        <div className="mob-nav-item" onClick={() => navigate('/admin-staff-management')}>
+          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+            <Stethoscope size={20} color="#A3AED0" />
+          </div>
+          <span>Staff</span>
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/login')}>
           <LogOut size={22} color="#F54E25" />

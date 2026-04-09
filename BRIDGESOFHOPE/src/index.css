@@ -24,9 +24,14 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
+  min-height: 100vh;
+}
+
+/* Full-width app shell — avoids a narrow, centered column (Vite default was flex + center on body). */
+#root {
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
 }
 
