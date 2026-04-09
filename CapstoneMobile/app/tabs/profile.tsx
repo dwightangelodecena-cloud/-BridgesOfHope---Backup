@@ -293,17 +293,11 @@ export default function ProfileScreen() {
           </View>
 
           <ProfileField
-            label="Full Name"
-            value={isEditingProfile ? draftFullName : fullName}
-            onChangeText={setDraftFullName}
-            {...inputProps}
-          />
-          <ProfileField
             label="Email"
             value={email}
             onChangeText={() => {}}
             editable={false}
-            placeholder="—"
+            placeholderTextColor="#A3AED0"
           />
           <ProfileField
             label="Phone Number"

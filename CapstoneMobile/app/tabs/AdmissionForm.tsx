@@ -37,8 +37,13 @@ const DRAFT_KEY = 'bh_admission_draft';
 
 type FormData = {
   fullName: string;
+  middleInitial: string;
   email: string;
   phoneNumber: string;
+  province: string;
+  municipalityCity: string;
+  street: string;
+  barangay: string;
   patientName: string;
   patientBirthday: string;
   reasonForAdmission: string;
@@ -47,8 +52,13 @@ type FormData = {
 
 const emptyForm: FormData = {
   fullName: '',
+  middleInitial: '',
   email: '',
   phoneNumber: '',
+  province: '',
+  municipalityCity: '',
+  street: '',
+  barangay: '',
   patientName: '',
   patientBirthday: '',
   reasonForAdmission: '',
@@ -78,6 +88,10 @@ export default function AdmissionForm() {
         { key: 'fullName' as const, label: 'Full Name' },
         { key: 'email' as const, label: 'Email Address' },
         { key: 'phoneNumber' as const, label: 'Phone Number' },
+        { key: 'province' as const, label: 'Province' },
+        { key: 'municipalityCity' as const, label: 'Municipality/City' },
+        { key: 'street' as const, label: 'Street' },
+        { key: 'barangay' as const, label: 'Barangay' },
         { key: 'patientName' as const, label: 'Patient Name' },
         { key: 'patientBirthday' as const, label: 'Patient Birthday' },
         { key: 'reasonForAdmission' as const, label: 'Reason for Admission' },
@@ -158,6 +172,10 @@ export default function AdmissionForm() {
     if (!formData.email.trim()) next.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(formData.email)) next.email = 'Invalid email format';
     if (!formData.phoneNumber.trim()) next.phoneNumber = 'Phone number is required';
+    if (!formData.province.trim()) next.province = 'Province is required';
+    if (!formData.municipalityCity.trim()) next.municipalityCity = 'Municipality/City is required';
+    if (!formData.street.trim()) next.street = 'Street is required';
+    if (!formData.barangay.trim()) next.barangay = 'Barangay is required';
     if (!formData.patientName.trim()) next.patientName = 'Patient name is required';
     if (!formData.patientBirthday) next.patientBirthday = 'Birthday is required';
     if (!formData.reasonForAdmission) next.reasonForAdmission = 'Please select a reason';
@@ -216,8 +234,13 @@ export default function AdmissionForm() {
       const { error } = await supabase.from('admission_requests').insert({
         family_id: user.id,
         guardian_full_name: formData.fullName.trim(),
+        guardian_middle_initial: formData.middleInitial.trim() || null,
         guardian_email: formData.email.trim(),
         guardian_phone: formData.phoneNumber.trim(),
+        guardian_province: formData.province.trim(),
+        guardian_municipality_city: formData.municipalityCity.trim(),
+        guardian_street: formData.street.trim(),
+        guardian_barangay: formData.barangay.trim(),
         patient_name: formData.patientName.trim(),
         patient_birth_date: formData.patientBirthday,
         reason_for_admission: formData.reasonForAdmission,
@@ -360,6 +383,15 @@ export default function AdmissionForm() {
               error={errors.fullName}
             />
             <LabeledInput
+              label="Middle Initial (optional)"
+              placeholder="e.g. A"
+              icon="person-outline"
+              value={formData.middleInitial}
+              onChangeText={(t) =>
+                setField('middleInitial', t.replace(/[^a-zA-Z]/g, '').slice(0, 1).toUpperCase())
+              }
+            />
+            <LabeledInput
               label="Email Address"
               placeholder="Email address"
               icon="mail-outline"
@@ -377,6 +409,38 @@ export default function AdmissionForm() {
               value={formData.phoneNumber}
               onChangeText={(t) => setField('phoneNumber', t)}
               error={errors.phoneNumber}
+            />
+            <LabeledInput
+              label="Province"
+              placeholder="Enter your province"
+              icon="location-outline"
+              value={formData.province}
+              onChangeText={(t) => setField('province', t)}
+              error={errors.province}
+            />
+            <LabeledInput
+              label="Municipality/City"
+              placeholder="Enter your municipality/city"
+              icon="business-outline"
+              value={formData.municipalityCity}
+              onChangeText={(t) => setField('municipalityCity', t)}
+              error={errors.municipalityCity}
+            />
+            <LabeledInput
+              label="Street"
+              placeholder="Enter your street"
+              icon="navigate-outline"
+              value={formData.street}
+              onChangeText={(t) => setField('street', t)}
+              error={errors.street}
+            />
+            <LabeledInput
+              label="Barangay"
+              placeholder="Enter your barangay"
+              icon="pin-outline"
+              value={formData.barangay}
+              onChangeText={(t) => setField('barangay', t)}
+              error={errors.barangay}
             />
             <LabeledInput
               label="Patient Name"

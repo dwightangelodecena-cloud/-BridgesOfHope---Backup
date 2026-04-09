@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 
 // Component Imports
 import LandingPage from '@/landingpage'; // Using @ for src/
@@ -29,10 +29,66 @@ import UserManagement from '@/pages/admin/user-management';
 import AdmissionManagement from '@/pages/admin/admission-management';
 import DischargeManagement from '@/pages/admin/discharge-management';
 import StaffManagement from '@/pages/admin/staff-management';
+import kalingaLogo from '@/assets/kalingalogo.png';
+
+const ROUTE_TITLES = {
+  '/': 'Home',
+  '/home': 'Home',
+  '/login': 'Login',
+  '/signup': 'Sign up',
+  '/forgot': 'Forgot password',
+  '/verify': 'Verify',
+  '/newpass': 'New password',
+  '/admission': 'Admission',
+  '/services': 'Services',
+  '/progress': 'Progress',
+  '/profile': 'Profile',
+  '/changepass': 'Change password',
+  '/nurse-dashboard': 'Nurse dashboard',
+  '/nurseprofile': 'Nurse profile',
+  '/nursechangepass': 'Nurse change password',
+  '/admin-dashboard': 'Admin dashboard',
+  '/patient-database': 'Patient database',
+  '/admin-patient-database': 'Admin patient database',
+  '/analytics': 'Analytics',
+};
+
+function getPageTitle(pathname) {
+  if (ROUTE_TITLES[pathname]) return ROUTE_TITLES[pathname];
+
+  const segment = pathname.split('/').filter(Boolean).pop();
+  if (!segment) return 'Home';
+
+  return segment
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function RouteMeta() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const pageTitle = getPageTitle(location.pathname);
+    document.title = `${pageTitle} | Kalinga`;
+
+    let favicon = document.querySelector("link[rel~='icon']");
+    if (!favicon) {
+      favicon = document.createElement('link');
+      favicon.setAttribute('rel', 'icon');
+      document.head.appendChild(favicon);
+    }
+    favicon.setAttribute('href', kalingaLogo);
+    favicon.setAttribute('type', 'image/png');
+  }, [location.pathname]);
+
+  return null;
+}
 
 function App() {
   return (
     <Router>
+      <RouteMeta />
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />

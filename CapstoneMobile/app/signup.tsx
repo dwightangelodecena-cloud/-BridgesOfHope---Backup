@@ -11,7 +11,12 @@ export default function SignupScreen() {
   const { acceptTerms, setAcceptTerms } = useTerms();
 
   const [firstName, setFirstName] = useState("");
+  const [middleInitial, setMiddleInitial] = useState("");
   const [lastName, setLastName] = useState("");
+  const [province, setProvince] = useState("");
+  const [municipalityCity, setMunicipalityCity] = useState("");
+  const [street, setStreet] = useState("");
+  const [barangay, setBarangay] = useState("");
   const [contactNumber, setContactNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,6 +30,10 @@ export default function SignupScreen() {
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
     firstName?: string;
+    province?: string;
+    municipalityCity?: string;
+    street?: string;
+    barangay?: string;
     lastName?: string;
     contactNumber?: string;
     email?: string;
@@ -90,6 +99,18 @@ export default function SignupScreen() {
     if (!lastName.trim()) {
       errors.lastName = "Please Enter your Last Name";
     }
+    if (!province.trim()) {
+      errors.province = "Please enter your province";
+    }
+    if (!municipalityCity.trim()) {
+      errors.municipalityCity = "Please enter your municipality/city";
+    }
+    if (!street.trim()) {
+      errors.street = "Please enter your street";
+    }
+    if (!barangay.trim()) {
+      errors.barangay = "Please enter your barangay";
+    }
     if (!contactNumber.trim()) {
       errors.contactNumber = "Please enter your contact number";
     } else if (contactNumber.length < 11) {
@@ -134,14 +155,25 @@ export default function SignupScreen() {
 
     setBannerError(null);
     setSubmitting(true);
+    const normalizedMiddleInitial = middleInitial.trim().slice(0, 1).toUpperCase();
+    const fullName = `${firstName.trim()}${
+      normalizedMiddleInitial ? ` ${normalizedMiddleInitial}.` : ""
+    } ${lastName.trim()}`.replace(/\s+/g, " ").trim();
+    const fullAddress = `${street.trim()}, ${barangay.trim()}, ${municipalityCity.trim()}, ${province.trim()}`;
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
         data: {
           first_name: firstName.trim(),
+          middle_initial: normalizedMiddleInitial,
           last_name: lastName.trim(),
-          full_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+          full_name: fullName,
+          province: province.trim(),
+          municipality_city: municipalityCity.trim(),
+          street: street.trim(),
+          barangay: barangay.trim(),
+          address: fullAddress,
           phone: contactNumber.trim(),
           contact_number: contactNumber.trim(),
           account_type: "family",
@@ -265,6 +297,155 @@ export default function SignupScreen() {
             </View>
             {fieldErrors.lastName && (
               <Text style={styles.errorText}>{fieldErrors.lastName}</Text>
+            )}
+
+            {/* Middle Initial */}
+            <Text style={styles.label}>Middle Initial (optional)</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="person-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. A"
+                placeholderTextColor="#B0B0B0"
+                value={middleInitial}
+                onChangeText={(text) => {
+                  const cleaned = text.replace(/[^a-zA-Z]/g, "").slice(0, 1).toUpperCase();
+                  setMiddleInitial(cleaned);
+                }}
+                autoCapitalize="characters"
+                maxLength={1}
+              />
+            </View>
+
+            {/* Address Section */}
+            <Text style={styles.sectionLabel}>Address</Text>
+
+            <Text style={styles.label}>Province</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                hasError("province") && styles.inputErrorBorder,
+              ]}
+            >
+              <Ionicons
+                name="location-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your province"
+                placeholderTextColor="#B0B0B0"
+                value={province}
+                onChangeText={(text) => {
+                  setProvince(text);
+                  if (fieldErrors.province) {
+                    setFieldErrors((prev) => ({ ...prev, province: undefined }));
+                  }
+                }}
+              />
+            </View>
+            {fieldErrors.province && (
+              <Text style={styles.errorText}>{fieldErrors.province}</Text>
+            )}
+
+            <Text style={styles.label}>Municipality/City</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                hasError("municipalityCity") && styles.inputErrorBorder,
+              ]}
+            >
+              <Ionicons
+                name="business-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your municipality/city"
+                placeholderTextColor="#B0B0B0"
+                value={municipalityCity}
+                onChangeText={(text) => {
+                  setMunicipalityCity(text);
+                  if (fieldErrors.municipalityCity) {
+                    setFieldErrors((prev) => ({
+                      ...prev,
+                      municipalityCity: undefined,
+                    }));
+                  }
+                }}
+              />
+            </View>
+            {fieldErrors.municipalityCity && (
+              <Text style={styles.errorText}>{fieldErrors.municipalityCity}</Text>
+            )}
+
+            <Text style={styles.label}>Street</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                hasError("street") && styles.inputErrorBorder,
+              ]}
+            >
+              <Ionicons
+                name="navigate-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your street"
+                placeholderTextColor="#B0B0B0"
+                value={street}
+                onChangeText={(text) => {
+                  setStreet(text);
+                  if (fieldErrors.street) {
+                    setFieldErrors((prev) => ({ ...prev, street: undefined }));
+                  }
+                }}
+              />
+            </View>
+            {fieldErrors.street && (
+              <Text style={styles.errorText}>{fieldErrors.street}</Text>
+            )}
+
+            <Text style={styles.label}>Barangay</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                hasError("barangay") && styles.inputErrorBorder,
+              ]}
+            >
+              <Ionicons
+                name="pin-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your barangay"
+                placeholderTextColor="#B0B0B0"
+                value={barangay}
+                onChangeText={(text) => {
+                  setBarangay(text);
+                  if (fieldErrors.barangay) {
+                    setFieldErrors((prev) => ({ ...prev, barangay: undefined }));
+                  }
+                }}
+              />
+            </View>
+            {fieldErrors.barangay && (
+              <Text style={styles.errorText}>{fieldErrors.barangay}</Text>
             )}
 
             {/* Contact Number */}
@@ -573,6 +754,13 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#444",
     marginBottom: 6,
+  },
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginTop: 4,
+    marginBottom: 8,
   },
   inputContainer: {
     flexDirection: "row",

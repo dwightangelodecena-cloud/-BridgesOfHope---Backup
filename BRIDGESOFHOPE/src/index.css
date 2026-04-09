@@ -1,5 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -26,6 +28,13 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  font-family: inherit;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  font-family: inherit;
 }
 
 /* Full-width app shell — avoids a narrow, centered column (Vite default was flex + center on body). */
