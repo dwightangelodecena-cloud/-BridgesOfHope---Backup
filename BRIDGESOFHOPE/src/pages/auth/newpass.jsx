@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Lock, CheckCircle, XCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '@/assets/logo.png';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 const NewPass = () => {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ const NewPass = () => {
     confirmPassword: ''
   });
   const [isFocused, setIsFocused] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   const confirmRef = useRef(null);
 
@@ -25,13 +27,21 @@ const NewPass = () => {
   const isLengthValid = formData.password.length >= 8;
   const canSubmit = isLengthValid && passwordsMatch;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setSaveError('');
     if (!isLengthValid) return;
-    if (passwordsMatch) {
-      console.log("Password reset successful");
-      navigate(from === 'changepass' ? '/profile' : from === 'nursechangepass' ? '/nurseprofile' : '/login');
+    if (!passwordsMatch) return;
+
+    if (isSupabaseConfigured()) {
+      const { error } = await supabase.auth.updateUser({ password: formData.password });
+      if (error) {
+        setSaveError(error.message || 'Could not update password.');
+        return;
+      }
     }
+
+    navigate(from === 'changepass' ? '/profile' : from === 'nursechangepass' ? '/nurseprofile' : '/login');
   };
 
   const handleKeyDown = (e, field) => {
@@ -199,6 +209,11 @@ const NewPass = () => {
             <span className="step-subtitle">Please create a secure password for your account</span>
 
             <form onSubmit={handleSubmit}>
+              {saveError ? (
+                <div style={{ color: '#ef4444', fontSize: 13, fontWeight: 600, marginBottom: 16, textAlign: 'left' }}>
+                  {saveError}
+                </div>
+              ) : null}
               <div className="form-group">
                 <label className="input-label">Enter New Password</label>
                 <div className="input-wrapper">

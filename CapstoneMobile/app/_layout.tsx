@@ -1,6 +1,9 @@
 import { Stack } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { TermsProvider } from "../contexts/TermsContext";
 import { rootStackScreenOptions } from "../lib/navigationConfig";
+
+WebBrowser.maybeCompleteAuthSession();
 
 const fadeScreen = {
   animation: "fade" as const,

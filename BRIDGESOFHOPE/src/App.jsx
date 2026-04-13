@@ -8,6 +8,7 @@ import SignUp from '@/pages/auth/signup';
 import ForgotPassword from '@/pages/auth/forgot';
 import Verify from '@/pages/auth/verify';
 import NewPass from '@/pages/auth/newpass';
+import AuthCallback from '@/pages/auth/auth-callback';
 
 // Family/User Pages
 import HomeDashboard from '@/pages/family/home';
@@ -30,6 +31,7 @@ import AdmissionManagement from '@/pages/admin/admission-management';
 import DischargeManagement from '@/pages/admin/discharge-management';
 import StaffManagement from '@/pages/admin/staff-management';
 import kalingaLogo from '@/assets/kalingalogo.png';
+import { RoleGuard } from '@/components/RoleGuard';
 
 const ROUTE_TITLES = {
   '/': 'Home',
@@ -97,27 +99,149 @@ function App() {
         <Route path="/forgot" element={<ForgotPassword />} />
         <Route path="/verify" element={<Verify />} />
         <Route path="/newpass" element={<NewPass />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
 
         {/* Family/User Routes */}
-        <Route path="/home" element={<HomeDashboard />} />
-        <Route path="/admission" element={<Admission />} />
-        <Route path="/services" element={<Service />} />
-        <Route path="/progress" element={<Progress />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/changepass" element={<ChangePass />} />
+        <Route
+          path="/home"
+          element={
+            <RoleGuard allowedRoles={['family']}>
+              <HomeDashboard />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admission"
+          element={
+            <RoleGuard allowedRoles={['family']}>
+              <Admission />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/services"
+          element={
+            <RoleGuard allowedRoles={['family']}>
+              <Service />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/progress"
+          element={
+            <RoleGuard allowedRoles={['family']}>
+              <Progress />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <RoleGuard allowedRoles={['family']}>
+              <Profile />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/changepass"
+          element={
+            <RoleGuard allowedRoles={['family']}>
+              <ChangePass />
+            </RoleGuard>
+          }
+        />
 
-        {/* Nurse & Admin Routes */}
-        <Route path="/nurse-dashboard" element={<NurseDashboard />} />
-        <Route path="/nurseprofile" element={<NurseProfile />} />
-        <Route path="/nursechangepass" element={<NurseChangePass />} />
-        <Route path="/admin-dashboard" element={<AdminDashboard />} />
-        <Route path="/patient-database" element={<PatientDatabasePage />} />
-        <Route path="/admin-patient-database" element={<AdminPatientDatabase />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/admin-user-management" element={<UserManagement />} />
-        <Route path="/admin-staff-management" element={<StaffManagement />} />
-        <Route path="/admin-admission-management" element={<AdmissionManagement />} />
-        <Route path="/admin-discharge-management" element={<DischargeManagement />} />
+        {/* Nurse Routes */}
+        <Route
+          path="/nurse-dashboard"
+          element={
+            <RoleGuard allowedRoles={['nurse']}>
+              <NurseDashboard />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/nurseprofile"
+          element={
+            <RoleGuard allowedRoles={['nurse']}>
+              <NurseProfile />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/nursechangepass"
+          element={
+            <RoleGuard allowedRoles={['nurse']}>
+              <NurseChangePass />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/patient-database"
+          element={
+            <RoleGuard allowedRoles={['nurse']}>
+              <PatientDatabasePage />
+            </RoleGuard>
+          }
+        />
+
+        {/* Admin Routes */}
+        <Route
+          path="/admin-dashboard"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <AdminDashboard />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-patient-database"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <AdminPatientDatabase />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <Analytics />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-user-management"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <UserManagement />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-staff-management"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <StaffManagement />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-admission-management"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <AdmissionManagement />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-discharge-management"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <DischargeManagement />
+            </RoleGuard>
+          }
+        />
       </Routes>
     </Router>
   );

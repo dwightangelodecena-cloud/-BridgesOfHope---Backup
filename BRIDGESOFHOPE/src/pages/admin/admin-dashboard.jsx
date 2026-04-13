@@ -11,9 +11,12 @@ import {
   uiDischargeRequestFromRow,
 } from '@/lib/dbMappers';
 import { loadWorkflowOverrides, loadDischargeRecords } from '@/lib/admissionDischargeStore';
+import { approveAdmissionInDatabase } from '@/lib/approveAdmissionSupabase';
+import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const pendingTwoFARef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
   // --- STATE ---
@@ -164,14 +167,11 @@ const AdminDashboard = () => {
   };
 
   // --- MODALS STATE ---
-  const [modalView, setModalView] = useState(null); // 'admissions', 'discharges', 'confirm', '2fa'
+  const [modalView, setModalView] = useState(null); // 'admissions' | 'discharges' | 'confirm' | '2fa'
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestType, setRequestType] = useState(null); // 'admission' or 'discharge'
-  const [twoFactorCode, setTwoFactorCode] = useState(['', '', '', '', '', '']);
   const [twoFAError, setTwoFAError] = useState('');
   const [twoFAConfirming, setTwoFAConfirming] = useState(false);
-
-  const tfaRefs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
 
   // Computed metrics
   const totalPatients = patients.length;
@@ -180,6 +180,7 @@ const AdminDashboard = () => {
 
   // --- HANDLERS ---
   const handleApproveClick = (req, type) => {
+    setTwoFAError('');
     setSelectedRequest(req);
     setRequestType(type);
     setModalView('confirm');
@@ -257,87 +258,43 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleProceedClick = () => {
-    setTwoFAError('');
-    setTwoFactorCode(['', '', '', '', '', '']);
-    setModalView('2fa');
-    // Focus first input automatically after slight delay to ensure it's rendered
-    setTimeout(() => { if (tfaRefs[0].current) tfaRefs[0].current.focus(); }, 100);
-  };
-
-  const handle2FAChange = (index, value) => {
-    // Only allow numbers for the password
-    if (isNaN(value)) return;
-    const nw = [...twoFactorCode];
-    nw[index] = value.substring(value.length - 1);
-    setTwoFactorCode(nw);
-
-    // Auto-focus to next input
-    if (value && index < twoFactorCode.length - 1) {
-      tfaRefs[index + 1].current.focus();
-    }
-  };
-
-  const handle2FAKeyDown = (index, e) => {
-    // Move to previous input on backspace if current is empty
-    if (e.key === 'Backspace' && !twoFactorCode[index] && index > 0) {
-      tfaRefs[index - 1].current.focus();
-    } else if (e.key === 'Enter') {
-      if (twoFactorCode.join('').length === 6) {
-        handle2FAConfirm();
-      }
-    }
-  };
-
-  const handle2FAConfirm = async () => {
-    if (!selectedRequest || !requestType) return;
-    setTwoFAError('');
-
-    // We accept any logic since user said: "make the password clear dont put any password on it when it already done you can proceed to it"
+  const executeDashboardApproval = async (req, type) => {
+    if (!req || !type) return { ok: false, error: 'Missing request.' };
 
     if (!isSupabaseConfigured()) {
-      if (requestType === 'admission') {
-        const newPatients = [...patients, { ...selectedRequest, progress: 0 }];
+      if (type === 'admission') {
+        const newPatients = [...patients, { ...req, progress: 0 }];
         setPatients(newPatients);
         localStorage.setItem('bh_patients', JSON.stringify(newPatients));
-        const updatedPending = pendingAdmissions.filter((p) => p.id !== selectedRequest.id);
+        const updatedPending = pendingAdmissions.filter((p) => p.id !== req.id);
         setPendingAdmissions(updatedPending);
         localStorage.setItem('bh_pending_admissions', JSON.stringify(updatedPending));
-        await addActivity('New Patient is added', `${selectedRequest.name} - ${selectedRequest.reason}`, 'users');
-        await appendActivityFeed(
-          `Admission approved: ${selectedRequest.name || 'Patient'} is now admitted.`,
-          { familyId: selectedRequest.family_id }
-        );
+        await addActivity('New Patient is added', `${req.name} - ${req.reason}`, 'users');
+        await appendActivityFeed(`Admission approved: ${req.name || 'Patient'} is now admitted.`, { familyId: req.family_id });
         window.dispatchEvent(new Event('storage'));
         setModalView(updatedPending.length > 0 ? 'admissions' : null);
-      } else if (requestType === 'discharge') {
-        const newPatients = patients.filter((p) => p.id !== selectedRequest.id);
+      } else if (type === 'discharge') {
+        const newPatients = patients.filter((p) => p.id !== req.id);
         setPatients(newPatients);
         localStorage.setItem('bh_patients', JSON.stringify(newPatients));
-        const updatedPending = pendingDischarges.filter((p) => p.id !== selectedRequest.id);
+        const updatedPending = pendingDischarges.filter((p) => p.id !== req.id);
         setPendingDischarges(updatedPending);
         localStorage.setItem('bh_pending_discharges', JSON.stringify(updatedPending));
-        await addActivity('Patient discharged successfully', `${selectedRequest.name} - Treatment completed`, 'check');
-        await appendActivityFeed(
-          `Discharge approved: ${selectedRequest.name || 'Patient'} has been discharged.`,
-          { familyId: selectedRequest.family_id }
-        );
+        await addActivity('Patient discharged successfully', `${req.name} - Treatment completed`, 'check');
+        await appendActivityFeed(`Discharge approved: ${req.name || 'Patient'} has been discharged.`, { familyId: req.family_id });
         window.dispatchEvent(new Event('storage'));
         setModalView(updatedPending.length > 0 ? 'discharges' : null);
       }
       setSelectedRequest(null);
       setRequestType(null);
-      return;
+      return { ok: true };
     }
 
-    setTwoFAConfirming(true);
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      setTwoFAError('You are not signed in. Log in again as admin.');
-      setTwoFAConfirming(false);
-      return;
+      return { ok: false, error: 'You are not signed in. Log in again as admin.' };
     }
     const adminId = user?.id ?? null;
     let decidedBy = adminId;
@@ -346,49 +303,12 @@ const AdminDashboard = () => {
       if (!profileRow) decidedBy = null;
     }
     const decidedAt = new Date().toISOString();
-    const req = selectedRequest;
 
-    if (requestType === 'admission') {
-      const admissionId = req.requestId ?? req.id;
-      if (!admissionId) {
-        setTwoFAError('Missing request id. Reload the dashboard and try again.');
-        setTwoFAConfirming(false);
-        return;
-      }
-      const { data: admissionUpdated, error: upErr } = await supabase
-        .from('admission_requests')
-        .update({ status: 'approved', decided_at: decidedAt, decided_by: decidedBy })
-        .eq('id', admissionId)
-        .eq('status', 'pending')
-        .select('id');
-      if (upErr) {
-        console.error(upErr);
-        setTwoFAError(upErr.message || 'Could not approve admission request.');
-        setTwoFAConfirming(false);
-        return;
-      }
-      if (!admissionUpdated?.length) {
-        refreshAppData();
-        await syncData();
-        setModalView(null);
-        setSelectedRequest(null);
-        setRequestType(null);
-        setTwoFAConfirming(false);
-        return;
-      }
-      const { error: insErr } = await supabase.from('patients').insert({
-        full_name: req.patient_name || req.name,
-        date_of_birth: req.patient_birth_date || null,
-        primary_concern: req.reason_for_admission || req.reason || null,
-        clinical_status: 'Stable',
-        progress_percent: 0,
-        family_id: req.family_id,
-      });
-      if (insErr) {
-        console.error(insErr);
-        setTwoFAError(insErr.message || 'Could not create patient record.');
-        setTwoFAConfirming(false);
-        return;
+    if (type === 'admission') {
+      const adm = await approveAdmissionInDatabase(req);
+      if (!adm.ok) {
+        console.warn(adm.errorMessage);
+        return { ok: false, error: adm.errorMessage };
       }
       await addActivity(
         'New Patient is added',
@@ -399,11 +319,9 @@ const AdminDashboard = () => {
         `Admission approved: ${req.name || req.patient_name || 'Patient'} is now admitted.`,
         { familyId: req.family_id }
       );
-    } else if (requestType === 'discharge') {
+    } else if (type === 'discharge') {
       if (!req.dischargeRequestId || !req.patientId) {
-        setTwoFAError('Missing discharge or patient id. Reload the dashboard and try again.');
-        setTwoFAConfirming(false);
-        return;
+        return { ok: false, error: 'Missing discharge or patient id. Reload the dashboard and try again.' };
       }
       const { data: dischargeUpdated, error: upReqErr } = await supabase
         .from('discharge_requests')
@@ -413,39 +331,42 @@ const AdminDashboard = () => {
         .select('id');
       if (upReqErr) {
         console.error(upReqErr);
-        setTwoFAError(upReqErr.message || 'Could not approve discharge request.');
-        setTwoFAConfirming(false);
-        return;
+        return { ok: false, error: upReqErr.message || 'Could not approve discharge request.' };
       }
       if (!dischargeUpdated?.length) {
-        refreshAppData();
-        await syncData();
-        setModalView(null);
-        setSelectedRequest(null);
-        setRequestType(null);
-        setTwoFAConfirming(false);
-        return;
+        return {
+          ok: false,
+          error:
+            'Could not approve discharge: no pending row updated, or your account lacks staff (admin/nurse) permission. Set user_metadata account_type to admin and sign in again.',
+        };
       }
-      const { error: upPatErr } = await supabase
+      const patientId = req.patientId ?? req.id;
+      const { data: patUpdated, error: upPatErr } = await supabase
         .from('patients')
-        .update({ discharged_at: decidedAt })
-        .eq('id', req.patientId);
+        .update({
+          discharged_at: decidedAt,
+          clinical_status: 'Stable',
+        })
+        .eq('id', patientId)
+        .select('id');
       if (upPatErr) {
         console.error(upPatErr);
-        setTwoFAError(upPatErr.message || 'Could not update patient discharge.');
-        setTwoFAConfirming(false);
-        return;
+        return { ok: false, error: upPatErr.message || 'Could not update patient discharge.' };
+      }
+      if (!patUpdated?.length) {
+        return {
+          ok: false,
+          error:
+            'Patient record was not updated (wrong id or missing permission). Confirm the discharge request matches an active patient.',
+        };
       }
       await addActivity('Patient discharged successfully', `${req.name} - Treatment completed`, 'check');
-      await appendActivityFeed(
-        `Discharge approved: ${req.name || 'Patient'} has been discharged.`,
-        { familyId: req.family_id }
-      );
+      await appendActivityFeed(`Discharge approved: ${req.name || 'Patient'} has been discharged.`, { familyId: req.family_id });
     }
 
     refreshAppData();
     await syncData();
-    if (requestType === 'admission') {
+    if (type === 'admission') {
       const { count } = await supabase
         .from('admission_requests')
         .select('*', { count: 'exact', head: true })
@@ -461,7 +382,47 @@ const AdminDashboard = () => {
 
     setSelectedRequest(null);
     setRequestType(null);
+    return { ok: true };
+  };
+
+  const handleProceedClick = () => {
+    setTwoFAError('');
+    if (!selectedRequest || !requestType) return;
+    pendingTwoFARef.current = { request: selectedRequest, requestType };
+    setModalView('2fa');
+  };
+
+  const handle2FAModalClose = () => {
+    const ctx = pendingTwoFARef.current;
+    pendingTwoFARef.current = null;
+    setTwoFAError('');
+    setModalView(
+      ctx?.requestType === 'admission' ? 'admissions' : ctx?.requestType === 'discharge' ? 'discharges' : null
+    );
+  };
+
+  const handle2FAPinConfirm = async (pin) => {
+    if (!/^\d{4}$/.test(pin)) {
+      setTwoFAError('Enter a valid 4-digit code.');
+      return;
+    }
+    const envPin = import.meta.env.VITE_ADMIN_APPROVAL_PIN;
+    if (envPin !== undefined && envPin !== '' && String(pin) !== String(envPin)) {
+      setTwoFAError('Incorrect code.');
+      return;
+    }
+    const ctx = pendingTwoFARef.current;
+    if (!ctx) return;
+    setTwoFAError('');
+    setTwoFAConfirming(true);
+    const result = await executeDashboardApproval(ctx.request, ctx.requestType);
     setTwoFAConfirming(false);
+    if (!result.ok) {
+      setTwoFAError(result.error || 'Approval failed.');
+      return;
+    }
+    pendingTwoFARef.current = null;
+    setModalView(null);
   };
 
   return (
@@ -789,7 +750,7 @@ const AdminDashboard = () => {
               <div>
                 <div className="metric-value">{pendingAdmissions.length}</div>
                 <div className="metric-title">Pending Requests</div>
-                <div className="metric-subtitle">Awaiting approval</div>
+                <div className="metric-subtitle">Click card to review &amp; approve</div>
               </div>
             </div>
 
@@ -996,6 +957,15 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      <TwoFactorApproveModal
+        open={modalView === '2fa'}
+        onClose={handle2FAModalClose}
+        onConfirm={handle2FAPinConfirm}
+        error={twoFAError}
+        loading={twoFAConfirming}
+        title="Enter 2FA code to approve"
+      />
+
       {modalView === 'confirm' && selectedRequest && (
         <div className="modal-overlay" onClick={() => setModalView(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -1040,42 +1010,38 @@ const AdminDashboard = () => {
                   </div>
                 )}
               </div>
+              {twoFAError ? (
+                <div
+                  style={{
+                    color: '#dc2626',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginTop: 12,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {twoFAError}
+                </div>
+              ) : null}
               <div className="req-buttons">
-                <button className="btn-approve" onClick={handleProceedClick}>Proceed</button>
-                <button className="btn-decline" onClick={() => setModalView(requestType === 'admission' ? 'admissions' : 'discharges')}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn-approve"
+                  disabled={twoFAConfirming}
+                  onClick={handleProceedClick}
+                >
+                  Continue
+                </button>
+                <button
+                  type="button"
+                  className="btn-decline"
+                  disabled={twoFAConfirming}
+                  onClick={() => setModalView(requestType === 'admission' ? 'admissions' : 'discharges')}
+                >
+                  Cancel
+                </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {modalView === '2fa' && (
-        <div className="modal-overlay" onClick={() => { setModalView(null); setTwoFAError(''); }}>
-          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ padding: '40px 30px', textAlign: 'center' }}>
-            <X className="close-btn" size={24} onClick={() => { setModalView(null); setTwoFAError(''); }} />
-            <div className="modal-title" style={{ fontSize: '20px', marginBottom: '10px' }}>Enter 2FA Password to Approve</div>
-            <div className="tfa-box">
-              <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[0]} ref={tfaRefs[0]} onChange={e => handle2FAChange(0, e.target.value)} onKeyDown={e => handle2FAKeyDown(0, e)} />
-              <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[1]} ref={tfaRefs[1]} onChange={e => handle2FAChange(1, e.target.value)} onKeyDown={e => handle2FAKeyDown(1, e)} />
-              <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[2]} ref={tfaRefs[2]} onChange={e => handle2FAChange(2, e.target.value)} onKeyDown={e => handle2FAKeyDown(2, e)} />
-              <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[3]} ref={tfaRefs[3]} onChange={e => handle2FAChange(3, e.target.value)} onKeyDown={e => handle2FAKeyDown(3, e)} />
-              <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[4]} ref={tfaRefs[4]} onChange={e => handle2FAChange(4, e.target.value)} onKeyDown={e => handle2FAKeyDown(4, e)} />
-              <input type="text" className="tfa-circle" maxLength={1} value={twoFactorCode[5]} ref={tfaRefs[5]} onChange={e => handle2FAChange(5, e.target.value)} onKeyDown={e => handle2FAKeyDown(5, e)} />
-            </div>
-            {twoFAError && (
-              <div style={{ color: '#dc2626', fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 8, maxWidth: 360, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.45 }}>
-                {twoFAError}
-              </div>
-            )}
-            <button
-              type="button"
-              className="btn-approve"
-              style={{ padding: '12px 40px', fontSize: '15px' }}
-              disabled={twoFAConfirming}
-              onClick={() => void handle2FAConfirm()}
-            >
-              {twoFAConfirming ? 'Saving…' : 'Confirm'}
-            </button>
           </div>
         </div>
       )}

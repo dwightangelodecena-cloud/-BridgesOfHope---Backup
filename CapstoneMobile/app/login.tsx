@@ -5,6 +5,10 @@ import { useRouter } from "expo-router";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatAuthError } from "../lib/authErrors";
 import { TAB_ROUTES } from "../lib/navigationConfig";
+import {
+  ensureFamilyAccountOrSignOut,
+  signInWithGoogleMobile,
+} from "../lib/googleAuth";
 
 export default function LoginScreen() {
   const [loginIdentifier, setLoginIdentifier] = useState("");
@@ -129,6 +133,40 @@ export default function LoginScreen() {
     router.push("/forget");
   };
 
+  const handleGoogle = async () => {
+    if (!isSupabaseConfigured()) {
+      showError(
+        "Missing Supabase configuration. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to .env."
+      );
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await signInWithGoogleMobile();
+      if (result.status === "cancelled") {
+        setSubmitting(false);
+        return;
+      }
+      if (result.status === "error") {
+        showError(result.message);
+        setSubmitting(false);
+        return;
+      }
+      const roleCheck = await ensureFamilyAccountOrSignOut();
+      if (roleCheck === "staff") {
+        showError("Use the web app to sign in as staff.");
+        setSubmitting(false);
+        return;
+      }
+      router.replace(TAB_ROUTES.home);
+    } catch (e) {
+      showError(
+        e instanceof Error ? e.message : "Google sign-in failed."
+      );
+      setSubmitting(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -227,7 +265,11 @@ export default function LoginScreen() {
           <View style={styles.line} />
         </View>
 
-        <TouchableOpacity style={styles.googleButton}>
+        <TouchableOpacity
+          style={styles.googleButton}
+          onPress={handleGoogle}
+          disabled={submitting}
+        >
           <Image 
             source={require("../assets/images/google-logo.png")}
             style={styles.googleIcon} 
@@ -236,7 +278,7 @@ export default function LoginScreen() {
         </TouchableOpacity>
 
         <View style={styles.signupContainer}>
-          <Text style={styles.signupText}>Don't have an account? </Text>
+          <Text style={styles.signupText}>{"Don't have an account? "}</Text>
           <TouchableOpacity onPress={handleGoToSignup}>
             <Text style={styles.signupLink}>Sign Up</Text>
           </TouchableOpacity>

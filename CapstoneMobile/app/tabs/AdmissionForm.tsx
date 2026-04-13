@@ -77,6 +77,8 @@ export default function AdmissionForm() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  /** iOS only: draft while modal is open so Cancel does not overwrite the field */
+  const [iosDraftBirthDate, setIosDraftBirthDate] = useState(() => new Date(2000, 0, 1));
   const [submitting, setSubmitting] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [displayName, setDisplayName] = useState('Family User');
@@ -231,7 +233,7 @@ export default function AdmissionForm() {
         return;
       }
 
-      const { error } = await supabase.from('admission_requests').insert({
+      const extendedRow = {
         family_id: user.id,
         guardian_full_name: formData.fullName.trim(),
         guardian_middle_initial: formData.middleInitial.trim() || null,
@@ -244,7 +246,25 @@ export default function AdmissionForm() {
         patient_name: formData.patientName.trim(),
         patient_birth_date: formData.patientBirthday,
         reason_for_admission: formData.reasonForAdmission,
-      });
+      };
+
+      let { error } = await supabase.from('admission_requests').insert(extendedRow);
+
+      if (
+        error &&
+        /column|schema cache|does not exist|PGRST204/i.test(error.message)
+      ) {
+        const minimalRow = {
+          family_id: user.id,
+          guardian_full_name: formData.fullName.trim(),
+          guardian_email: formData.email.trim(),
+          guardian_phone: formData.phoneNumber.trim(),
+          patient_name: formData.patientName.trim(),
+          patient_birth_date: formData.patientBirthday,
+          reason_for_admission: formData.reasonForAdmission,
+        };
+        ({ error } = await supabase.from('admission_requests').insert(minimalRow));
+      }
 
       if (error) {
         setErrors({ submit: error.message || 'Could not submit request.' });
@@ -266,9 +286,11 @@ export default function AdmissionForm() {
     }
   };
 
-  const birthDateValue = formData.patientBirthday
-    ? new Date(formData.patientBirthday + 'T12:00:00')
-    : new Date(2000, 0, 1);
+  const birthDateValue = useMemo(() => {
+    if (!formData.patientBirthday?.trim()) return new Date(2000, 0, 1);
+    const parsed = new Date(`${formData.patientBirthday.trim()}T12:00:00`);
+    return Number.isNaN(parsed.getTime()) ? new Date(2000, 0, 1) : parsed;
+  }, [formData.patientBirthday]);
 
   const displayBirthday = formData.patientBirthday
     ? (() => {
@@ -276,6 +298,31 @@ export default function AdmissionForm() {
         return m && d && y ? `${m}/${d}/${y}` : formData.patientBirthday;
       })()
     : '';
+
+  const formatDateToISO = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const openBirthdayPicker = () => {
+    if (Platform.OS === 'ios') {
+      setIosDraftBirthDate(birthDateValue);
+      setShowDatePicker(true);
+    } else {
+      setShowDatePicker(true);
+    }
+  };
+
+  const onAndroidDateChange = (_event: { type?: string }, date?: Date) => {
+    setShowDatePicker(false);
+    if (_event?.type === 'dismissed' || !date) return;
+    setField('patientBirthday', formatDateToISO(date));
+  };
+
+  const iosDatePickerDisplay =
+    Platform.OS === 'ios' && parseFloat(String(Platform.Version)) >= 14 ? 'inline' : 'spinner';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -455,39 +502,82 @@ export default function AdmissionForm() {
               <Text style={styles.fieldLabel}>Patient Birthday</Text>
               <TouchableOpacity
                 style={[styles.inputShell, errors.patientBirthday ? styles.inputShellError : null]}
-                onPress={() => setShowDatePicker(true)}
+                onPress={openBirthdayPicker}
                 activeOpacity={0.85}
               >
                 <Ionicons name="calendar-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                <Text style={[styles.dateInputText, !formData.patientBirthday && styles.placeholderText]}>
+                <Text
+                  style={[styles.dateInputText, !formData.patientBirthday && styles.placeholderText]}
+                >
                   {formData.patientBirthday ? displayBirthday : 'MM/DD/YYYY'}
                 </Text>
               </TouchableOpacity>
               {errors.patientBirthday ? <Text style={styles.errorSmall}>{errors.patientBirthday}</Text> : null}
             </View>
 
-            {showDatePicker ? (
+            {Platform.OS === 'android' && showDatePicker ? (
               <DateTimePicker
-                value={Number.isNaN(birthDateValue.getTime()) ? new Date(2000, 0, 1) : birthDateValue}
+                value={birthDateValue}
                 mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(ev, date) => {
-                  if (Platform.OS === 'android') setShowDatePicker(false);
-                  if (ev.type === 'dismissed') return;
-                  if (date) {
-                    const y = date.getFullYear();
-                    const m = String(date.getMonth() + 1).padStart(2, '0');
-                    const d = String(date.getDate()).padStart(2, '0');
-                    setField('patientBirthday', `${y}-${m}-${d}`);
-                  }
-                }}
+                display="default"
+                onChange={onAndroidDateChange}
+                maximumDate={new Date()}
+                minimumDate={new Date(1900, 0, 1)}
               />
             ) : null}
-            {Platform.OS === 'ios' && showDatePicker ? (
-              <TouchableOpacity style={styles.iosDateDone} onPress={() => setShowDatePicker(false)}>
-                <Text style={styles.iosDateDoneText}>Done</Text>
-              </TouchableOpacity>
-            ) : null}
+
+            <Modal
+              visible={Platform.OS === 'ios' && showDatePicker}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setShowDatePicker(false)}
+            >
+              <View style={styles.dateIosModalRoot}>
+                <Pressable style={styles.dateIosBackdrop} onPress={() => setShowDatePicker(false)} />
+                <View style={[styles.dateIosSheet, { paddingBottom: insets.bottom + 12 }]}>
+                  <View style={styles.dateIosHeader}>
+                    <View style={styles.dateIosHeaderSide}>
+                      <TouchableOpacity
+                        onPress={() => setShowDatePicker(false)}
+                        hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel="Cancel date selection"
+                      >
+                        <Text style={styles.dateIosHeaderBtn}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.dateIosTitle}>Date of birth</Text>
+                    <View style={[styles.dateIosHeaderSide, styles.dateIosHeaderSideEnd]}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setField('patientBirthday', formatDateToISO(iosDraftBirthDate));
+                          setShowDatePicker(false);
+                        }}
+                        hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel="Confirm date"
+                      >
+                        <Text style={styles.dateIosHeaderBtnPrimary}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={styles.dateIosPickerWrap}>
+                    <DateTimePicker
+                      value={iosDraftBirthDate}
+                      mode="date"
+                      display={iosDatePickerDisplay as 'inline' | 'spinner'}
+                      themeVariant="light"
+                      style={styles.dateIosPicker}
+                      onChange={(_, date) => {
+                        if (date) setIosDraftBirthDate(date);
+                      }}
+                      maximumDate={new Date()}
+                      minimumDate={new Date(1900, 0, 1)}
+                    />
+                  </View>
+                </View>
+              </View>
+            </Modal>
 
             <View style={styles.fieldWrap}>
               <Text style={styles.fieldLabel}>Reason for Admission</Text>
@@ -949,6 +1039,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1E293B',
     paddingVertical: 12,
+    textAlign: 'left',
   },
   placeholderText: {
     color: '#94A3B8',
@@ -964,15 +1055,65 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginLeft: 0,
   },
-  iosDateDone: {
-    alignSelf: 'flex-end',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+  dateIosModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
-  iosDateDoneText: {
-    color: '#F54E25',
-    fontWeight: '700',
+  dateIosBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  dateIosSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingTop: 8,
+    maxHeight: '92%',
+    width: '100%',
+  },
+  dateIosPickerWrap: {
+    width: '100%',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  dateIosPicker: {
+    width: width,
+    maxWidth: '100%',
+    alignSelf: 'center',
+  },
+  dateIosHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+  },
+  dateIosHeaderSide: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  dateIosHeaderSideEnd: {
+    alignItems: 'flex-end',
+  },
+  dateIosTitle: {
+    flex: 2,
     fontSize: 16,
+    fontWeight: '700',
+    color: '#1E293B',
+    textAlign: 'center',
+  },
+  dateIosHeaderBtn: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748B',
+    paddingHorizontal: 8,
+  },
+  dateIosHeaderBtnPrimary: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#F54E25',
+    paddingHorizontal: 8,
   },
   termsRow: {
     flexDirection: 'row',

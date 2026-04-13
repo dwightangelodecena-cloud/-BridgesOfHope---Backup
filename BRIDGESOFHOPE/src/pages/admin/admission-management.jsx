@@ -37,6 +37,9 @@ import {
   summarizeDischargeCost,
   appendDischargeRecord,
 } from '@/lib/admissionDischargeStore';
+import { approveAdmissionInDatabase } from '@/lib/approveAdmissionSupabase';
+import { appendActivityFeed } from '@/lib/activityFeed';
+import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
 
 const FILTER_OPTIONS = ['All Admissions', ...ADMISSION_WORKFLOW_STATUSES];
 
@@ -83,6 +86,7 @@ function sortRows(rows, sortId) {
 
 const AdmissionManagement = () => {
   const navigate = useNavigate();
+  const pendingApproveRowRef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
@@ -103,6 +107,10 @@ const AdmissionManagement = () => {
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const filterDropdownRef = useRef(null);
   const sortDropdownRef = useRef(null);
+  const [approvingId, setApprovingId] = useState(null);
+  const [twoFAModalOpen, setTwoFAModalOpen] = useState(false);
+  const [tfaError, setTfaError] = useState('');
+  const [tfaLoading, setTfaLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -267,6 +275,66 @@ const AdmissionManagement = () => {
     setActivity(loadActivity());
   };
 
+  const handleApproveDbPending = async (r) => {
+    if (!isSupabaseConfigured() || String(r.dbStatus || '').toLowerCase() !== 'pending') return false;
+    setApprovingId(r.requestId);
+    setFormError('');
+    try {
+      const res = await approveAdmissionInDatabase(r);
+      if (!res.ok) {
+        setFormError(res.errorMessage);
+        setTimeout(() => setFormError(''), 12000);
+        return false;
+      }
+      await appendActivityFeed(
+        `Admission approved: ${r.patientName || 'Patient'} is now admitted.`,
+        { familyId: r.familyId }
+      );
+      pushActivity(`Admission ${r.admissionDisplayId}: approved (database)`);
+      refreshAppData();
+      await loadData();
+      setActivity(loadActivity());
+      return true;
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const openApprove2FA = (r) => {
+    if (!isSupabaseConfigured() || String(r.dbStatus || '').toLowerCase() !== 'pending') return;
+    pendingApproveRowRef.current = r;
+    setTfaError('');
+    setTwoFAModalOpen(true);
+  };
+
+  const handle2FAModalClose = () => {
+    pendingApproveRowRef.current = null;
+    setTfaError('');
+    setTwoFAModalOpen(false);
+  };
+
+  const handle2FAPinConfirm = async (pin) => {
+    if (!/^\d{4}$/.test(pin)) {
+      setTfaError('Enter a valid 4-digit code.');
+      return;
+    }
+    const envPin = import.meta.env.VITE_ADMIN_APPROVAL_PIN;
+    if (envPin !== undefined && envPin !== '' && String(pin) !== String(envPin)) {
+      setTfaError('Incorrect code.');
+      return;
+    }
+    const r = pendingApproveRowRef.current;
+    if (!r) return;
+    setTfaError('');
+    setTfaLoading(true);
+    const ok = await handleApproveDbPending(r);
+    setTfaLoading(false);
+    if (ok) {
+      pendingApproveRowRef.current = null;
+      setTwoFAModalOpen(false);
+    }
+  };
+
   const statusPillClass = (status) => {
     if (status === 'Ongoing' || status === 'Approved') return 'am-pill--ok';
     if (status === 'Pending') return 'am-pill--pending';
@@ -278,6 +346,14 @@ const AdmissionManagement = () => {
 
   return (
     <div className="am-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559' }}>
+      <TwoFactorApproveModal
+        open={twoFAModalOpen}
+        onClose={handle2FAModalClose}
+        onConfirm={handle2FAPinConfirm}
+        error={tfaError}
+        loading={tfaLoading}
+        title="Enter 2FA code to approve"
+      />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -603,6 +679,17 @@ const AdmissionManagement = () => {
                         <td style={{ padding: '12px', fontWeight: 700, color: '#05CD99' }}>{formatPhp(r.estimatedCost)}</td>
                         <td style={{ padding: '12px' }}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {isSupabaseConfigured() && String(r.dbStatus || '').toLowerCase() === 'pending' && (
+                              <button
+                                type="button"
+                                className="db-edit-btn"
+                                title="Approve in Supabase and create patient record"
+                                disabled={approvingId === r.requestId}
+                                onClick={() => openApprove2FA(r)}
+                              >
+                                {approvingId === r.requestId ? '…' : 'Approve'}
+                              </button>
+                            )}
                             <button type="button" className="db-view-btn" onClick={() => setViewRow(r)}><Eye size={12} /> View</button>
                             <button
                               type="button"

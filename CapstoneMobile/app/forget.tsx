@@ -1,23 +1,81 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, SafeAreaView, Image } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  SafeAreaView,
+  Image,
+  ActivityIndicator,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { TAB_ROUTES } from "../lib/navigationConfig";
+import {
+  ensureFamilyAccountOrSignOut,
+  signInWithGoogleMobile,
+} from "../lib/googleAuth";
+
+const emailLooksValid = (v: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
+
+const RECOVERY_EMAIL_KEY = "bh_recovery_email";
 
 export default function ForgetPasswordScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
 
-  const handleSendVerification = () => {
-    if (!email.trim()) {
-      // For now just log; you can replace with real logic.
-      console.warn("Please enter an email address.");
+  const handleSendVerification = async () => {
+    setError(null);
+    const trimmed = email.trim().toLowerCase();
+
+    if (!trimmed) {
+      setError("Please enter an email address.");
       return;
     }
 
-    console.log("Sending password reset verification to:", email);
-    // TODO: Hook up to your password reset backend / auth flow.
-    // Navigate to verification screen after requesting code.
-    router.push("/verification");
+    if (!emailLooksValid(trimmed)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    if (!isSupabaseConfigured()) {
+      setError(
+        "Supabase is not configured. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to .env and restart Expo."
+      );
+      return;
+    }
+
+    setSending(true);
+    try {
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email: trimmed,
+        options: { shouldCreateUser: false },
+      });
+
+      if (otpErr) {
+        setError(otpErr.message || "Could not send verification code.");
+        return;
+      }
+
+      await AsyncStorage.setItem(RECOVERY_EMAIL_KEY, trimmed);
+      router.push({
+        pathname: "/verification",
+        params: { email: trimmed },
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleBackToLogin = () => {
@@ -26,6 +84,39 @@ export default function ForgetPasswordScreen() {
 
   const handleGoToSignup = () => {
     router.push("/signup");
+  };
+
+  const handleGoogle = async () => {
+    setError(null);
+    if (!isSupabaseConfigured()) {
+      setError(
+        "Supabase is not configured. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to .env and restart Expo."
+      );
+      return;
+    }
+    setSending(true);
+    try {
+      const result = await signInWithGoogleMobile();
+      if (result.status === "cancelled") {
+        setSending(false);
+        return;
+      }
+      if (result.status === "error") {
+        setError(result.message);
+        setSending(false);
+        return;
+      }
+      const roleCheck = await ensureFamilyAccountOrSignOut();
+      if (roleCheck === "staff") {
+        setError("Use the web app to sign in as staff.");
+        setSending(false);
+        return;
+      }
+      router.replace(TAB_ROUTES.home);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Google sign-in failed.");
+      setSending(false);
+    }
   };
 
   return (
@@ -51,7 +142,10 @@ export default function ForgetPasswordScreen() {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Enter your email address and we’ll send you a verification code.</Text>
+            <Text style={styles.sectionTitle}>
+              Enter your email address and we’ll send you a 6-digit verification
+              code.
+            </Text>
 
             <View style={styles.inputContainer}>
               <Ionicons
@@ -65,24 +159,36 @@ export default function ForgetPasswordScreen() {
                 placeholder="Enter your email address"
                 placeholderTextColor="#B0B0B0"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(t) => {
+                  setEmail(t);
+                  if (error) setError(null);
+                }}
                 autoCapitalize="none"
                 keyboardType="email-address"
+                editable={!sending}
               />
             </View>
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
             <TouchableOpacity
               style={styles.backToLoginButton}
               onPress={handleBackToLogin}
+              disabled={sending}
             >
               <Text style={styles.backToLoginText}>Back to Log In</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.sendButton}
+              style={[styles.sendButton, sending && styles.sendButtonDisabled]}
               onPress={handleSendVerification}
+              disabled={sending}
             >
-              <Text style={styles.sendButtonText}>Send Verification</Text>
+              {sending ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.sendButtonText}>Send Verification</Text>
+              )}
             </TouchableOpacity>
 
             <View style={styles.dividerRow}>
@@ -91,7 +197,11 @@ export default function ForgetPasswordScreen() {
               <View style={styles.line} />
             </View>
 
-            <TouchableOpacity style={styles.googleButton}>
+            <TouchableOpacity
+              style={styles.googleButton}
+              disabled={sending}
+              onPress={handleGoogle}
+            >
               <Image
                 source={require("../assets/images/google-logo.png")}
                 style={styles.googleIcon}
@@ -101,8 +211,8 @@ export default function ForgetPasswordScreen() {
           </View>
 
           <View style={styles.signupContainer}>
-            <Text style={styles.signupText}>Don't have an account? </Text>
-            <TouchableOpacity onPress={handleGoToSignup}>
+            <Text style={styles.signupText}>{"Don't have an account? "}</Text>
+            <TouchableOpacity onPress={handleGoToSignup} disabled={sending}>
               <Text style={styles.signupLink}>Sign Up</Text>
             </TouchableOpacity>
           </View>
@@ -165,7 +275,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 16,
     height: 54,
-    marginBottom: 20,
+    marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
@@ -179,6 +289,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: "#000",
+  },
+  errorText: {
+    fontSize: 13,
+    color: "#E53935",
+    marginBottom: 12,
+    textAlign: "center",
   },
   backToLoginButton: {
     alignSelf: "center",
@@ -202,6 +318,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 6,
     elevation: 3,
+  },
+  sendButtonDisabled: {
+    opacity: 0.85,
   },
   sendButtonText: {
     color: "#fff",
@@ -260,4 +379,3 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
-

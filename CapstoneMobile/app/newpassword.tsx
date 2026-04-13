@@ -1,7 +1,19 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, SafeAreaView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  SafeAreaView,
+  ActivityIndicator,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
 
 export default function NewPasswordScreen() {
   const router = useRouter();
@@ -11,6 +23,7 @@ export default function NewPasswordScreen() {
   const [hideConfirmPassword, setHideConfirmPassword] = useState(true);
   const [passwordChanged, setPasswordChanged] = useState(false);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const getPasswordStrength = (value: string) => {
     const hasMinLength = value.length >= 8;
@@ -48,7 +61,7 @@ export default function NewPasswordScreen() {
     };
   };
 
-  const handleConfirmNewPassword = () => {
+  const handleConfirmNewPassword = async () => {
     setWarningMessage(null);
 
     if (!password.trim() || !confirmPassword.trim()) {
@@ -61,9 +74,32 @@ export default function NewPasswordScreen() {
       return;
     }
 
-    console.log("New password confirmed");
-    // TODO: Hook this into your real reset-password flow
-    setPasswordChanged(true);
+    const strength = getPasswordStrength(password);
+    if (strength.color !== "#43A047") {
+      setWarningMessage("Please meet the password requirements above.");
+      return;
+    }
+
+    if (!isSupabaseConfigured()) {
+      setWarningMessage(
+        "Supabase is not configured. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY."
+      );
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        setWarningMessage(error.message || "Could not update password.");
+        return;
+      }
+      setPasswordChanged(true);
+    } catch (e) {
+      setWarningMessage(e instanceof Error ? e.message : "Could not update password.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -165,10 +201,15 @@ export default function NewPasswordScreen() {
             )}
 
             <TouchableOpacity
-              style={styles.confirmButton}
+              style={[styles.confirmButton, saving && styles.confirmButtonDisabled]}
               onPress={handleConfirmNewPassword}
+              disabled={saving}
             >
-              <Text style={styles.confirmButtonText}>Confirm New Password</Text>
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.confirmButtonText}>Confirm New Password</Text>
+              )}
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -282,6 +323,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 6,
     elevation: 3,
+  },
+  confirmButtonDisabled: {
+    opacity: 0.85,
   },
   confirmButtonText: {
     color: "#fff",

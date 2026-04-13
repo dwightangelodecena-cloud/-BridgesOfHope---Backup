@@ -1655,9 +1655,9 @@ const HomeDashboard = () => {
             </div>
             <div className="metric-card">
               <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>PROGRESS COMPLETION RATE</div>
-              <div style={{ color: '#1B2559', fontSize: 28, fontWeight: 800, marginTop: 6 }}>82%</div>
+              <div style={{ color: '#1B2559', fontSize: 28, fontWeight: 800, marginTop: 6 }}>0%</div>
               <div style={{ height: 8, background: '#EEF2FF', borderRadius: 99, marginTop: 10 }}>
-                <div style={{ width: '82%', height: '100%', background: '#4318FF', borderRadius: 99 }} />
+                <div style={{ width: '0%', height: '100%', background: '#4318FF', borderRadius: 99 }} />
               </div>
             </div>
             <div className="metric-card">

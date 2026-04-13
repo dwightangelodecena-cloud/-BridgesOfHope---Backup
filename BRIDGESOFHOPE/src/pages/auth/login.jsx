@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, Lock, ChevronDown, Eye, EyeOff } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import logo from '@/assets/logo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
+import {
+  setOAuthExpectedRole,
+  takeOAuthExpectedRole,
+  startGoogleOAuthWeb,
+} from '@/lib/oauthWeb';
 
 const Login = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [formData, setFormData] = useState({
     accountType: '',
     identifier: '',
@@ -18,6 +24,27 @@ const Login = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const oauthError = searchParams.get('oauth_error');
+    if (!oauthError) return;
+    takeOAuthExpectedRole();
+    const id = window.setTimeout(() => {
+      if (oauthError === 'role_mismatch') {
+        setError(
+          'Google account does not match the account type you selected. Sign in with the correct role or pick the matching user type.'
+        );
+      } else if (oauthError === 'callback' || oauthError === 'no_session') {
+        setError('Google sign-in could not be completed. Try again.');
+      } else {
+        setError(decodeURIComponent(oauthError));
+      }
+      const next = new URLSearchParams(searchParams);
+      next.delete('oauth_error');
+      setSearchParams(next, { replace: true });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [searchParams, setSearchParams]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -133,6 +160,30 @@ const Login = () => {
       navigate('/admin-dashboard');
     } else {
       navigate('/home');
+    }
+  };
+
+  const handleGoogle = async () => {
+    setError('');
+    setSuccess(false);
+    if (!formData.accountType) {
+      setError('Please select an account type.');
+      return;
+    }
+    if (!isSupabaseConfigured()) {
+      setError(
+        'Missing Supabase configuration. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.'
+      );
+      return;
+    }
+    setSubmitting(true);
+    try {
+      setOAuthExpectedRole(formData.accountType);
+      await startGoogleOAuthWeb();
+    } catch (e) {
+      takeOAuthExpectedRole();
+      setError(e instanceof Error ? e.message : 'Google sign-in failed.');
+      setSubmitting(false);
     }
   };
 
@@ -529,7 +580,12 @@ const Login = () => {
                 <span>or</span>
               </div>
 
-              <button type="button" className="btn-google">
+              <button
+                type="button"
+                className="btn-google"
+                onClick={handleGoogle}
+                disabled={submitting}
+              >
                 <svg width="20" height="20" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />

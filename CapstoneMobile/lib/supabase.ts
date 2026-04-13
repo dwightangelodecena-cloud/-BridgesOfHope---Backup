@@ -22,7 +22,7 @@ function getClient(): SupabaseClient {
   const key = supabaseAnonKey?.trim();
   if (!url || !key) {
     throw new Error(
-      "Supabase is not configured. Create CapstoneMobile/CapstoneMobile/.env with EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY (Expo does not use VITE_ variable names)."
+      "Supabase is not configured. Create CapstoneMobile/.env next to app.json with EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY (Expo does not use VITE_ variable names)."
     );
   }
   if (!client) {

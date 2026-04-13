@@ -1,5 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { User, Mail, ArrowLeft, X, Calendar, ClipboardList, Phone, CheckCircle } from 'lucide-react';
+import {
+  User,
+  Mail,
+  ArrowLeft,
+  X,
+  Calendar,
+  ClipboardList,
+  Phone,
+  CheckCircle,
+  MapPin,
+  Building2,
+  Navigation,
+  Hash,
+} from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -18,33 +31,69 @@ const Admission = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [errors, setErrors] = useState({});
   const [saveBanner, setSaveBanner] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
+    middleInitial: '',
     email: '',
     phoneNumber: '',
+    province: '',
+    municipalityCity: '',
+    street: '',
+    barangay: '',
     patientName: '',
     patientBirthday: '',
     reasonForAdmission: '',
-    agreeToTerms: false
+    agreeToTerms: false,
   });
 
-  const requiredFields = useMemo(() => ([
-    { key: 'fullName', label: 'Full Name' },
-    { key: 'email', label: 'Email Address' },
-    { key: 'phoneNumber', label: 'Phone Number' },
-    { key: 'patientName', label: 'Patient Name' },
-    { key: 'patientBirthday', label: 'Patient Birthday' },
-    { key: 'reasonForAdmission', label: 'Reason for Admission' },
-  ]), []);
+  const requiredFields = useMemo(
+    () => [
+      { key: 'fullName', label: 'Full Name' },
+      { key: 'email', label: 'Email Address' },
+      { key: 'phoneNumber', label: 'Phone Number' },
+      { key: 'province', label: 'Province' },
+      { key: 'municipalityCity', label: 'Municipality/City' },
+      { key: 'street', label: 'Street' },
+      { key: 'barangay', label: 'Barangay' },
+      { key: 'patientName', label: 'Patient Name' },
+      { key: 'patientBirthday', label: 'Patient Birthday' },
+      { key: 'reasonForAdmission', label: 'Reason for Admission' },
+    ],
+    []
+  );
 
   const completedFields = requiredFields.filter((field) => String(formData[field.key]).trim()).length;
   const progressPercent = Math.round((completedFields / requiredFields.length) * 100);
+
+  const toDateInputValue = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const patientBirthdayMax = useMemo(() => toDateInputValue(new Date()), []);
+  const patientBirthdayMin = useMemo(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 120);
+    return toDateInputValue(d);
+  }, []);
 
   useEffect(() => {
     const savedDraft = localStorage.getItem('bh_admission_draft');
     if (savedDraft) {
       try {
-        setFormData(JSON.parse(savedDraft));
+        const parsed = JSON.parse(savedDraft);
+        setFormData((prev) => ({
+          ...prev,
+          ...parsed,
+          middleInitial: parsed.middleInitial ?? '',
+          province: parsed.province ?? '',
+          municipalityCity: parsed.municipalityCity ?? '',
+          street: parsed.street ?? '',
+          barangay: parsed.barangay ?? '',
+          agreeToTerms: Boolean(parsed.agreeToTerms),
+        }));
       } catch {
         localStorage.removeItem('bh_admission_draft');
       }
@@ -53,26 +102,35 @@ const Admission = () => {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
+    if (name === 'middleInitial') {
+      const cleaned = String(value).replace(/[^a-zA-Z]/g, '').slice(0, 1).toUpperCase();
+      setFormData((prev) => ({ ...prev, middleInitial: cleaned }));
+      if (errors.middleInitial) setErrors((prev) => ({ ...prev, middleInitial: '' }));
+      return;
+    }
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : value,
     }));
     if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
+      setErrors((prev) => ({ ...prev, [name]: '' }));
     }
   };
 
   const validateForm = () => {
-    let newErrors = {};
-    if (!formData.fullName.trim()) newErrors.fullName = "Full name is required";
-    if (!formData.email.trim()) newErrors.email = "Email is required";
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = "Invalid email format";
-
-    if (!formData.phoneNumber.trim()) newErrors.phoneNumber = "Phone number is required";
-    if (!formData.patientName.trim()) newErrors.patientName = "Patient name is required";
-    if (!formData.patientBirthday) newErrors.patientBirthday = "Birthday is required";
-    if (!formData.reasonForAdmission) newErrors.reasonForAdmission = "Please select a reason";
-    if (!formData.agreeToTerms) newErrors.agreeToTerms = "You must agree to the terms";
+    const newErrors = {};
+    if (!formData.fullName.trim()) newErrors.fullName = 'Full name is required';
+    if (!formData.email.trim()) newErrors.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Invalid email format';
+    if (!formData.phoneNumber.trim()) newErrors.phoneNumber = 'Phone number is required';
+    if (!formData.province.trim()) newErrors.province = 'Province is required';
+    if (!formData.municipalityCity.trim()) newErrors.municipalityCity = 'Municipality/City is required';
+    if (!formData.street.trim()) newErrors.street = 'Street is required';
+    if (!formData.barangay.trim()) newErrors.barangay = 'Barangay is required';
+    if (!formData.patientName.trim()) newErrors.patientName = 'Patient name is required';
+    if (!formData.patientBirthday) newErrors.patientBirthday = 'Birthday is required';
+    if (!formData.reasonForAdmission) newErrors.reasonForAdmission = 'Please select a reason';
+    if (!formData.agreeToTerms) newErrors.agreeToTerms = 'You must agree to the terms';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -92,36 +150,62 @@ const Admission = () => {
       return;
     }
 
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-    if (userErr || !user) {
-      setErrors({ submit: 'Please sign in to submit an admission request.' });
-      return;
+    setSubmitting(true);
+    try {
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
+      if (userErr || !user) {
+        setErrors({ submit: 'Please sign in to submit an admission request.' });
+        return;
+      }
+
+      const extendedRow = {
+        family_id: user.id,
+        guardian_full_name: formData.fullName.trim(),
+        guardian_middle_initial: formData.middleInitial.trim() || null,
+        guardian_email: formData.email.trim(),
+        guardian_phone: formData.phoneNumber.trim(),
+        guardian_province: formData.province.trim(),
+        guardian_municipality_city: formData.municipalityCity.trim(),
+        guardian_street: formData.street.trim(),
+        guardian_barangay: formData.barangay.trim(),
+        patient_name: formData.patientName.trim(),
+        patient_birth_date: formData.patientBirthday,
+        reason_for_admission: formData.reasonForAdmission,
+      };
+
+      let { error } = await supabase.from('admission_requests').insert(extendedRow);
+
+      if (error && /column|schema cache|does not exist|PGRST204/i.test(error.message)) {
+        const minimalRow = {
+          family_id: user.id,
+          guardian_full_name: formData.fullName.trim(),
+          guardian_email: formData.email.trim(),
+          guardian_phone: formData.phoneNumber.trim(),
+          patient_name: formData.patientName.trim(),
+          patient_birth_date: formData.patientBirthday,
+          reason_for_admission: formData.reasonForAdmission,
+        };
+        ({ error } = await supabase.from('admission_requests').insert(minimalRow));
+      }
+
+      if (error) {
+        setErrors({ submit: error.message || 'Could not submit request.' });
+        return;
+      }
+
+      await appendActivityFeed(
+        `Admission request submitted for ${formData.patientName.trim()}. Pending admin review.`,
+        { familyId: user.id }
+      );
+      refreshAppData();
+      localStorage.removeItem('bh_admission_draft');
+      setShowSuccessModal(true);
+    } finally {
+      setSubmitting(false);
     }
-
-    const { error } = await supabase.from('admission_requests').insert({
-      family_id: user.id,
-      guardian_full_name: formData.fullName.trim(),
-      guardian_email: formData.email.trim(),
-      guardian_phone: formData.phoneNumber.trim(),
-      patient_name: formData.patientName.trim(),
-      patient_birth_date: formData.patientBirthday,
-      reason_for_admission: formData.reasonForAdmission,
-    });
-
-    if (error) {
-      setErrors({ submit: error.message || 'Could not submit request.' });
-      return;
-    }
-
-    await appendActivityFeed(
-      `Admission request submitted for ${formData.patientName.trim()}. Pending admin review.`,
-      { familyId: user.id }
-    );
-    refreshAppData();
-    setShowSuccessModal(true);
   };
 
   const saveDraft = () => {
@@ -133,12 +217,17 @@ const Admission = () => {
   const clearForm = () => {
     const resetState = {
       fullName: '',
+      middleInitial: '',
       email: '',
       phoneNumber: '',
+      province: '',
+      municipalityCity: '',
+      street: '',
+      barangay: '',
       patientName: '',
       patientBirthday: '',
       reasonForAdmission: '',
-      agreeToTerms: false
+      agreeToTerms: false,
     };
     setFormData(resetState);
     setErrors({});
@@ -248,6 +337,68 @@ const Admission = () => {
           box-shadow: 0 0 0 4px rgba(249, 92, 75, 0.15);
         }
 
+        /* Native date picker: align with form controls + polish calendar affordance */
+        .input-wrapper--date {
+          border-radius: 14px;
+          background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+          border: 1.5px solid #e2e8f0;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .input-wrapper--date:focus-within {
+          border-color: ${FAMILY_COLORS.accent};
+          box-shadow: 0 0 0 4px rgba(249, 92, 75, 0.15);
+        }
+        .input-wrapper--date.input-wrapper--date-error {
+          border-color: #ef4444;
+          background: #fef2f2;
+        }
+        .input-wrapper--date .input-icon {
+          color: ${FAMILY_COLORS.accent};
+          opacity: 0.9;
+        }
+        .input-wrapper input.input-date {
+          padding: 14px 48px 14px 48px;
+          border: none;
+          background: transparent;
+          border-radius: 14px;
+          box-shadow: none;
+          min-height: 50px;
+          color-scheme: light;
+          cursor: pointer;
+        }
+        .input-wrapper input.input-date:focus {
+          box-shadow: none;
+        }
+        .input-wrapper--date:focus-within input.input-date {
+          outline: none;
+        }
+        .input-wrapper input.input-date::-webkit-calendar-picker-indicator {
+          cursor: pointer;
+          opacity: 0.75;
+          padding: 6px;
+          margin-right: 4px;
+          border-radius: 10px;
+          transition: background 0.2s ease, opacity 0.2s ease;
+        }
+        .input-wrapper input.input-date:hover::-webkit-calendar-picker-indicator {
+          background: rgba(245, 78, 37, 0.12);
+          opacity: 1;
+        }
+        .input-wrapper input.input-date:focus::-webkit-calendar-picker-indicator {
+          background: rgba(245, 78, 37, 0.18);
+          opacity: 1;
+        }
+        .input-wrapper input.input-date.input-error {
+          background: transparent;
+        }
+        .date-field-hint {
+          font-size: 0.78rem;
+          color: #94a3b8;
+          font-weight: 500;
+          margin-top: 6px;
+          margin-left: 2px;
+        }
+
         .input-icon { position: absolute; left: 18px; color: #94a3b8; pointer-events: none; z-index: 1; }
 
         .terms-group {
@@ -300,6 +451,11 @@ const Admission = () => {
           font-weight: 600;
           cursor: pointer;
           margin-top: 10px;
+        }
+
+        .btn-primary:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
         }
 
         .btn-secondary {
@@ -458,6 +614,23 @@ const Admission = () => {
               </div>
 
               <div className="form-group">
+                <label>Middle Initial</label>
+                <div className="input-wrapper">
+                  <User className="input-icon" size={22} />
+                  <input
+                    name="middleInitial"
+                    type="text"
+                    placeholder="M.I."
+                    maxLength={1}
+                    className={errors.middleInitial ? 'input-error' : ''}
+                    value={formData.middleInitial}
+                    onChange={handleChange}
+                  />
+                </div>
+                {errors.middleInitial && <div className="error-message">{errors.middleInitial}</div>}
+              </div>
+
+              <div className="form-group">
                 <label>Email Address</label>
                 <div className="input-wrapper">
                   <Mail className="input-icon" size={22} />
@@ -476,6 +649,42 @@ const Admission = () => {
               </div>
 
               <div className="form-group">
+                <label>Province</label>
+                <div className="input-wrapper">
+                  <MapPin className="input-icon" size={22} />
+                  <input name="province" type="text" placeholder="Enter your province" className={errors.province ? 'input-error' : ''} value={formData.province} onChange={handleChange} />
+                </div>
+                {errors.province && <div className="error-message">{errors.province}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Municipality/City</label>
+                <div className="input-wrapper">
+                  <Building2 className="input-icon" size={22} />
+                  <input name="municipalityCity" type="text" placeholder="Enter your municipality/city" className={errors.municipalityCity ? 'input-error' : ''} value={formData.municipalityCity} onChange={handleChange} />
+                </div>
+                {errors.municipalityCity && <div className="error-message">{errors.municipalityCity}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Street</label>
+                <div className="input-wrapper">
+                  <Navigation className="input-icon" size={22} />
+                  <input name="street" type="text" placeholder="Enter your street" className={errors.street ? 'input-error' : ''} value={formData.street} onChange={handleChange} />
+                </div>
+                {errors.street && <div className="error-message">{errors.street}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Barangay</label>
+                <div className="input-wrapper">
+                  <Hash className="input-icon" size={22} />
+                  <input name="barangay" type="text" placeholder="Enter your barangay" className={errors.barangay ? 'input-error' : ''} value={formData.barangay} onChange={handleChange} />
+                </div>
+                {errors.barangay && <div className="error-message">{errors.barangay}</div>}
+              </div>
+
+              <div className="form-group">
                 <label>Patient Name</label>
                 <div className="input-wrapper">
                   <User className="input-icon" size={22} />
@@ -486,10 +695,23 @@ const Admission = () => {
 
               <div className="form-group">
                 <label>Patient Birthday</label>
-                <div className="input-wrapper">
-                  <Calendar className="input-icon" size={22} />
-                  <input name="patientBirthday" type="date" required className={errors.patientBirthday ? 'input-error' : ''} value={formData.patientBirthday} onChange={handleChange} />
+                <div
+                  className={`input-wrapper input-wrapper--date ${errors.patientBirthday ? 'input-wrapper--date-error' : ''}`}
+                >
+                  <Calendar className="input-icon" size={22} aria-hidden />
+                  <input
+                    name="patientBirthday"
+                    type="date"
+                    required
+                    min={patientBirthdayMin}
+                    max={patientBirthdayMax}
+                    className={`input-date ${errors.patientBirthday ? 'input-error' : ''}`}
+                    value={formData.patientBirthday}
+                    onChange={handleChange}
+                    aria-label="Patient date of birth"
+                  />
                 </div>
+                <p className="date-field-hint">Select a date or use the calendar control — not in the future.</p>
                 {errors.patientBirthday && <div className="error-message">{errors.patientBirthday}</div>}
               </div>
 
@@ -517,7 +739,9 @@ const Admission = () => {
                 </div>
               )}
 
-              <button type="submit" className="btn-primary">Submit Admission</button>
+              <button type="submit" className="btn-primary" disabled={submitting}>
+                {submitting ? 'Submitting…' : 'Submit Admission'}
+              </button>
               <button type="button" className="btn-secondary" onClick={saveDraft}>Save Draft</button>
               <button type="button" className="btn-secondary" onClick={clearForm}>Reset Form</button>
             </form>
@@ -544,17 +768,17 @@ const Admission = () => {
 
                 <div className="terms-section">
                   <h3>2. Purpose of the System</h3>
-                  <p>The System is designed to facilitate admission processing, patient record management, scheduling, monitoring, and communication between the clinic, patients, and authorized guardians. The System supports administrative and informational functions only and does not replace professional medical judgment, diagnosis, or treatment.</p>
+                  <p>The System is designed to facilitate admission processing, patient record management, scheduling, monitoring, and communication between the clinic, patients, and authorized guardians.</p>
                 </div>
 
                 <div className="terms-section">
                   <h3>3. User Eligibility and Accounts</h3>
-                  <p>Users must provide accurate and complete information during registration and admission application. Guardians submitting applications on behalf of patients confirm they are legally authorized to provide the patient’s information. Users are responsible for maintaining the confidentiality of their login credentials and all activities performed under their account.</p>
+                  <p>Users must provide accurate and complete information during registration and admission application. Guardians submitting applications on behalf of patients confirm they are legally authorized to provide the patient’s information.</p>
                 </div>
 
                 <div className="terms-section">
                   <h3>4. Data Collection and Privacy</h3>
-                  <p>The System collects personal and health-related information necessary for admission processing, monitoring, and care coordination. By using the System, you consent to the storage and processing of submitted information within the secure clinic database. Access to records is restricted to authorized personnel only and handled in accordance with applicable data privacy regulations and institutional policies.</p>
+                  <p>The System collects personal and health-related information necessary for admission processing, monitoring, and care coordination. By using the System, you consent to the storage and processing of submitted information within the secure clinic database.</p>
                 </div>
 
                 <div className="terms-section">
@@ -569,22 +793,22 @@ const Admission = () => {
 
                 <div className="terms-section">
                   <h3>7. System Availability</h3>
-                  <p>The clinic will make reasonable efforts to maintain continuous system availability. However, temporary interruptions may occur due to maintenance, updates, technical issues, or network conditions. The clinic is not liable for delays caused by such interruptions.</p>
+                  <p>The clinic will make reasonable efforts to maintain continuous system availability. However, temporary interruptions may occur due to maintenance, updates, technical issues, or network conditions.</p>
                 </div>
 
                 <div className="terms-section">
                   <h3>8. Acceptable Use</h3>
-                  <p>Users agree not to misuse the System. Prohibited actions include unauthorized access, attempting to alter records without permission, uploading harmful content, sharing accounts, or interfering with system operations. Violations may result in account suspension and further action as permitted by law.</p>
+                  <p>Users agree not to misuse the System. Prohibited actions include unauthorized access, attempting to alter records without permission, uploading harmful content, sharing accounts, or interfering with system operations.</p>
                 </div>
 
                 <div className="terms-section">
                   <h3>9. Record Access and Confidentiality</h3>
-                  <p>Patient records are confidential and may only be accessed by authorized staff and the registered patient or guardian. Users agree not to share retrieved information with unauthorized individuals and to respect the privacy of all patients within the System.</p>
+                  <p>Patient records are confidential and may only be accessed by authorized staff and the registered patient or guardian.</p>
                 </div>
 
                 <div className="terms-section">
                   <h3>10. Limitation of Liability</h3>
-                  <p>The System is intended to support administrative processes. The clinic is not responsible for decisions made solely based on system information without consultation with qualified healthcare professionals. The System does not provide emergency medical services.</p>
+                  <p>The System is intended to support administrative processes. The clinic is not responsible for decisions made solely based on system information without consultation with qualified healthcare professionals.</p>
                 </div>
 
                 <div className="terms-section">

@@ -1,41 +1,52 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Image, SafeAreaView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Image,
+  SafeAreaView,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useTerms } from "../contexts/TermsContext";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatAuthError } from "../lib/authErrors";
 
+/** Mirrors BRIDGESOFHOPE/src/pages/auth/signup.jsx validation & user_metadata. */
 export default function SignupScreen() {
   const router = useRouter();
   const { acceptTerms, setAcceptTerms } = useTerms();
 
   const [firstName, setFirstName] = useState("");
-  const [middleInitial, setMiddleInitial] = useState("");
   const [lastName, setLastName] = useState("");
-  const [province, setProvince] = useState("");
-  const [municipalityCity, setMunicipalityCity] = useState("");
-  const [street, setStreet] = useState("");
-  const [barangay, setBarangay] = useState("");
+  const [middleInitial, setMiddleInitial] = useState("");
   const [contactNumber, setContactNumber] = useState("");
+  const [province, setProvince] = useState("");
+  const [municipality, setMunicipality] = useState("");
+  const [street, setStreet] = useState("");
+  const [houseBlockLot, setHouseBlockLot] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [hidePassword, setHidePassword] = useState(true);
   const [hideConfirmPassword, setHideConfirmPassword] = useState(true);
 
-  const [accountCreated, setAccountCreated] = useState(false);
-  const [signupInfoMessage, setSignupInfoMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [bannerError, setBannerError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
     firstName?: string;
-    province?: string;
-    municipalityCity?: string;
-    street?: string;
-    barangay?: string;
     lastName?: string;
+    middleInitial?: string;
     contactNumber?: string;
+    province?: string;
+    municipality?: string;
+    street?: string;
+    houseBlockLot?: string;
     email?: string;
     password?: string;
     confirmPassword?: string;
@@ -43,16 +54,11 @@ export default function SignupScreen() {
   }>({});
 
   const handleContactNumberChange = (text: string) => {
-    const cleaned = text.replace(/\D/g, "");
+    const cleaned = text.replace(/\D/g, "").slice(0, 13);
     setContactNumber(cleaned);
     if (fieldErrors.contactNumber) {
       setFieldErrors((prev) => ({ ...prev, contactNumber: undefined }));
     }
-  };
-
-  const validateEmail = (value: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(value);
   };
 
   const getPasswordStrength = (value: string) => {
@@ -68,14 +74,9 @@ export default function SignupScreen() {
         color: "#999999",
       };
     }
-
     if (hasSpace) {
-      return {
-        message: "Password must not contain spaces.",
-        color: "#E53935",
-      };
+      return { message: "Password must not contain spaces.", color: "#E53935" };
     }
-
     if (!hasMinLength || !hasUpper || !hasNumber) {
       return {
         message:
@@ -83,99 +84,107 @@ export default function SignupScreen() {
         color: "#E53935",
       };
     }
-
-    return {
-      message: "Strong password.",
-      color: "#43A047",
-    };
+    return { message: "Strong password.", color: "#43A047" };
   };
 
-  const handleCreateAccount = async () => {
+  const validateForm = () => {
     const errors: typeof fieldErrors = {};
 
-    if (!firstName.trim()) {
-      errors.firstName = "Please Enter your First Name";
-    }
-    if (!lastName.trim()) {
-      errors.lastName = "Please Enter your Last Name";
-    }
-    if (!province.trim()) {
-      errors.province = "Please enter your province";
-    }
-    if (!municipalityCity.trim()) {
-      errors.municipalityCity = "Please enter your municipality/city";
-    }
-    if (!street.trim()) {
-      errors.street = "Please enter your street";
-    }
-    if (!barangay.trim()) {
-      errors.barangay = "Please enter your barangay";
+    if (!firstName.trim()) errors.firstName = "First name is required";
+    if (!lastName.trim()) errors.lastName = "Last name is required";
+    if (
+      middleInitial.trim() &&
+      !/^[A-Za-z]$/.test(middleInitial.trim())
+    ) {
+      errors.middleInitial = "Middle initial must be one letter";
     }
     if (!contactNumber.trim()) {
-      errors.contactNumber = "Please enter your contact number";
-    } else if (contactNumber.length < 11) {
-      errors.contactNumber = "Contact number must be 11 digits";
+      errors.contactNumber = "Contact number is required";
+    } else if (!/^[0-9]{10,13}$/.test(contactNumber.trim())) {
+      errors.contactNumber = "Contact number must be 10-13 digits";
     }
-    if (!email.trim() || !validateEmail(email.trim())) {
-      errors.email = "Please Enter a Valid Email Address";
+    if (!province.trim()) errors.province = "Province is required";
+    if (!municipality.trim()) {
+      errors.municipality = "Municipality / City is required";
     }
-    if (!password.trim()) {
-      errors.password = "Please Create a password";
-    } else if (/\s/.test(password)) {
+    if (!street.trim()) {
+      errors.street = "Street / Barangay is required";
+    }
+    if (!houseBlockLot.trim()) {
+      errors.houseBlockLot = "House # / Block / Lot is required";
+    }
+    if (!email.trim()) {
+      errors.email = "Email is required";
+    } else if (!/\S+@\S+\.\S+/.test(email.trim())) {
+      errors.email = "Invalid email format";
+    }
+
+    const p = password;
+    if (!p.trim()) {
+      errors.password = "Password is required";
+    } else if (/\s/.test(p)) {
       errors.password = "Password must not contain spaces.";
-    } else if (password.length < 8) {
+    } else if (p.length < 8) {
       errors.password = "Password must be at least 8 characters long.";
-    } else if (!/[A-Z]/.test(password)) {
+    } else if (!/[A-Z]/.test(p)) {
       errors.password = "Password must include at least one uppercase letter.";
-    } else if (!/\d/.test(password)) {
+    } else if (!/\d/.test(p)) {
       errors.password = "Password must include at least one number.";
     }
+
     if (!confirmPassword.trim()) {
       errors.confirmPassword = "Please confirm your password";
     } else if (password !== confirmPassword) {
       errors.confirmPassword = "Passwords do not match";
     }
     if (!acceptTerms) {
-      errors.terms = "Please agree to the Privacy Policy and Terms of Service";
+      errors.terms = "You must agree to the terms";
     }
 
     setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
-    if (Object.keys(errors).length > 0) {
-      setBannerError("Please fill out necessary information");
-      return;
-    }
+  const handleCreateAccount = async () => {
+    setFormError(null);
+    if (!validateForm()) return;
 
     if (!isSupabaseConfigured()) {
-      setBannerError(
+      setFormError(
         "Missing Supabase configuration. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to .env."
       );
       return;
     }
 
-    setBannerError(null);
+    const first = firstName.trim();
+    const last = lastName.trim();
+    const middle = middleInitial.trim();
+    const fullName = middle
+      ? `${first} ${middle.toUpperCase()}. ${last}`
+      : `${first} ${last}`;
+
+    const prov = province.trim();
+    const mun = municipality.trim();
+    const str = street.trim();
+    const hb = houseBlockLot.trim();
+    const addressLine = [hb, str, mun, prov].filter(Boolean).join(", ");
+
     setSubmitting(true);
-    const normalizedMiddleInitial = middleInitial.trim().slice(0, 1).toUpperCase();
-    const fullName = `${firstName.trim()}${
-      normalizedMiddleInitial ? ` ${normalizedMiddleInitial}.` : ""
-    } ${lastName.trim()}`.replace(/\s+/g, " ").trim();
-    const fullAddress = `${street.trim()}, ${barangay.trim()}, ${municipalityCity.trim()}, ${province.trim()}`;
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
         data: {
-          first_name: firstName.trim(),
-          middle_initial: normalizedMiddleInitial,
-          last_name: lastName.trim(),
+          first_name: first,
+          last_name: last,
+          middle_initial: middle.toUpperCase() || null,
           full_name: fullName,
-          province: province.trim(),
-          municipality_city: municipalityCity.trim(),
-          street: street.trim(),
-          barangay: barangay.trim(),
-          address: fullAddress,
-          phone: contactNumber.trim(),
           contact_number: contactNumber.trim(),
+          province: prov,
+          municipality: mun,
+          street: str,
+          house_block_lot: hb,
+          address: addressLine,
           account_type: "family",
         },
       },
@@ -183,25 +192,45 @@ export default function SignupScreen() {
     setSubmitting(false);
 
     if (error) {
-      setBannerError(formatAuthError(error));
+      setFormError(formatAuthError(error));
       return;
     }
 
-    setSignupInfoMessage(
-      data.session
-        ? "You are signed in. You can go to the home screen after continuing."
-        : "Check your email and confirm your address before signing in."
-    );
-    setAccountCreated(true);
+    if (data.user?.id) {
+      const { error: profileError } = await supabase.from("profiles").upsert(
+        {
+          id: data.user.id,
+          full_name: fullName,
+          phone: contactNumber.trim(),
+          account_type: "family",
+          province: prov,
+          municipality: mun,
+          street: str,
+          house_block_lot: hb,
+        },
+        { onConflict: "id" }
+      );
+      if (profileError) {
+        console.warn("[signup] profile upsert failed:", profileError.message);
+      }
+    }
+
+    router.replace("/login");
   };
 
   const hasError = (key: keyof typeof fieldErrors) => !!fieldErrors[key];
 
   useEffect(() => {
-    if (!bannerError) return;
-    const timer = setTimeout(() => setBannerError(null), 3500);
+    if (!formError) return;
+    const timer = setTimeout(() => setFormError(null), 5000);
     return () => clearTimeout(timer);
-  }, [bannerError]);
+  }, [formError]);
+
+  const clearFieldError = (key: keyof typeof fieldErrors) => {
+    if (fieldErrors[key]) {
+      setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -216,10 +245,10 @@ export default function SignupScreen() {
           <Ionicons name="arrow-back" size={25} color="#333" />
         </TouchableOpacity>
 
-        {bannerError && (
+        {formError && (
           <View style={[styles.banner, styles.bannerSpacing]}>
             <Ionicons name="alert-circle" size={20} color="#fff" />
-            <Text style={styles.bannerText}>{bannerError}</Text>
+            <Text style={styles.bannerText}>{formError}</Text>
           </View>
         )}
 
@@ -237,7 +266,6 @@ export default function SignupScreen() {
           </View>
 
           <View style={styles.card}>
-            {/* First Name */}
             <Text style={styles.label}>First Name</Text>
             <View
               style={[
@@ -253,14 +281,12 @@ export default function SignupScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Enter your first name"
+                placeholder="Enter first name"
                 placeholderTextColor="#B0B0B0"
                 value={firstName}
-                onChangeText={(text) => {
-                  setFirstName(text);
-                  if (fieldErrors.firstName) {
-                    setFieldErrors((prev) => ({ ...prev, firstName: undefined }));
-                  }
+                onChangeText={(t) => {
+                  setFirstName(t);
+                  clearFieldError("firstName");
                 }}
               />
             </View>
@@ -268,7 +294,6 @@ export default function SignupScreen() {
               <Text style={styles.errorText}>{fieldErrors.firstName}</Text>
             )}
 
-            {/* Last Name */}
             <Text style={styles.label}>Last Name</Text>
             <View
               style={[
@@ -284,14 +309,12 @@ export default function SignupScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Enter your last name"
+                placeholder="Enter last name"
                 placeholderTextColor="#B0B0B0"
                 value={lastName}
-                onChangeText={(text) => {
-                  setLastName(text);
-                  if (fieldErrors.lastName) {
-                    setFieldErrors((prev) => ({ ...prev, lastName: undefined }));
-                  }
+                onChangeText={(t) => {
+                  setLastName(t);
+                  clearFieldError("lastName");
                 }}
               />
             </View>
@@ -299,9 +322,13 @@ export default function SignupScreen() {
               <Text style={styles.errorText}>{fieldErrors.lastName}</Text>
             )}
 
-            {/* Middle Initial */}
-            <Text style={styles.label}>Middle Initial (optional)</Text>
-            <View style={styles.inputContainer}>
+            <Text style={styles.label}>Middle Initial (Optional)</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                hasError("middleInitial") && styles.inputErrorBorder,
+              ]}
+            >
               <Ionicons
                 name="person-outline"
                 size={20}
@@ -314,15 +341,49 @@ export default function SignupScreen() {
                 placeholderTextColor="#B0B0B0"
                 value={middleInitial}
                 onChangeText={(text) => {
-                  const cleaned = text.replace(/[^a-zA-Z]/g, "").slice(0, 1).toUpperCase();
+                  const cleaned = text
+                    .replace(/[^a-zA-Z]/g, "")
+                    .slice(0, 1)
+                    .toUpperCase();
                   setMiddleInitial(cleaned);
+                  clearFieldError("middleInitial");
                 }}
                 autoCapitalize="characters"
                 maxLength={1}
               />
             </View>
+            {fieldErrors.middleInitial && (
+              <Text style={styles.errorText}>{fieldErrors.middleInitial}</Text>
+            )}
 
-            {/* Address Section */}
+            <Text style={styles.label}>Contact Number</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                hasError("contactNumber") && styles.inputErrorBorder,
+              ]}
+            >
+              <Ionicons
+                name="call-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter contact number"
+                placeholderTextColor="#B0B0B0"
+                value={contactNumber}
+                onChangeText={handleContactNumberChange}
+                keyboardType="phone-pad"
+                maxLength={13}
+                textContentType="telephoneNumber"
+              />
+            </View>
+            {fieldErrors.contactNumber && (
+              <Text style={styles.errorText}>{fieldErrors.contactNumber}</Text>
+            )}
+
             <Text style={styles.sectionLabel}>Address</Text>
 
             <Text style={styles.label}>Province</Text>
@@ -340,26 +401,25 @@ export default function SignupScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Enter your province"
+                placeholder="e.g. Cavite"
                 placeholderTextColor="#B0B0B0"
                 value={province}
-                onChangeText={(text) => {
-                  setProvince(text);
-                  if (fieldErrors.province) {
-                    setFieldErrors((prev) => ({ ...prev, province: undefined }));
-                  }
+                onChangeText={(t) => {
+                  setProvince(t);
+                  clearFieldError("province");
                 }}
+                autoComplete="postal-address-region"
               />
             </View>
             {fieldErrors.province && (
               <Text style={styles.errorText}>{fieldErrors.province}</Text>
             )}
 
-            <Text style={styles.label}>Municipality/City</Text>
+            <Text style={styles.label}>Municipality / City</Text>
             <View
               style={[
                 styles.inputContainer,
-                hasError("municipalityCity") && styles.inputErrorBorder,
+                hasError("municipality") && styles.inputErrorBorder,
               ]}
             >
               <Ionicons
@@ -370,25 +430,21 @@ export default function SignupScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Enter your municipality/city"
+                placeholder="e.g. Imus City"
                 placeholderTextColor="#B0B0B0"
-                value={municipalityCity}
-                onChangeText={(text) => {
-                  setMunicipalityCity(text);
-                  if (fieldErrors.municipalityCity) {
-                    setFieldErrors((prev) => ({
-                      ...prev,
-                      municipalityCity: undefined,
-                    }));
-                  }
+                value={municipality}
+                onChangeText={(t) => {
+                  setMunicipality(t);
+                  clearFieldError("municipality");
                 }}
+                autoComplete="postal-address-locality"
               />
             </View>
-            {fieldErrors.municipalityCity && (
-              <Text style={styles.errorText}>{fieldErrors.municipalityCity}</Text>
+            {fieldErrors.municipality && (
+              <Text style={styles.errorText}>{fieldErrors.municipality}</Text>
             )}
 
-            <Text style={styles.label}>Street</Text>
+            <Text style={styles.label}>Street / Barangay</Text>
             <View
               style={[
                 styles.inputContainer,
@@ -403,81 +459,48 @@ export default function SignupScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Enter your street"
+                placeholder="Street name or barangay"
                 placeholderTextColor="#B0B0B0"
                 value={street}
-                onChangeText={(text) => {
-                  setStreet(text);
-                  if (fieldErrors.street) {
-                    setFieldErrors((prev) => ({ ...prev, street: undefined }));
-                  }
+                onChangeText={(t) => {
+                  setStreet(t);
+                  clearFieldError("street");
                 }}
+                autoComplete="street-address"
               />
             </View>
             {fieldErrors.street && (
               <Text style={styles.errorText}>{fieldErrors.street}</Text>
             )}
 
-            <Text style={styles.label}>Barangay</Text>
+            <Text style={styles.label}>House # / Block / Lot</Text>
             <View
               style={[
                 styles.inputContainer,
-                hasError("barangay") && styles.inputErrorBorder,
+                hasError("houseBlockLot") && styles.inputErrorBorder,
               ]}
             >
               <Ionicons
-                name="pin-outline"
+                name="home-outline"
                 size={20}
                 color="#999"
                 style={styles.inputIcon}
               />
               <TextInput
                 style={styles.input}
-                placeholder="Enter your barangay"
+                placeholder="e.g. Blk 2 Lot 15"
                 placeholderTextColor="#B0B0B0"
-                value={barangay}
-                onChangeText={(text) => {
-                  setBarangay(text);
-                  if (fieldErrors.barangay) {
-                    setFieldErrors((prev) => ({ ...prev, barangay: undefined }));
-                  }
+                value={houseBlockLot}
+                onChangeText={(t) => {
+                  setHouseBlockLot(t);
+                  clearFieldError("houseBlockLot");
                 }}
               />
             </View>
-            {fieldErrors.barangay && (
-              <Text style={styles.errorText}>{fieldErrors.barangay}</Text>
+            {fieldErrors.houseBlockLot && (
+              <Text style={styles.errorText}>{fieldErrors.houseBlockLot}</Text>
             )}
 
-            {/* Contact Number */}
-            <Text style={styles.label}>Contact Number</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("contactNumber") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="call-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="09XXXXXXXXX (11 digits)"
-                placeholderTextColor="#B0B0B0"
-                value={contactNumber}
-                onChangeText={handleContactNumberChange}
-                keyboardType="phone-pad"
-                maxLength={11}
-                textContentType="telephoneNumber"
-              />
-            </View>
-            {fieldErrors.contactNumber && (
-              <Text style={styles.errorText}>{fieldErrors.contactNumber}</Text>
-            )}
-
-            {/* Email */}
             <Text style={styles.label}>Email Address</Text>
             <View
               style={[
@@ -493,14 +516,12 @@ export default function SignupScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="your.email@example.com"
+                placeholder="Enter your email"
                 placeholderTextColor="#B0B0B0"
                 value={email}
-                onChangeText={(text) => {
-                  setEmail(text);
-                  if (fieldErrors.email) {
-                    setFieldErrors((prev) => ({ ...prev, email: undefined }));
-                  }
+                onChangeText={(t) => {
+                  setEmail(t);
+                  clearFieldError("email");
                 }}
                 autoCapitalize="none"
                 keyboardType="email-address"
@@ -510,7 +531,6 @@ export default function SignupScreen() {
               <Text style={styles.errorText}>{fieldErrors.email}</Text>
             )}
 
-            {/* Password */}
             <Text style={styles.label}>Password</Text>
             <View
               style={[
@@ -527,20 +547,16 @@ export default function SignupScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Create a password"
+                placeholder="Create Password"
                 placeholderTextColor="#B0B0B0"
                 secureTextEntry={hidePassword}
                 value={password}
-                onChangeText={(text) => {
-                  setPassword(text);
-                  if (fieldErrors.password) {
-                    setFieldErrors((prev) => ({ ...prev, password: undefined }));
-                  }
+                onChangeText={(t) => {
+                  setPassword(t);
+                  clearFieldError("password");
                 }}
               />
-              <TouchableOpacity
-                onPress={() => setHidePassword((prev) => !prev)}
-              >
+              <TouchableOpacity onPress={() => setHidePassword((v) => !v)}>
                 <Ionicons
                   name={hidePassword ? "eye-outline" : "eye-off-outline"}
                   size={20}
@@ -562,7 +578,6 @@ export default function SignupScreen() {
               <Text style={styles.errorText}>{fieldErrors.password}</Text>
             )}
 
-            {/* Confirm Password */}
             <Text style={styles.label}>Confirm Password</Text>
             <View
               style={[
@@ -578,27 +593,22 @@ export default function SignupScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Confirm your password"
+                placeholder="Confirm Password"
                 placeholderTextColor="#B0B0B0"
                 secureTextEntry={hideConfirmPassword}
                 value={confirmPassword}
-                onChangeText={(text) => {
-                  setConfirmPassword(text);
-                  if (fieldErrors.confirmPassword) {
-                    setFieldErrors((prev) => ({
-                      ...prev,
-                      confirmPassword: undefined,
-                    }));
-                  }
+                onChangeText={(t) => {
+                  setConfirmPassword(t);
+                  clearFieldError("confirmPassword");
                 }}
               />
               <TouchableOpacity
-                onPress={() =>
-                  setHideConfirmPassword((prev) => !prev)
-                }
+                onPress={() => setHideConfirmPassword((v) => !v)}
               >
                 <Ionicons
-                  name={hideConfirmPassword ? "eye-outline" : "eye-off-outline"}
+                  name={
+                    hideConfirmPassword ? "eye-outline" : "eye-off-outline"
+                  }
                   size={20}
                   color="#999"
                 />
@@ -608,18 +618,12 @@ export default function SignupScreen() {
               <Text style={styles.errorText}>{fieldErrors.confirmPassword}</Text>
             )}
 
-            {/* Terms */}
             <View style={styles.termsRow}>
               <TouchableOpacity
-                style={[
-                  styles.checkbox,
-                  acceptTerms && styles.checkboxChecked,
-                ]}
+                style={[styles.checkbox, acceptTerms && styles.checkboxChecked]}
                 onPress={() => {
                   setAcceptTerms(!acceptTerms);
-                  if (fieldErrors.terms) {
-                    setFieldErrors((prev) => ({ ...prev, terms: undefined }));
-                  }
+                  clearFieldError("terms");
                 }}
               >
                 {acceptTerms && (
@@ -639,7 +643,7 @@ export default function SignupScreen() {
                   onPress={() => router.push("/privacypolicy")}
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
-                  <Text style={styles.linkText}>Terms of Service</Text>
+                  <Text style={styles.linkText}>Terms</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -647,40 +651,24 @@ export default function SignupScreen() {
               <Text style={styles.errorText}>{fieldErrors.terms}</Text>
             )}
 
-            {/* Create Account Button */}
             <TouchableOpacity
               style={[styles.createButton, submitting && { opacity: 0.7 }]}
               onPress={handleCreateAccount}
               disabled={submitting}
             >
               <Text style={styles.createButtonText}>
-                {submitting ? "Creating…" : "Create Account"}
+                {submitting ? "Creating account…" : "Create Account"}
               </Text>
             </TouchableOpacity>
-          </View>
-        </ScrollView>
 
-        {accountCreated && (
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Account Created!</Text>
-              <Text style={styles.modalMessage}>
-                {signupInfoMessage ??
-                  "Your account has been created successfully."}
-              </Text>
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={() => {
-                  setAccountCreated(false);
-                  setSignupInfoMessage(null);
-                  router.replace("/login");
-                }}
-              >
-                <Text style={styles.modalButtonText}>Back to Log In</Text>
+            <View style={styles.loginPromptRow}>
+              <Text style={styles.loginPromptText}>Already have an account? </Text>
+              <TouchableOpacity onPress={() => router.replace("/login")}>
+                <Text style={styles.loginPromptLink}>Sign In</Text>
               </TouchableOpacity>
             </View>
           </View>
-        )}
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -694,13 +682,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-  },
-  bannerContainer: {
-    height: 44,
-    marginTop: 8,
-    marginHorizontal: 24,
-    justifyContent: "center",
-    alignItems: "center",
   },
   bannerSpacing: {
     marginTop: 12,
@@ -721,6 +702,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     marginLeft: 8,
     fontSize: 14,
+    flex: 1,
   },
   scrollContainer: {
     paddingHorizontal: 30,
@@ -846,50 +828,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
-  modalOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.25)",
-    alignItems: "center",
+  loginPromptRow: {
+    flexDirection: "row",
     justifyContent: "center",
+    marginTop: 20,
+    flexWrap: "wrap",
   },
-  modalCard: {
-    width: "80%",
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
+  loginPromptText: {
+    fontSize: 14,
+    color: "#777",
   },
-  modalTitle: {
-    fontSize: 18,
+  loginPromptLink: {
+    fontSize: 14,
+    color: "#F54E25",
     fontWeight: "700",
-    color: "#333",
-    marginBottom: 8,
-  },
-  modalMessage: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  modalButton: {
-    backgroundColor: "#F54E25",
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-  },
-  modalButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
   },
 });

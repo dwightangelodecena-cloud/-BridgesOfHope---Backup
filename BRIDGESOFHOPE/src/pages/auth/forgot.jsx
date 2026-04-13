@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/logo.png';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { startGoogleOAuthWeb } from '@/lib/oauthWeb';
+
+const emailLooksValid = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
 
 const Forgot = () => {
   const navigate = useNavigate();
@@ -13,6 +17,14 @@ const Forgot = () => {
   });
   const [isFocused, setIsFocused] = useState(false);
   const [error, setError] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('bh_remembered_email');
+    if (saved) {
+      setFormData((prev) => ({ ...prev, email: saved, rememberMe: true }));
+    }
+  }, []);
 
   // --- HANDLERS ---
   const handleChange = (e) => {
@@ -24,19 +36,60 @@ const Forgot = () => {
     if (error) setError('');
   };
 
-  const handleSubmit = (e) => {
+  const handleGoogle = async () => {
+    setError('');
+    if (!isSupabaseConfigured()) {
+      setError(
+        'Missing Supabase configuration. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.'
+      );
+      return;
+    }
+    setSending(true);
+    try {
+      await startGoogleOAuthWeb();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google sign-in failed.');
+      setSending(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    // --- VALIDATION (Matches Login.jsx logic) ---
-    if (!formData.email.includes('@') || !formData.email.toLowerCase().endsWith('.com')) {
-      setError('Email is required');
+    if (!isSupabaseConfigured()) {
+      setError('Password reset is unavailable: Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
       return;
     }
 
-    setError('');
-    console.log("Proceeding with recovery for:", formData);
-    navigate('/verify');
+    if (!emailLooksValid(formData.email)) {
+      setError('Enter a valid email address.');
+      return;
+    }
+
+    setSending(true);
+    try {
+      const email = formData.email.trim().toLowerCase();
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: false },
+      });
+      if (otpErr) {
+        setError(otpErr.message || 'Could not send email code.');
+        return;
+      }
+      localStorage.setItem('bh_recovery_channel', 'email');
+      localStorage.setItem('bh_recovery_email', email);
+      localStorage.removeItem('bh_recovery_phone');
+      if (formData.rememberMe) {
+        localStorage.setItem('bh_remembered_email', email);
+      } else {
+        localStorage.removeItem('bh_remembered_email');
+      }
+      navigate('/verify', { state: { from: 'forgot', channel: 'email', email } });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -326,12 +379,19 @@ const Forgot = () => {
                 Back to Log In
               </button>
 
-              <button type="submit" className="btn-primary">Send Verification</button>
+              <button type="submit" className="btn-primary" disabled={sending} style={{ opacity: sending ? 0.75 : 1 }}>
+                {sending ? 'Sending…' : 'Send Verification'}
+              </button>
             </form>
 
             <div className="or-divider"><span>or</span></div>
 
-            <button type="button" className="btn-google">
+            <button
+              type="button"
+              className="btn-google"
+              onClick={handleGoogle}
+              disabled={sending}
+            >
               <svg width="20" height="20" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />

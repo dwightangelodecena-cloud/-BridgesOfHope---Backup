@@ -1,12 +1,62 @@
-import React, { useState, useRef } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, SafeAreaView, Image} from "react-native";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  SafeAreaView,
+  Image,
+  ActivityIndicator,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { TAB_ROUTES } from "../lib/navigationConfig";
+import {
+  ensureFamilyAccountOrSignOut,
+  signInWithGoogleMobile,
+} from "../lib/googleAuth";
+
+const OTP_LENGTH = 6;
+const RECOVERY_EMAIL_KEY = "bh_recovery_email";
+
+function paramToString(v: string | string[] | undefined): string {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v) && v[0]) return v[0];
+  return "";
+}
 
 export default function VerificationScreen() {
   const router = useRouter();
-  const [code, setCode] = useState<string[]>(["", "", "", ""]);
-  const inputRefs = useRef<any[]>([]);
+  const params = useLocalSearchParams<{ email?: string | string[] }>();
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [code, setCode] = useState<string[]>(() =>
+    Array.from({ length: OTP_LENGTH }, () => "")
+  );
+  const inputRefs = useRef<(TextInput | null)[]>([]);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const fromParam = paramToString(params.email);
+      if (fromParam) {
+        if (!cancelled) setRecoveryEmail(fromParam);
+        return;
+      }
+      const stored = await AsyncStorage.getItem(RECOVERY_EMAIL_KEY);
+      if (!cancelled && stored) setRecoveryEmail(stored);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [params.email]);
 
   const handleChangeDigit = (index: number, value: string) => {
     const numeric = value.replace(/[^0-9]/g, "").slice(0, 1);
@@ -15,24 +65,59 @@ export default function VerificationScreen() {
       next[index] = numeric;
       return next;
     });
+    if (verifyError) setVerifyError(null);
 
-    if (numeric && index < code.length - 1) {
-      const nextRef = inputRefs.current[index + 1];
-      nextRef?.focus();
+    if (numeric && index < OTP_LENGTH - 1) {
+      inputRefs.current[index + 1]?.focus();
     }
   };
 
-  const handleVerify = () => {
+  const handleKeyDown = useCallback(
+    (index: number, key: string) => {
+      if (key === "Backspace" && !code[index] && index > 0) {
+        inputRefs.current[index - 1]?.focus();
+      }
+    },
+    [code]
+  );
+
+  const handleVerify = async () => {
+    setVerifyError(null);
     const joined = code.join("");
-    if (joined.length !== 4) {
-      console.warn("Please enter the 4-digit verification code.");
+    if (joined.length !== OTP_LENGTH) {
+      setVerifyError(`Enter all ${OTP_LENGTH} digits.`);
       return;
     }
 
-    console.log("Verifying code:", joined);
-    // TODO: Hook up to your verification backend / auth flow.
-    // On success, navigate to create-new-password screen.
-    router.push("/newpassword");
+    if (!recoveryEmail) {
+      setVerifyError("Missing email. Go back and request a new code.");
+      return;
+    }
+
+    if (!isSupabaseConfigured()) {
+      setVerifyError("Supabase is not configured.");
+      return;
+    }
+
+    setVerifying(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: recoveryEmail,
+        token: joined,
+        type: "email",
+      });
+
+      if (error) {
+        setVerifyError(error.message || "Invalid or expired code.");
+        return;
+      }
+
+      router.push("/newpassword");
+    } catch (e) {
+      setVerifyError(e instanceof Error ? e.message : "Verification failed.");
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const handleBackToLogin = () => {
@@ -41,6 +126,39 @@ export default function VerificationScreen() {
 
   const handleGoToSignup = () => {
     router.push("/signup");
+  };
+
+  const handleGoogle = async () => {
+    setVerifyError(null);
+    if (!isSupabaseConfigured()) {
+      setVerifyError("Supabase is not configured.");
+      return;
+    }
+    setVerifying(true);
+    try {
+      const result = await signInWithGoogleMobile();
+      if (result.status === "cancelled") {
+        setVerifying(false);
+        return;
+      }
+      if (result.status === "error") {
+        setVerifyError(result.message);
+        setVerifying(false);
+        return;
+      }
+      const roleCheck = await ensureFamilyAccountOrSignOut();
+      if (roleCheck === "staff") {
+        setVerifyError("Use the web app to sign in as staff.");
+        setVerifying(false);
+        return;
+      }
+      router.replace(TAB_ROUTES.home);
+    } catch (e) {
+      setVerifyError(
+        e instanceof Error ? e.message : "Google sign-in failed."
+      );
+      setVerifying(false);
+    }
   };
 
   return (
@@ -52,6 +170,7 @@ export default function VerificationScreen() {
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
+          disabled={verifying}
         >
           <Ionicons name="arrow-back" size={25} color="#333" />
         </TouchableOpacity>
@@ -67,6 +186,13 @@ export default function VerificationScreen() {
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Enter Verification Code</Text>
+            <Text style={styles.hint}>
+              Use the 6-digit code from your email (not the magic link).
+            </Text>
+
+            {verifyError ? (
+              <Text style={styles.errorText}>{verifyError}</Text>
+            ) : null}
 
             <View style={styles.codeRow}>
               {code.map((digit, index) => (
@@ -78,9 +204,15 @@ export default function VerificationScreen() {
                     style={styles.codeInput}
                     value={digit}
                     onChangeText={(value) => handleChangeDigit(index, value)}
+                    onKeyPress={({ nativeEvent }) =>
+                      handleKeyDown(index, nativeEvent.key)
+                    }
                     keyboardType="number-pad"
                     maxLength={1}
-                    returnKeyType={index === code.length - 1 ? "done" : "next"}
+                    returnKeyType={
+                      index === OTP_LENGTH - 1 ? "done" : "next"
+                    }
+                    editable={!verifying}
                   />
                 </View>
               ))}
@@ -89,12 +221,21 @@ export default function VerificationScreen() {
             <TouchableOpacity
               style={styles.backToLoginButton}
               onPress={handleBackToLogin}
+              disabled={verifying}
             >
               <Text style={styles.backToLoginText}>Back to Log In</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.verifyButton} onPress={handleVerify}>
-              <Text style={styles.verifyButtonText}>Verify</Text>
+            <TouchableOpacity
+              style={[styles.verifyButton, verifying && styles.verifyButtonDisabled]}
+              onPress={handleVerify}
+              disabled={verifying}
+            >
+              {verifying ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.verifyButtonText}>Verify</Text>
+              )}
             </TouchableOpacity>
 
             <View style={styles.dividerRow}>
@@ -103,7 +244,11 @@ export default function VerificationScreen() {
               <View style={styles.line} />
             </View>
 
-            <TouchableOpacity style={styles.googleButton}>
+            <TouchableOpacity
+              style={styles.googleButton}
+              disabled={verifying}
+              onPress={handleGoogle}
+            >
               <Image
                 source={require("../assets/images/google-logo.png")}
                 style={styles.googleIcon}
@@ -113,8 +258,8 @@ export default function VerificationScreen() {
           </View>
 
           <View style={styles.signupContainer}>
-            <Text style={styles.signupText}>Don't have an account? </Text>
-            <TouchableOpacity onPress={handleGoToSignup}>
+            <Text style={styles.signupText}>{"Don't have an account? "}</Text>
+            <TouchableOpacity onPress={handleGoToSignup} disabled={verifying}>
               <Text style={styles.signupLink}>Sign Up</Text>
             </TouchableOpacity>
           </View>
@@ -135,7 +280,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flexGrow: 1,
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 32,
     justifyContent: "flex-start",
@@ -165,18 +310,34 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
     color: "#444",
-    marginBottom: 24,
+    marginBottom: 8,
     textAlign: "center",
+  },
+  hint: {
+    fontSize: 13,
+    color: "#777",
+    textAlign: "center",
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  errorText: {
+    fontSize: 13,
+    color: "#E53935",
+    textAlign: "center",
+    marginBottom: 12,
+    fontWeight: "600",
   },
   codeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 24,
+    gap: 6,
   },
   codeBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    flex: 1,
+    maxWidth: 48,
+    height: 52,
+    borderRadius: 26,
     borderWidth: 1,
     borderColor: "#000",
     alignItems: "center",
@@ -184,11 +345,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   codeInput: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "600",
     textAlign: "center",
     color: "#000",
     width: "100%",
+    padding: 0,
   },
   backToLoginButton: {
     alignSelf: "center",
@@ -212,6 +374,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 6,
     elevation: 3,
+  },
+  verifyButtonDisabled: {
+    opacity: 0.85,
   },
   verifyButtonText: {
     color: "#fff",
@@ -270,4 +435,3 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
-
