@@ -91,6 +91,74 @@ const displayBedRoomLabel = (patient) => {
   return `Room ${n}`;
 };
 
+const renderAiInline = (text, keyPrefix) => {
+  const parts = String(text || '').split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+  return parts.map((part, index) => {
+    const isBold = part.startsWith('**') && part.endsWith('**');
+    if (!isBold) return <React.Fragment key={`${keyPrefix}-text-${index}`}>{part}</React.Fragment>;
+    return <strong key={`${keyPrefix}-bold-${index}`}>{part.slice(2, -2)}</strong>;
+  });
+};
+
+const renderAiContent = (text) => {
+  const lines = String(text || '').split(/\r?\n/);
+  const blocks = [];
+  let pendingList = [];
+
+  const flushList = () => {
+    if (!pendingList.length) return;
+    blocks.push({ type: 'list', items: pendingList });
+    pendingList = [];
+  };
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) {
+      flushList();
+      return;
+    }
+
+    const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
+    if (bulletMatch) {
+      pendingList.push(bulletMatch[1].trim());
+      return;
+    }
+
+    flushList();
+    const cleanLine = line.replace(/^\*\s+\*\*/g, '**');
+    const isHeading = /^\*\*[^*]+\*\*:?\s*$/.test(cleanLine);
+    blocks.push({ type: isHeading ? 'heading' : 'paragraph', text: cleanLine });
+  });
+
+  flushList();
+
+  return blocks.map((block, index) => {
+    if (block.type === 'list') {
+      return (
+        <ul className="admin-ai-list" key={`ai-list-${index}`}>
+          {block.items.map((item, itemIndex) => (
+            <li key={`ai-list-${index}-item-${itemIndex}`}>{renderAiInline(item, `ai-li-${index}-${itemIndex}`)}</li>
+          ))}
+        </ul>
+      );
+    }
+
+    if (block.type === 'heading') {
+      return (
+        <p className="admin-ai-heading" key={`ai-heading-${index}`}>
+          {renderAiInline(block.text, `ai-heading-${index}`)}
+        </p>
+      );
+    }
+
+    return (
+      <p className="admin-ai-paragraph" key={`ai-p-${index}`}>
+        {renderAiInline(block.text, `ai-p-${index}`)}
+      </p>
+    );
+  });
+};
+
 const toUiPatient = (row) => {
   const prof = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
   const discharged = row.discharged_at != null && String(row.discharged_at).trim() !== '';
@@ -985,7 +1053,41 @@ const AdminPatientDatabase = () => {
           font-size: 14px;
           line-height: 1.55;
           color: #334155;
-          white-space: pre-wrap;
+          white-space: normal;
+        }
+        .admin-ai-content {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .admin-ai-heading {
+          margin: 0;
+          font-size: 15px;
+          line-height: 1.45;
+          color: #1e293b;
+          font-weight: 700;
+        }
+        .admin-ai-paragraph {
+          margin: 0;
+          font-size: 14px;
+          line-height: 1.65;
+          color: #334155;
+        }
+        .admin-ai-list {
+          margin: 0;
+          padding-left: 20px;
+          display: grid;
+          gap: 8px;
+        }
+        .admin-ai-list li {
+          color: #334155;
+          line-height: 1.6;
+        }
+        .admin-ai-list strong,
+        .admin-ai-paragraph strong,
+        .admin-ai-heading strong {
+          color: #1e293b;
+          font-weight: 700;
         }
         .admin-ai-modal-footer {
           padding: 12px 22px 16px;
@@ -1957,18 +2059,21 @@ const AdminPatientDatabase = () => {
                 )}
                 {!aiLoading && aiError && (
                   <div
+                    className="admin-ai-error"
                     style={{
                       color: '#b91c1c',
                       fontWeight: 600,
                       fontSize: 14,
                       whiteSpace: 'pre-line',
                       lineHeight: 1.55,
+                      overflowWrap: 'anywhere',
+                      wordBreak: 'break-word',
                     }}
                   >
                     {aiError}
                   </div>
                 )}
-                {!aiLoading && !aiError && aiText && <div>{aiText}</div>}
+                {!aiLoading && !aiError && aiText && <div className="admin-ai-content">{renderAiContent(aiText)}</div>}
                 {!aiLoading && !aiError && !aiText && (
                   <div style={{ color: '#94a3b8' }}>No content returned.</div>
                 )}
