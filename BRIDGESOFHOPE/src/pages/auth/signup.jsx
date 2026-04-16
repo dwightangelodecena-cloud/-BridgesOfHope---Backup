@@ -1,9 +1,18 @@
-import React, { useState } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, X, Phone, MapPin } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, X, Phone, MapPin, Building2, Hash } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import logo from '@/assets/logo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
+import { PsgcSearchableSelect } from '@/components/address/PsgcSearchableSelect';
+import { AddressFormSection, StreetAddressInput } from '@/components/address/AddressFormSection';
+import { usePsgcAddressCascade } from '@/hooks/usePsgcAddressCascade';
+import {
+  getAddressStorageKey,
+  loadAddressDraft,
+  saveAddressDraft,
+  clearAddressDraft,
+} from '@/lib/addressPersistence';
 
 const SignUp = () => {
   const navigate = useNavigate();
@@ -20,6 +29,7 @@ const SignUp = () => {
     contactNumber: '',
     province: '',
     municipality: '',
+    barangay: '',
     street: '',
     houseBlockLot: '',
     email: '',
@@ -27,6 +37,122 @@ const SignUp = () => {
     confirmPassword: '',
     agreeToTerms: false
   });
+
+  const {
+    provinceOptions,
+    cityOptions,
+    barangayOptions,
+    loadingProvinces,
+    loadingCities,
+    loadingBarangays,
+    fetchError,
+    setFetchError,
+    onProvinceSelected,
+    onCitySelected,
+    onBarangaySelected,
+    onProvinceCleared,
+    onCityCleared,
+    onBarangayCleared,
+    hydrateFromSaved,
+  } = usePsgcAddressCascade({ cityFieldKey: 'municipality' });
+
+  const psgcCodesRef = useRef({
+    provinceCode: '',
+    provinceKind: 'province',
+    cityCode: '',
+    barangayCode: '',
+  });
+  const [addressRestored, setAddressRestored] = useState(false);
+  const addressStorageKey = getAddressStorageKey('signup');
+
+  useEffect(() => {
+    if (loadingProvinces) return;
+    const saved = loadAddressDraft(addressStorageKey);
+    if (!saved?.provinceCode) return;
+    let cancelled = false;
+    (async () => {
+      const ok = await hydrateFromSaved(
+        {
+          provinceCode: saved.provinceCode,
+          provinceKind: saved.provinceKind || 'province',
+          cityCode: saved.cityCode,
+          barangayCode: saved.barangayCode,
+          province: saved.province,
+          street: saved.street,
+        },
+        setFormData
+      );
+      if (cancelled || !ok) return;
+      psgcCodesRef.current = {
+        provinceCode: saved.provinceCode,
+        provinceKind: saved.provinceKind || 'province',
+        cityCode: saved.cityCode || '',
+        barangayCode: saved.barangayCode || '',
+      };
+      setAddressRestored(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [addressStorageKey, hydrateFromSaved, loadingProvinces]);
+
+  useEffect(() => {
+    const p = provinceOptions.find((o) => o.name === formData.province);
+    if (p) {
+      psgcCodesRef.current.provinceCode = p.code;
+      psgcCodesRef.current.provinceKind = p.kind || 'province';
+    } else if (!formData.province?.trim()) {
+      psgcCodesRef.current.provinceCode = '';
+      psgcCodesRef.current.provinceKind = 'province';
+      psgcCodesRef.current.cityCode = '';
+      psgcCodesRef.current.barangayCode = '';
+    }
+  }, [formData.province, provinceOptions]);
+
+  useEffect(() => {
+    const c = cityOptions.find((o) => o.name === formData.municipality);
+    if (c) {
+      psgcCodesRef.current.cityCode = c.code;
+    } else if (!formData.municipality?.trim()) {
+      psgcCodesRef.current.cityCode = '';
+      psgcCodesRef.current.barangayCode = '';
+    }
+  }, [formData.municipality, cityOptions]);
+
+  useEffect(() => {
+    const b = barangayOptions.find((o) => o.name === formData.barangay);
+    if (b) {
+      psgcCodesRef.current.barangayCode = b.code;
+    } else if (!formData.barangay?.trim()) {
+      psgcCodesRef.current.barangayCode = '';
+    }
+  }, [formData.barangay, barangayOptions]);
+
+  useEffect(() => {
+    if (!formData.province.trim()) {
+      clearAddressDraft(addressStorageKey);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      saveAddressDraft(addressStorageKey, {
+        province: formData.province.trim(),
+        city: formData.municipality.trim(),
+        barangay: formData.barangay.trim(),
+        street: formData.street.trim(),
+        provinceCode: psgcCodesRef.current.provinceCode,
+        provinceKind: psgcCodesRef.current.provinceKind,
+        cityCode: psgcCodesRef.current.cityCode,
+        barangayCode: psgcCodesRef.current.barangayCode,
+      });
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [
+    addressStorageKey,
+    formData.province,
+    formData.municipality,
+    formData.barangay,
+    formData.street,
+  ]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -54,7 +180,9 @@ const SignUp = () => {
     }
     if (!formData.province.trim()) newErrors.province = "Province is required";
     if (!formData.municipality.trim()) newErrors.municipality = "Municipality / City is required";
-    if (!formData.street.trim()) newErrors.street = "Street / Barangay is required";
+    if (!formData.barangay.trim()) newErrors.barangay = "Barangay is required";
+    if (!formData.street.trim()) newErrors.street = "Street is required";
+    else if (formData.street.trim().length < 2) newErrors.street = "Enter a valid street (at least 2 characters)";
     if (!formData.houseBlockLot.trim()) newErrors.houseBlockLot = "House # / Block / Lot is required";
     if (!formData.email.trim()) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = "Invalid email format";
@@ -105,9 +233,10 @@ const SignUp = () => {
 
     const province = formData.province.trim();
     const municipality = formData.municipality.trim();
+    const barangay = formData.barangay.trim();
     const street = formData.street.trim();
     const houseBlockLot = formData.houseBlockLot.trim();
-    const addressLine = [houseBlockLot, street, municipality, province].filter(Boolean).join(', ');
+    const addressLine = [houseBlockLot, street, barangay, municipality, province].filter(Boolean).join(', ');
 
     const { data, error } = await supabase.auth.signUp({
       email: formData.email.trim(),
@@ -121,6 +250,7 @@ const SignUp = () => {
           contact_number: formData.contactNumber.trim(),
           province,
           municipality,
+          barangay,
           street,
           house_block_lot: houseBlockLot,
           address: addressLine,
@@ -146,6 +276,7 @@ const SignUp = () => {
           account_type: 'family',
           province,
           municipality,
+          barangay,
           street,
           house_block_lot: houseBlockLot
         }, { onConflict: 'id' });
@@ -534,34 +665,107 @@ const SignUp = () => {
                 {errors.contactNumber && <div className="error-message">{errors.contactNumber}</div>}
               </div>
 
-              <p className="form-section-label">Address</p>
+              <AddressFormSection
+                fetchError={fetchError}
+                onDismissError={() => setFetchError('')}
+                restoredHint={
+                  addressRestored ? 'We restored your last address on this device. Review and update if needed.' : null
+                }
+              >
+                <PsgcSearchableSelect
+                  label="Province"
+                  Icon={MapPin}
+                  options={provinceOptions}
+                  valueName={formData.province}
+                  onSelect={(opt) => {
+                    void onProvinceSelected(opt, setFormData);
+                    if (errors.province) setErrors((prev) => ({ ...prev, province: '' }));
+                  }}
+                  onClear={() => {
+                    onProvinceCleared(setFormData);
+                    setErrors((prev) => ({
+                      ...prev,
+                      province: '',
+                      municipality: '',
+                      barangay: '',
+                      street: '',
+                    }));
+                  }}
+                  disabled={loadingProvinces}
+                  loading={loadingProvinces}
+                  hasError={!!errors.province}
+                  errorText={errors.province || ''}
+                  placeholder={loadingProvinces ? 'Loading provinces…' : 'Choose Province'}
+                  emptyText="No province matched. Try another spelling."
+                />
 
-              <div className="form-group">
-                <label>Province</label>
-                <div className="input-wrapper">
-                  <MapPin className="input-icon" size={22} />
-                  <input name="province" type="text" placeholder="e.g. Cavite" className={errors.province ? 'input-error' : ''} value={formData.province} onChange={handleChange} autoComplete="address-level1" />
-                </div>
-                {errors.province && <div className="error-message">{errors.province}</div>}
-              </div>
+                <PsgcSearchableSelect
+                  label="City / Municipality"
+                  Icon={Building2}
+                  options={cityOptions}
+                  valueName={formData.municipality}
+                  onSelect={(opt) => {
+                    void onCitySelected(opt, setFormData);
+                    if (errors.municipality) setErrors((prev) => ({ ...prev, municipality: '' }));
+                  }}
+                  onClear={() => {
+                    onCityCleared(setFormData);
+                    setErrors((prev) => ({ ...prev, municipality: '', barangay: '' }));
+                  }}
+                  disabled={!formData.province.trim() || loadingCities}
+                  loading={loadingCities}
+                  hasError={!!errors.municipality}
+                  errorText={errors.municipality || ''}
+                  placeholder={
+                    !formData.province.trim()
+                      ? 'Choose Province First'
+                      : loadingCities
+                        ? 'Loading cities…'
+                        : 'Choose City / Municipality'
+                  }
+                  emptyText={loadingCities ? 'Loading…' : 'No match in this province.'}
+                />
 
-              <div className="form-group">
-                <label>Municipality / City</label>
-                <div className="input-wrapper">
-                  <MapPin className="input-icon" size={22} />
-                  <input name="municipality" type="text" placeholder="e.g. Imus City" className={errors.municipality ? 'input-error' : ''} value={formData.municipality} onChange={handleChange} autoComplete="address-level2" />
+                <div className="addr-sec__full">
+                  <PsgcSearchableSelect
+                    label="Barangay"
+                    Icon={Hash}
+                    options={barangayOptions}
+                    valueName={formData.barangay}
+                    onSelect={(opt) => {
+                      onBarangaySelected(opt, setFormData);
+                      if (errors.barangay) setErrors((prev) => ({ ...prev, barangay: '' }));
+                    }}
+                    onClear={() => {
+                      onBarangayCleared(setFormData);
+                      setErrors((prev) => ({ ...prev, barangay: '' }));
+                    }}
+                    disabled={!formData.municipality.trim() || loadingBarangays}
+                    loading={loadingBarangays}
+                    hasError={!!errors.barangay}
+                    errorText={errors.barangay || ''}
+                    placeholder={
+                      !formData.municipality.trim()
+                        ? 'Choose City First'
+                        : loadingBarangays
+                          ? 'Loading barangays…'
+                          : 'Choose Barangay'
+                    }
+                    emptyText={loadingBarangays ? 'Loading…' : 'No barangay matched.'}
+                  />
                 </div>
-                {errors.municipality && <div className="error-message">{errors.municipality}</div>}
-              </div>
 
-              <div className="form-group">
-                <label>Street / Barangay</label>
-                <div className="input-wrapper">
-                  <MapPin className="input-icon" size={22} />
-                  <input name="street" type="text" placeholder="Street name or barangay" className={errors.street ? 'input-error' : ''} value={formData.street} onChange={handleChange} autoComplete="street-address" />
+                <div className="addr-sec__full">
+                  <StreetAddressInput
+                    label="Street / Building Line"
+                    description="Block, lot, street, building, or subdivision (not in the lists above)."
+                    placeholder="Enter block, lot, street, or building (e.g. Blk 2 Lot 15)"
+                    value={formData.street}
+                    onChange={handleChange}
+                    errorText={errors.street || ''}
+                  />
                 </div>
-                {errors.street && <div className="error-message">{errors.street}</div>}
-              </div>
+              </AddressFormSection>
 
               <div className="form-group">
                 <label>House # / Block / Lot</label>

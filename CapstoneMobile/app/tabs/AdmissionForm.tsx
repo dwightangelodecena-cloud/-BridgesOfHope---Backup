@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { appendActivityFeed } from '../../lib/activityFeed';
+import { PsgcSearchableSelect } from '../../components/PsgcSearchableSelect';
+import { usePsgcAddressCascade } from '../../hooks/usePsgcAddressCascade';
+import {
+  getAddressStorageKey,
+  loadAddressDraft,
+  saveAddressDraft,
+} from '../../lib/addressPersistence';
 
 const { width } = Dimensions.get('window');
 
@@ -37,7 +44,6 @@ const DRAFT_KEY = 'bh_admission_draft';
 
 type FormData = {
   fullName: string;
-  middleInitial: string;
   email: string;
   phoneNumber: string;
   province: string;
@@ -52,7 +58,6 @@ type FormData = {
 
 const emptyForm: FormData = {
   fullName: '',
-  middleInitial: '',
   email: '',
   phoneNumber: '',
   province: '',
@@ -92,8 +97,8 @@ export default function AdmissionForm() {
         { key: 'phoneNumber' as const, label: 'Phone Number' },
         { key: 'province' as const, label: 'Province' },
         { key: 'municipalityCity' as const, label: 'Municipality/City' },
-        { key: 'street' as const, label: 'Street' },
         { key: 'barangay' as const, label: 'Barangay' },
+        { key: 'street' as const, label: 'Street' },
         { key: 'patientName' as const, label: 'Patient Name' },
         { key: 'patientBirthday' as const, label: 'Patient Birthday' },
         { key: 'reasonForAdmission' as const, label: 'Reason for Admission' },
@@ -104,14 +109,105 @@ export default function AdmissionForm() {
   const completedFields = requiredFields.filter((f) => String(formData[f.key]).trim()).length;
   const progressPercent = Math.round((completedFields / requiredFields.length) * 100);
 
+  const {
+    provinceOptions,
+    cityOptions,
+    barangayOptions,
+    loadingProvinces,
+    loadingCities,
+    loadingBarangays,
+    fetchError,
+    setFetchError,
+    onProvinceSelected,
+    onCitySelected,
+    onBarangaySelected,
+    hydrateFromSaved,
+  } = usePsgcAddressCascade({ cityFieldKey: 'municipalityCity' });
+
+  const psgcCodesRef = useRef({
+    provinceCode: '',
+    provinceKind: 'province',
+    cityCode: '',
+    barangayCode: '',
+  });
+  const [addressRestored, setAddressRestored] = useState(false);
+  const psgcKey = getAddressStorageKey('admission');
+
+  useEffect(() => {
+    if (loadingProvinces) return;
+    let cancelled = false;
+    (async () => {
+      const saved = await loadAddressDraft(psgcKey);
+      if (!saved?.provinceCode || cancelled) return;
+      const ok = await hydrateFromSaved(
+        {
+          provinceCode: saved.provinceCode!,
+          provinceKind: (saved.provinceKind as 'province' | 'region') || 'province',
+          cityCode: saved.cityCode,
+          barangayCode: saved.barangayCode,
+          province: saved.province,
+          street: saved.street,
+        },
+        setFormData
+      );
+      if (!ok || cancelled) return;
+      psgcCodesRef.current = {
+        provinceCode: saved.provinceCode!,
+        provinceKind: saved.provinceKind || 'province',
+        cityCode: saved.cityCode || '',
+        barangayCode: saved.barangayCode || '',
+      };
+      setAddressRestored(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadingProvinces, psgcKey, hydrateFromSaved]);
+
+  useEffect(() => {
+    const p = provinceOptions.find((o) => o.name === formData.province);
+    if (p) {
+      psgcCodesRef.current.provinceCode = p.code;
+      psgcCodesRef.current.provinceKind = p.kind || 'province';
+    }
+  }, [formData.province, provinceOptions]);
+
+  useEffect(() => {
+    const c = cityOptions.find((o) => o.name === formData.municipalityCity);
+    if (c) psgcCodesRef.current.cityCode = c.code;
+  }, [formData.municipalityCity, cityOptions]);
+
+  useEffect(() => {
+    const b = barangayOptions.find((o) => o.name === formData.barangay);
+    if (b) psgcCodesRef.current.barangayCode = b.code;
+  }, [formData.barangay, barangayOptions]);
+
+  useEffect(() => {
+    if (!formData.province.trim()) return;
+    const t = setTimeout(() => {
+      void saveAddressDraft(psgcKey, {
+        province: formData.province.trim(),
+        city: formData.municipalityCity.trim(),
+        barangay: formData.barangay.trim(),
+        street: formData.street.trim(),
+        provinceCode: psgcCodesRef.current.provinceCode,
+        provinceKind: psgcCodesRef.current.provinceKind,
+        cityCode: psgcCodesRef.current.cityCode,
+        barangayCode: psgcCodesRef.current.barangayCode,
+      });
+    }, 450);
+    return () => clearTimeout(t);
+  }, [psgcKey, formData.province, formData.municipalityCity, formData.barangay, formData.street]);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(DRAFT_KEY);
         if (raw && mounted) {
-          const parsed = JSON.parse(raw) as Partial<FormData>;
-          setFormData((prev) => ({ ...prev, ...parsed, agreeToTerms: Boolean(parsed.agreeToTerms) }));
+          const parsed = JSON.parse(raw) as Partial<FormData> & { middleInitial?: string };
+          const { middleInitial: _omitMi, ...draft } = parsed;
+          setFormData((prev) => ({ ...prev, ...draft, agreeToTerms: Boolean(parsed.agreeToTerms) }));
         }
       } catch {
         await AsyncStorage.removeItem(DRAFT_KEY);
@@ -177,6 +273,7 @@ export default function AdmissionForm() {
     if (!formData.province.trim()) next.province = 'Province is required';
     if (!formData.municipalityCity.trim()) next.municipalityCity = 'Municipality/City is required';
     if (!formData.street.trim()) next.street = 'Street is required';
+    else if (formData.street.trim().length < 2) next.street = 'Enter a valid street (at least 2 characters)';
     if (!formData.barangay.trim()) next.barangay = 'Barangay is required';
     if (!formData.patientName.trim()) next.patientName = 'Patient name is required';
     if (!formData.patientBirthday) next.patientBirthday = 'Birthday is required';
@@ -236,7 +333,6 @@ export default function AdmissionForm() {
       const extendedRow = {
         family_id: user.id,
         guardian_full_name: formData.fullName.trim(),
-        guardian_middle_initial: formData.middleInitial.trim() || null,
         guardian_email: formData.email.trim(),
         guardian_phone: formData.phoneNumber.trim(),
         guardian_province: formData.province.trim(),
@@ -430,15 +526,6 @@ export default function AdmissionForm() {
               error={errors.fullName}
             />
             <LabeledInput
-              label="Middle Initial (optional)"
-              placeholder="e.g. A"
-              icon="person-outline"
-              value={formData.middleInitial}
-              onChangeText={(t) =>
-                setField('middleInitial', t.replace(/[^a-zA-Z]/g, '').slice(0, 1).toUpperCase())
-              }
-            />
-            <LabeledInput
               label="Email Address"
               placeholder="Email address"
               icon="mail-outline"
@@ -457,38 +544,107 @@ export default function AdmissionForm() {
               onChangeText={(t) => setField('phoneNumber', t)}
               error={errors.phoneNumber}
             />
-            <LabeledInput
-              label="Province"
-              placeholder="Enter your province"
-              icon="location-outline"
-              value={formData.province}
-              onChangeText={(t) => setField('province', t)}
-              error={errors.province}
-            />
-            <LabeledInput
-              label="Municipality/City"
-              placeholder="Enter your municipality/city"
-              icon="business-outline"
-              value={formData.municipalityCity}
-              onChangeText={(t) => setField('municipalityCity', t)}
-              error={errors.municipalityCity}
-            />
-            <LabeledInput
-              label="Street"
-              placeholder="Enter your street"
-              icon="navigate-outline"
-              value={formData.street}
-              onChangeText={(t) => setField('street', t)}
-              error={errors.street}
-            />
-            <LabeledInput
-              label="Barangay"
-              placeholder="Enter your barangay"
-              icon="pin-outline"
-              value={formData.barangay}
-              onChangeText={(t) => setField('barangay', t)}
-              error={errors.barangay}
-            />
+            <View style={styles.addressSection}>
+              <Text style={styles.addressKicker}>Guardian address</Text>
+              <Text style={styles.addressTitle}>Philippine address</Text>
+              <Text style={styles.addressSub}>
+                PSGC-backed lists. Complete each step before the next unlocks.
+              </Text>
+              {addressRestored ? (
+                <Text style={styles.addressRestored}>Last address on this device was restored.</Text>
+              ) : null}
+              {fetchError ? (
+                <View style={styles.fetchBanner}>
+                  <Text style={styles.fetchBannerText}>{fetchError}</Text>
+                  <TouchableOpacity onPress={() => setFetchError('')}>
+                    <Text style={styles.fetchDismiss}>Dismiss</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              <PsgcSearchableSelect
+                label="Province"
+                description="Type to filter."
+                icon="location-outline"
+                options={provinceOptions}
+                valueName={formData.province}
+                onSelect={(opt) => {
+                  void onProvinceSelected(opt, setFormData);
+                  setErrors((e) => {
+                    const n = { ...e };
+                    delete n.province;
+                    return n;
+                  });
+                }}
+                disabled={loadingProvinces}
+                loading={loadingProvinces}
+                placeholder={loadingProvinces ? 'Loading provinces…' : 'Choose Province'}
+                emptyText="No province matched."
+                errorText={errors.province || ''}
+              />
+              <PsgcSearchableSelect
+                label="City / Municipality"
+                description="Loads after province."
+                icon="business-outline"
+                options={cityOptions}
+                valueName={formData.municipalityCity}
+                onSelect={(opt) => {
+                  void onCitySelected(opt, setFormData);
+                  setErrors((e) => {
+                    const n = { ...e };
+                    delete n.municipalityCity;
+                    return n;
+                  });
+                }}
+                disabled={!formData.province.trim() || loadingCities}
+                loading={loadingCities}
+                placeholder={
+                  !formData.province.trim()
+                    ? 'Choose Province First'
+                    : loadingCities
+                      ? 'Loading cities…'
+                      : 'Choose City / Municipality'
+                }
+                emptyText={loadingCities ? 'Loading…' : 'No match in this province.'}
+                errorText={errors.municipalityCity || ''}
+              />
+              <PsgcSearchableSelect
+                label="Barangay"
+                description="Loads after city."
+                icon="pin-outline"
+                options={barangayOptions}
+                valueName={formData.barangay}
+                onSelect={(opt) => {
+                  onBarangaySelected(opt, setFormData);
+                  setErrors((e) => {
+                    const n = { ...e };
+                    delete n.barangay;
+                    return n;
+                  });
+                }}
+                disabled={!formData.municipalityCity.trim() || loadingBarangays}
+                loading={loadingBarangays}
+                placeholder={
+                  !formData.municipalityCity.trim()
+                    ? 'Choose City First'
+                    : loadingBarangays
+                      ? 'Loading barangays…'
+                      : 'Choose Barangay'
+                }
+                emptyText={loadingBarangays ? 'Loading…' : 'No barangay matched.'}
+                errorText={errors.barangay || ''}
+              />
+              <LabeledInput
+                label="Street / Building Line"
+                placeholder="Enter block, lot, street, or building (e.g. Blk 2 Lot 15)"
+                icon="navigate-outline"
+                value={formData.street}
+                onChangeText={(t) => setField('street', t)}
+                error={errors.street}
+              />
+              <Text style={styles.streetHint}>
+                Block, lot, street, building, or subdivision (not in the lists above).
+              </Text>
+            </View>
             <LabeledInput
               label="Patient Name"
               placeholder="Patient's full name"
@@ -1001,6 +1157,66 @@ const styles = StyleSheet.create({
   },
   formBlock: {
     marginTop: 4,
+  },
+  addressSection: {
+    marginBottom: 8,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  addressKicker: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#EA580C',
+    letterSpacing: 1.1,
+    marginBottom: 4,
+  },
+  addressTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 6,
+  },
+  addressSub: {
+    fontSize: 13,
+    color: '#64748B',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  addressRestored: {
+    fontSize: 12,
+    color: '#047857',
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  fetchBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  fetchBannerText: { flex: 1, fontSize: 12, color: '#991B1B' },
+  fetchDismiss: { fontSize: 12, fontWeight: '700', color: '#F54E25' },
+  streetHint: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: -10,
+    marginBottom: 14,
+    marginLeft: 2,
   },
   fieldWrap: {
     marginBottom: 18,

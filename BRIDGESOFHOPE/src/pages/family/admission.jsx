@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   User,
   Mail,
@@ -10,7 +10,6 @@ import {
   CheckCircle,
   MapPin,
   Building2,
-  Navigation,
   Hash,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -19,6 +18,15 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { refreshAppData } from '@/lib/appDataRefresh';
 import logo from '@/assets/logo.png';
 import { FAMILY_COLORS, AuditLine, StatusBadge } from '@/components/family/shared/ui';
+import { PsgcSearchableSelect } from '@/components/address/PsgcSearchableSelect';
+import { AddressFormSection, StreetAddressInput } from '@/components/address/AddressFormSection';
+import { usePsgcAddressCascade } from '@/hooks/usePsgcAddressCascade';
+import {
+  getAddressStorageKey,
+  loadAddressDraft,
+  saveAddressDraft,
+  clearAddressDraft,
+} from '@/lib/addressPersistence';
 
 const Admission = () => {
   const navigate = useNavigate();
@@ -34,7 +42,6 @@ const Admission = () => {
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
-    middleInitial: '',
     email: '',
     phoneNumber: '',
     province: '',
@@ -54,8 +61,8 @@ const Admission = () => {
       { key: 'phoneNumber', label: 'Phone Number' },
       { key: 'province', label: 'Province' },
       { key: 'municipalityCity', label: 'Municipality/City' },
-      { key: 'street', label: 'Street' },
       { key: 'barangay', label: 'Barangay' },
+      { key: 'street', label: 'Street' },
       { key: 'patientName', label: 'Patient Name' },
       { key: 'patientBirthday', label: 'Patient Birthday' },
       { key: 'reasonForAdmission', label: 'Reason for Admission' },
@@ -79,6 +86,122 @@ const Admission = () => {
     return toDateInputValue(d);
   }, []);
 
+  const {
+    provinceOptions,
+    cityOptions,
+    barangayOptions,
+    loadingProvinces,
+    loadingCities,
+    loadingBarangays,
+    fetchError,
+    setFetchError,
+    onProvinceSelected,
+    onCitySelected,
+    onBarangaySelected,
+    onProvinceCleared,
+    onCityCleared,
+    onBarangayCleared,
+    hydrateFromSaved,
+  } = usePsgcAddressCascade({ cityFieldKey: 'municipalityCity' });
+
+  const psgcCodesRef = useRef({
+    provinceCode: '',
+    provinceKind: 'province',
+    cityCode: '',
+    barangayCode: '',
+  });
+  const [addressRestored, setAddressRestored] = useState(false);
+  const psgcStorageKey = getAddressStorageKey('admission');
+
+  useEffect(() => {
+    if (loadingProvinces) return;
+    const saved = loadAddressDraft(psgcStorageKey);
+    if (!saved?.provinceCode) return;
+    let cancelled = false;
+    (async () => {
+      const ok = await hydrateFromSaved(
+        {
+          provinceCode: saved.provinceCode,
+          provinceKind: saved.provinceKind || 'province',
+          cityCode: saved.cityCode,
+          barangayCode: saved.barangayCode,
+          province: saved.province,
+          street: saved.street,
+        },
+        setFormData
+      );
+      if (cancelled || !ok) return;
+      psgcCodesRef.current = {
+        provinceCode: saved.provinceCode,
+        provinceKind: saved.provinceKind || 'province',
+        cityCode: saved.cityCode || '',
+        barangayCode: saved.barangayCode || '',
+      };
+      setAddressRestored(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadingProvinces, psgcStorageKey, hydrateFromSaved]);
+
+  useEffect(() => {
+    const p = provinceOptions.find((o) => o.name === formData.province);
+    if (p) {
+      psgcCodesRef.current.provinceCode = p.code;
+      psgcCodesRef.current.provinceKind = p.kind || 'province';
+    } else if (!formData.province?.trim()) {
+      psgcCodesRef.current.provinceCode = '';
+      psgcCodesRef.current.provinceKind = 'province';
+      psgcCodesRef.current.cityCode = '';
+      psgcCodesRef.current.barangayCode = '';
+    }
+  }, [formData.province, provinceOptions]);
+
+  useEffect(() => {
+    const c = cityOptions.find((o) => o.name === formData.municipalityCity);
+    if (c) {
+      psgcCodesRef.current.cityCode = c.code;
+    } else if (!formData.municipalityCity?.trim()) {
+      psgcCodesRef.current.cityCode = '';
+      psgcCodesRef.current.barangayCode = '';
+    }
+  }, [formData.municipalityCity, cityOptions]);
+
+  useEffect(() => {
+    const b = barangayOptions.find((o) => o.name === formData.barangay);
+    if (b) {
+      psgcCodesRef.current.barangayCode = b.code;
+    } else if (!formData.barangay?.trim()) {
+      psgcCodesRef.current.barangayCode = '';
+    }
+  }, [formData.barangay, barangayOptions]);
+
+  useEffect(() => {
+    if (!formData.province.trim()) {
+      clearAddressDraft(psgcStorageKey);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      saveAddressDraft(psgcStorageKey, {
+        province: formData.province.trim(),
+        city: formData.municipalityCity.trim(),
+        barangay: formData.barangay.trim(),
+        street: formData.street.trim(),
+        provinceCode: psgcCodesRef.current.provinceCode,
+        provinceKind: psgcCodesRef.current.provinceKind,
+        cityCode: psgcCodesRef.current.cityCode,
+        barangayCode: psgcCodesRef.current.barangayCode,
+      });
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [
+    psgcStorageKey,
+    formData.province,
+    formData.municipalityCity,
+    formData.barangay,
+    formData.street,
+  ]);
+
   useEffect(() => {
     const savedDraft = localStorage.getItem('bh_admission_draft');
     if (savedDraft) {
@@ -87,7 +210,6 @@ const Admission = () => {
         setFormData((prev) => ({
           ...prev,
           ...parsed,
-          middleInitial: parsed.middleInitial ?? '',
           province: parsed.province ?? '',
           municipalityCity: parsed.municipalityCity ?? '',
           street: parsed.street ?? '',
@@ -102,12 +224,6 @@ const Admission = () => {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    if (name === 'middleInitial') {
-      const cleaned = String(value).replace(/[^a-zA-Z]/g, '').slice(0, 1).toUpperCase();
-      setFormData((prev) => ({ ...prev, middleInitial: cleaned }));
-      if (errors.middleInitial) setErrors((prev) => ({ ...prev, middleInitial: '' }));
-      return;
-    }
     setFormData((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
@@ -126,6 +242,7 @@ const Admission = () => {
     if (!formData.province.trim()) newErrors.province = 'Province is required';
     if (!formData.municipalityCity.trim()) newErrors.municipalityCity = 'Municipality/City is required';
     if (!formData.street.trim()) newErrors.street = 'Street is required';
+    else if (formData.street.trim().length < 2) newErrors.street = 'Enter a valid street (at least 2 characters)';
     if (!formData.barangay.trim()) newErrors.barangay = 'Barangay is required';
     if (!formData.patientName.trim()) newErrors.patientName = 'Patient name is required';
     if (!formData.patientBirthday) newErrors.patientBirthday = 'Birthday is required';
@@ -164,7 +281,6 @@ const Admission = () => {
       const extendedRow = {
         family_id: user.id,
         guardian_full_name: formData.fullName.trim(),
-        guardian_middle_initial: formData.middleInitial.trim() || null,
         guardian_email: formData.email.trim(),
         guardian_phone: formData.phoneNumber.trim(),
         guardian_province: formData.province.trim(),
@@ -217,7 +333,6 @@ const Admission = () => {
   const clearForm = () => {
     const resetState = {
       fullName: '',
-      middleInitial: '',
       email: '',
       phoneNumber: '',
       province: '',
@@ -614,23 +729,6 @@ const Admission = () => {
               </div>
 
               <div className="form-group">
-                <label>Middle Initial</label>
-                <div className="input-wrapper">
-                  <User className="input-icon" size={22} />
-                  <input
-                    name="middleInitial"
-                    type="text"
-                    placeholder="M.I."
-                    maxLength={1}
-                    className={errors.middleInitial ? 'input-error' : ''}
-                    value={formData.middleInitial}
-                    onChange={handleChange}
-                  />
-                </div>
-                {errors.middleInitial && <div className="error-message">{errors.middleInitial}</div>}
-              </div>
-
-              <div className="form-group">
                 <label>Email Address</label>
                 <div className="input-wrapper">
                   <Mail className="input-icon" size={22} />
@@ -648,41 +746,110 @@ const Admission = () => {
                 {errors.phoneNumber && <div className="error-message">{errors.phoneNumber}</div>}
               </div>
 
-              <div className="form-group">
-                <label>Province</label>
-                <div className="input-wrapper">
-                  <MapPin className="input-icon" size={22} />
-                  <input name="province" type="text" placeholder="Enter your province" className={errors.province ? 'input-error' : ''} value={formData.province} onChange={handleChange} />
-                </div>
-                {errors.province && <div className="error-message">{errors.province}</div>}
-              </div>
+              <AddressFormSection
+                title="Guardian Address"
+                fetchError={fetchError}
+                onDismissError={() => setFetchError('')}
+                restoredHint={
+                  addressRestored
+                    ? 'We restored your last address on this device. Review before submitting.'
+                    : null
+                }
+              >
+                <PsgcSearchableSelect
+                  label="Province"
+                  Icon={MapPin}
+                  options={provinceOptions}
+                  valueName={formData.province}
+                  onSelect={(opt) => {
+                    void onProvinceSelected(opt, setFormData);
+                    if (errors.province) setErrors((prev) => ({ ...prev, province: '' }));
+                  }}
+                  onClear={() => {
+                    onProvinceCleared(setFormData);
+                    setErrors((prev) => ({
+                      ...prev,
+                      province: '',
+                      municipalityCity: '',
+                      barangay: '',
+                      street: '',
+                    }));
+                  }}
+                  disabled={loadingProvinces}
+                  loading={loadingProvinces}
+                  hasError={!!errors.province}
+                  errorText={errors.province || ''}
+                  placeholder={loadingProvinces ? 'Loading provinces…' : 'Choose Province'}
+                  emptyText="No province matched. Try another spelling."
+                />
 
-              <div className="form-group">
-                <label>Municipality/City</label>
-                <div className="input-wrapper">
-                  <Building2 className="input-icon" size={22} />
-                  <input name="municipalityCity" type="text" placeholder="Enter your municipality/city" className={errors.municipalityCity ? 'input-error' : ''} value={formData.municipalityCity} onChange={handleChange} />
-                </div>
-                {errors.municipalityCity && <div className="error-message">{errors.municipalityCity}</div>}
-              </div>
+                <PsgcSearchableSelect
+                  label="City / Municipality"
+                  Icon={Building2}
+                  options={cityOptions}
+                  valueName={formData.municipalityCity}
+                  onSelect={(opt) => {
+                    void onCitySelected(opt, setFormData);
+                    if (errors.municipalityCity) setErrors((prev) => ({ ...prev, municipalityCity: '' }));
+                  }}
+                  onClear={() => {
+                    onCityCleared(setFormData);
+                    setErrors((prev) => ({ ...prev, municipalityCity: '', barangay: '' }));
+                  }}
+                  disabled={!formData.province.trim() || loadingCities}
+                  loading={loadingCities}
+                  hasError={!!errors.municipalityCity}
+                  errorText={errors.municipalityCity || ''}
+                  placeholder={
+                    !formData.province.trim()
+                      ? 'Choose Province First'
+                      : loadingCities
+                        ? 'Loading cities…'
+                        : 'Choose City / Municipality'
+                  }
+                  emptyText={loadingCities ? 'Loading…' : 'No match in this province.'}
+                />
 
-              <div className="form-group">
-                <label>Street</label>
-                <div className="input-wrapper">
-                  <Navigation className="input-icon" size={22} />
-                  <input name="street" type="text" placeholder="Enter your street" className={errors.street ? 'input-error' : ''} value={formData.street} onChange={handleChange} />
+                <div className="addr-sec__full">
+                  <PsgcSearchableSelect
+                    label="Barangay"
+                    Icon={Hash}
+                    options={barangayOptions}
+                    valueName={formData.barangay}
+                    onSelect={(opt) => {
+                      onBarangaySelected(opt, setFormData);
+                      if (errors.barangay) setErrors((prev) => ({ ...prev, barangay: '' }));
+                    }}
+                    onClear={() => {
+                      onBarangayCleared(setFormData);
+                      setErrors((prev) => ({ ...prev, barangay: '' }));
+                    }}
+                    disabled={!formData.municipalityCity.trim() || loadingBarangays}
+                    loading={loadingBarangays}
+                    hasError={!!errors.barangay}
+                    errorText={errors.barangay || ''}
+                    placeholder={
+                      !formData.municipalityCity.trim()
+                        ? 'Choose City First'
+                        : loadingBarangays
+                          ? 'Loading barangays…'
+                          : 'Choose Barangay'
+                    }
+                    emptyText={loadingBarangays ? 'Loading…' : 'No barangay matched.'}
+                  />
                 </div>
-                {errors.street && <div className="error-message">{errors.street}</div>}
-              </div>
 
-              <div className="form-group">
-                <label>Barangay</label>
-                <div className="input-wrapper">
-                  <Hash className="input-icon" size={22} />
-                  <input name="barangay" type="text" placeholder="Enter your barangay" className={errors.barangay ? 'input-error' : ''} value={formData.barangay} onChange={handleChange} />
+                <div className="addr-sec__full">
+                  <StreetAddressInput
+                    label="Street / Building Line"
+                    description="Block, lot, street, building, or subdivision (not in the lists above)."
+                    placeholder="Enter block, lot, street, or building (e.g. Blk 2 Lot 15)"
+                    value={formData.street}
+                    onChange={handleChange}
+                    errorText={errors.street || ''}
+                  />
                 </div>
-                {errors.barangay && <div className="error-message">{errors.barangay}</div>}
-              </div>
+              </AddressFormSection>
 
               <div className="form-group">
                 <label>Patient Name</label>

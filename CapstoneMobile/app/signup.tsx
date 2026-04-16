@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,13 @@ import { useRouter } from "expo-router";
 import { useTerms } from "../contexts/TermsContext";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatAuthError } from "../lib/authErrors";
+import { PsgcSearchableSelect } from "../components/PsgcSearchableSelect";
+import { usePsgcAddressCascade } from "../hooks/usePsgcAddressCascade";
+import {
+  getAddressStorageKey,
+  loadAddressDraft,
+  saveAddressDraft,
+} from "../lib/addressPersistence";
 
 /** Mirrors BRIDGESOFHOPE/src/pages/auth/signup.jsx validation & user_metadata. */
 export default function SignupScreen() {
@@ -26,10 +33,104 @@ export default function SignupScreen() {
   const [lastName, setLastName] = useState("");
   const [middleInitial, setMiddleInitial] = useState("");
   const [contactNumber, setContactNumber] = useState("");
-  const [province, setProvince] = useState("");
-  const [municipality, setMunicipality] = useState("");
-  const [street, setStreet] = useState("");
+  const [addr, setAddr] = useState({
+    province: "",
+    municipality: "",
+    barangay: "",
+    street: "",
+  });
   const [houseBlockLot, setHouseBlockLot] = useState("");
+
+  const {
+    provinceOptions,
+    cityOptions,
+    barangayOptions,
+    loadingProvinces,
+    loadingCities,
+    loadingBarangays,
+    fetchError,
+    setFetchError,
+    onProvinceSelected,
+    onCitySelected,
+    onBarangaySelected,
+    hydrateFromSaved,
+  } = usePsgcAddressCascade({ cityFieldKey: "municipality" });
+
+  const psgcCodesRef = useRef({
+    provinceCode: "",
+    provinceKind: "province",
+    cityCode: "",
+    barangayCode: "",
+  });
+  const [addressRestored, setAddressRestored] = useState(false);
+  const addressKey = getAddressStorageKey("signup");
+
+  useEffect(() => {
+    if (loadingProvinces) return;
+    let cancelled = false;
+    (async () => {
+      const saved = await loadAddressDraft(addressKey);
+      if (!saved?.provinceCode || cancelled) return;
+      const ok = await hydrateFromSaved(
+        {
+          provinceCode: saved.provinceCode!,
+          provinceKind: (saved.provinceKind as "province" | "region") || "province",
+          cityCode: saved.cityCode,
+          barangayCode: saved.barangayCode,
+          province: saved.province,
+          street: saved.street,
+        },
+        setAddr
+      );
+      if (!ok || cancelled) return;
+      psgcCodesRef.current = {
+        provinceCode: saved.provinceCode!,
+        provinceKind: saved.provinceKind || "province",
+        cityCode: saved.cityCode || "",
+        barangayCode: saved.barangayCode || "",
+      };
+      setAddressRestored(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [addressKey, hydrateFromSaved, loadingProvinces]);
+
+  useEffect(() => {
+    const p = provinceOptions.find((o) => o.name === addr.province);
+    if (p) {
+      psgcCodesRef.current.provinceCode = p.code;
+      psgcCodesRef.current.provinceKind = p.kind || "province";
+    }
+  }, [addr.province, provinceOptions]);
+
+  useEffect(() => {
+    const c = cityOptions.find((o) => o.name === addr.municipality);
+    if (c) psgcCodesRef.current.cityCode = c.code;
+  }, [addr.municipality, cityOptions]);
+
+  useEffect(() => {
+    const b = barangayOptions.find((o) => o.name === addr.barangay);
+    if (b) psgcCodesRef.current.barangayCode = b.code;
+  }, [addr.barangay, barangayOptions]);
+
+  useEffect(() => {
+    if (!addr.province.trim()) return;
+    const t = setTimeout(() => {
+      void saveAddressDraft(addressKey, {
+        province: addr.province.trim(),
+        city: addr.municipality.trim(),
+        barangay: addr.barangay.trim(),
+        street: addr.street.trim(),
+        provinceCode: psgcCodesRef.current.provinceCode,
+        provinceKind: psgcCodesRef.current.provinceKind,
+        cityCode: psgcCodesRef.current.cityCode,
+        barangayCode: psgcCodesRef.current.barangayCode,
+      });
+    }, 450);
+    return () => clearTimeout(t);
+  }, [addressKey, addr.province, addr.municipality, addr.barangay, addr.street]);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -45,6 +146,7 @@ export default function SignupScreen() {
     contactNumber?: string;
     province?: string;
     municipality?: string;
+    barangay?: string;
     street?: string;
     houseBlockLot?: string;
     email?: string;
@@ -103,12 +205,17 @@ export default function SignupScreen() {
     } else if (!/^[0-9]{10,13}$/.test(contactNumber.trim())) {
       errors.contactNumber = "Contact number must be 10-13 digits";
     }
-    if (!province.trim()) errors.province = "Province is required";
-    if (!municipality.trim()) {
+    if (!addr.province.trim()) errors.province = "Province is required";
+    if (!addr.municipality.trim()) {
       errors.municipality = "Municipality / City is required";
     }
-    if (!street.trim()) {
-      errors.street = "Street / Barangay is required";
+    if (!addr.barangay.trim()) {
+      errors.barangay = "Barangay is required";
+    }
+    if (!addr.street.trim()) {
+      errors.street = "Street is required";
+    } else if (addr.street.trim().length < 2) {
+      errors.street = "Enter a valid street (at least 2 characters)";
     }
     if (!houseBlockLot.trim()) {
       errors.houseBlockLot = "House # / Block / Lot is required";
@@ -163,11 +270,12 @@ export default function SignupScreen() {
       ? `${first} ${middle.toUpperCase()}. ${last}`
       : `${first} ${last}`;
 
-    const prov = province.trim();
-    const mun = municipality.trim();
-    const str = street.trim();
+    const prov = addr.province.trim();
+    const mun = addr.municipality.trim();
+    const brgy = addr.barangay.trim();
+    const str = addr.street.trim();
     const hb = houseBlockLot.trim();
-    const addressLine = [hb, str, mun, prov].filter(Boolean).join(", ");
+    const addressLine = [hb, str, brgy, mun, prov].filter(Boolean).join(", ");
 
     setSubmitting(true);
     const { data, error } = await supabase.auth.signUp({
@@ -182,6 +290,7 @@ export default function SignupScreen() {
           contact_number: contactNumber.trim(),
           province: prov,
           municipality: mun,
+          barangay: brgy,
           street: str,
           house_block_lot: hb,
           address: addressLine,
@@ -205,6 +314,7 @@ export default function SignupScreen() {
           account_type: "family",
           province: prov,
           municipality: mun,
+          barangay: brgy,
           street: str,
           house_block_lot: hb,
         },
@@ -384,94 +494,121 @@ export default function SignupScreen() {
               <Text style={styles.errorText}>{fieldErrors.contactNumber}</Text>
             )}
 
-            <Text style={styles.sectionLabel}>Address</Text>
+            <View style={styles.addressSection}>
+              <Text style={styles.addressSectionKicker}>Location</Text>
+              <Text style={styles.addressSectionTitle}>Philippine address</Text>
+              <Text style={styles.addressSectionSub}>
+                Official PSGC data. Choose province → city → barangay, then add your street line.
+              </Text>
+              {addressRestored ? (
+                <Text style={styles.addressRestoredHint}>
+                  Restored your last address on this device — review if needed.
+                </Text>
+              ) : null}
+              {fetchError ? (
+                <View style={styles.fetchBanner}>
+                  <Text style={styles.fetchBannerText}>{fetchError}</Text>
+                  <TouchableOpacity onPress={() => setFetchError("")}>
+                    <Text style={styles.fetchDismiss}>Dismiss</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
 
-            <Text style={styles.label}>Province</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("province") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="location-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Cavite"
-                placeholderTextColor="#B0B0B0"
-                value={province}
-                onChangeText={(t) => {
-                  setProvince(t);
+              <PsgcSearchableSelect
+                label="Province"
+                description="Type to filter the list."
+                icon="location-outline"
+                options={provinceOptions}
+                valueName={addr.province}
+                onSelect={(opt) => {
+                  void onProvinceSelected(opt, setAddr);
                   clearFieldError("province");
                 }}
-                autoComplete="postal-address-region"
+                disabled={loadingProvinces}
+                loading={loadingProvinces}
+                placeholder={loadingProvinces ? "Loading provinces…" : "Choose Province"}
+                emptyText="No province matched."
+                errorText={fieldErrors.province || ""}
               />
-            </View>
-            {fieldErrors.province && (
-              <Text style={styles.errorText}>{fieldErrors.province}</Text>
-            )}
 
-            <Text style={styles.label}>Municipality / City</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("municipality") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="business-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Imus City"
-                placeholderTextColor="#B0B0B0"
-                value={municipality}
-                onChangeText={(t) => {
-                  setMunicipality(t);
+              <PsgcSearchableSelect
+                label="City / Municipality"
+                description="Loads after province."
+                icon="business-outline"
+                options={cityOptions}
+                valueName={addr.municipality}
+                onSelect={(opt) => {
+                  void onCitySelected(opt, setAddr);
                   clearFieldError("municipality");
                 }}
-                autoComplete="postal-address-locality"
+                disabled={!addr.province.trim() || loadingCities}
+                loading={loadingCities}
+                placeholder={
+                  !addr.province.trim()
+                    ? "Choose Province First"
+                    : loadingCities
+                      ? "Loading cities…"
+                      : "Choose City / Municipality"
+                }
+                emptyText={loadingCities ? "Loading…" : "No match in this province."}
+                errorText={fieldErrors.municipality || ""}
               />
-            </View>
-            {fieldErrors.municipality && (
-              <Text style={styles.errorText}>{fieldErrors.municipality}</Text>
-            )}
 
-            <Text style={styles.label}>Street / Barangay</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("street") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="navigate-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Street name or barangay"
-                placeholderTextColor="#B0B0B0"
-                value={street}
-                onChangeText={(t) => {
-                  setStreet(t);
-                  clearFieldError("street");
+              <PsgcSearchableSelect
+                label="Barangay"
+                description="Loads after city."
+                icon="pin-outline"
+                options={barangayOptions}
+                valueName={addr.barangay}
+                onSelect={(opt) => {
+                  onBarangaySelected(opt, setAddr);
+                  clearFieldError("barangay");
                 }}
-                autoComplete="street-address"
+                disabled={!addr.municipality.trim() || loadingBarangays}
+                loading={loadingBarangays}
+                placeholder={
+                  !addr.municipality.trim()
+                    ? "Choose City First"
+                    : loadingBarangays
+                      ? "Loading barangays…"
+                      : "Choose Barangay"
+                }
+                emptyText={loadingBarangays ? "Loading…" : "No barangay matched."}
+                errorText={fieldErrors.barangay || ""}
               />
+
+              <Text style={styles.label}>Street / Building Line</Text>
+              <Text style={styles.streetSub}>
+                Block, lot, street, building, or subdivision (not in the lists above).
+              </Text>
+              <View
+                style={[
+                  styles.inputContainer,
+                  hasError("street") && styles.inputErrorBorder,
+                ]}
+              >
+                <Ionicons
+                  name="navigate-outline"
+                  size={20}
+                  color="#64748B"
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter block, lot, street, or building (e.g. Blk 2 Lot 15)"
+                  placeholderTextColor="#B0B0B0"
+                  value={addr.street}
+                  onChangeText={(t) => {
+                    setAddr((a) => ({ ...a, street: t }));
+                    clearFieldError("street");
+                  }}
+                  autoComplete="street-address"
+                />
+              </View>
+              {fieldErrors.street && (
+                <Text style={styles.errorText}>{fieldErrors.street}</Text>
+              )}
             </View>
-            {fieldErrors.street && (
-              <Text style={styles.errorText}>{fieldErrors.street}</Text>
-            )}
 
             <Text style={styles.label}>House # / Block / Lot</Text>
             <View
@@ -744,6 +881,66 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 8,
   },
+  addressSection: {
+    marginTop: 8,
+    marginBottom: 8,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  addressSectionKicker: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#EA580C",
+    letterSpacing: 1.2,
+    marginBottom: 4,
+  },
+  addressSectionTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 6,
+  },
+  addressSectionSub: {
+    fontSize: 13,
+    color: "#64748B",
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  addressRestoredHint: {
+    fontSize: 12,
+    color: "#047857",
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+  streetSub: {
+    fontSize: 12,
+    color: "#94A3B8",
+    marginBottom: 8,
+    marginTop: -4,
+  },
+  fetchBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    gap: 8,
+  },
+  fetchBannerText: { flex: 1, fontSize: 12, color: "#991B1B" },
+  fetchDismiss: { fontSize: 12, fontWeight: "700", color: "#F54E25" },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
