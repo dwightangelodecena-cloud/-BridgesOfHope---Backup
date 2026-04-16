@@ -11,6 +11,9 @@ import {
 } from '@/lib/oauthWeb';
 
 const Login = () => {
+  const REMEMBER_LOGIN_KEY = 'bh_remembered_login_identifier';
+  const LEGACY_REMEMBER_EMAIL_KEY = 'bh_remembered_email';
+  const REMEMBER_LOGIN_PAYLOAD_KEY = 'bh_remembered_login_payload';
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [formData, setFormData] = useState({
@@ -24,6 +27,42 @@ const Login = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const rawPayload = localStorage.getItem(REMEMBER_LOGIN_PAYLOAD_KEY);
+    if (rawPayload) {
+      try {
+        const parsed = JSON.parse(rawPayload);
+        const identifier = String(parsed?.identifier || '').trim();
+        const accountType = String(parsed?.accountType || '').trim().toLowerCase();
+        const password = String(parsed?.password || '');
+        if (identifier) {
+          setFormData((prev) => ({
+            ...prev,
+            identifier,
+            password,
+            accountType: ['family', 'nurse', 'admin'].includes(accountType) ? accountType : prev.accountType,
+            rememberMe: true,
+          }));
+          return;
+        }
+      } catch {
+        // Fall back to legacy remember keys if payload parsing fails.
+      }
+    }
+
+    const savedIdentifier =
+      localStorage.getItem(REMEMBER_LOGIN_KEY) ||
+      localStorage.getItem(LEGACY_REMEMBER_EMAIL_KEY) ||
+      '';
+    if (savedIdentifier) {
+      setFormData((prev) => ({
+        ...prev,
+        identifier: savedIdentifier,
+        rememberMe: true,
+      }));
+    }
+  }, []);
 
   useEffect(() => {
     const oauthError = searchParams.get('oauth_error');
@@ -150,6 +189,25 @@ const Login = () => {
         `This account is not registered as ${formData.accountType}. Contact an administrator if you need staff access.`
       );
       return;
+    }
+
+    if (formData.rememberMe) {
+      localStorage.setItem(
+        REMEMBER_LOGIN_PAYLOAD_KEY,
+        JSON.stringify({
+          identifier,
+          password: formData.password,
+          accountType: formData.accountType,
+        })
+      );
+      localStorage.setItem(REMEMBER_LOGIN_KEY, identifier);
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier)) {
+        localStorage.setItem(LEGACY_REMEMBER_EMAIL_KEY, identifier);
+      }
+    } else {
+      localStorage.removeItem(REMEMBER_LOGIN_PAYLOAD_KEY);
+      localStorage.removeItem(REMEMBER_LOGIN_KEY);
+      localStorage.removeItem(LEGACY_REMEMBER_EMAIL_KEY);
     }
 
     setSuccess(true);

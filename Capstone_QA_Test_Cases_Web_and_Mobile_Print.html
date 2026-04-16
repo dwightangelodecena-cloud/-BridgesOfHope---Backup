@@ -1,0 +1,1767 @@
+﻿<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Capstone QA Test Cases - Web and Mobile</title><style>
+  @page { size: A4; margin: 0.55in; }
+  :root { --ink:#0f172a; --muted:#475569; --line:#cbd5e1; --accent:#f54e25; }
+  body { font-family: "Times New Roman", Georgia, serif; color: var(--ink); margin: 0; background: #fff; }
+  .doc { max-width: 8.27in; margin: 0 auto; padding: 0.2in 0.25in; }
+  h1 { text-align: center; font-size: 18pt; margin: 0 0 14px; letter-spacing: .3px; }
+  h2 { font-size: 14pt; margin: 22px 0 10px; border-bottom: 1.8px solid var(--line); padding-bottom: 5px; }
+  h3 { font-size: 12pt; margin: 16px 0 8px; color: #111827; }
+  p, li { font-size: 10.5pt; line-height: 1.38; color: var(--ink); }
+  ul, ol { margin: 6px 0 8px 22px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; table-layout: fixed; }
+  th, td { border: 1px solid var(--line); padding: 6px 7px; vertical-align: top; font-size: 9pt; line-height: 1.25; word-wrap: break-word; }
+  th { background: #f8fafc; font-weight: 700; text-align: left; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+  code { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-family: Consolas, monospace; font-size: 8.8pt; }
+  blockquote { border-left: 3px solid var(--accent); margin: 10px 0; padding: 6px 10px; color: var(--muted); background: #fff7f4; }
+  .meta { text-align:center; margin-bottom: 14px; }
+  .meta p { margin: 2px 0; font-size: 10pt; }
+  .cover-band { height: 5px; background: linear-gradient(90deg, #f54e25, #fb923c, #f54e25); margin-bottom: 14px; }
+  .note { font-style: italic; color: var(--muted); }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    h2, h3 { break-after: avoid-page; }
+    table { break-inside: auto; }
+    tr { break-inside: avoid; break-after: auto; }
+  }
+</style></head><body><div class='doc'><div class='cover-band'></div>
+<div class='meta'>
+  <h1>CAPSTONE QA TEST CASE DOCUMENT</h1>
+  <p><strong>Capstone Title:</strong> Kalinga: An Intelligent Digital Rehabilitation Management and Admission System Using Predictive Analytics</p>
+  <p><strong>Prepared Date:</strong> April 16, 2026</p>
+  <p><strong>Document Type:</strong> Adviser Print Version (Word/PDF Layout)</p>
+</div><h1>CAPSTONE QA TEST CASE DOCUMENT</h1>
+<p><strong>Capstone Title:</strong> Kalinga: An Intelligent Digital Rehabilitation Management and Admission System Using Predictive Analytics<br><strong>Written Date:</strong> April 16, 2026<br><strong>Document Version:</strong> 1.0<br><strong>Prepared For:</strong> Software Progress Testing (Web + Mobile)<br><strong>Testing Type:</strong> Functional, Validation, Navigation, Role Access, UX, Error Handling</p>
+<hr>
+<h2>Test Execution Summary Sheet</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Test Conditions Date</td>
+<td>____________________</td>
+</tr>
+<tr>
+<td>Total Test Cases</td>
+<td>220</td>
+</tr>
+<tr>
+<td>Passed</td>
+<td>____________________</td>
+</tr>
+<tr>
+<td>Failed</td>
+<td>____________________</td>
+</tr>
+<tr>
+<td>Pass Rating Formula</td>
+<td><code># Passed / # Total * 100</code></td>
+</tr>
+<tr>
+<td>Tester Name</td>
+<td>____________________</td>
+</tr>
+<tr>
+<td>Adviser Signature</td>
+<td>____________________</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Standard Result Columns (for each test case)</h2>
+<ul>
+<li><strong>Actual Result</strong></li>
+<li><strong>Pass / Fail</strong></li>
+<li><strong>Comments / Suggestions</strong></li>
+</ul>
+<blockquote>
+<p>Note: Keep this document as your master sheet, then duplicate rows to encode actual run results per test cycle.</p>
+</blockquote>
+<hr>
+<h2>A. WEB SYSTEM TEST CASES (120 Cases)</h2>
+<h3>A1. Public Pages and Authentication</h3>
+<table>
+<thead>
+<tr>
+<th>TC ID</th>
+<th>Module</th>
+<th>Test Scenario</th>
+<th>Test Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>WTC-001</td>
+<td>Landing</td>
+<td>Open landing page</td>
+<td>Navigate to web root URL</td>
+<td>Hero, nav, and sections render</td>
+</tr>
+<tr>
+<td>WTC-002</td>
+<td>Landing</td>
+<td>Get Started CTA</td>
+<td>Click <code>Get Started</code></td>
+<td>Redirect to <code>/login</code></td>
+</tr>
+<tr>
+<td>WTC-003</td>
+<td>Landing</td>
+<td>Desktop login button</td>
+<td>Click header <code>Login</code></td>
+<td>Redirect to <code>/login</code></td>
+</tr>
+<tr>
+<td>WTC-004</td>
+<td>Landing</td>
+<td>Mobile menu login</td>
+<td>Mobile width, open menu, click login</td>
+<td>Redirect to <code>/login</code></td>
+</tr>
+<tr>
+<td>WTC-005</td>
+<td>Landing</td>
+<td>Footer links visibility</td>
+<td>Scroll to footer</td>
+<td>Contact and legal items visible</td>
+</tr>
+<tr>
+<td>WTC-006</td>
+<td>Login</td>
+<td>Family valid login</td>
+<td>Select Family, valid credentials, submit</td>
+<td>Redirect to <code>/home</code></td>
+</tr>
+<tr>
+<td>WTC-007</td>
+<td>Login</td>
+<td>Nurse valid login</td>
+<td>Select Nurse, valid credentials, submit</td>
+<td>Redirect to <code>/nurse-dashboard</code></td>
+</tr>
+<tr>
+<td>WTC-008</td>
+<td>Login</td>
+<td>Admin valid login</td>
+<td>Select Admin, valid credentials, submit</td>
+<td>Redirect to <code>/admin-dashboard</code></td>
+</tr>
+<tr>
+<td>WTC-009</td>
+<td>Login</td>
+<td>Missing account type</td>
+<td>Keep account type empty, submit</td>
+<td>Validation error shown</td>
+</tr>
+<tr>
+<td>WTC-010</td>
+<td>Login</td>
+<td>Invalid email format</td>
+<td>Enter invalid email, submit</td>
+<td>Validation error shown</td>
+</tr>
+<tr>
+<td>WTC-011</td>
+<td>Login</td>
+<td>Empty fields</td>
+<td>Submit with empty credentials</td>
+<td>Required error shown</td>
+</tr>
+<tr>
+<td>WTC-012</td>
+<td>Login</td>
+<td>Password toggle</td>
+<td>Click eye icon</td>
+<td>Password show/hide toggles</td>
+</tr>
+<tr>
+<td>WTC-013</td>
+<td>Login</td>
+<td>Remember me toggle</td>
+<td>Toggle remember me</td>
+<td>State toggles correctly</td>
+</tr>
+<tr>
+<td>WTC-014</td>
+<td>Login</td>
+<td>Forgot password link</td>
+<td>Click forgot password</td>
+<td>Redirect to <code>/forgot</code></td>
+</tr>
+<tr>
+<td>WTC-015</td>
+<td>Login</td>
+<td>Sign up link</td>
+<td>Click sign up</td>
+<td>Redirect to <code>/signup</code></td>
+</tr>
+<tr>
+<td>WTC-016</td>
+<td>Login</td>
+<td>Google OAuth start</td>
+<td>Click continue with Google</td>
+<td>OAuth flow opens</td>
+</tr>
+<tr>
+<td>WTC-017</td>
+<td>Signup</td>
+<td>Valid signup</td>
+<td>Fill valid form + terms + submit</td>
+<td>Account created</td>
+</tr>
+<tr>
+<td>WTC-018</td>
+<td>Signup</td>
+<td>Missing full name</td>
+<td>Leave full name empty</td>
+<td>Validation error</td>
+</tr>
+<tr>
+<td>WTC-019</td>
+<td>Signup</td>
+<td>Missing email</td>
+<td>Leave email empty</td>
+<td>Validation error</td>
+</tr>
+<tr>
+<td>WTC-020</td>
+<td>Signup</td>
+<td>Password mismatch</td>
+<td>Enter different confirm password</td>
+<td>Validation error</td>
+</tr>
+<tr>
+<td>WTC-021</td>
+<td>Signup</td>
+<td>Weak password length</td>
+<td>Password &lt; 8 chars</td>
+<td>Validation error</td>
+</tr>
+<tr>
+<td>WTC-022</td>
+<td>Signup</td>
+<td>Terms unchecked</td>
+<td>Submit without accepting terms</td>
+<td>Submission blocked</td>
+</tr>
+<tr>
+<td>WTC-023</td>
+<td>Forgot Password</td>
+<td>Valid request</td>
+<td>Enter valid email, submit</td>
+<td>Goes to verify screen</td>
+</tr>
+<tr>
+<td>WTC-024</td>
+<td>OTP Verify</td>
+<td>Correct 4-digit OTP</td>
+<td>Enter valid OTP</td>
+<td>Proceeds to new password</td>
+</tr>
+<tr>
+<td>WTC-025</td>
+<td>OTP Verify</td>
+<td>Incomplete OTP</td>
+<td>Enter fewer than 4 digits</td>
+<td>Submission blocked</td>
+</tr>
+<tr>
+<td>WTC-026</td>
+<td>New Password</td>
+<td>Valid reset</td>
+<td>Enter valid matching passwords</td>
+<td>Password reset success</td>
+</tr>
+<tr>
+<td>WTC-027</td>
+<td>New Password</td>
+<td>Mismatch reset</td>
+<td>Enter non-matching values</td>
+<td>Validation error</td>
+</tr>
+<tr>
+<td>WTC-028</td>
+<td>Role Guard</td>
+<td>Family blocked from admin page</td>
+<td>Login family, open <code>/admin-dashboard</code></td>
+<td>Redirected to allowed page</td>
+</tr>
+<tr>
+<td>WTC-029</td>
+<td>Role Guard</td>
+<td>Nurse blocked from admin page</td>
+<td>Login nurse, open <code>/admin-dashboard</code></td>
+<td>Redirected to nurse page</td>
+</tr>
+<tr>
+<td>WTC-030</td>
+<td>Role Guard</td>
+<td>Unauthenticated protected route</td>
+<td>Open protected route while logged out</td>
+<td>Redirected to <code>/login</code></td>
+</tr>
+</tbody></table>
+<h3>A2. Family Web Modules</h3>
+<table>
+<thead>
+<tr>
+<th>TC ID</th>
+<th>Module</th>
+<th>Test Scenario</th>
+<th>Test Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>WTC-031</td>
+<td>Family Home</td>
+<td>Home dashboard load</td>
+<td>Login as family and open home</td>
+<td>Dashboard loads fully</td>
+</tr>
+<tr>
+<td>WTC-032</td>
+<td>Family Home</td>
+<td>Quick action: Admission</td>
+<td>Click Admission quick action</td>
+<td>Redirect to <code>/admission</code></td>
+</tr>
+<tr>
+<td>WTC-033</td>
+<td>Family Home</td>
+<td>Quick action: Services</td>
+<td>Click Services quick action</td>
+<td>Redirect to <code>/services</code></td>
+</tr>
+<tr>
+<td>WTC-034</td>
+<td>Family Home</td>
+<td>Quick action: Weekly Report</td>
+<td>Click weekly report action</td>
+<td>Report modal/section opens</td>
+</tr>
+<tr>
+<td>WTC-035</td>
+<td>Family Home</td>
+<td>Patient list rendering</td>
+<td>Ensure linked patient exists</td>
+<td>Patient cards display</td>
+</tr>
+<tr>
+<td>WTC-036</td>
+<td>Family Home</td>
+<td>Recovery progress display</td>
+<td>Open patient card</td>
+<td>Progress bar and percent shown</td>
+</tr>
+<tr>
+<td>WTC-037</td>
+<td>Family Admission</td>
+<td>Required fields validation</td>
+<td>Submit empty admission form</td>
+<td>Required errors shown</td>
+</tr>
+<tr>
+<td>WTC-038</td>
+<td>Family Admission</td>
+<td>Invalid email validation</td>
+<td>Enter invalid guardian email</td>
+<td>Validation error</td>
+</tr>
+<tr>
+<td>WTC-039</td>
+<td>Family Admission</td>
+<td>Terms required</td>
+<td>Leave terms unchecked and submit</td>
+<td>Submission blocked</td>
+</tr>
+<tr>
+<td>WTC-040</td>
+<td>Family Admission</td>
+<td>Reason dropdown required</td>
+<td>Do not select reason, submit</td>
+<td>Validation error</td>
+</tr>
+<tr>
+<td>WTC-041</td>
+<td>Family Admission</td>
+<td>Valid admission submit</td>
+<td>Complete form correctly and submit</td>
+<td>Success prompt shown</td>
+</tr>
+<tr>
+<td>WTC-042</td>
+<td>Family Admission</td>
+<td>Admission persistence</td>
+<td>Refresh after submit</td>
+<td>Request remains saved</td>
+</tr>
+<tr>
+<td>WTC-043</td>
+<td>Family Services</td>
+<td>Services page load</td>
+<td>Open <code>/services</code></td>
+<td>Fees and inclusions visible</td>
+</tr>
+<tr>
+<td>WTC-044</td>
+<td>Family Services</td>
+<td>Admission fee expand</td>
+<td>Expand admission card</td>
+<td>Inclusion details visible</td>
+</tr>
+<tr>
+<td>WTC-045</td>
+<td>Family Services</td>
+<td>Monthly fee expand</td>
+<td>Expand monthly section</td>
+<td>Grouped inclusions visible</td>
+</tr>
+<tr>
+<td>WTC-046</td>
+<td>Family Services</td>
+<td>Admit button action</td>
+<td>Click <code>Admit a patient</code></td>
+<td>Redirects to admission form</td>
+</tr>
+<tr>
+<td>WTC-047</td>
+<td>Family Progress</td>
+<td>Progress page load</td>
+<td>Open <code>/progress</code></td>
+<td>Patient progress grid appears</td>
+</tr>
+<tr>
+<td>WTC-048</td>
+<td>Family Progress</td>
+<td>View details action</td>
+<td>Click patient view details</td>
+<td>Detail panel opens</td>
+</tr>
+<tr>
+<td>WTC-049</td>
+<td>Family Progress</td>
+<td>Discharge request submit</td>
+<td>Request discharge for patient</td>
+<td>Pending discharge created</td>
+</tr>
+<tr>
+<td>WTC-050</td>
+<td>Family Progress</td>
+<td>Prevent duplicate discharge</td>
+<td>Request discharge again same patient</td>
+<td>No duplicate pending request</td>
+</tr>
+</tbody></table>
+<h3>A3. Nurse and Admin Web Modules</h3>
+<table>
+<thead>
+<tr>
+<th>TC ID</th>
+<th>Module</th>
+<th>Test Scenario</th>
+<th>Test Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>WTC-051</td>
+<td>Nurse Dashboard</td>
+<td>Weekly report form load</td>
+<td>Login nurse, open dashboard</td>
+<td>Form sections visible</td>
+</tr>
+<tr>
+<td>WTC-052</td>
+<td>Nurse Dashboard</td>
+<td>Fill weekly report fields</td>
+<td>Fill core inputs and vitals</td>
+<td>Accepts valid entries</td>
+</tr>
+<tr>
+<td>WTC-053</td>
+<td>Nurse Dashboard</td>
+<td>Submit weekly report</td>
+<td>Submit completed form</td>
+<td>Submission flow successful</td>
+</tr>
+<tr>
+<td>WTC-054</td>
+<td>Nurse DB</td>
+<td>Patient database load</td>
+<td>Open nurse patient database</td>
+<td>Rows and filters visible</td>
+</tr>
+<tr>
+<td>WTC-055</td>
+<td>Nurse DB</td>
+<td>Search patient</td>
+<td>Search by partial name</td>
+<td>Matching rows filtered</td>
+</tr>
+<tr>
+<td>WTC-056</td>
+<td>Nurse DB</td>
+<td>Sort patient list</td>
+<td>Change sort option</td>
+<td>Row order updates</td>
+</tr>
+<tr>
+<td>WTC-057</td>
+<td>Nurse DB</td>
+<td>View patient details</td>
+<td>Click row <code>View</code></td>
+<td>Details panel opens</td>
+</tr>
+<tr>
+<td>WTC-058</td>
+<td>Nurse Profile</td>
+<td>Open nurse profile</td>
+<td>Navigate to profile</td>
+<td>Profile info and controls visible</td>
+</tr>
+<tr>
+<td>WTC-059</td>
+<td>Nurse Profile</td>
+<td>Change password nav</td>
+<td>Click change password</td>
+<td>Redirect to nurse change pass</td>
+</tr>
+<tr>
+<td>WTC-060</td>
+<td>Nurse Profile</td>
+<td>Logout</td>
+<td>Click logout</td>
+<td>Returns to login</td>
+</tr>
+</tbody></table>
+<h3>A4. Admin Approvals, Analytics, and Management</h3>
+<table>
+<thead>
+<tr>
+<th>TC ID</th>
+<th>Module</th>
+<th>Test Scenario</th>
+<th>Test Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>WTC-061</td>
+<td>Admin Dashboard</td>
+<td>Dashboard cards load</td>
+<td>Login admin and open dashboard</td>
+<td>Metrics and pending cards visible</td>
+</tr>
+<tr>
+<td>WTC-062</td>
+<td>Admin Admissions</td>
+<td>Open pending admissions modal</td>
+<td>Click pending admissions card</td>
+<td>Modal opens with requests</td>
+</tr>
+<tr>
+<td>WTC-063</td>
+<td>Admin Admissions</td>
+<td>Decline admission request</td>
+<td>Click decline on a request</td>
+<td>Request removed from pending</td>
+</tr>
+<tr>
+<td>WTC-064</td>
+<td>Admin Admissions</td>
+<td>Approve admission opens confirm</td>
+<td>Click approve</td>
+<td>Confirmation modal appears</td>
+</tr>
+<tr>
+<td>WTC-065</td>
+<td>Admin Admissions</td>
+<td>2FA modal appears</td>
+<td>Proceed from confirm</td>
+<td>OTP modal appears</td>
+</tr>
+<tr>
+<td>WTC-066</td>
+<td>Admin Admissions</td>
+<td>Approve with OTP</td>
+<td>Enter valid OTP and confirm</td>
+<td>Admission approved</td>
+</tr>
+<tr>
+<td>WTC-067</td>
+<td>Admin Discharges</td>
+<td>Open pending discharge modal</td>
+<td>Click pending discharges card</td>
+<td>Discharge list appears</td>
+</tr>
+<tr>
+<td>WTC-068</td>
+<td>Admin Discharges</td>
+<td>Decline discharge</td>
+<td>Click decline</td>
+<td>Request removed from pending</td>
+</tr>
+<tr>
+<td>WTC-069</td>
+<td>Admin Discharges</td>
+<td>Approve discharge flow</td>
+<td>Approve + OTP confirm</td>
+<td>Patient discharged</td>
+</tr>
+<tr>
+<td>WTC-070</td>
+<td>Admin Dashboard</td>
+<td>Activity log update</td>
+<td>Approve/decline any request</td>
+<td>New activity entry logged</td>
+</tr>
+<tr>
+<td>WTC-071</td>
+<td>Admin Analytics</td>
+<td>Open analytics page</td>
+<td>Navigate to <code>/analytics</code></td>
+<td>Charts/cards render</td>
+</tr>
+<tr>
+<td>WTC-072</td>
+<td>Admin Analytics</td>
+<td>Filters visible</td>
+<td>Check filter controls</td>
+<td>Filters displayed and usable</td>
+</tr>
+<tr>
+<td>WTC-073</td>
+<td>Admin Analytics</td>
+<td>Export controls visible</td>
+<td>Locate export area</td>
+<td>PDF/CSV/Print controls present</td>
+</tr>
+<tr>
+<td>WTC-074</td>
+<td>Admin Patient DB</td>
+<td>Open admin patient DB</td>
+<td>Navigate to admin DB page</td>
+<td>Table and count visible</td>
+</tr>
+<tr>
+<td>WTC-075</td>
+<td>Admin Patient DB</td>
+<td>Search functionality</td>
+<td>Search by patient name</td>
+<td>Filtered results shown</td>
+</tr>
+<tr>
+<td>WTC-076</td>
+<td>Admin Patient DB</td>
+<td>View details</td>
+<td>Click <code>View</code> on patient row</td>
+<td>Detail panel opens</td>
+</tr>
+<tr>
+<td>WTC-077</td>
+<td>Admin Patient DB</td>
+<td>Delete flow open</td>
+<td>Click trash icon</td>
+<td>Delete confirm prompt shown</td>
+</tr>
+<tr>
+<td>WTC-078</td>
+<td>Admin Patient DB</td>
+<td>Delete confirm/cancel</td>
+<td>Test cancel and confirm paths</td>
+<td>Correct behavior per action</td>
+</tr>
+<tr>
+<td>WTC-079</td>
+<td>Global Web UX</td>
+<td>Responsive mobile layout</td>
+<td>Resize to mobile widths</td>
+<td>Layout remains usable</td>
+</tr>
+<tr>
+<td>WTC-080</td>
+<td>Global Web Error</td>
+<td>Offline submit handling</td>
+<td>Disable internet and submit form</td>
+<td>Friendly error, no crash</td>
+</tr>
+</tbody></table>
+<h3>A5. Extended Web Test Pack (Security, Data Integrity, Accessibility, Compatibility)</h3>
+<table>
+<thead>
+<tr>
+<th>TC ID</th>
+<th>Module</th>
+<th>Test Scenario</th>
+<th>Test Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>WTC-081</td>
+<td>Auth Security</td>
+<td>SQL-like input in login</td>
+<td>Enter <code>&#39; OR 1=1 --</code> in identifier and submit</td>
+<td>Login fails safely, no crash</td>
+</tr>
+<tr>
+<td>WTC-082</td>
+<td>Auth Security</td>
+<td>Script-like input in signup name</td>
+<td>Enter <code>&lt;script&gt;alert(1)&lt;/script&gt;</code> in full name</td>
+<td>Input handled safely, no script execution</td>
+</tr>
+<tr>
+<td>WTC-083</td>
+<td>Auth Security</td>
+<td>Repeated wrong login attempts</td>
+<td>Submit wrong password 10 times</td>
+<td>App remains stable, controlled error responses</td>
+</tr>
+<tr>
+<td>WTC-084</td>
+<td>Session</td>
+<td>Session survives page refresh</td>
+<td>Login then refresh protected page</td>
+<td>User stays logged in</td>
+</tr>
+<tr>
+<td>WTC-085</td>
+<td>Session</td>
+<td>Logout clears protected access</td>
+<td>Logout then open protected URL</td>
+<td>Redirected to login</td>
+</tr>
+<tr>
+<td>WTC-086</td>
+<td>Role Isolation</td>
+<td>Family cannot access nurse route</td>
+<td>Login family, open <code>/nurse-dashboard</code></td>
+<td>Redirected to family route</td>
+</tr>
+<tr>
+<td>WTC-087</td>
+<td>Role Isolation</td>
+<td>Nurse cannot access family-only action</td>
+<td>Login nurse and open family admission route</td>
+<td>Route blocked/redirected</td>
+</tr>
+<tr>
+<td>WTC-088</td>
+<td>Role Isolation</td>
+<td>Admin can access admin modules</td>
+<td>Login admin and open all admin pages</td>
+<td>Access granted</td>
+</tr>
+<tr>
+<td>WTC-089</td>
+<td>Admission Data</td>
+<td>Phone login resolver works</td>
+<td>Login via phone/contact path</td>
+<td>Correct user resolved and authenticated</td>
+</tr>
+<tr>
+<td>WTC-090</td>
+<td>Admission Data</td>
+<td>Missing required DB field fallback</td>
+<td>Submit admission with minimal allowed fields</td>
+<td>Request still stored correctly</td>
+</tr>
+<tr>
+<td>WTC-091</td>
+<td>Admin Approval</td>
+<td>Approve admission updates counts</td>
+<td>Approve one request from modal</td>
+<td>Pending decreases; patient count increases</td>
+</tr>
+<tr>
+<td>WTC-092</td>
+<td>Admin Approval</td>
+<td>Decline admission updates counts</td>
+<td>Decline one admission</td>
+<td>Pending decreases; declined reflects update</td>
+</tr>
+<tr>
+<td>WTC-093</td>
+<td>Admin Discharge</td>
+<td>Approve discharge removes active patient</td>
+<td>Approve discharge request</td>
+<td>Active patient removed from list</td>
+</tr>
+<tr>
+<td>WTC-094</td>
+<td>Admin Discharge</td>
+<td>Decline discharge retains patient</td>
+<td>Decline discharge request</td>
+<td>Patient remains active</td>
+</tr>
+<tr>
+<td>WTC-095</td>
+<td>Admin Activity</td>
+<td>Activity feed insert on approval</td>
+<td>Approve any request</td>
+<td>Activity feed shows new entry</td>
+</tr>
+<tr>
+<td>WTC-096</td>
+<td>Admin Activity</td>
+<td>Activity feed clear action</td>
+<td>Click clear all in dashboard</td>
+<td>Activity list empties</td>
+</tr>
+<tr>
+<td>WTC-097</td>
+<td>Analytics Export</td>
+<td>Export CSV file content</td>
+<td>Apply filters then export CSV</td>
+<td>CSV downloaded with matching filtered rows</td>
+</tr>
+<tr>
+<td>WTC-098</td>
+<td>Analytics Export</td>
+<td>Export PDF download works</td>
+<td>Click Export PDF</td>
+<td><code>.pdf</code> file downloads successfully</td>
+</tr>
+<tr>
+<td>WTC-099</td>
+<td>Analytics Export</td>
+<td>PDF includes filters and metrics</td>
+<td>Open exported PDF</td>
+<td>Header/filters/metrics visible and readable</td>
+</tr>
+<tr>
+<td>WTC-100</td>
+<td>Analytics Export</td>
+<td>PDF includes patient rows</td>
+<td>Export with known dataset</td>
+<td>Patient table appears in PDF</td>
+</tr>
+<tr>
+<td>WTC-101</td>
+<td>Analytics Filters</td>
+<td>Period filter updates metrics</td>
+<td>Switch weekly/monthly/yearly</td>
+<td>KPI values change accordingly</td>
+</tr>
+<tr>
+<td>WTC-102</td>
+<td>Analytics Filters</td>
+<td>Program filter applies</td>
+<td>Select each program</td>
+<td>Chart/KPI values update</td>
+</tr>
+<tr>
+<td>WTC-103</td>
+<td>Analytics Filters</td>
+<td>Gender filter applies</td>
+<td>Select Male/Female/Other</td>
+<td>Filtered values update</td>
+</tr>
+<tr>
+<td>WTC-104</td>
+<td>Analytics Filters</td>
+<td>Age filter applies</td>
+<td>Select age bracket</td>
+<td>Dataset scoped to bracket</td>
+</tr>
+<tr>
+<td>WTC-105</td>
+<td>Analytics Filters</td>
+<td>Outcome filter applies</td>
+<td>Select outcome (e.g. Discharged)</td>
+<td>Result set updates</td>
+</tr>
+<tr>
+<td>WTC-106</td>
+<td>Analytics Filters</td>
+<td>Therapist filter applies</td>
+<td>Select therapist value</td>
+<td>Data limited to therapist</td>
+</tr>
+<tr>
+<td>WTC-107</td>
+<td>Accessibility</td>
+<td>Keyboard nav on login form</td>
+<td>Use tab/enter only</td>
+<td>Fields/buttons usable by keyboard</td>
+</tr>
+<tr>
+<td>WTC-108</td>
+<td>Accessibility</td>
+<td>Focus visibility</td>
+<td>Navigate key controls via keyboard</td>
+<td>Focus indicator visible</td>
+</tr>
+<tr>
+<td>WTC-109</td>
+<td>Accessibility</td>
+<td>Color contrast spot check</td>
+<td>Check key text over backgrounds</td>
+<td>Readable contrast in critical actions</td>
+</tr>
+<tr>
+<td>WTC-110</td>
+<td>Compatibility</td>
+<td>Chrome compatibility</td>
+<td>Run smoke tests in Chrome</td>
+<td>Works without critical issue</td>
+</tr>
+<tr>
+<td>WTC-111</td>
+<td>Compatibility</td>
+<td>Edge compatibility</td>
+<td>Run smoke tests in Edge</td>
+<td>Works without critical issue</td>
+</tr>
+<tr>
+<td>WTC-112</td>
+<td>Compatibility</td>
+<td>Firefox compatibility</td>
+<td>Run smoke tests in Firefox</td>
+<td>Works without critical issue</td>
+</tr>
+<tr>
+<td>WTC-113</td>
+<td>Responsiveness</td>
+<td>1366x768 layout</td>
+<td>Test dashboard, analytics, forms</td>
+<td>No clipping/overlap</td>
+</tr>
+<tr>
+<td>WTC-114</td>
+<td>Responsiveness</td>
+<td>1920x1080 layout</td>
+<td>Test key pages</td>
+<td>Layout scales correctly</td>
+</tr>
+<tr>
+<td>WTC-115</td>
+<td>Responsiveness</td>
+<td>768px breakpoint behavior</td>
+<td>Test sidebars/navbars around breakpoint</td>
+<td>Correct desktop/mobile switching</td>
+</tr>
+<tr>
+<td>WTC-116</td>
+<td>Error Handling</td>
+<td>Supabase env missing on web</td>
+<td>Remove env values and open app</td>
+<td>Warning shown; app fails gracefully</td>
+</tr>
+<tr>
+<td>WTC-117</td>
+<td>Error Handling</td>
+<td>API failure during approve</td>
+<td>Simulate network failure during approve</td>
+<td>Error shown, no data corruption</td>
+</tr>
+<tr>
+<td>WTC-118</td>
+<td>Regression</td>
+<td>Full family flow</td>
+<td>Signup/login -&gt; admission -&gt; progress/services/profile</td>
+<td>End-to-end flow works</td>
+</tr>
+<tr>
+<td>WTC-119</td>
+<td>Regression</td>
+<td>Full nurse flow</td>
+<td>Nurse login -&gt; weekly report -&gt; patient DB -&gt; profile</td>
+<td>End-to-end flow works</td>
+</tr>
+<tr>
+<td>WTC-120</td>
+<td>Regression</td>
+<td>Full admin flow</td>
+<td>Admin login -&gt; review -&gt; approve/decline -&gt; analytics export</td>
+<td>End-to-end flow works</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>B. MOBILE APP TEST CASES (100 Cases)</h2>
+<h3>B1. App Start, Onboarding, and Authentication</h3>
+<table>
+<thead>
+<tr>
+<th>TC ID</th>
+<th>Module</th>
+<th>Test Scenario</th>
+<th>Test Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>MTC-001</td>
+<td>Splash</td>
+<td>App launch</td>
+<td>Open mobile app</td>
+<td>Splash screen appears</td>
+</tr>
+<tr>
+<td>MTC-002</td>
+<td>Splash</td>
+<td>Splash transition</td>
+<td>Wait for load completion</td>
+<td>Navigates to onboarding/login</td>
+</tr>
+<tr>
+<td>MTC-003</td>
+<td>Onboarding</td>
+<td>Swipe next slide</td>
+<td>Swipe left</td>
+<td>Next onboarding slide shown</td>
+</tr>
+<tr>
+<td>MTC-004</td>
+<td>Onboarding</td>
+<td>Swipe previous slide</td>
+<td>Swipe right</td>
+<td>Previous slide shown</td>
+</tr>
+<tr>
+<td>MTC-005</td>
+<td>Onboarding</td>
+<td>Pagination sync</td>
+<td>Move across slides</td>
+<td>Active dot updates correctly</td>
+</tr>
+<tr>
+<td>MTC-006</td>
+<td>Onboarding</td>
+<td>Get started button</td>
+<td>Tap Get Started</td>
+<td>Opens login screen</td>
+</tr>
+<tr>
+<td>MTC-007</td>
+<td>Login</td>
+<td>Family login success</td>
+<td>Valid family credentials, tap sign in</td>
+<td>Navigates to home tab</td>
+</tr>
+<tr>
+<td>MTC-008</td>
+<td>Login</td>
+<td>Empty fields validation</td>
+<td>Submit empty login form</td>
+<td>Error message shown</td>
+</tr>
+<tr>
+<td>MTC-009</td>
+<td>Login</td>
+<td>Invalid identifier</td>
+<td>Enter invalid email/phone</td>
+<td>Validation error</td>
+</tr>
+<tr>
+<td>MTC-010</td>
+<td>Login</td>
+<td>Weak password validation</td>
+<td>Enter weak password</td>
+<td>Validation error shown</td>
+</tr>
+<tr>
+<td>MTC-011</td>
+<td>Login</td>
+<td>Password eye toggle</td>
+<td>Tap eye icon</td>
+<td>Password visibility toggles</td>
+</tr>
+<tr>
+<td>MTC-012</td>
+<td>Login</td>
+<td>Forgot password navigation</td>
+<td>Tap forgot password</td>
+<td>Navigates to forget screen</td>
+</tr>
+<tr>
+<td>MTC-013</td>
+<td>Login</td>
+<td>Sign up navigation</td>
+<td>Tap sign up link</td>
+<td>Navigates to signup screen</td>
+</tr>
+<tr>
+<td>MTC-014</td>
+<td>Login</td>
+<td>Google OAuth flow</td>
+<td>Tap Continue with Google</td>
+<td>OAuth starts</td>
+</tr>
+<tr>
+<td>MTC-015</td>
+<td>Login</td>
+<td>Staff account blocked</td>
+<td>Login as nurse/admin</td>
+<td>Blocked with web-only message</td>
+</tr>
+<tr>
+<td>MTC-016</td>
+<td>Signup</td>
+<td>Valid signup</td>
+<td>Complete signup + terms</td>
+<td>Account creation success</td>
+</tr>
+<tr>
+<td>MTC-017</td>
+<td>Signup</td>
+<td>Terms required</td>
+<td>Submit without terms</td>
+<td>Submission blocked</td>
+</tr>
+<tr>
+<td>MTC-018</td>
+<td>Forgot Pass</td>
+<td>Send verification</td>
+<td>Enter valid email and submit</td>
+<td>Verification step proceeds</td>
+</tr>
+<tr>
+<td>MTC-019</td>
+<td>OTP</td>
+<td>OTP validation</td>
+<td>Enter correct OTP</td>
+<td>Moves to new password</td>
+</tr>
+<tr>
+<td>MTC-020</td>
+<td>New Password</td>
+<td>Reset password success</td>
+<td>Set valid password and confirm</td>
+<td>Password reset success</td>
+</tr>
+</tbody></table>
+<h3>B2. Family Tabs: Home, Services, Progress, Messages, Profile</h3>
+<table>
+<thead>
+<tr>
+<th>TC ID</th>
+<th>Module</th>
+<th>Test Scenario</th>
+<th>Test Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>MTC-021</td>
+<td>Home</td>
+<td>Home screen load</td>
+<td>Login and open home tab</td>
+<td>Header/cards render</td>
+</tr>
+<tr>
+<td>MTC-022</td>
+<td>Home</td>
+<td>User profile initials</td>
+<td>Observe avatar initials</td>
+<td>Correct initials displayed</td>
+</tr>
+<tr>
+<td>MTC-023</td>
+<td>Home</td>
+<td>Notifications modal</td>
+<td>Tap notification icon</td>
+<td>Dropdown/modal opens</td>
+</tr>
+<tr>
+<td>MTC-024</td>
+<td>Home</td>
+<td>Quick action weekly report</td>
+<td>Tap Weekly Report tile</td>
+<td>Redirects to report/progress area</td>
+</tr>
+<tr>
+<td>MTC-025</td>
+<td>Home</td>
+<td>Quick action services</td>
+<td>Tap Services tile</td>
+<td>Opens services screen</td>
+</tr>
+<tr>
+<td>MTC-026</td>
+<td>Home</td>
+<td>Quick action admission</td>
+<td>Tap Admission tile</td>
+<td>Opens admission form</td>
+</tr>
+<tr>
+<td>MTC-027</td>
+<td>Home</td>
+<td>Load patient cards</td>
+<td>With existing patient data</td>
+<td>Patient cards and progress shown</td>
+</tr>
+<tr>
+<td>MTC-028</td>
+<td>Home</td>
+<td>Empty patient state</td>
+<td>No patient linked</td>
+<td>Empty state with CTA shown</td>
+</tr>
+<tr>
+<td>MTC-029</td>
+<td>Services</td>
+<td>Services page load</td>
+<td>Open services tab</td>
+<td>Fees/inclusions layout visible</td>
+</tr>
+<tr>
+<td>MTC-030</td>
+<td>Services</td>
+<td>Admission fee card expand</td>
+<td>Tap admission card</td>
+<td>Inclusions expand/collapse</td>
+</tr>
+<tr>
+<td>MTC-031</td>
+<td>Services</td>
+<td>Monthly sections expand</td>
+<td>Toggle monthly section</td>
+<td>Items display correctly</td>
+</tr>
+<tr>
+<td>MTC-032</td>
+<td>Services</td>
+<td>Admit a patient CTA</td>
+<td>Tap button</td>
+<td>Redirect to admission form</td>
+</tr>
+<tr>
+<td>MTC-033</td>
+<td>Progress</td>
+<td>Progress tab navigation</td>
+<td>Tap bottom nav progress</td>
+<td>Progress tab opens</td>
+</tr>
+<tr>
+<td>MTC-034</td>
+<td>Progress</td>
+<td>Weekly report detail open</td>
+<td>Tap week/report item</td>
+<td>Detail content opens</td>
+</tr>
+<tr>
+<td>MTC-035</td>
+<td>Progress</td>
+<td>Discharge action</td>
+<td>Start discharge request</td>
+<td>Discharge flow triggered</td>
+</tr>
+<tr>
+<td>MTC-036</td>
+<td>Messages</td>
+<td>Open messages tab</td>
+<td>Tap messages icon/tab</td>
+<td>Inbox list loads</td>
+</tr>
+<tr>
+<td>MTC-037</td>
+<td>Messages</td>
+<td>Search thread</td>
+<td>Enter search keyword</td>
+<td>Thread list filters</td>
+</tr>
+<tr>
+<td>MTC-038</td>
+<td>Messages</td>
+<td>Open thread</td>
+<td>Tap a conversation</td>
+<td>Chat view opens</td>
+</tr>
+<tr>
+<td>MTC-039</td>
+<td>Messages</td>
+<td>Send message</td>
+<td>Type and send text</td>
+<td>User message appears</td>
+</tr>
+<tr>
+<td>MTC-040</td>
+<td>Messages</td>
+<td>Message receipt updates</td>
+<td>Wait after send</td>
+<td>Sent/delivered/seen status updates</td>
+</tr>
+<tr>
+<td>MTC-041</td>
+<td>Profile</td>
+<td>Open profile tab</td>
+<td>Tap profile tab</td>
+<td>Profile screen loads</td>
+</tr>
+<tr>
+<td>MTC-042</td>
+<td>Profile</td>
+<td>Edit profile mode</td>
+<td>Tap edit profile</td>
+<td>Inputs become editable</td>
+</tr>
+<tr>
+<td>MTC-043</td>
+<td>Profile</td>
+<td>Save profile changes</td>
+<td>Edit fields and save</td>
+<td>Changes persist</td>
+</tr>
+<tr>
+<td>MTC-044</td>
+<td>Profile</td>
+<td>Upload profile photo gallery</td>
+<td>Tap edit avatar &gt; upload</td>
+<td>Image selected and displayed</td>
+</tr>
+<tr>
+<td>MTC-045</td>
+<td>Profile</td>
+<td>Take profile photo camera</td>
+<td>Tap edit avatar &gt; camera</td>
+<td>Captured image displayed</td>
+</tr>
+<tr>
+<td>MTC-046</td>
+<td>Profile</td>
+<td>Change password navigation</td>
+<td>Tap change password</td>
+<td>Opens change password screen</td>
+</tr>
+<tr>
+<td>MTC-047</td>
+<td>Profile</td>
+<td>Notification settings navigation</td>
+<td>Tap notification settings</td>
+<td>Opens notification screen</td>
+</tr>
+<tr>
+<td>MTC-048</td>
+<td>Profile</td>
+<td>Toggle preferences</td>
+<td>Toggle translate/tagalog option</td>
+<td>Preference saved locally</td>
+</tr>
+<tr>
+<td>MTC-049</td>
+<td>Profile</td>
+<td>Logout flow</td>
+<td>Tap logout and confirm</td>
+<td>Returns to login</td>
+</tr>
+<tr>
+<td>MTC-050</td>
+<td>Tabs</td>
+<td>Bottom navigation consistency</td>
+<td>Switch all tabs repeatedly</td>
+<td>No navigation break/crash</td>
+</tr>
+</tbody></table>
+<h3>B3. Admission and Discharge Forms, Validation, and Error Handling</h3>
+<table>
+<thead>
+<tr>
+<th>TC ID</th>
+<th>Module</th>
+<th>Test Scenario</th>
+<th>Test Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>MTC-051</td>
+<td>Admission Form</td>
+<td>Load admission form</td>
+<td>Open admission form screen</td>
+<td>All fields and sections visible</td>
+</tr>
+<tr>
+<td>MTC-052</td>
+<td>Admission Form</td>
+<td>Required fields validation</td>
+<td>Submit empty form</td>
+<td>Required field errors shown</td>
+</tr>
+<tr>
+<td>MTC-053</td>
+<td>Admission Form</td>
+<td>Email format validation</td>
+<td>Enter invalid email</td>
+<td>Email validation error</td>
+</tr>
+<tr>
+<td>MTC-054</td>
+<td>Admission Form</td>
+<td>Phone format validation</td>
+<td>Enter invalid phone</td>
+<td>Phone validation error</td>
+</tr>
+<tr>
+<td>MTC-055</td>
+<td>Admission Form</td>
+<td>Birthday picker open</td>
+<td>Tap birthday input</td>
+<td>Date picker opens</td>
+</tr>
+<tr>
+<td>MTC-056</td>
+<td>Admission Form</td>
+<td>Future date blocked</td>
+<td>Select future birth date</td>
+<td>Validation error/prevention</td>
+</tr>
+<tr>
+<td>MTC-057</td>
+<td>Admission Form</td>
+<td>Reason required</td>
+<td>Do not choose reason and submit</td>
+<td>Validation error shown</td>
+</tr>
+<tr>
+<td>MTC-058</td>
+<td>Admission Form</td>
+<td>Terms required</td>
+<td>Leave terms unchecked</td>
+<td>Submission blocked</td>
+</tr>
+<tr>
+<td>MTC-059</td>
+<td>Admission Form</td>
+<td>Save draft</td>
+<td>Fill partial form and save draft</td>
+<td>Draft saved successfully</td>
+</tr>
+<tr>
+<td>MTC-060</td>
+<td>Admission Form</td>
+<td>Restore draft</td>
+<td>Reopen form after save draft</td>
+<td>Previous values restored</td>
+</tr>
+<tr>
+<td>MTC-061</td>
+<td>Admission Form</td>
+<td>Reset form</td>
+<td>Tap reset form</td>
+<td>Fields cleared and draft removed</td>
+</tr>
+<tr>
+<td>MTC-062</td>
+<td>Admission Form</td>
+<td>Valid submit success</td>
+<td>Fill valid form and submit</td>
+<td>Success modal shown</td>
+</tr>
+<tr>
+<td>MTC-063</td>
+<td>Admission Form</td>
+<td>Activity log append</td>
+<td>Submit valid request</td>
+<td>Activity entry created</td>
+</tr>
+<tr>
+<td>MTC-064</td>
+<td>Discharge Form</td>
+<td>Load discharge form</td>
+<td>Open discharge form</td>
+<td>Form fields display</td>
+</tr>
+<tr>
+<td>MTC-065</td>
+<td>Discharge Form</td>
+<td>Required-field validation</td>
+<td>Submit with missing fields</td>
+<td>Alert/validation shown</td>
+</tr>
+<tr>
+<td>MTC-066</td>
+<td>Discharge Form</td>
+<td>Invalid date format</td>
+<td>Enter invalid date</td>
+<td>Validation error shown</td>
+</tr>
+<tr>
+<td>MTC-067</td>
+<td>Discharge Form</td>
+<td>Invalid phone digits</td>
+<td>Enter non-numeric/short number</td>
+<td>Validation error shown</td>
+</tr>
+<tr>
+<td>MTC-068</td>
+<td>Discharge Form</td>
+<td>Valid discharge submit</td>
+<td>Fill all required and submit</td>
+<td>Submission success shown</td>
+</tr>
+<tr>
+<td>MTC-069</td>
+<td>Global Mobile Error</td>
+<td>Offline submission handling</td>
+<td>Disable data/Wi-Fi and submit</td>
+<td>Friendly error displayed</td>
+</tr>
+<tr>
+<td>MTC-070</td>
+<td>Global Mobile UX</td>
+<td>Orientation/responsive check</td>
+<td>Test portrait and landscape</td>
+<td>UI remains usable and aligned</td>
+</tr>
+</tbody></table>
+<h3>B4. Extended Mobile Test Pack (Stability, Storage, Device, UX, Regression)</h3>
+<table>
+<thead>
+<tr>
+<th>TC ID</th>
+<th>Module</th>
+<th>Test Scenario</th>
+<th>Test Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>MTC-071</td>
+<td>Login Security</td>
+<td>Script-like input in text fields</td>
+<td>Enter <code>&lt;script&gt;</code> payload in login input</td>
+<td>Input treated as plain text, no crash</td>
+</tr>
+<tr>
+<td>MTC-072</td>
+<td>Login Security</td>
+<td>Brute-like repeated invalid login</td>
+<td>Submit wrong password repeatedly</td>
+<td>App stable, consistent error response</td>
+</tr>
+<tr>
+<td>MTC-073</td>
+<td>Session</td>
+<td>App relaunch keeps session</td>
+<td>Login, close app, reopen</td>
+<td>User remains logged in</td>
+</tr>
+<tr>
+<td>MTC-074</td>
+<td>Session</td>
+<td>Logout clears session on relaunch</td>
+<td>Logout, close app, reopen</td>
+<td>User starts at login</td>
+</tr>
+<tr>
+<td>MTC-075</td>
+<td>Home Data</td>
+<td>Pull-to-refresh/reopen data sync</td>
+<td>Open home after admin-side updates</td>
+<td>Home data reflects latest backend state</td>
+</tr>
+<tr>
+<td>MTC-076</td>
+<td>Home UX</td>
+<td>Notification modal close on backdrop</td>
+<td>Open notifications and tap outside</td>
+<td>Modal closes properly</td>
+</tr>
+<tr>
+<td>MTC-077</td>
+<td>Home UX</td>
+<td>Community banner dismiss persistence</td>
+<td>Dismiss banner then revisit home</td>
+<td>Banner stays dismissed</td>
+</tr>
+<tr>
+<td>MTC-078</td>
+<td>Services UX</td>
+<td>Services screen close/back action</td>
+<td>Use close action in services</td>
+<td>Returns to intended route</td>
+</tr>
+<tr>
+<td>MTC-079</td>
+<td>Admission Validation</td>
+<td>Middle initial constraints</td>
+<td>Enter non-letter chars in middle initial</td>
+<td>Invalid chars filtered out</td>
+</tr>
+<tr>
+<td>MTC-080</td>
+<td>Admission Validation</td>
+<td>Date picker cancel behavior</td>
+<td>Open iOS/Android picker then cancel</td>
+<td>Field remains unchanged</td>
+</tr>
+<tr>
+<td>MTC-081</td>
+<td>Admission Validation</td>
+<td>Terms modal agree action</td>
+<td>Open terms and tap agree</td>
+<td>Checkbox toggles true</td>
+</tr>
+<tr>
+<td>MTC-082</td>
+<td>Admission UX</td>
+<td>Progress indicator updates per field</td>
+<td>Fill fields gradually</td>
+<td>Completion percent increases correctly</td>
+</tr>
+<tr>
+<td>MTC-083</td>
+<td>Admission UX</td>
+<td>Submit button loading state</td>
+<td>Submit valid form</td>
+<td>Button shows submitting state</td>
+</tr>
+<tr>
+<td>MTC-084</td>
+<td>Admission Data</td>
+<td>Submission with optional fields blank</td>
+<td>Leave optional fields empty and submit</td>
+<td>Submission still succeeds</td>
+</tr>
+<tr>
+<td>MTC-085</td>
+<td>Admission Error</td>
+<td>Submit while offline</td>
+<td>Disconnect network and submit</td>
+<td>Friendly error, form remains intact</td>
+</tr>
+<tr>
+<td>MTC-086</td>
+<td>Messages UX</td>
+<td>Long message wrapping</td>
+<td>Send very long text</td>
+<td>Bubble wraps, layout not broken</td>
+</tr>
+<tr>
+<td>MTC-087</td>
+<td>Messages UX</td>
+<td>Auto-scroll behavior near bottom</td>
+<td>Send message while at bottom</td>
+<td>Chat remains pinned to latest message</td>
+</tr>
+<tr>
+<td>MTC-088</td>
+<td>Messages UX</td>
+<td>Manual scroll-up preservation</td>
+<td>Scroll up then new message arrives</td>
+<td>User position not forcibly reset</td>
+</tr>
+<tr>
+<td>MTC-089</td>
+<td>Messages UX</td>
+<td>Thread search no result state</td>
+<td>Search nonexistent thread</td>
+<td>Empty-state text shown</td>
+</tr>
+<tr>
+<td>MTC-090</td>
+<td>Messages UX</td>
+<td>Selection mode actions</td>
+<td>Select chat(s), mark/archive/delete</td>
+<td>Selected actions execute correctly</td>
+</tr>
+<tr>
+<td>MTC-091</td>
+<td>Profile Data</td>
+<td>Load profile from Supabase</td>
+<td>Open profile with configured backend</td>
+<td>Name/email/phone/address loaded</td>
+</tr>
+<tr>
+<td>MTC-092</td>
+<td>Profile Data</td>
+<td>Save edited profile fields</td>
+<td>Edit name/phone/address and save</td>
+<td>Saved values persist on reopen</td>
+</tr>
+<tr>
+<td>MTC-093</td>
+<td>Profile Media</td>
+<td>Camera permission denied flow</td>
+<td>Deny permission then take photo</td>
+<td>Graceful failure, no crash</td>
+</tr>
+<tr>
+<td>MTC-094</td>
+<td>Profile Media</td>
+<td>Gallery permission denied flow</td>
+<td>Deny library permission then upload</td>
+<td>Graceful failure, no crash</td>
+</tr>
+<tr>
+<td>MTC-095</td>
+<td>Profile UX</td>
+<td>Toggle Tagalog preference persistence</td>
+<td>Toggle switch, restart app</td>
+<td>Preference persists</td>
+</tr>
+<tr>
+<td>MTC-096</td>
+<td>Device Compatibility</td>
+<td>Android phone smoke test</td>
+<td>Run full nav + login + forms on Android</td>
+<td>Stable behavior</td>
+</tr>
+<tr>
+<td>MTC-097</td>
+<td>Device Compatibility</td>
+<td>iOS phone smoke test</td>
+<td>Run full nav + login + forms on iOS</td>
+<td>Stable behavior</td>
+</tr>
+<tr>
+<td>MTC-098</td>
+<td>Device Compatibility</td>
+<td>Small-screen layout check</td>
+<td>Test narrow screen device</td>
+<td>No critical clipping/overlap</td>
+</tr>
+<tr>
+<td>MTC-099</td>
+<td>Regression</td>
+<td>Family end-to-end mobile flow</td>
+<td>Login -&gt; admission -&gt; messages -&gt; profile -&gt; logout</td>
+<td>End-to-end works</td>
+</tr>
+<tr>
+<td>MTC-100</td>
+<td>Regression</td>
+<td>Mobile + web consistency check</td>
+<td>Submit on mobile, verify on web admin</td>
+<td>Data appears consistently</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>C. Recommended Additional Stress/Regression Pass (Optional)</h2>
+<p>Run these high-value regressions before demo:</p>
+<ol>
+<li><strong>Role switch regression:</strong> family, nurse, admin login in sequence.</li>
+<li><strong>Admission-discharge chain:</strong> submit family admission -&gt; admin approve -&gt; submit discharge -&gt; admin approve.</li>
+<li><strong>Cross-platform consistency:</strong> same account data appears in web and mobile.</li>
+<li><strong>Session persistence:</strong> app/web restart while logged in.</li>
+<li><strong>Network interruption tests:</strong> submit during intermittent connection.</li>
+</ol>
+<hr>
+<h2>D. Export Instructions (Word/PDF)</h2>
+<h3>To Word</h3>
+<ol>
+<li>Open this file in Cursor or VS Code preview.</li>
+<li>Copy all content and paste into Microsoft Word.</li>
+<li>Set page size to A4, table font 9-10 pt.</li>
+<li>Save as <code>.docx</code>.</li>
+</ol>
+<h3>To PDF</h3>
+<ol>
+<li>Open Word file.</li>
+<li><code>File &gt; Save As &gt; PDF</code>.</li>
+<li>Use filename: <code>Capstone_QA_Test_Cases_Web_Mobile_v1.pdf</code>.</li>
+</ol>
+<hr>
+<h2>E. Suggested Filenames for Submission</h2>
+<ul>
+<li><code>Capstone_QA_Test_Cases_Web_and_Mobile.docx</code></li>
+<li><code>Capstone_QA_Test_Cases_Web_and_Mobile.pdf</code></li>
+<li><code>Capstone_QA_Test_Cases_Web_and_Mobile_ExecutionLog.xlsx</code></li>
+</ul>
+</div></body></html>

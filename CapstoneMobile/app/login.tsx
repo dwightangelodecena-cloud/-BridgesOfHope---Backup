@@ -1,7 +1,8 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Image, KeyboardAvoidingView, Platform, ScrollView, Animated, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatAuthError } from "../lib/authErrors";
 import { TAB_ROUTES } from "../lib/navigationConfig";
@@ -11,6 +12,7 @@ import {
 } from "../lib/googleAuth";
 
 export default function LoginScreen() {
+  const REMEMBER_LOGIN_KEY = "bh_remembered_login_identifier_mobile";
   const [loginIdentifier, setLoginIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [hidePassword, setHidePassword] = useState(true);
@@ -20,6 +22,24 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const router = useRouter();
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const savedIdentifier = await AsyncStorage.getItem(REMEMBER_LOGIN_KEY);
+        if (mounted && savedIdentifier?.trim()) {
+          setLoginIdentifier(savedIdentifier.trim());
+          setRememberMe(true);
+        }
+      } catch {
+        /* ignore remember-me read failures */
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const showError = (message: string) => {
     setError(message);
@@ -120,6 +140,20 @@ export default function LoginScreen() {
       await supabase.auth.signOut();
       showError("Use the web app to sign in as staff.");
       return;
+    }
+
+    if (rememberMe) {
+      try {
+        await AsyncStorage.setItem(REMEMBER_LOGIN_KEY, trimmedId);
+      } catch {
+        /* ignore remember-me write failures */
+      }
+    } else {
+      try {
+        await AsyncStorage.removeItem(REMEMBER_LOGIN_KEY);
+      } catch {
+        /* ignore remember-me delete failures */
+      }
     }
 
     router.replace(TAB_ROUTES.home);

@@ -22,6 +22,8 @@ import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const PERIOD_OPTIONS = [
     { value: 'weekly', label: 'Weekly', days: 7 },
@@ -419,17 +421,16 @@ const Analytics = () => {
         return c;
     }, [filteredPatients]);
 
-    const barMax = Math.max(8, barCounts.substance, barCounts.physical, barCounts.mental, 1);
-    const barScale = (v) => (v / barMax) * 120;
+    const rawBarMax = Math.max(1, barCounts.substance, barCounts.physical, barCounts.mental);
+    const barTickStep = Math.max(1, Math.ceil(rawBarMax / 5));
+    const barAxisMax = Math.max(5, Math.ceil(rawBarMax / barTickStep) * barTickStep);
+    const barScale = (v) => (v / barAxisMax) * 120;
 
     const barTickVals = useMemo(() => {
-        const m = barMax;
-        const step = Math.max(1, Math.ceil(m / 4));
-        const arr = [];
-        for (let v = 0; v <= m; v += step) arr.push(v);
-        if (arr[arr.length - 1] !== m) arr.push(m);
-        return arr;
-    }, [barMax]);
+        const ticks = [];
+        for (let v = 0; v <= barAxisMax; v += barTickStep) ticks.push(v);
+        return ticks;
+    }, [barAxisMax, barTickStep]);
 
     const lineSeries = useMemo(() => {
         const days = 56;
@@ -647,11 +648,106 @@ const Analytics = () => {
     }, []);
 
     const handleExportPdf = useCallback(() => {
-        const prev = document.title;
-        document.title = 'Bridges of Hope — Analytics';
-        window.print();
-        document.title = prev;
-    }, []);
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+        const now = new Date();
+        const pageWidth = doc.internal.pageSize.getWidth();
+
+        const filterLabel = (arr, value) => arr.find((o) => o.value === value)?.label || value;
+        const periodLabel = filterLabel(PERIOD_OPTIONS, filterPeriod);
+        const programLabel = filterLabel(PROGRAM_FILTER_OPTIONS, filterProgram);
+        const genderLabel = filterLabel(GENDER_OPTIONS, filterGender);
+        const ageLabel = filterLabel(AGE_OPTIONS, filterAge);
+        const outcomeLabel = filterLabel(OUTCOME_OPTIONS, filterOutcome);
+        const therapistLabel = filterTherapist === 'all' ? 'All Therapist' : filterTherapist;
+
+        doc.setFillColor(245, 78, 37);
+        doc.rect(0, 0, pageWidth, 56, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.text('Bridges of Hope - Analytics Report', 36, 34);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Generated: ${now.toLocaleString()}`, pageWidth - 190, 34);
+
+        doc.setTextColor(15, 23, 42);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Applied Filters', 36, 86);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.text(`Period: ${periodLabel}`, 36, 104);
+        doc.text(`Program: ${programLabel}`, 210, 104);
+        doc.text(`Gender: ${genderLabel}`, 360, 104);
+        doc.text(`Age: ${ageLabel}`, 36, 120);
+        doc.text(`Therapist: ${therapistLabel}`, 210, 120);
+        doc.text(`Outcome: ${outcomeLabel}`, 360, 120);
+
+        autoTable(doc, {
+            startY: 138,
+            theme: 'grid',
+            head: [['Metric', 'Value']],
+            body: [
+                ['Total Requests', String(metrics.total)],
+                ['Approved', String(metrics.approved)],
+                ['Pending', String(metrics.pending)],
+                ['Declined', String(metrics.declined)],
+                ['Success Rate', `${successRate}%`],
+                ['Average Stay', `${avgStayDays} day(s)`],
+            ],
+            styles: { fontSize: 10, cellPadding: 6, textColor: [30, 41, 59] },
+            headStyles: { fillColor: [245, 78, 37], textColor: [255, 255, 255] },
+            columnStyles: {
+                0: { fontStyle: 'bold', cellWidth: 220 },
+                1: { cellWidth: 120 },
+            },
+            margin: { left: 36, right: 36 },
+        });
+
+        autoTable(doc, {
+            startY: doc.lastAutoTable.finalY + 18,
+            theme: 'striped',
+            head: [['Name', 'Primary Concern', 'Gender', 'Age', 'Status', 'Therapist', 'Admitted']],
+            body: filteredPatients.map((p) => [
+                p.name || '-',
+                p.concern || '-',
+                p.gender || '-',
+                p.age ?? '-',
+                p.status || '-',
+                p.therapist || '-',
+                p.admitted_at ? new Date(p.admitted_at).toLocaleDateString() : '-',
+            ]),
+            styles: { fontSize: 9, cellPadding: 5, textColor: [30, 41, 59] },
+            headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontSize: 9 },
+            margin: { left: 36, right: 36 },
+            didDrawPage: () => {
+                doc.setFontSize(8);
+                doc.setTextColor(100, 116, 139);
+                doc.text(
+                    `Bridges of Hope Analytics - Page ${doc.getCurrentPageInfo().pageNumber}`,
+                    36,
+                    doc.internal.pageSize.getHeight() - 16
+                );
+            },
+        });
+
+        const filename = `analytics-report-${now.toISOString().slice(0, 10)}.pdf`;
+        doc.save(filename);
+    }, [
+        filterPeriod,
+        filterProgram,
+        filterGender,
+        filterAge,
+        filterTherapist,
+        filterOutcome,
+        metrics.total,
+        metrics.approved,
+        metrics.pending,
+        metrics.declined,
+        successRate,
+        avgStayDays,
+        filteredPatients,
+    ]);
 
     const donutPaths = useMemo(() => {
         const cx = 100;
@@ -1360,8 +1456,23 @@ const Analytics = () => {
                                     </defs>
                                     {barTickVals.map((val) => (
                                         <g key={val}>
-                                            <text x="30" y={155 - (val / barMax) * 120} className="axis-text" textAnchor="end">{val}</text>
-                                            <line x1="40" y1={150 - (val / barMax) * 120} x2="500" y2={150 - (val / barMax) * 120} stroke="#f1f5f9" strokeDasharray="4 4" />
+                                            <text
+                                                x="30"
+                                                y={155 - (val / barAxisMax) * 120}
+                                                className="axis-text"
+                                                textAnchor="end"
+                                                fontSize="12"
+                                            >
+                                                {val}
+                                            </text>
+                                            <line
+                                                x1="40"
+                                                y1={150 - (val / barAxisMax) * 120}
+                                                x2="500"
+                                                y2={150 - (val / barAxisMax) * 120}
+                                                stroke="#f1f5f9"
+                                                strokeDasharray="4 4"
+                                            />
                                         </g>
                                     ))}
                                     <line x1="40" y1="150" x2="500" y2="150" stroke="#e2e8f0" strokeWidth="2" />
@@ -1371,13 +1482,22 @@ const Analytics = () => {
                                     <rect x="350" y={150 - barScale(barCounts.mental)} width="90" height={barScale(barCounts.mental)} fill="url(#barGrad)" rx="6" />
 
                                     <g transform="translate(115, 176)">
-                                        <text className="axis-text" textAnchor="middle" fontSize="14">Substance Abuse</text>
+                                        <text className="axis-text" textAnchor="middle" fontSize="12">
+                                            <tspan x="0" dy="0">Substance</tspan>
+                                            <tspan x="0" dy="14">Abuse</tspan>
+                                        </text>
                                     </g>
                                     <g transform="translate(255, 176)">
-                                        <text className="axis-text" textAnchor="middle" fontSize="14">Physical Therapy</text>
+                                        <text className="axis-text" textAnchor="middle" fontSize="12">
+                                            <tspan x="0" dy="0">Physical</tspan>
+                                            <tspan x="0" dy="14">Therapy</tspan>
+                                        </text>
                                     </g>
                                     <g transform="translate(395, 176)">
-                                        <text className="axis-text" textAnchor="middle" fontSize="14">Mental Health</text>
+                                        <text className="axis-text" textAnchor="middle" fontSize="12">
+                                            <tspan x="0" dy="0">Mental</tspan>
+                                            <tspan x="0" dy="14">Health</tspan>
+                                        </text>
                                     </g>
                                 </svg>
                             </div>

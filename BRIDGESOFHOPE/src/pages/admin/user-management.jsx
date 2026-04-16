@@ -26,6 +26,7 @@ const USER_STATUS_OPTIONS = ['Active', 'Inactive'];
 const FILTER_STATUS_OPTIONS = ['All Users', ...USER_STATUS_OPTIONS];
 const SORT_FIELD_OPTIONS = ['User ID', 'Name', 'Registered Date', 'Status', 'Last Active'];
 const ACTIVE_WINDOW_MS = 15 * 60 * 1000;
+const RESET_PASSWORD_REDIRECT_PATH = '/newpass';
 const defaultDirectionForField = (field) => {
   if (field === 'Registered Date' || field === 'Last Active') return 'desc';
   return 'asc';
@@ -83,7 +84,13 @@ const toUiUser = (row, idx = 0) => {
   const phone = row.phone || row.contact_number || row.mobile || row.guardian_phone || 'N/A';
   const address = buildAddressFromRow(row);
   const registeredAt = row.created_at || row.registered_at || row.registered_date || null;
-  const lastActiveAt = row.last_active_at || row.last_login_at || null;
+  const lastActiveAt =
+    row.last_active_at ||
+    row.last_login_at ||
+    row.last_sign_in_at ||
+    row.updated_at ||
+    row.created_at ||
+    null;
   const status = getPresenceStatus(lastActiveAt);
   const role = row.role || row.account_type || 'Customer';
   const source = row.source || 'web';
@@ -155,6 +162,7 @@ const UserManagement = () => {
   const [editUser, setEditUser] = useState(null);
   const [savingId, setSavingId] = useState(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
+  const [presenceTick, setPresenceTick] = useState(Date.now());
 
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
@@ -167,6 +175,7 @@ const UserManagement = () => {
     try {
       if (!isSupabaseConfigured()) {
         setUsers(mapLocalUsers());
+        setLastRefreshedAt(new Date().toISOString());
         return;
       }
       const { data, error } = await supabase
@@ -238,9 +247,23 @@ const UserManagement = () => {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [filterDropdownOpen, sortDropdownOpen]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setPresenceTick(Date.now());
+    }, 60 * 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const usersWithLiveStatus = useMemo(() => {
+    return users.map((u) => ({
+      ...u,
+      status: getPresenceStatus(u.lastActiveAt),
+    }));
+  }, [users, presenceTick]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const bySearch = users.filter((u) => {
+    const bySearch = usersWithLiveStatus.filter((u) => {
       if (!q) return true;
       return (
         String(u.fullName || '').toLowerCase().includes(q) ||
@@ -251,17 +274,35 @@ const UserManagement = () => {
     });
     const byFilter = bySearch.filter((u) => statusFilter === 'All Users' || u.status === statusFilter);
     return sortUsers(byFilter, sortField, defaultDirectionForField(sortField));
-  }, [users, search, statusFilter, sortField]);
+  }, [usersWithLiveStatus, search, statusFilter, sortField]);
 
   const summary = useMemo(() => {
-    const total = users.length;
-    const active = users.filter((u) => u.status === 'Active').length;
-    const inactive = users.filter((u) => u.status === 'Inactive').length;
+    const total = usersWithLiveStatus.length;
+    const active = usersWithLiveStatus.filter((u) => u.status === 'Active').length;
+    const inactive = usersWithLiveStatus.filter((u) => u.status === 'Inactive').length;
     return { total, active, inactive };
-  }, [users]);
+  }, [usersWithLiveStatus]);
 
   const resetPassword = async () => {
-    setFormError('Reset Password is not configured yet for this module.');
+    if (!selectedUser?.email || selectedUser.email === 'N/A') {
+      setFormError('Select a user with a valid email before sending a reset link.');
+      return;
+    }
+    if (!isSupabaseConfigured()) {
+      setFormError('Supabase is not configured. Cannot send reset links.');
+      return;
+    }
+    setFormError('');
+    try {
+      const email = String(selectedUser.email).trim().toLowerCase();
+      const redirectTo = `${window.location.origin}${RESET_PASSWORD_REDIRECT_PATH}`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) throw error;
+      setFormError(`Password reset link sent to ${email}.`);
+    } catch (err) {
+      console.error(err);
+      setFormError(err.message || 'Could not send password reset link.');
+    }
   };
 
   const saveEdit = async () => {
@@ -276,8 +317,8 @@ const UserManagement = () => {
           .update({
             full_name: editUser.fullName,
             phone: editUser.phone,
-            address: editUser.address,
-            role: editUser.role,
+            // Keep schema-safe updates only; profile does not store raw "address"/"role" columns.
+            street: editUser.address,
             updated_at: new Date().toISOString(),
           })
           .eq('id', editUser.id);
