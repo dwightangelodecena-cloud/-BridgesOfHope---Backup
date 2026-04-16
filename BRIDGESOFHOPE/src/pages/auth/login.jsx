@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import logo from '@/assets/logo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
+import { appendActivityFeed } from '@/lib/activityFeed';
 import {
   setOAuthExpectedRole,
   takeOAuthExpectedRole,
@@ -27,6 +28,23 @@ const Login = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const touchPresence = async (userId) => {
+    if (!userId) return;
+    try {
+      const now = new Date().toISOString();
+      await supabase
+        .from('profiles')
+        .update({
+          last_active_at: now,
+          last_login_at: now,
+          updated_at: now,
+        })
+        .eq('id', userId);
+    } catch {
+      // Presence sync should not block login.
+    }
+  };
 
   useEffect(() => {
     const rawPayload = localStorage.getItem(REMEMBER_LOGIN_PAYLOAD_KEY);
@@ -190,6 +208,13 @@ const Login = () => {
       );
       return;
     }
+
+    await touchPresence(data.user?.id);
+    await appendActivityFeed('Logged in from web app.', {
+      familyId: data.user?.id ?? null,
+      title: 'Account Login',
+      iconName: 'login',
+    });
 
     if (formData.rememberMe) {
       localStorage.setItem(

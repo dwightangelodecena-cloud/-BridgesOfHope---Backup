@@ -190,11 +190,27 @@ const UserManagement = () => {
         .select('family_id, guardian_email, guardian_phone, created_at')
         .order('created_at', { ascending: false });
 
+      // Presence fallback source from event timeline.
+      const { data: activityRows } = await supabase
+        .from('activity_log')
+        .select('actor_id, family_id, created_at')
+        .order('created_at', { ascending: false });
+
       const admissionByFamilyId = new Map();
       (admissionRows || []).forEach((r) => {
         const key = r.family_id;
         if (!key || admissionByFamilyId.has(key)) return;
         admissionByFamilyId.set(key, r);
+      });
+
+      const latestActivityByUserId = new Map();
+      (activityRows || []).forEach((r) => {
+        const keys = [r.family_id, r.actor_id].filter(Boolean);
+        keys.forEach((key) => {
+          if (!latestActivityByUserId.has(key)) {
+            latestActivityByUserId.set(key, r.created_at);
+          }
+        });
       });
 
       const rows = (data || [])
@@ -204,13 +220,18 @@ const UserManagement = () => {
         })
         .map((r) => {
           const fallback = admissionByFamilyId.get(r.id);
+          const activityAt = latestActivityByUserId.get(r.id);
           return fallback
             ? {
                 ...r,
                 guardian_email: fallback.guardian_email,
                 guardian_phone: fallback.guardian_phone,
+                last_active_at: r.last_active_at || r.last_login_at || activityAt || null,
               }
-            : r;
+            : {
+                ...r,
+                last_active_at: r.last_active_at || r.last_login_at || activityAt || null,
+              };
         });
 
       setUsers(rows.map((r, idx) => toUiUser(r, idx)));

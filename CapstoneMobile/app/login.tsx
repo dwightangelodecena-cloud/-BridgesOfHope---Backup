@@ -6,6 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatAuthError } from "../lib/authErrors";
 import { TAB_ROUTES } from "../lib/navigationConfig";
+import { appendActivityFeed } from "../lib/activityFeed";
 import {
   ensureFamilyAccountOrSignOut,
   signInWithGoogleMobile,
@@ -22,6 +23,23 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const router = useRouter();
+
+  const touchPresence = async (userId?: string) => {
+    if (!userId) return;
+    try {
+      const now = new Date().toISOString();
+      await supabase
+        .from("profiles")
+        .update({
+          last_active_at: now,
+          last_login_at: now,
+          updated_at: now,
+        })
+        .eq("id", userId);
+    } catch {
+      // Presence sync should not block login.
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -141,6 +159,13 @@ export default function LoginScreen() {
       showError("Use the web app to sign in as staff.");
       return;
     }
+
+    await touchPresence(data.user?.id);
+    await appendActivityFeed("Logged in from mobile app.", {
+      familyId: data.user?.id ?? null,
+      title: "Account Login",
+      iconName: "login",
+    });
 
     if (rememberMe) {
       try {
