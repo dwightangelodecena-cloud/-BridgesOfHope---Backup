@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import logo from '@/assets/logo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
 import { appendActivityFeed } from '@/lib/activityFeed';
-import {
-  setOAuthExpectedRole,
-  takeOAuthExpectedRole,
-  startGoogleOAuthWeb,
-} from '@/lib/oauthWeb';
+import { resolveAccountRole } from '@/components/RoleGuard';
+import { takeOAuthExpectedRole, startGoogleOAuthWeb } from '@/lib/oauthWeb';
 
 const Login = () => {
   const REMEMBER_LOGIN_KEY = 'bh_remembered_login_identifier';
@@ -18,10 +15,9 @@ const Login = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [formData, setFormData] = useState({
-    accountType: '',
     identifier: '',
     password: '',
-    rememberMe: false
+    rememberMe: false,
   });
 
   const [showPassword, setShowPassword] = useState(false);
@@ -52,14 +48,12 @@ const Login = () => {
       try {
         const parsed = JSON.parse(rawPayload);
         const identifier = String(parsed?.identifier || '').trim();
-        const accountType = String(parsed?.accountType || '').trim().toLowerCase();
         const password = String(parsed?.password || '');
         if (identifier) {
           setFormData((prev) => ({
             ...prev,
             identifier,
             password,
-            accountType: ['family', 'nurse', 'admin'].includes(accountType) ? accountType : prev.accountType,
             rememberMe: true,
           }));
           return;
@@ -87,11 +81,7 @@ const Login = () => {
     if (!oauthError) return;
     takeOAuthExpectedRole();
     const id = window.setTimeout(() => {
-      if (oauthError === 'role_mismatch') {
-        setError(
-          'Google account does not match the account type you selected. Sign in with the correct role or pick the matching user type.'
-        );
-      } else if (oauthError === 'callback' || oauthError === 'no_session') {
+      if (oauthError === 'callback' || oauthError === 'no_session') {
         setError('Google sign-in could not be completed. Try again.');
       } else {
         setError(decodeURIComponent(oauthError));
@@ -117,11 +107,6 @@ const Login = () => {
     e.preventDefault();
     setError('');
     setSuccess(false);
-
-    if (!formData.accountType) {
-      setError('Please select an account type.');
-      return;
-    }
 
     const identifier = formData.identifier.trim();
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
@@ -196,18 +181,7 @@ const Login = () => {
       return;
     }
 
-    const metadataRole = (
-      data.user?.user_metadata?.account_type ?? 'family'
-    ).toLowerCase();
-    const selected = formData.accountType.toLowerCase();
-
-    if (metadataRole !== selected) {
-      await supabase.auth.signOut();
-      setError(
-        `This account is not registered as ${formData.accountType}. Contact an administrator if you need staff access.`
-      );
-      return;
-    }
+    const accountRole = await resolveAccountRole(data.user);
 
     await touchPresence(data.user?.id);
     await appendActivityFeed('Logged in from web app.', {
@@ -222,7 +196,6 @@ const Login = () => {
         JSON.stringify({
           identifier,
           password: formData.password,
-          accountType: formData.accountType,
         })
       );
       localStorage.setItem(REMEMBER_LOGIN_KEY, identifier);
@@ -237,9 +210,9 @@ const Login = () => {
 
     setSuccess(true);
 
-    if (formData.accountType === 'nurse') {
+    if (accountRole === 'nurse') {
       navigate('/nurse-dashboard');
-    } else if (formData.accountType === 'admin') {
+    } else if (accountRole === 'admin') {
       navigate('/admin-dashboard');
     } else {
       navigate('/home');
@@ -249,10 +222,6 @@ const Login = () => {
   const handleGoogle = async () => {
     setError('');
     setSuccess(false);
-    if (!formData.accountType) {
-      setError('Please select an account type.');
-      return;
-    }
     if (!isSupabaseConfigured()) {
       setError(
         'Missing Supabase configuration. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.'
@@ -261,7 +230,6 @@ const Login = () => {
     }
     setSubmitting(true);
     try {
-      setOAuthExpectedRole(formData.accountType);
       await startGoogleOAuthWeb();
     } catch (e) {
       takeOAuthExpectedRole();
@@ -351,8 +319,7 @@ const Login = () => {
           align-items: center;
         }
 
-        .input-wrapper input, 
-        .input-wrapper select {
+        .input-wrapper input {
           width: 100%;
           padding: 14px 15px 14px 48px;
           border: 1.5px solid #e2e8f0;
@@ -362,11 +329,9 @@ const Login = () => {
           outline: none;
           transition: all 0.2s ease;
           background-color: #ffffff;
-          appearance: none;
         }
 
-        .input-wrapper input:focus, 
-        .input-wrapper select:focus {
+        .input-wrapper input:focus {
           border-color: #F54E25;
           box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.1);
         }
@@ -386,13 +351,6 @@ const Login = () => {
           border: none;
           display: flex;
           align-items: center;
-        }
-
-        .chevron-icon {
-          position: absolute;
-          right: 18px;
-          color: #475569;
-          pointer-events: none;
         }
 
         .status-msg {
@@ -586,26 +544,6 @@ const Login = () => {
             {success && <div className="status-msg success-msg">Login Successful!</div>}
 
             <form onSubmit={handleLogin}>
-              <div className="form-group">
-                <label>Choose account type</label>
-                <div className="input-wrapper">
-                  <div className="input-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-                  </div>
-                  <select
-                    name="accountType"
-                    value={formData.accountType}
-                    onChange={handleChange}
-                  >
-                    <option value="" disabled>Select user type</option>
-                    <option value="family">Family Member</option>
-                    <option value="nurse">Nurse</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                  <ChevronDown className="chevron-icon" size={20} />
-                </div>
-              </div>
-
               <div className="form-group">
                 <label>Email or Contact Number</label>
                 <div className="input-wrapper">

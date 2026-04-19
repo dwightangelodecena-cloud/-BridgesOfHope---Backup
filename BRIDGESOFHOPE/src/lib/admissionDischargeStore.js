@@ -40,8 +40,17 @@ export function saveWorkflowOverrides(map) {
 }
 
 export function patchWorkflowOverride(requestId, partial) {
+  const keys = Object.keys(partial || {});
+  if (keys.length === 0) {
+    const cur = loadWorkflowOverrides()[requestId];
+    return cur && typeof cur === 'object' ? cur : {};
+  }
   const map = { ...loadWorkflowOverrides() };
   const prev = map[requestId] || {};
+  const hasChange = keys.some((k) => prev[k] !== partial[k]);
+  if (!hasChange) {
+    return prev;
+  }
   map[requestId] = { ...prev, ...partial, updatedAt: new Date().toISOString() };
   saveWorkflowOverrides(map);
   return map[requestId];
@@ -103,6 +112,12 @@ export function findPatientForAdmission(patients, admission) {
   return list.find((p) => p.family_id === admission.family_id && normName(p.full_name) === normName(admission.patient_name));
 }
 
+/** Given one patient row and a list of admission_requests rows, return the matching request (same logic as admission management pairing). */
+export function findAdmissionForPatient(patientRow, admissionRows) {
+  if (!patientRow || !Array.isArray(admissionRows) || admissionRows.length === 0) return null;
+  return admissionRows.find((ar) => findPatientForAdmission([patientRow], ar)) || null;
+}
+
 /**
  * Derive workflow label when no override.workflowStatus is stored.
  */
@@ -116,6 +131,38 @@ export function deriveWorkflowStatusFromDb(admissionRow, patientRow) {
     return 'Approved';
   }
   return 'Pending';
+}
+
+/** Stable 6-digit tracking suffix derived from UUID (same request always maps to same digits). */
+function stableTrackingSuffix(id) {
+  const hex = String(id).replace(/-/g, '');
+  let n = 0;
+  for (let i = 0; i < hex.length; i++) {
+    const ch = hex[i];
+    const v = parseInt(ch, 16);
+    n = (n * 16 + (Number.isNaN(v) ? ch.charCodeAt(0) : v)) >>> 0;
+  }
+  return String(n % 1000000).padStart(6, '0');
+}
+
+/**
+ * Human-readable patient ID (UI label): year admitted + 6-digit tracking, e.g. 2026-042817.
+ * Year: patient admitted_at, else request decided_at, else request created_at.
+ */
+export function computeAdmissionDisplayId(admissionRow, patientRow) {
+  const admissionDate =
+    patientRow?.admitted_at ||
+    admissionRow?.decided_at ||
+    admissionRow?.created_at ||
+    null;
+  let year = new Date().getFullYear();
+  if (admissionDate) {
+    const d = new Date(admissionDate);
+    if (!Number.isNaN(d.getTime())) year = d.getFullYear();
+  }
+  const idSource = admissionRow?.id ?? patientRow?.id;
+  if (!idSource) return '—';
+  return `${year}-${stableTrackingSuffix(idSource)}`;
 }
 
 export function buildAdmissionRow(admissionRow, patientRow, override) {
@@ -141,7 +188,7 @@ export function buildAdmissionRow(admissionRow, patientRow, override) {
     admissionRow.created_at ||
     null;
 
-  const admissionDisplayId = `ADM-${String(requestId).replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+  const admissionDisplayId = computeAdmissionDisplayId(admissionRow, patientRow);
 
   return {
     requestId,

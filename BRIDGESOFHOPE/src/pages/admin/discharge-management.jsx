@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   LayoutGrid,
-  BarChart2,
   HeartPulse,
   Users,
   LogOut,
@@ -28,10 +27,12 @@ import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { BRANCH_KEYS, BRANCH_LABEL, computeTotalServiceCostPhp, formatPhp } from '@/lib/servicePricing';
 import {
   DISCHARGE_FINAL_STATUSES,
+  computeAdmissionDisplayId,
+  findAdmissionForPatient,
   loadDischargeRecords,
+  loadWorkflowOverrides,
+  patchWorkflowOverride,
   updateDischargeRecord,
-  pushActivity,
-  loadActivity,
 } from '@/lib/admissionDischargeStore';
 
 const FILTER_OPTIONS = ['All Discharges', ...DISCHARGE_FINAL_STATUSES];
@@ -68,6 +69,58 @@ function monthsBetween(admittedIso, dischargedIso) {
   return Math.max(1, Math.ceil(days / 30));
 }
 
+/** Same Patient ID formula as Admission Management: suffix from admission_requests.id when available. */
+function enrichDischargeRowDisplayId(row, admissionList, patientById) {
+  if (!row?.admissionRequestId || !Array.isArray(admissionList)) return row;
+  const ar = admissionList.find((a) => a.id === row.admissionRequestId);
+  const pat = row.patientId ? patientById.get(row.patientId) : null;
+  if (ar) {
+    return { ...row, admissionDisplayId: computeAdmissionDisplayId(ar, pat || null) };
+  }
+  /** Request row missing from DB — still derive ID from stored request UUID (same suffix as admission management). */
+  return {
+    ...row,
+    admissionDisplayId: computeAdmissionDisplayId(
+      {
+        id: row.admissionRequestId,
+        decided_at: row.admissionDate,
+        created_at: row.createdAt || row.admissionDate,
+      },
+      pat || null
+    ),
+  };
+}
+
+function enrichDischargeRowsOffline(rows) {
+  return (rows || []).map((row) => {
+    if (!row.admissionRequestId) return row;
+    return {
+      ...row,
+      admissionDisplayId: computeAdmissionDisplayId(
+        {
+          id: row.admissionRequestId,
+          decided_at: row.admissionDate,
+          created_at: row.createdAt || row.admissionDate,
+        },
+        row.patientId ? { id: row.patientId, admitted_at: row.admissionDate } : null
+      ),
+    };
+  });
+}
+
+/** Keep Admission Management in sync: completed/discharged record → admission workflow "Completed" (clears stale "For Discharge"). */
+function syncAdmissionWorkflowFromDischargeRow(r) {
+  if (!r.admissionRequestId) return;
+  if (r.finalStatus !== 'Completed' && r.finalStatus !== 'Discharged') return;
+  const ov = loadWorkflowOverrides();
+  if (ov[r.admissionRequestId]?.workflowStatus === 'Completed') return;
+  patchWorkflowOverride(r.admissionRequestId, { workflowStatus: 'Completed' });
+}
+
+function syncAdmissionWorkflowFromRows(rows) {
+  (rows || []).forEach(syncAdmissionWorkflowFromDischargeRow);
+}
+
 function sortDischargeRows(rows, sortId) {
   const opt = SORT_OPTIONS.find((o) => o.id === sortId) || SORT_OPTIONS[1];
   const cp = [...rows];
@@ -98,14 +151,13 @@ const DischargeManagement = () => {
 
   const [viewRow, setViewRow] = useState(null);
   const [editRow, setEditRow] = useState(null);
-  const [activity, setActivity] = useState([]);
 
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const filterDropdownRef = useRef(null);
   const sortDropdownRef = useRef(null);
 
-  const mergeRows = useCallback((localRows, patientRows) => {
+  const mergeRows = useCallback((localRows, patientRows, admissionRows) => {
     const out = [...localRows];
     const seen = new Set(out.map((r) => r.patientId).filter(Boolean));
     (patientRows || []).forEach((p) => {
@@ -113,10 +165,14 @@ const DischargeManagement = () => {
       const months = monthsBetween(p.admitted_at, p.discharged_at);
       const pricingDetail = { branch: 'imus', monthsOfCare: months, includeAdmissionFee: true, includeMonthly: true };
       const totalCost = computeTotalServiceCostPhp(pricingDetail);
+      const ar = findAdmissionForPatient(p, admissionRows || []);
+      const admissionDisplayId = ar
+        ? computeAdmissionDisplayId(ar, p)
+        : computeAdmissionDisplayId({ id: p.id, decided_at: p.admitted_at, created_at: p.created_at }, p);
       out.push({
         id: `HIST-${p.id}`,
-        admissionRequestId: null,
-        admissionDisplayId: '—',
+        admissionRequestId: ar?.id ?? null,
+        admissionDisplayId,
         patientId: p.id,
         patientName: p.full_name || 'Patient',
         assignedStaff: '—',
@@ -139,16 +195,31 @@ const DischargeManagement = () => {
     try {
       const local = loadDischargeRecords();
       if (!isSupabaseConfigured()) {
-        setRows(local);
+        const offline = enrichDischargeRowsOffline(local);
+        syncAdmissionWorkflowFromRows(offline);
+        setRows(offline);
         return;
       }
-      const { data: patients, error } = await supabase.from('patients').select('*').not('discharged_at', 'is', null);
+      const [{ data: patients, error }, { data: admissions, error: admErr }] = await Promise.all([
+        supabase.from('patients').select('*').not('discharged_at', 'is', null),
+        supabase.from('admission_requests').select('*'),
+      ]);
       if (error) throw error;
-      setRows(mergeRows(local, patients || []));
+      if (admErr) console.warn('[discharge-management] admission_requests', admErr);
+
+      const patientList = patients || [];
+      const admissionList = admissions || [];
+      const patientById = new Map(patientList.map((p) => [p.id, p]));
+      const localEnriched = local.map((r) => enrichDischargeRowDisplayId(r, admissionList, patientById));
+      const merged = mergeRows(localEnriched, patientList, admissionList);
+      syncAdmissionWorkflowFromRows(merged);
+      setRows(merged);
     } catch (e) {
       console.error(e);
       setFormError(e.message || 'Failed to load discharge records.');
-      setRows(loadDischargeRecords());
+      const fallback = enrichDischargeRowsOffline(loadDischargeRecords());
+      syncAdmissionWorkflowFromRows(fallback);
+      setRows(fallback);
     } finally {
       setLoading(false);
     }
@@ -156,10 +227,8 @@ const DischargeManagement = () => {
 
   useEffect(() => {
     void loadData();
-    setActivity(loadActivity());
     const onRefresh = () => {
       void loadData();
-      setActivity(loadActivity());
     };
     window.addEventListener('storage', onRefresh);
     window.addEventListener(APP_DATA_REFRESH, onRefresh);
@@ -193,7 +262,6 @@ const DischargeManagement = () => {
       }
       if (!q) return true;
       return (
-        String(r.id).toLowerCase().includes(q) ||
         String(r.admissionDisplayId).toLowerCase().includes(q) ||
         String(r.patientName).toLowerCase().includes(q) ||
         String(r.assignedStaff).toLowerCase().includes(q) ||
@@ -210,17 +278,6 @@ const DischargeManagement = () => {
   useEffect(() => {
     setPage(1);
   }, [search, statusFilter, sortId]);
-
-  const summary = useMemo(() => {
-    const open = rows.filter((r) => !r.archived);
-    return {
-      ready: open.filter((r) => r.finalStatus === 'Ready for Discharge').length,
-      discharged: open.filter((r) => r.finalStatus === 'Discharged').length,
-      completed: open.filter((r) => r.finalStatus === 'Completed').length,
-      archived: rows.filter((r) => r.archived || r.finalStatus === 'Archived').length,
-      total: open.length,
-    };
-  }, [rows]);
 
   const persistLocal = () => {
     refreshAppData();
@@ -245,8 +302,6 @@ const DischargeManagement = () => {
         includeMonthly: editRow._incMo,
       },
     });
-    pushActivity(`Discharge ${editRow.id}: updated`);
-    setActivity(loadActivity());
     setEditRow(null);
     persistLocal();
   };
@@ -255,16 +310,17 @@ const DischargeManagement = () => {
     if (r.source === 'history') return;
     const now = new Date().toISOString();
     updateDischargeRecord(r.id, { dischargeDate: r.dischargeDate || now, finalStatus: 'Completed' });
-    pushActivity(`Discharge ${r.id}: finalized`);
-    setActivity(loadActivity());
+    syncAdmissionWorkflowFromDischargeRow({
+      ...r,
+      finalStatus: 'Completed',
+      dischargeDate: r.dischargeDate || now,
+    });
     persistLocal();
   };
 
   const handleArchive = (r) => {
     if (r.source === 'history') return;
     updateDischargeRecord(r.id, { archived: true, finalStatus: 'Archived' });
-    pushActivity(`Discharge ${r.id}: archived`);
-    setActivity(loadActivity());
     persistLocal();
   };
 
@@ -297,10 +353,6 @@ const DischargeManagement = () => {
         .icon-box.inactive { background: transparent; color: #A3AED0; }
         .dm-main { flex: 1; min-height: 100vh; margin-left: ${isExpanded ? '280px' : '110px'}; transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1); padding: 40px; }
         .dm-card { background: white; border: 1px solid #E9EDF7; border-radius: 20px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
-        .dm-summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
-        .dm-summary-card { background: white; border: 1px solid #E9EDF7; border-radius: 16px; padding: 18px; }
-        .dm-summary-label { font-size: 12px; color: #707EAE; font-weight: 600; }
-        .dm-summary-value { margin-top: 8px; font-size: 26px; font-weight: 800; color: #1B2559; }
         .db-search-input { padding: 10px 12px 10px 36px; border: 1px solid #E9EDF7; border-radius: 12px; font-size: 13px; width: 280px; outline: none; font-family: 'Inter', sans-serif; color: #1B2559; background: white; }
         .db-search-input:focus { border-color: #2563EB; }
         .db-sort-select { border: 1px solid #E9EDF7; border-radius: 8px; padding: 4px 8px; font-size: 13px; font-weight: 600; outline: none; color: #1B2559; cursor: pointer; background: white; }
@@ -385,7 +437,6 @@ const DischargeManagement = () => {
           .desktop-sidebar { display: none !important; }
           .db-mobile-only { display: flex !important; }
           .dm-main { margin-left: 0 !important; width: 100vw !important; padding: 20px 12px 100px 12px !important; }
-          .dm-summary-grid { grid-template-columns: 1fr 1fr !important; }
           .db-search-input { width: 100% !important; }
           .dm-modal-body { grid-template-columns: 1fr; }
           .db-mobile-top-bar { display: flex !important; width: 100vw; background: white; z-index: 1001; position: sticky; top: 0; padding: 0 20px; height: 64px; align-items: center; justify-content: space-between; border-bottom: 1px solid #F1F1F1; }
@@ -403,10 +454,6 @@ const DischargeManagement = () => {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
             <div className="icon-box inactive"><LayoutGrid size={22} /></div>
             <span className="sidebar-label">Dashboard</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/analytics'); }}>
-            <div className="icon-box inactive"><BarChart2 size={22} /></div>
-            <span className="sidebar-label">Analytics</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
             <div className="icon-box inactive"><HeartPulse size={22} /></div>
@@ -459,21 +506,6 @@ const DischargeManagement = () => {
             </button>
           </div>
 
-          <div className="dm-summary-grid">
-            {[
-              ['Ready for Discharge', summary.ready],
-              ['Discharged', summary.discharged],
-              ['Completed', summary.completed],
-              ['Archived / closed', summary.archived],
-              ['Active records', summary.total],
-            ].map(([label, val]) => (
-              <div key={label} className="dm-summary-card">
-                <div className="dm-summary-label">{label}</div>
-                <div className="dm-summary-value">{val}</div>
-              </div>
-            ))}
-          </div>
-
           <div className="dm-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 10, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -482,7 +514,7 @@ const DischargeManagement = () => {
                   <input
                     className="db-search-input"
                     type="text"
-                    placeholder="Search discharge ID, patient, admission ID, staff..."
+                    placeholder="Search patient ID (e.g. 2026-1234), patient, staff…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -581,22 +613,21 @@ const DischargeManagement = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['Discharge ID', 'Patient', 'Admission ID', 'Staff', 'Admission Date', 'Discharge Date', 'Final Status', 'Total Cost', 'Actions'].map((col, idx) => (
-                      <th className="dm-th" key={col} style={{ padding: '11px 12px', borderRight: idx < 8 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>{col}</th>
+                    {['Patient ID', 'Patient', 'Staff', 'Admission Date', 'Discharge Date', 'Final Status', 'Total Cost', 'Actions'].map((col, idx) => (
+                      <th className="dm-th" key={col} style={{ padding: '11px 12px', borderRight: idx < 7 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {loading && <tr><td colSpan={9} style={{ padding: 18, color: '#64748b' }}>Loading...</td></tr>}
+                  {loading && <tr><td colSpan={8} style={{ padding: 18, color: '#64748b' }}>Loading...</td></tr>}
                   {!loading && pageRows.length === 0 && (
-                    <tr><td colSpan={9} style={{ padding: 18, color: '#64748b' }}>No discharge records match your filters.</td></tr>
+                    <tr><td colSpan={8} style={{ padding: 18, color: '#64748b' }}>No discharge records match your filters.</td></tr>
                   )}
                   {!loading &&
                     pageRows.map((r) => (
                       <tr key={r.id} className="dm-row" style={{ borderBottom: '1px solid #F4F7FE' }}>
-                        <td style={{ padding: '12px', fontWeight: 700 }}>{r.id}</td>
+                        <td style={{ padding: '12px', fontWeight: 700, color: '#1B2559', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{r.admissionDisplayId}</td>
                         <td style={{ padding: '12px', fontWeight: 600 }}>{r.patientName}</td>
-                        <td style={{ padding: '12px' }}>{r.admissionDisplayId}</td>
                         <td style={{ padding: '12px', color: '#707EAE' }}>{r.assignedStaff}</td>
                         <td style={{ padding: '12px' }}>{formatDate(r.admissionDate)}</td>
                         <td style={{ padding: '12px' }}>{formatDate(r.dischargeDate)}</td>
@@ -661,17 +692,6 @@ const DischargeManagement = () => {
               </div>
             )}
           </div>
-
-          {activity.length > 0 && (
-            <div className="dm-card dm-no-print" style={{ marginTop: 18 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>Recent activity</div>
-              <ul style={{ fontSize: 12, color: '#64748b', paddingLeft: 18, lineHeight: 1.6 }}>
-                {activity.slice(0, 8).map((a) => (
-                  <li key={a.id}>{a.message}</li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       </main>
 
@@ -692,9 +712,8 @@ const DischargeManagement = () => {
               <button type="button" className="db-action-btn" onClick={() => setViewRow(null)}><X size={16} /></button>
             </div>
             <div className="dm-modal-body">
-              <div className="dm-modal-field"><span className="dm-modal-label">Discharge ID</span><div className="dm-input">{viewRow.id}</div></div>
+              <div className="dm-modal-field"><span className="dm-modal-label">Patient ID</span><div className="dm-input">{viewRow.admissionDisplayId}</div></div>
               <div className="dm-modal-field"><span className="dm-modal-label">Patient</span><div className="dm-input">{viewRow.patientName}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Admission ID</span><div className="dm-input">{viewRow.admissionDisplayId}</div></div>
               <div className="dm-modal-field"><span className="dm-modal-label">Assigned staff</span><div className="dm-input">{viewRow.assignedStaff}</div></div>
               <div className="dm-modal-field"><span className="dm-modal-label">Admission date</span><div className="dm-input">{formatDate(viewRow.admissionDate)}</div></div>
               <div className="dm-modal-field"><span className="dm-modal-label">Discharge date</span><div className="dm-input">{formatDate(viewRow.dischargeDate)}</div></div>

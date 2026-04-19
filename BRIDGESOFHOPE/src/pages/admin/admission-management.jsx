@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   LayoutGrid,
-  BarChart2,
   HeartPulse,
   Users,
   LogOut,
@@ -32,7 +31,6 @@ import {
   loadWorkflowOverrides,
   patchWorkflowOverride,
   pushActivity,
-  loadActivity,
   loadDischargeRecords,
   summarizeDischargeCost,
   appendDischargeRecord,
@@ -99,9 +97,6 @@ const AdmissionManagement = () => {
 
   const [viewRow, setViewRow] = useState(null);
   const [editRow, setEditRow] = useState(null);
-  const [statusRow, setStatusRow] = useState(null);
-  const [statusChoice, setStatusChoice] = useState('Pending');
-  const [activity, setActivity] = useState([]);
 
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
@@ -146,10 +141,8 @@ const AdmissionManagement = () => {
 
   useEffect(() => {
     void loadData();
-    setActivity(loadActivity());
     const onRefresh = () => {
       void loadData();
-      setActivity(loadActivity());
     };
     window.addEventListener('storage', onRefresh);
     window.addEventListener(APP_DATA_REFRESH, onRefresh);
@@ -195,31 +188,12 @@ const AdmissionManagement = () => {
     setPage(1);
   }, [search, statusFilter, sortId]);
 
-  const summary = useMemo(() => {
-    const active = rows.filter((r) => !r.archived);
-    return {
-      current: active.filter((r) => ['Approved', 'Ongoing'].includes(r.status)).length,
-      pending: active.filter((r) => r.status === 'Pending').length,
-      ongoing: active.filter((r) => r.status === 'Ongoing').length,
-      forDischarge: active.filter((r) => r.status === 'For Discharge').length,
-      total: active.length,
-    };
-  }, [rows]);
-
   const persistOverride = (requestId, partial) => {
     const nextOv = patchWorkflowOverride(requestId, partial);
     setRows((prev) =>
       prev.map((r) => (r.requestId !== requestId ? r : buildAdmissionRow(r.rawAdmission, r.rawPatient, nextOv)))
     );
     refreshAppData();
-  };
-
-  const handleUpdateStatus = () => {
-    if (!statusRow) return;
-    persistOverride(statusRow.requestId, { workflowStatus: statusChoice });
-    pushActivity(`Admission ${statusRow.admissionDisplayId}: status → ${statusChoice}`);
-    setActivity(loadActivity());
-    setStatusRow(null);
   };
 
   const handleSaveEdit = () => {
@@ -234,7 +208,6 @@ const AdmissionManagement = () => {
       includeMonthly: e._editIncMo !== false,
     });
     pushActivity(`Admission ${e.admissionDisplayId}: record updated`);
-    setActivity(loadActivity());
     setEditRow(null);
   };
 
@@ -265,14 +238,12 @@ const AdmissionManagement = () => {
     appendDischargeRecord(discharge);
     persistOverride(r.requestId, { workflowStatus: 'For Discharge' });
     pushActivity(`Admission ${r.admissionDisplayId}: moved to Discharge Management`);
-    setActivity(loadActivity());
     refreshAppData();
   };
 
   const handleArchive = (r) => {
     persistOverride(r.requestId, { archived: true });
     pushActivity(`Admission ${r.admissionDisplayId}: archived`);
-    setActivity(loadActivity());
   };
 
   const handleApproveDbPending = async (r) => {
@@ -293,7 +264,6 @@ const AdmissionManagement = () => {
       pushActivity(`Admission ${r.admissionDisplayId}: approved (database)`);
       refreshAppData();
       await loadData();
-      setActivity(loadActivity());
       return true;
     } finally {
       setApprovingId(null);
@@ -370,10 +340,6 @@ const AdmissionManagement = () => {
         .icon-box.inactive { background: transparent; color: #A3AED0; }
         .am-main { flex: 1; min-height: 100vh; margin-left: ${isExpanded ? '280px' : '110px'}; transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1); padding: 40px; }
         .am-card { background: white; border: 1px solid #E9EDF7; border-radius: 20px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
-        .am-summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
-        .am-summary-card { background: white; border: 1px solid #E9EDF7; border-radius: 16px; padding: 18px; }
-        .am-summary-label { font-size: 12px; color: #707EAE; font-weight: 600; }
-        .am-summary-value { margin-top: 8px; font-size: 26px; font-weight: 800; color: #1B2559; }
         .db-search-input { padding: 10px 12px 10px 36px; border: 1px solid #E9EDF7; border-radius: 12px; font-size: 13px; width: 280px; outline: none; font-family: 'Inter', sans-serif; color: #1B2559; background: white; }
         .db-search-input:focus { border-color: #2563EB; }
         .db-sort-select { border: 1px solid #E9EDF7; border-radius: 8px; padding: 4px 8px; font-size: 13px; font-weight: 600; outline: none; color: #1B2559; cursor: pointer; background: white; }
@@ -435,6 +401,8 @@ const AdmissionManagement = () => {
         .db-view-btn { background: #1B2559; color: white; }
         .db-edit-btn { background: #F54E25; color: white; }
         .db-action-btn { background: #E9EDF7; color: #1B2559; }
+        .am-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .am-data-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
         .am-row:hover { background: #F8FAFC; }
         .am-th { position: sticky; top: 0; z-index: 1; }
         .am-pill { display: inline-flex; padding: 5px 10px; border-radius: 999px; font-weight: 700; font-size: 11px; }
@@ -456,7 +424,6 @@ const AdmissionManagement = () => {
           .desktop-sidebar { display: none !important; }
           .db-mobile-only { display: flex !important; }
           .am-main { margin-left: 0 !important; width: 100vw !important; padding: 20px 12px 100px 12px !important; }
-          .am-summary-grid { grid-template-columns: 1fr 1fr !important; }
           .db-search-input { width: 100% !important; }
           .am-modal-body { grid-template-columns: 1fr; }
           .db-mobile-top-bar { display: flex !important; width: 100vw; background: white; z-index: 1001; position: sticky; top: 0; padding: 0 20px; height: 64px; align-items: center; justify-content: space-between; border-bottom: 1px solid #F1F1F1; }
@@ -474,10 +441,6 @@ const AdmissionManagement = () => {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
             <div className="icon-box inactive"><LayoutGrid size={22} /></div>
             <span className="sidebar-label">Dashboard</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/analytics'); }}>
-            <div className="icon-box inactive"><BarChart2 size={22} /></div>
-            <span className="sidebar-label">Analytics</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
             <div className="icon-box inactive"><HeartPulse size={22} /></div>
@@ -527,21 +490,6 @@ const AdmissionManagement = () => {
             </button>
           </div>
 
-          <div className="am-summary-grid">
-            {[
-              ['Current (Approved/Ongoing)', summary.current],
-              ['Pending', summary.pending],
-              ['Ongoing', summary.ongoing],
-              ['For Discharge', summary.forDischarge],
-              ['Total admissions', summary.total],
-            ].map(([label, val]) => (
-              <div key={label} className="am-summary-card">
-                <div className="am-summary-label">{label}</div>
-                <div className="am-summary-value">{val}</div>
-              </div>
-            ))}
-          </div>
-
           <div className="am-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 10, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -550,7 +498,7 @@ const AdmissionManagement = () => {
                   <input
                     className="db-search-input"
                     type="text"
-                    placeholder="Search ID, patient, staff, status, reason..."
+                    placeholder="Search patient ID (e.g. 2026-1234), patient, staff…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -645,38 +593,46 @@ const AdmissionManagement = () => {
 
             {formError && <div style={{ marginBottom: 10, color: '#b91c1c', fontWeight: 600, fontSize: 13 }}>{formError}</div>}
 
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, textAlign: 'left' }}>
+            <div className="am-table-wrap">
+              <table className="am-data-table">
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['Admission ID', 'Patient', 'Assigned Staff', 'Type', 'Reason / Concern', 'Admission Date', 'Status', 'Est. Cost', 'Actions'].map((col, idx) => (
-                      <th className="am-th" key={col} style={{ padding: '11px 12px', borderRight: idx < 8 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>{col}</th>
+                    {['Patient ID', 'Patient', 'Reason / Concern', 'Assigned Staff', 'Type', 'Admission Date', 'Est. Cost', 'Status', 'Actions'].map((col, idx) => (
+                      <th className="am-th" key={col} style={{ padding: '11px 12px', borderRight: idx < 8 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                        {col}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {loading && (
-                    <tr><td colSpan={9} style={{ padding: 18, color: '#64748b' }}>Loading admissions...</td></tr>
+                    <tr>
+                      <td colSpan={9} style={{ padding: 18, color: '#64748b' }}>Loading admissions…</td>
+                    </tr>
                   )}
                   {!loading && !isSupabaseConfigured() && (
-                    <tr><td colSpan={9} style={{ padding: 18, color: '#64748b' }}>Connect Supabase to load admission requests.</td></tr>
+                    <tr>
+                      <td colSpan={9} style={{ padding: 18, color: '#64748b' }}>Connect Supabase to load admission requests.</td>
+                    </tr>
                   )}
                   {!loading && isSupabaseConfigured() && pageRows.length === 0 && (
-                    <tr><td colSpan={9} style={{ padding: 18, color: '#64748b' }}>No admissions match your search or filter.</td></tr>
+                    <tr>
+                      <td colSpan={9} style={{ padding: 18, color: '#64748b' }}>No admissions match your search or filter.</td>
+                    </tr>
                   )}
                   {!loading &&
                     pageRows.map((r) => (
                       <tr key={r.requestId} className="am-row" style={{ borderBottom: '1px solid #F4F7FE' }}>
-                        <td style={{ padding: '12px', fontWeight: 700 }}>{r.admissionDisplayId}</td>
+                        <td style={{ padding: '12px', fontWeight: 700, color: '#1B2559', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{r.admissionDisplayId}</td>
                         <td style={{ padding: '12px', fontWeight: 600 }}>{r.patientName}</td>
+                        <td style={{ padding: '12px', maxWidth: 200, color: '#334155' }}>{r.reason}</td>
                         <td style={{ padding: '12px', color: '#707EAE' }}>{r.assignedStaff}</td>
                         <td style={{ padding: '12px' }}>{r.admissionType}</td>
-                        <td style={{ padding: '12px', maxWidth: 200 }}>{r.reason}</td>
-                        <td style={{ padding: '12px' }}>{formatDate(r.admissionDate)}</td>
+                        <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>{formatDate(r.admissionDate)}</td>
+                        <td style={{ padding: '12px', fontWeight: 700, color: '#05CD99', whiteSpace: 'nowrap' }}>{formatPhp(r.estimatedCost)}</td>
                         <td style={{ padding: '12px' }}>
                           <span className={`am-pill ${statusPillClass(r.status)}`}>{r.status}</span>
                         </td>
-                        <td style={{ padding: '12px', fontWeight: 700, color: '#05CD99' }}>{formatPhp(r.estimatedCost)}</td>
                         <td style={{ padding: '12px' }}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                             {isSupabaseConfigured() && String(r.dbStatus || '').toLowerCase() === 'pending' && (
@@ -690,7 +646,9 @@ const AdmissionManagement = () => {
                                 {approvingId === r.requestId ? '…' : 'Approve'}
                               </button>
                             )}
-                            <button type="button" className="db-view-btn" onClick={() => setViewRow(r)}><Eye size={12} /> View</button>
+                            <button type="button" className="db-view-btn" onClick={() => setViewRow(r)}>
+                              <Eye size={12} /> View
+                            </button>
                             <button
                               type="button"
                               className="db-edit-btn"
@@ -708,11 +666,12 @@ const AdmissionManagement = () => {
                             >
                               <Edit2 size={12} /> Edit
                             </button>
-                            <button type="button" className="db-action-btn" onClick={() => { setStatusRow(r); setStatusChoice(r.status); }}>Status</button>
                             <button type="button" className="db-action-btn" onClick={() => handleMoveToDischarge(r)} title="Send to Discharge Management">
                               <ArrowRightCircle size={12} /> Discharge
                             </button>
-                            <button type="button" className="db-action-btn" onClick={() => handleArchive(r)}><Trash2 size={12} /> Archive</button>
+                            <button type="button" className="db-action-btn" onClick={() => handleArchive(r)}>
+                              <Trash2 size={12} /> Archive
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -737,17 +696,6 @@ const AdmissionManagement = () => {
               </div>
             )}
           </div>
-
-          {activity.length > 0 && (
-            <div className="am-card" style={{ marginTop: 18 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>Recent activity</div>
-              <ul style={{ fontSize: 12, color: '#64748b', paddingLeft: 18, lineHeight: 1.6 }}>
-                {activity.slice(0, 8).map((a) => (
-                  <li key={a.id}>{a.message}</li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       </main>
 
@@ -768,7 +716,7 @@ const AdmissionManagement = () => {
               <button type="button" className="db-action-btn" onClick={() => setViewRow(null)}><X size={16} /></button>
             </div>
             <div className="am-modal-body">
-              <div className="am-modal-field"><span className="am-modal-label">Admission ID</span><div className="am-input">{viewRow.admissionDisplayId}</div></div>
+              <div className="am-modal-field"><span className="am-modal-label">Patient ID</span><div className="am-input">{viewRow.admissionDisplayId}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Patient</span><div className="am-input">{viewRow.patientName}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Status</span><div className="am-input">{viewRow.status}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Admission date</span><div className="am-input">{formatDate(viewRow.admissionDate)}</div></div>
@@ -836,30 +784,6 @@ const AdmissionManagement = () => {
         </div>
       )}
 
-      {statusRow && (
-        <div className="am-modal-backdrop" onClick={() => setStatusRow(null)}>
-          <div className="am-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="am-modal-head">
-              <div style={{ fontSize: 18, fontWeight: 800 }}>Update status</div>
-              <button type="button" className="db-action-btn" onClick={() => setStatusRow(null)}><X size={16} /></button>
-            </div>
-            <div className="am-modal-body" style={{ gridTemplateColumns: '1fr' }}>
-              <label className="am-modal-field">
-                <span className="am-modal-label">Workflow status</span>
-                <select className="am-input" value={statusChoice} onChange={(e) => setStatusChoice(e.target.value)}>
-                  {ADMISSION_WORKFLOW_STATUSES.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="db-action-btn" onClick={() => setStatusRow(null)}>Cancel</button>
-              <button type="button" className="db-edit-btn" onClick={() => handleUpdateStatus()}>Apply</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

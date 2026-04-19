@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, BarChart2, HeartPulse, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import { LayoutGrid, HeartPulse, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -14,8 +14,74 @@ import { loadWorkflowOverrides, loadDischargeRecords } from '@/lib/admissionDisc
 import { approveAdmissionInDatabase } from '@/lib/approveAdmissionSupabase';
 import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
 
+const AdminAnalyticsSection = lazy(() =>
+  import('@/components/AdminAnalyticsSection').catch((err) => {
+    console.error('[AdminDashboard] Failed to load analytics module', err);
+    return {
+      default: function AnalyticsLoadError() {
+        return (
+          <section
+            className="dashboard-analytics-embed"
+            style={{
+              padding: 24,
+              borderRadius: 16,
+              border: '1px solid #fecaca',
+              background: '#fff7ed',
+              color: '#9a3412',
+              fontSize: 14,
+              lineHeight: 1.5,
+            }}
+            role="alert"
+          >
+            <strong>Analytics could not load.</strong> Refresh the page or open the browser console (F12) for details.
+          </section>
+        );
+      },
+    };
+  })
+);
+
+/** Catches runtime errors inside the lazy analytics tree so the rest of the dashboard still renders. */
+class DashboardAnalyticsErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('[AdminDashboard] Analytics render error', error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <section
+          role="alert"
+          style={{
+            padding: 24,
+            borderRadius: 16,
+            border: '1px solid #fecaca',
+            background: '#fff7ed',
+            color: '#9a3412',
+            fontSize: 14,
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>Analytics crashed.</strong> The rest of your dashboard still works. Try a refresh or check the console (F12) for details.
+        </section>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const pendingTwoFARef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -47,14 +113,24 @@ const AdminDashboard = () => {
   };
 
   const syncDataLegacy = () => {
-    const p = JSON.parse(localStorage.getItem('bh_patients') || '[]');
-    const a = JSON.parse(localStorage.getItem('bh_pending_admissions') || '[]');
-    const d = JSON.parse(localStorage.getItem('bh_pending_discharges') || '[]');
-    const act = JSON.parse(localStorage.getItem('bh_recent_activities') || 'null');
-    setPatients(p);
-    setPendingAdmissions(a);
-    setPendingDischarges(d);
-    if (act) setRecentActivities(act);
+    const parseJson = (key, fallback) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw == null || raw === '') return fallback;
+        return JSON.parse(raw);
+      } catch (e) {
+        console.warn(`[dashboard] Ignoring invalid JSON in localStorage key "${key}"`, e);
+        return fallback;
+      }
+    };
+    const p = parseJson('bh_patients', []);
+    const a = parseJson('bh_pending_admissions', []);
+    const d = parseJson('bh_pending_discharges', []);
+    const act = parseJson('bh_recent_activities', null);
+    setPatients(Array.isArray(p) ? p : []);
+    setPendingAdmissions(Array.isArray(a) ? a : []);
+    setPendingDischarges(Array.isArray(d) ? d : []);
+    if (act && Array.isArray(act)) setRecentActivities(act);
     const ov = loadWorkflowOverrides();
     const forDischargeCount = Object.values(ov).filter((x) => x.workflowStatus === 'For Discharge' && !x.archived).length;
     const dr = loadDischargeRecords();
@@ -143,6 +219,14 @@ const AdminDashboard = () => {
       window.removeEventListener(APP_DATA_REFRESH, syncData);
     };
   }, []);
+
+  useEffect(() => {
+    if (location.hash !== '#admin-analytics') return;
+    const id = window.setTimeout(() => {
+      document.getElementById('admin-analytics')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+    return () => window.clearTimeout(id);
+  }, [location.pathname, location.hash]);
 
   const addActivity = async (title, desc, iconName) => {
     if (!isSupabaseConfigured()) {
@@ -520,6 +604,51 @@ const AdminDashboard = () => {
           box-sizing: border-box;
         }
 
+        .dashboard-top-split {
+          display: grid;
+          grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+          gap: 20px;
+          align-items: stretch;
+          margin-bottom: 8px;
+        }
+
+        .dashboard-three-panels {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 20px;
+          align-items: stretch;
+          margin-bottom: 24px;
+        }
+
+        .dashboard-three-panels .dashboard-panel {
+          min-height: 100%;
+        }
+
+        .dashboard-panel {
+          background: white;
+          border: 1px solid #E9EDF7;
+          border-radius: 16px;
+          padding: 24px;
+          min-width: 0;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .dashboard-panel-title {
+          font-size: 18px;
+          font-weight: 800;
+          color: #1B2559;
+          letter-spacing: -0.02em;
+        }
+
+        .dashboard-analytics-slot {
+          margin-top: 28px;
+          min-width: 0;
+          max-width: 100%;
+        }
+
         .metric-card {
           background: white; border-radius: 16px; padding: 24px; border: 1px solid #E9EDF7;
           box-shadow: 0 4px 12px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 16px;
@@ -644,6 +773,8 @@ const AdminDashboard = () => {
           .db-mobile-bottom-nav { position: fixed; bottom: 0; left: 0; width: 100vw; height: 72px; background: white; border-top: 1px solid #F1F1F1; display: flex; justify-content: space-around; align-items: center; z-index: 1000; box-shadow: 0 -4px 20px rgba(0,0,0,0.06); }
           .mob-nav-item { display: flex; flex-direction: column; align-items: center; font-size: 10px; color: #A3AED0; cursor: pointer; }
           .mob-nav-item.active { color: #F54E25; }
+          .dashboard-top-split { grid-template-columns: 1fr !important; }
+          .dashboard-three-panels { grid-template-columns: 1fr !important; }
           .metric-cards-container { flex-direction: column !important; gap: 15px !important; }
           .metric-card { width: 100% !important; min-width: unset !important; }
           .recent-activity-card { padding: 20px !important; }
@@ -668,10 +799,6 @@ const AdminDashboard = () => {
           <div className="sidebar-nav-item">
             <div className="icon-box active"><LayoutGrid size={22} /></div>
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Dashboard</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/analytics'); }}>
-            <div className="icon-box inactive"><BarChart2 size={24} /></div>
-            <span className="sidebar-label">Analytics</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
             <div className="icon-box inactive"><HeartPulse size={22} /></div>
@@ -714,120 +841,159 @@ const AdminDashboard = () => {
         <div className="dashboard-inner">
           <h1 className="dashboard-title-desktop" style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', marginBottom: 32 }}>Dashboard</h1>
 
-          <div className="metric-cards-container" style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-            {/* Card 1: Available Beds */}
-            <div className="metric-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div className="metric-icon-box"><CheckCircle2 size={24} /></div>
-                <span className="metric-badge">Available</span>
-              </div>
-              <div>
-                <div className="metric-value">{availableBeds}</div>
-                <div className="metric-title">Available Beds</div>
-                <div className="metric-subtitle">Ready for admission</div>
-              </div>
-            </div>
+          <div className="dashboard-three-panels" role="region" aria-label="Dashboard summary">
+            {/* 1 — Admission: all admission-related cards */}
+            <section className="dashboard-panel" aria-labelledby="dash-admission-heading">
+              <h2 id="dash-admission-heading" className="dashboard-panel-title">Admission</h2>
+              <div className="metric-cards-container" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <div className="metric-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><Users size={24} /></div>
+                    <span className="metric-badge" style={{ background: '#F4F7FE', color: '#4A628A' }}>Live</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{totalPatients}</div>
+                    <div className="metric-title">Total patients</div>
+                    <div className="metric-subtitle">Currently admitted</div>
+                  </div>
+                </div>
 
-            {/* Card 2: Total Patients */}
-            <div className="metric-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div className="metric-icon-box"><Users size={24} /></div>
-                <span className="metric-badge" style={{ background: '#F4F7FE', color: '#4A628A' }}>Live</span>
-              </div>
-              <div>
-                <div className="metric-value">{totalPatients}</div>
-                <div className="metric-title">Total Patients</div>
-                <div className="metric-subtitle">Currently admitted</div>
-              </div>
-            </div>
+                <div className="metric-card" onClick={() => setModalView(pendingAdmissions.length > 0 ? 'admissions' : null)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><Clock size={24} /></div>
+                    <span className="metric-badge" style={{ background: '#F54E25', color: 'white' }}>Pending</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{pendingAdmissions.length}</div>
+                    <div className="metric-title">Pending requests</div>
+                    <div className="metric-subtitle">Click to review &amp; approve</div>
+                  </div>
+                </div>
 
-            {/* Card 3: Pending Requests (Admission) */}
-            <div className="metric-card" onClick={() => setModalView(pendingAdmissions.length > 0 ? 'admissions' : null)}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div className="metric-icon-box"><Clock size={24} /></div>
-                <span className="metric-badge" style={{ background: '#F54E25', color: 'white' }}>Pending</span>
-              </div>
-              <div>
-                <div className="metric-value">{pendingAdmissions.length}</div>
-                <div className="metric-title">Pending Requests</div>
-                <div className="metric-subtitle">Click card to review &amp; approve</div>
-              </div>
-            </div>
+                <div className="metric-card" onClick={() => navigate('/admin-admission-management')} style={{ cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><ClipboardList size={24} /></div>
+                    <span className="metric-badge" style={{ background: '#EEF2FF', color: '#4338CA' }}>Records</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{pipelineMetrics.totalAdmissions}</div>
+                    <div className="metric-title">Total admission records</div>
+                    <div className="metric-subtitle">Open admission management</div>
+                  </div>
+                </div>
 
-            {/* Card 4: Hospital Occupancy */}
-            <div className="metric-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div className="metric-icon-box"><Bed size={24} /></div>
-                <span className="metric-badge">{occupancyPerc}%</span>
-              </div>
-              <div>
-                <div className="metric-value">{totalPatients}/50</div>
-                <div className="metric-title">Hospital Occupancy</div>
-                <div style={{ width: '100%', height: 6, background: '#E9EDF7', borderRadius: 99, marginTop: 8, overflow: 'hidden' }}>
-                  <div style={{ width: `${occupancyPerc}%`, height: '100%', background: '#F54E25', borderRadius: 99 }} />
+                <div className="metric-card" onClick={() => navigate('/admin-admission-management')} style={{ cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><ArrowRightSquare size={24} /></div>
+                    <span className="metric-badge" style={{ background: '#FFF7ED', color: '#C2410C' }}>Pipeline</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{pipelineMetrics.forDischarge}</div>
+                    <div className="metric-title">For discharge</div>
+                    <div className="metric-subtitle">Marked in admission workflow</div>
+                  </div>
                 </div>
               </div>
-            </div>
+            </section>
 
-            {/* Card 5: Discharge Requests */}
-            <div className="metric-card" onClick={() => setModalView(pendingDischarges.length > 0 ? 'discharges' : null)}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div className="metric-icon-box"><ArrowRightSquare size={24} /></div>
-                <span className="metric-badge">Available</span>
+            {/* 2 — Discharge: all discharge-related cards */}
+            <section className="dashboard-panel" aria-labelledby="dash-discharge-heading">
+              <h2 id="dash-discharge-heading" className="dashboard-panel-title">Discharge</h2>
+              <div className="metric-cards-container" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <div className="metric-card" onClick={() => setModalView(pendingDischarges.length > 0 ? 'discharges' : null)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><ArrowRightSquare size={24} /></div>
+                    <span className="metric-badge">Pending</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{pendingDischarges.length}</div>
+                    <div className="metric-title">Discharge requests</div>
+                    <div className="metric-subtitle">Click to review &amp; approve</div>
+                  </div>
+                </div>
+
+                <div className="metric-card" onClick={() => navigate('/admin-discharge-management')} style={{ cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><Clock size={24} /></div>
+                    <span className="metric-badge" style={{ background: '#ECFDF3', color: '#166534' }}>Queue</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{pipelineMetrics.readyDischarge}</div>
+                    <div className="metric-title">Ready in discharge</div>
+                    <div className="metric-subtitle">Awaiting finalization</div>
+                  </div>
+                </div>
+
+                <div className="metric-card" onClick={() => navigate('/admin-discharge-management')} style={{ cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><CheckCircle2 size={24} /></div>
+                    <span className="metric-badge" style={{ background: '#F4F7FE', color: '#4A628A' }}>Done</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{pipelineMetrics.dischargedDone}</div>
+                    <div className="metric-title">Discharged / completed</div>
+                    <div className="metric-subtitle">In discharge module</div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <div className="metric-value">{pendingDischarges.length}</div>
-                <div className="metric-title">Discharge</div>
-                <div className="metric-subtitle">Discharge Request(s)</div>
+            </section>
+
+            {/* 3 — Facility */}
+            <section className="dashboard-panel" aria-labelledby="dash-facility-heading">
+              <h2 id="dash-facility-heading" className="dashboard-panel-title">Facility</h2>
+              <div className="metric-cards-container" style={{ display: 'flex', gap: 16, flexWrap: 'wrap', flex: 1 }}>
+                <div className="metric-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><CheckCircle2 size={24} /></div>
+                    <span className="metric-badge">Available</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{availableBeds}</div>
+                    <div className="metric-title">Available beds</div>
+                    <div className="metric-subtitle">Ready for admission</div>
+                  </div>
+                </div>
+
+                <div className="metric-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><Bed size={24} /></div>
+                    <span className="metric-badge">{occupancyPerc}%</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{totalPatients}/50</div>
+                    <div className="metric-title">Hospital occupancy</div>
+                    <div style={{ width: '100%', height: 6, background: '#E9EDF7', borderRadius: 99, marginTop: 8, overflow: 'hidden' }}>
+                      <div style={{ width: `${occupancyPerc}%`, height: '100%', background: '#F54E25', borderRadius: 99 }} />
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            </section>
           </div>
 
-          <div className="metric-cards-container" style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 16 }}>
-            <div className="metric-card" onClick={() => navigate('/admin-admission-management')} style={{ cursor: 'pointer' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div className="metric-icon-box"><ClipboardList size={24} /></div>
-                <span className="metric-badge" style={{ background: '#EEF2FF', color: '#4338CA' }}>Admissions</span>
-              </div>
-              <div>
-                <div className="metric-value">{pipelineMetrics.totalAdmissions}</div>
-                <div className="metric-title">Total admission records</div>
-                <div className="metric-subtitle">Open admission management</div>
-              </div>
-            </div>
-            <div className="metric-card" onClick={() => navigate('/admin-admission-management')} style={{ cursor: 'pointer' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div className="metric-icon-box"><ArrowRightSquare size={24} /></div>
-                <span className="metric-badge" style={{ background: '#FFF7ED', color: '#C2410C' }}>Pipeline</span>
-              </div>
-              <div>
-                <div className="metric-value">{pipelineMetrics.forDischarge}</div>
-                <div className="metric-title">For discharge</div>
-                <div className="metric-subtitle">Marked in admission workflow</div>
-              </div>
-            </div>
-            <div className="metric-card" onClick={() => navigate('/admin-discharge-management')} style={{ cursor: 'pointer' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div className="metric-icon-box"><Clock size={24} /></div>
-                <span className="metric-badge" style={{ background: '#ECFDF3', color: '#166534' }}>Queue</span>
-              </div>
-              <div>
-                <div className="metric-value">{pipelineMetrics.readyDischarge}</div>
-                <div className="metric-title">Ready in discharge</div>
-                <div className="metric-subtitle">Awaiting finalization</div>
-              </div>
-            </div>
-            <div className="metric-card" onClick={() => navigate('/admin-discharge-management')} style={{ cursor: 'pointer' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div className="metric-icon-box"><CheckCircle2 size={24} /></div>
-                <span className="metric-badge" style={{ background: '#F4F7FE', color: '#4A628A' }}>Done</span>
-              </div>
-              <div>
-                <div className="metric-value">{pipelineMetrics.dischargedDone}</div>
-                <div className="metric-title">Discharged / completed</div>
-                <div className="metric-subtitle">In discharge module</div>
-              </div>
-            </div>
+          <div className="dashboard-analytics-slot">
+            <DashboardAnalyticsErrorBoundary>
+              <Suspense
+                fallback={(
+                  <div
+                    style={{
+                      padding: 28,
+                      textAlign: 'center',
+                      color: '#64748b',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      border: '1px dashed #e2e8f0',
+                      borderRadius: 16,
+                      background: '#fafafa',
+                    }}
+                  >
+                    Loading analytics…
+                  </div>
+                )}
+              >
+                <AdminAnalyticsSection />
+              </Suspense>
+            </DashboardAnalyticsErrorBoundary>
           </div>
 
           {/* Recent Activity */}
@@ -1053,12 +1219,6 @@ const AdminDashboard = () => {
             <LayoutGrid size={20} color="white" />
           </div>
           <span style={{ color: '#F54E25' }}>Dashboard</span>
-        </div>
-        <div className="mob-nav-item" onClick={() => navigate('/analytics')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <BarChart2 size={20} color="#A3AED0" />
-          </div>
-          <span>Analytics</span>
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}>
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>

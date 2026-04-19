@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { OAUTH_EXPECTED_ROLE_KEY } from '@/lib/oauthWeb';
+import { resolveAccountRole } from '@/components/RoleGuard';
 
 function navigateForRole(navigate, role) {
   const r = (role ?? 'family').toLowerCase();
@@ -23,10 +23,6 @@ export default function AuthCallback() {
         return;
       }
 
-      const expectedRoleSnapshot = sessionStorage.getItem(
-        OAUTH_EXPECTED_ROLE_KEY
-      );
-
       const url = new URL(window.location.href);
       const oauthErr = url.searchParams.get('error');
       if (oauthErr) {
@@ -44,21 +40,8 @@ export default function AuthCallback() {
           navigate('/login?oauth_error=no_session', { replace: true });
           return;
         }
-        const metadataRole = (
-          session.user.user_metadata?.account_type ?? 'family'
-        ).toLowerCase();
-        const expected = expectedRoleSnapshot;
-        if (
-          expected &&
-          metadataRole !== String(expected).toLowerCase()
-        ) {
-          await supabase.auth.signOut();
-          sessionStorage.removeItem(OAUTH_EXPECTED_ROLE_KEY);
-          navigate('/login?oauth_error=role_mismatch', { replace: true });
-          return;
-        }
-        sessionStorage.removeItem(OAUTH_EXPECTED_ROLE_KEY);
-        navigateForRole(navigate, metadataRole);
+        const accountRole = await resolveAccountRole(session.user);
+        navigateForRole(navigate, accountRole);
       };
 
       try {

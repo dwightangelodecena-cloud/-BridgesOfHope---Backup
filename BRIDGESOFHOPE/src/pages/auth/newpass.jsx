@@ -3,6 +3,7 @@ import { Lock, CheckCircle, XCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '@/assets/logo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { getPasswordStrengthChecks, getPasswordPolicyError, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
 
 const NewPass = () => {
   const navigate = useNavigate();
@@ -24,13 +25,17 @@ const NewPass = () => {
   };
 
   const passwordsMatch = formData.confirmPassword !== '' && formData.password === formData.confirmPassword;
-  const isLengthValid = formData.password.length >= 8;
-  const canSubmit = isLengthValid && passwordsMatch;
+  const pwChecks = getPasswordStrengthChecks(formData.password);
+  const canSubmit = pwChecks.isValid && passwordsMatch;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaveError('');
-    if (!isLengthValid) return;
+    const pwErr = getPasswordPolicyError(formData.password);
+    if (pwErr) {
+      setSaveError(pwErr);
+      return;
+    }
     if (!passwordsMatch) return;
 
     if (isSupabaseConfigured()) {
@@ -47,7 +52,7 @@ const NewPass = () => {
   const handleKeyDown = (e, field) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (field === 'password' && isLengthValid) {
+      if (field === 'password' && pwChecks.isValid) {
         confirmRef.current?.focus();
       } else if (field === 'confirmPassword' && canSubmit) {
         handleSubmit(e);
@@ -120,15 +125,27 @@ const NewPass = () => {
           font-weight: 600;
         }
 
-        .requirement-text {
-          font-size: 0.75rem;
-          color: ${isLengthValid ? '#10b981' : '#94a3b8'};
-          margin-top: 8px;
+        .password-requirements {
+          margin-top: 10px;
+          text-align: left;
+          font-size: 0.72rem;
+          color: #64748b;
+          line-height: 1.55;
+        }
+        .password-requirements .req-row {
           display: flex;
           align-items: center;
-          gap: 5px;
+          gap: 6px;
+          margin-bottom: 3px;
           font-weight: 500;
-          transition: color 0.3s ease;
+        }
+        .password-requirements .req-row.met { color: #059669; }
+        .password-requirements .req-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          border: 1.5px solid #94a3b8;
+          flex-shrink: 0;
         }
 
         .input-wrapper { position: relative; display: flex; align-items: center; }
@@ -146,7 +163,7 @@ const NewPass = () => {
           font-family: 'Inter', sans-serif;
         }
 
-        .input-password { border-color: ${isLengthValid ? '#10b981' : '#e2e8f0'} !important; }
+        .input-password { border-color: ${pwChecks.isValid ? '#10b981' : '#e2e8f0'} !important; }
         .input-confirm {
           border-color: ${formData.confirmPassword === '' ? '#e2e8f0' : (passwordsMatch ? '#10b981' : '#ef4444')} !important;
         }
@@ -230,12 +247,34 @@ const NewPass = () => {
                     required
                   />
                   <Lock className="input-icon" size={20} style={{ color: isFocused === 'pass' ? '#F54E25' : '#94a3b8' }} />
-                  {isLengthValid && <CheckCircle className="validation-icon" size={18} color="#10b981" />}
+                  {pwChecks.isValid && <CheckCircle className="validation-icon" size={18} color="#10b981" />}
                 </div>
-                <span className="requirement-text">
-                  {isLengthValid ? <CheckCircle size={14} /> : <div style={{ width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #94a3b8' }} />}
-                  Minimum 8 characters
-                </span>
+                <div className="password-requirements" aria-label="Password requirements">
+                  <div className={`req-row ${pwChecks.lengthOk ? 'met' : ''}`}>
+                    {pwChecks.lengthOk ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    At least {PASSWORD_MIN_LENGTH} characters
+                  </div>
+                  <div className={`req-row ${pwChecks.upper ? 'met' : ''}`}>
+                    {pwChecks.upper ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    One uppercase letter
+                  </div>
+                  <div className={`req-row ${pwChecks.lower ? 'met' : ''}`}>
+                    {pwChecks.lower ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    One lowercase letter
+                  </div>
+                  <div className={`req-row ${pwChecks.number ? 'met' : ''}`}>
+                    {pwChecks.number ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    One number
+                  </div>
+                  <div className={`req-row ${pwChecks.special ? 'met' : ''}`}>
+                    {pwChecks.special ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    One special character (! @ # $ % …)
+                  </div>
+                  <div className={`req-row ${pwChecks.noSpaces ? 'met' : ''}`}>
+                    {pwChecks.noSpaces ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    No spaces
+                  </div>
+                </div>
               </div>
 
               <div className="form-group">

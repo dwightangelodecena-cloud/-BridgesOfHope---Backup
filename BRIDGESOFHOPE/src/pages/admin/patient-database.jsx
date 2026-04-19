@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutGrid, BarChart2, HeartPulse, LogOut, Search, Filter, User, X, Edit2, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble } from 'lucide-react';
+import { LayoutGrid, HeartPulse, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
+import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import { fetchWeeklyReportRecommendation } from '@/lib/weeklyReportAi';
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
@@ -167,6 +168,10 @@ const toUiPatient = (row) => {
   const overallStatus = discharged ? 'Discharged' : clinicalNorm;
   return {
     id: row.id,
+    admissionDisplayId: computeAdmissionDisplayId(
+      { id: row.id, decided_at: row.admitted_at, created_at: row.created_at },
+      { id: row.id, admitted_at: row.admitted_at }
+    ),
     name: row.full_name || 'Unknown Patient',
     age: calculateAge(row.date_of_birth),
     gender: row.gender || 'N/A',
@@ -184,9 +189,10 @@ const toUiPatient = (row) => {
   };
 };
 
-/** Quick-edit dropdown: clinical trajectory only (in-care rows). */
-const clinicalSelectValue = (patient) => {
+/** Display label for clinical trajectory (from DB / mapped patient row). */
+const clinicalStatusLabel = (patient) => {
   if (!patient) return 'Stable';
+  if (patient.status === 'Discharged') return 'Discharged';
   const s = patient.clinicalStatus || patient.status;
   return CLINICAL_STATUS_OPTIONS.includes(s) ? s : 'Stable';
 };
@@ -237,7 +243,7 @@ const sortPatients = (rows, sortKey, direction) => {
   return cp;
 };
 
-/** Right column in Edit Patient card — reserved for nurse-entered records. */
+/** Right column in patient detail — reserved for nurse-entered records. */
 function NursingRecordsPlaceholder() {
   return (
     <div
@@ -271,7 +277,7 @@ function NursingRecordsPlaceholder() {
         <ClipboardList size={26} color="#94a3b8" strokeWidth={1.75} aria-hidden />
       </div>
       <div>
-        <p style={{ fontWeight: 800, color: '#475569', fontSize: 15, margin: 0 }}>Nursing & clinical records</p>
+        <p style={{ fontWeight: 800, color: '#475569', fontSize: 15, margin: 0 }}>Nursing &amp; clinical records</p>
         <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55, margin: '8px 0 0', maxWidth: 280 }}>
           Shift notes, vitals history, medications, and assessments will be managed here once nursing workflows are connected.
         </p>
@@ -287,15 +293,21 @@ const mapLegacyLocalPatients = () => {
     const discharged = dischargedAt != null && String(dischargedAt).trim() !== '';
     const raw = p.status || 'Stable';
     const clinicalNorm = CLINICAL_STATUS_OPTIONS.includes(raw) ? raw : 'Stable';
+    const id = String(p.id ?? idx);
+    const admissionDate = p.admissionDate || p.admitted_at || null;
     return {
-      id: String(p.id ?? idx),
+      id,
+      admissionDisplayId: computeAdmissionDisplayId(
+        { id, decided_at: admissionDate, created_at: admissionDate },
+        { id, admitted_at: admissionDate }
+      ),
       name: p.name || 'Unknown Patient',
       age: p.age ?? 'N/A',
       gender: p.gender || 'N/A',
       concern: p.concern || p.reason || 'N/A',
       status: discharged ? 'Discharged' : clinicalNorm,
       clinicalStatus: clinicalNorm,
-      admissionDate: p.admissionDate || p.admitted_at || null,
+      admissionDate,
       date: p.date || formatDate(p.admissionDate || p.admitted_at),
       progress: p.progress ?? 0,
       contact: p.contact || 'N/A',
@@ -307,7 +319,8 @@ const mapLegacyLocalPatients = () => {
   });
 };
 
-const AdminPatientDatabase = () => {
+function PatientDatabaseShell({ mode = 'admin' }) {
+  const isNurse = mode === 'nurse';
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -327,14 +340,6 @@ const AdminPatientDatabase = () => {
   const [statusFilter, setStatusFilter] = useState('All');
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
-  const [savingId, setSavingId] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState({
-    full_name: '',
-    primary_concern: '',
-    progress_percent: 0,
-    clinical_status: 'Stable',
-  });
   const [weeklyReportsByWeek, setWeeklyReportsByWeek] = useState({});
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiWeekNumber, setAiWeekNumber] = useState(null);
@@ -422,10 +427,10 @@ const AdminPatientDatabase = () => {
     const bySearch = patients.filter((p) => {
       if (!q) return true;
       return (
+        String(p.admissionDisplayId || '').toLowerCase().includes(q) ||
         String(p.name || '').toLowerCase().includes(q) ||
         String(p.concern || '').toLowerCase().includes(q) ||
         String(p.status || '').toLowerCase().includes(q) ||
-        String(p.contact || '').toLowerCase().includes(q) ||
         String(p.familyName || '').toLowerCase().includes(q)
       );
     });
@@ -441,13 +446,6 @@ const AdminPatientDatabase = () => {
     const sel = SORT_MENU_ITEMS.find((i) => i.id === sortSelectionId) ?? SORT_MENU_ITEMS[1];
     return sortPatients(byStatus, sel.sortKey, sel.direction);
   }, [patients, search, sortSelectionId, cohortFilter, concernCategoryFilter, statusFilter]);
-
-  const counts = useMemo(() => {
-    const total = patients.length;
-    const discharged = patients.filter((p) => p.status === 'Discharged').length;
-    const admitted = patients.filter((p) => p.status !== 'Discharged').length;
-    return { total, admitted, discharged };
-  }, [patients]);
 
   const getStatusStyle = (status) => {
     switch (status) {
@@ -469,88 +467,6 @@ const AdminPatientDatabase = () => {
       ? patientOrStatus.clinicalStatus || patientOrStatus.status
       : patientOrStatus;
     return s === 'Declining' ? '#F87171' : '#2563EB';
-  };
-
-  const openEditor = (patient) => {
-    setEditingId(patient.id);
-    setEditDraft({
-      full_name: patient.name,
-      primary_concern: patient.concern === 'N/A' ? '' : patient.concern,
-      progress_percent: Number(patient.progress || 0),
-      clinical_status: clinicalSelectValue(patient),
-    });
-  };
-
-  const savePatient = async (patientId) => {
-    const progress = Number(editDraft.progress_percent);
-    if (Number.isNaN(progress) || progress < 0 || progress > 100) {
-      setFormError('Progress must be between 0 and 100.');
-      return;
-    }
-    const clinical = CLINICAL_STATUS_OPTIONS.includes(editDraft.clinical_status)
-      ? editDraft.clinical_status
-      : 'Stable';
-    setSavingId(patientId);
-    setFormError('');
-
-    const payload = {
-      full_name: editDraft.full_name.trim() || 'Unknown Patient',
-      primary_concern: editDraft.primary_concern.trim() || null,
-      progress_percent: progress,
-      clinical_status: clinical,
-    };
-
-    try {
-      if (isSupabaseConfigured()) {
-        const { error } = await supabase.from('patients').update(payload).eq('id', patientId);
-        if (error) throw error;
-        refreshAppData();
-        await loadPatients();
-      } else {
-        setPatients((prev) =>
-          prev.map((p) =>
-            p.id !== patientId
-              ? p
-              : {
-                  ...p,
-                  name: payload.full_name,
-                  concern: payload.primary_concern || 'N/A',
-                  progress: payload.progress_percent,
-                  clinicalStatus: clinical,
-                  status:
-                    p.dischargedAt != null && String(p.dischargedAt).trim() !== ''
-                      ? 'Discharged'
-                      : clinical,
-                }
-          )
-        );
-        refreshAppData();
-      }
-
-      if (selectedPatient?.id === patientId) {
-        setSelectedPatient((prev) =>
-          prev
-            ? {
-                ...prev,
-                name: payload.full_name,
-                concern: payload.primary_concern || 'N/A',
-                progress: payload.progress_percent,
-                clinicalStatus: clinical,
-                status:
-                  prev.dischargedAt != null && String(prev.dischargedAt).trim() !== ''
-                    ? 'Discharged'
-                    : clinical,
-              }
-            : prev
-        );
-      }
-      setEditingId(null);
-    } catch (err) {
-      console.error(err);
-      setFormError(err.message || 'Failed to update patient.');
-    } finally {
-      setSavingId(null);
-    }
   };
 
   const isSupabasePatientId = (id) =>
@@ -649,57 +565,6 @@ const AdminPatientDatabase = () => {
     },
     [selectedPatient, weeklyReportsByWeek]
   );
-
-  const saveQuickClinicalStatus = async (patient, newClinical) => {
-    if (patient.status === 'Discharged') return;
-    if (!CLINICAL_STATUS_OPTIONS.includes(newClinical) || newClinical === patient.clinicalStatus) return;
-    setSavingId(patient.id);
-    setFormError('');
-    try {
-      if (isSupabaseConfigured()) {
-        if (!isSupabasePatientId(String(patient.id))) {
-          setFormError('This record is offline-only. Use full edit or sync patients to the database to update status here.');
-          return;
-        }
-        const { error } = await supabase
-          .from('patients')
-          .update({ clinical_status: newClinical })
-          .eq('id', patient.id);
-        if (error) throw error;
-        refreshAppData();
-        await loadPatients();
-      } else {
-        setPatients((prev) =>
-          prev.map((p) =>
-            p.id !== patient.id
-              ? p
-              : {
-                  ...p,
-                  clinicalStatus: newClinical,
-                  status: newClinical,
-                }
-          )
-        );
-        refreshAppData();
-      }
-      if (selectedPatient?.id === patient.id) {
-        setSelectedPatient((prev) =>
-          prev
-            ? {
-                ...prev,
-                clinicalStatus: newClinical,
-                status: newClinical,
-              }
-            : prev
-        );
-      }
-    } catch (err) {
-      console.error(err);
-      setFormError(err.message || 'Could not update clinical status.');
-    } finally {
-      setSavingId(null);
-    }
-  };
 
   return (
     <div className="db-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', -apple-system, sans-serif", color: '#1B2559' }}>
@@ -1135,40 +1000,6 @@ const AdminPatientDatabase = () => {
           gap: 28px;
           align-items: start;
         }
-        .admin-edit-label {
-          display: block;
-          font-size: 12px;
-          font-weight: 700;
-          color: #64748b;
-          margin-bottom: 6px;
-          letter-spacing: 0.01em;
-        }
-        .admin-edit-field {
-          width: 100%;
-          padding: 12px 14px;
-          border: 1px solid #E9EDF7;
-          border-radius: 12px;
-          font-size: 14px;
-          font-weight: 600;
-          color: #1B2559;
-          outline: none;
-          font-family: 'Inter', sans-serif;
-          background: #fff;
-          transition: border-color 0.15s, box-shadow 0.15s;
-          box-sizing: border-box;
-        }
-        .admin-edit-field:focus {
-          border-color: #2563EB;
-          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-        }
-        .admin-edit-field--select {
-          cursor: pointer;
-          appearance: none;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-          background-repeat: no-repeat;
-          background-position: right 12px center;
-          padding-right: 40px;
-        }
         .admin-edit-summary-row {
           padding-bottom: 14px;
           border-bottom: 1px solid #F4F7FE;
@@ -1185,50 +1016,68 @@ const AdminPatientDatabase = () => {
           <img src={logoBH} alt="BH" className="sidebar-logo" />
         </div>
 
-        <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
-            <div className="icon-box inactive">
-              <LayoutGrid size={22} />
+        {isNurse ? (
+          <nav className="sidebar-nav-scroll" aria-label="Nurse navigation">
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}>
+              <div className="icon-box inactive">
+                <FileText size={22} />
+              </div>
+              <span className="sidebar-label">Report</span>
             </div>
-            <span className="sidebar-label">Dashboard</span>
-          </div>
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
+              <div className="icon-box active">
+                <HeartPulse size={22} />
+              </div>
+              <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient Management</span>
+            </div>
+          </nav>
+        ) : (
+          <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
+              <div className="icon-box inactive">
+                <LayoutGrid size={22} />
+              </div>
+              <span className="sidebar-label">Dashboard</span>
+            </div>
 
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/analytics'); }}>
-            <div className="icon-box inactive">
-              <BarChart2 size={24} />
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
+              <div className="icon-box active">
+                <HeartPulse size={22} />
+              </div>
+              <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient Management</span>
             </div>
-            <span className="sidebar-label">Analytics</span>
-          </div>
-
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
-            <div className="icon-box active">
-              <HeartPulse size={22} />
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
+              <div className="icon-box inactive"><ClipboardList size={22} /></div>
+              <span className="sidebar-label">Admission Management</span>
             </div>
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
-            <div className="icon-box inactive"><ClipboardList size={22} /></div>
-            <span className="sidebar-label">Admission Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}>
-            <div className="icon-box inactive"><ArrowRightSquare size={22} /></div>
-            <span className="sidebar-label">Discharge Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}>
-            <div className="icon-box inactive">
-              <Users size={22} />
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}>
+              <div className="icon-box inactive"><ArrowRightSquare size={22} /></div>
+              <span className="sidebar-label">Discharge Management</span>
             </div>
-            <span className="sidebar-label">User Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
-            <div className="icon-box inactive">
-              <Stethoscope size={22} />
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}>
+              <div className="icon-box inactive">
+                <Users size={22} />
+              </div>
+              <span className="sidebar-label">User Management</span>
             </div>
-            <span className="sidebar-label">Staff Management</span>
-          </div>
-        </nav>
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
+              <div className="icon-box inactive">
+                <Stethoscope size={22} />
+              </div>
+              <span className="sidebar-label">Staff Management</span>
+            </div>
+          </nav>
+        )}
 
         <div className="sidebar-footer">
+          {!isNurse ? null : (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
+              <div className="icon-box inactive">
+                <User size={22} />
+              </div>
+              <span className="sidebar-label">Profile</span>
+            </div>
+          )}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
             <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? '0' : '10px', flexShrink: 0 }} />
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
@@ -1252,8 +1101,13 @@ const AdminPatientDatabase = () => {
               Patient Management
             </h1>
             <p
-              onClick={() => setSelectedPatient(null)}
-              style={{ fontSize: 13, color: selectedPatient ? '#4361EE' : '#A3AED0', fontWeight: 600, cursor: selectedPatient ? 'pointer' : 'default' }}
+              onClick={() => selectedPatient && setSelectedPatient(null)}
+              style={{
+                fontSize: 13,
+                color: selectedPatient ? '#4361EE' : '#A3AED0',
+                fontWeight: 600,
+                cursor: selectedPatient ? 'pointer' : 'default',
+              }}
             >
               {selectedPatient ? 'Patient Information' : 'Patient Management'}
             </p>
@@ -1279,15 +1133,15 @@ const AdminPatientDatabase = () => {
                   <div style={{ width: 84, height: 84, background: '#FF1F1F', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <User size={44} color="white" />
                   </div>
-                  <div style={{ position: 'absolute', bottom: -4, right: -4, background: 'white', padding: 6, borderRadius: '50%', border: '1px solid #E9EDF7', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                    <Edit2 size={14} color="#FF1F1F" />
-                  </div>
                 </div>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                     <div>
                       <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Patient Name</p>
                       <p style={{ fontSize: 20, fontWeight: 800, color: '#1B2559' }}>{selectedPatient.name}</p>
+                      <p style={{ color: '#64748b', fontSize: 12, fontWeight: 600, marginTop: 6 }}>
+                        Patient ID: <span style={{ color: '#1B2559', fontVariantNumeric: 'tabular-nums' }}>{selectedPatient.admissionDisplayId || '—'}</span>
+                      </p>
                     </div>
                     <div style={{ textAlign: 'left', minWidth: '80px' }}>
                       <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Age</p>
@@ -1486,157 +1340,46 @@ const AdminPatientDatabase = () => {
             </div>
 
             <div className="view-bottom-row" style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: 24 }}>
-              {/* Edit Section */}
               <div className="info-card" style={{ padding: '28px 32px 32px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, gap: 16 }}>
+                <div style={{ marginBottom: 24 }}>
+                  <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Nursing Clinical Records</h3>
+                  <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.45 }}>
+                    Review identity, primary concern, progress, and clinical trajectory. Discharge status follows the discharge workflow.
+                  </p>
+                </div>
+                <div className="admin-edit-split">
                   <div>
-                    <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Edit Patient Information</h3>
-                    <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.45 }}>
-                      Admin: update identity, primary concern, progress, and clinical trajectory. Discharge status follows the discharge workflow.
+                    <p style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', margin: '0 0 14px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Clinical summary
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {[
+                        ['Patient full name', selectedPatient.name],
+                        ['Primary concern', selectedPatient.concern],
+                        ['Recovery progress', `${selectedPatient.progress}%`],
+                        ['Clinical trajectory', selectedPatient.clinicalStatus],
+                      ].map(([label, value]) => (
+                        <div key={label} className="admin-edit-summary-row">
+                          <p style={{ fontSize: 11, color: '#A3AED0', fontWeight: 600, marginBottom: 4 }}>{label}</p>
+                          <p style={{ fontSize: 15, fontWeight: 800, color: '#1B2559', margin: 0 }}>{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <p style={{ fontSize: 12, color: '#94a3b8', margin: '16px 0 0', lineHeight: 1.5 }}>
+                      <strong style={{ color: '#475569' }}>Discharged status</strong> is set when a discharge request is approved on the dashboard—not from this screen.
                     </p>
                   </div>
-                  {editingId !== selectedPatient.id ? (
-                    <button type="button" className="db-edit-btn" onClick={() => openEditor(selectedPatient)}>
-                      <Edit2 size={14} /> Edit
-                    </button>
-                  ) : (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: '#F54E25',
-                        background: '#FFF5F2',
-                        border: '1px solid #FED7CC',
-                        padding: '8px 12px',
-                        borderRadius: 8,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.04em',
-                      }}
-                    >
-                      Editing
-                    </span>
-                  )}
+                  <NursingRecordsPlaceholder />
                 </div>
-
-                {editingId === selectedPatient.id ? (
-                  <div className="admin-edit-split">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                      <div>
-                        <label htmlFor="admin-edit-full-name" className="admin-edit-label">
-                          Patient full name
-                        </label>
-                        <input
-                          id="admin-edit-full-name"
-                          className="admin-edit-field"
-                          value={editDraft.full_name}
-                          onChange={(e) => setEditDraft((prev) => ({ ...prev, full_name: e.target.value }))}
-                          autoComplete="name"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="admin-edit-concern" className="admin-edit-label">
-                          Primary concern
-                        </label>
-                        <input
-                          id="admin-edit-concern"
-                          className="admin-edit-field"
-                          value={editDraft.primary_concern}
-                          onChange={(e) => setEditDraft((prev) => ({ ...prev, primary_concern: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="admin-edit-progress" className="admin-edit-label">
-                          Recovery progress (%)
-                        </label>
-                        <input
-                          id="admin-edit-progress"
-                          className="admin-edit-field"
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={editDraft.progress_percent}
-                          onChange={(e) => setEditDraft((prev) => ({ ...prev, progress_percent: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="admin-edit-clinical" className="admin-edit-label">
-                          Clinical trajectory
-                        </label>
-                        <select
-                          id="admin-edit-clinical"
-                          className="admin-edit-field admin-edit-field--select"
-                          value={editDraft.clinical_status}
-                          onChange={(e) => setEditDraft((prev) => ({ ...prev, clinical_status: e.target.value }))}
-                        >
-                          {CLINICAL_STATUS_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt}>{opt}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div
-                        style={{
-                          background: '#F8FAFC',
-                          border: '1px solid #E9EDF7',
-                          borderRadius: 12,
-                          padding: '12px 14px',
-                        }}
-                      >
-                        <p style={{ fontSize: 12, color: '#64748b', margin: 0, lineHeight: 1.5 }}>
-                          <strong style={{ color: '#475569' }}>Discharged status</strong> is set automatically when a discharge request is approved on the dashboard—not on this form.
-                        </p>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, paddingTop: 4 }}>
-                        <button
-                          type="button"
-                          className="db-edit-btn"
-                          disabled={savingId === selectedPatient.id}
-                          onClick={() => savePatient(selectedPatient.id)}
-                        >
-                          {savingId === selectedPatient.id ? 'Saving…' : 'Save changes'}
-                        </button>
-                        <button type="button" className="db-filter-btn" onClick={() => setEditingId(null)}>
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                    <NursingRecordsPlaceholder />
-                  </div>
-                ) : (
-                  <div className="admin-edit-split">
-                    <div>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', margin: '0 0 14px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Current record
-                      </p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                        {[
-                          ['Patient full name', selectedPatient.name],
-                          ['Primary concern', selectedPatient.concern],
-                          ['Recovery progress', `${selectedPatient.progress}%`],
-                          ['Clinical trajectory', selectedPatient.clinicalStatus],
-                        ].map(([label, value]) => (
-                          <div key={label} className="admin-edit-summary-row">
-                            <p style={{ fontSize: 11, color: '#A3AED0', fontWeight: 600, marginBottom: 4 }}>{label}</p>
-                            <p style={{ fontSize: 15, fontWeight: 800, color: '#1B2559', margin: 0 }}>{value}</p>
-                          </div>
-                        ))}
-                      </div>
-                      <p style={{ fontSize: 12, color: '#94a3b8', margin: '16px 0 0', lineHeight: 1.5 }}>
-                        Select <strong style={{ color: '#64748b' }}>Edit</strong> to change these fields.
-                      </p>
-                    </div>
-                    <NursingRecordsPlaceholder />
-                  </div>
-                )}
               </div>
 
-              {/* Additional Notes */}
               <div className="info-card" style={{ padding: '32px' }}>
                 <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559', marginBottom: 24 }}>Tracking Notes</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                   {[
                     'All records stay visible, including discharged patients.',
                     'Discharged appears automatically when a discharge request is approved on the admin dashboard.',
-                    'Use the list or detail editor to set clinical status (Improving / Stable / Declining) only.',
+                    'Clinical trajectory (Improving / Stable / Declining) can be updated from the patient list.',
                     'Use search, cohort, and status filters to track care from admission through discharge.',
                   ].map((note) => (
                     <div key={note} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -1660,11 +1403,6 @@ const AdminPatientDatabase = () => {
             {/* Controls */}
             <div className="db-controls-mobile" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 26, fontWeight: 800, color: '#2563EB' }}>{counts.total}</span>
-                  <span style={{ fontSize: 17, fontWeight: 700, color: '#1B2559' }}>Patients</span>
-                  <span style={{ fontSize: 12, color: '#64748b', marginLeft: 10 }}>Admitted: {counts.admitted} | Discharged: {counts.discharged}</span>
-                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13, color: '#1B2559' }}>
                   <div className="db-sort-by-wrap" ref={sortDropdownRef}>
                     <button
@@ -1720,7 +1458,7 @@ const AdminPatientDatabase = () => {
                   <input
                     type="text"
                     className="db-search-input"
-                    placeholder="Search name, concern, status, contact…"
+                    placeholder="Search patient ID, name, concern, or status…"
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                   />
@@ -1873,11 +1611,11 @@ const AdminPatientDatabase = () => {
               <table style={{ width: '100%', textAlign: 'left', fontSize: 13, borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['Full Name', 'Age', 'Gender', 'Contact', 'Primary Concern', 'Clinical status', 'Admission Date', 'Progress (%)', 'Actions'].map((col, i) => (
+                    {['Patient ID', 'Full Name', 'Primary Concern', 'Clinical status', 'Admission Date', 'Progress (%)', 'Actions'].map((col, i) => (
                       <th key={col} style={{
                         padding: '12px 20px',
                         fontWeight: 500,
-                        borderRight: i < 8 ? '1px solid #4B5563' : 'none',
+                        borderRight: i < 6 ? '1px solid #4B5563' : 'none',
                         whiteSpace: 'nowrap',
                       }}>
                         {col}
@@ -1887,42 +1625,32 @@ const AdminPatientDatabase = () => {
                 </thead>
                 <tbody>
                   {loading && (
-                    <tr><td colSpan={9} style={{ padding: 20, color: '#64748b' }}>Loading patient records...</td></tr>
+                    <tr><td colSpan={7} style={{ padding: 20, color: '#64748b' }}>Loading patient records...</td></tr>
                   )}
                   {!loading && filtered.length === 0 && (
-                    <tr><td colSpan={9} style={{ padding: 20, color: '#64748b' }}>No patients match this search/filter.</td></tr>
+                    <tr><td colSpan={7} style={{ padding: 20, color: '#64748b' }}>No patients match this search/filter.</td></tr>
                   )}
                   {!loading && filtered.map((patient) => (
                     <tr key={patient.id} className="db-row" style={{ borderBottom: '1px solid #F4F7FE', transition: 'background 0.15s' }}>
+                      <td style={{ padding: '16px 20px', fontWeight: 700, color: '#1B2559', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{patient.admissionDisplayId || '—'}</td>
                       <td style={{ padding: '16px 20px', fontWeight: 600, color: '#1B2559' }}>{patient.name}</td>
-                      <td style={{ padding: '16px 20px', color: '#707EAE' }}>{patient.age}</td>
-                      <td style={{ padding: '16px 20px', color: '#707EAE' }}>{patient.gender}</td>
-                      <td style={{ padding: '16px 20px', color: '#707EAE' }}>{patient.contact}</td>
                       <td style={{ padding: '16px 20px', color: '#1B2559' }}>{patient.concern}</td>
                       <td
                         style={{ padding: '16px 20px', minWidth: 148, verticalAlign: 'middle' }}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {patient.status === 'Discharged' ? (
-                          <span
-                            style={{ ...getStatusStyle('Discharged'), padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 800, display: 'inline-block' }}
-                          >
-                            Discharged
-                          </span>
-                        ) : (
-                          <select
-                            className="db-sort-select"
-                            style={{ maxWidth: 168, fontWeight: 600, width: '100%' }}
-                            value={clinicalSelectValue(patient)}
-                            disabled={savingId === patient.id}
-                            onChange={(e) => void saveQuickClinicalStatus(patient, e.target.value)}
-                            aria-label={`Clinical status for ${patient.name}`}
-                          >
-                            {CLINICAL_STATUS_OPTIONS.map((opt) => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
-                        )}
+                        <span
+                          style={{
+                            ...getStatusStyle(clinicalStatusLabel(patient)),
+                            padding: '6px 12px',
+                            borderRadius: 20,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            display: 'inline-block',
+                          }}
+                        >
+                          {clinicalStatusLabel(patient)}
+                        </span>
                       </td>
                       <td style={{ padding: '16px 20px', color: '#1B2559', fontVariantNumeric: 'tabular-nums' }}>{formatDate(patient.admissionDate)}</td>
                       <td style={{ padding: '16px 20px' }}>
@@ -1934,18 +1662,7 @@ const AdminPatientDatabase = () => {
                         </div>
                       </td>
                       <td style={{ padding: '16px 20px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <button className="db-view-btn" onClick={() => setSelectedPatient(patient)}>View</button>
-                          <button
-                            className="db-edit-btn"
-                            onClick={() => {
-                              setSelectedPatient(patient);
-                              openEditor(patient);
-                            }}
-                          >
-                            <Edit2 size={14} /> Edit
-                          </button>
-                        </div>
+                        <button type="button" className="db-view-btn" onClick={() => setSelectedPatient(patient)}>View</button>
                       </td>
                     </tr>
                   ))}
@@ -1958,40 +1675,63 @@ const AdminPatientDatabase = () => {
 
       {/* MOBILE BOTTOM NAV */}
       <div className="db-mobile-only db-mobile-bottom-nav">
-        <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <LayoutGrid size={20} color="#A3AED0" />
-          </div>
-          <span>Dashboard</span>
-        </div>
-        <div className="mob-nav-item" onClick={() => navigate('/analytics')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <BarChart2 size={20} color="#A3AED0" />
-          </div>
-          <span>Analytics</span>
-        </div>
-        <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
-          <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
-            <HeartPulse size={20} color="white" />
-          </div>
-          <span style={{ color: '#F54E25' }}>Patient Management</span>
-        </div>
-        <div className="mob-nav-item" onClick={() => navigate('/admin-user-management')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <Users size={20} color="#A3AED0" />
-          </div>
-          <span>Users</span>
-        </div>
-        <div className="mob-nav-item" onClick={() => navigate('/admin-staff-management')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <Stethoscope size={20} color="#A3AED0" />
-          </div>
-          <span>Staff</span>
-        </div>
-        <div className="mob-nav-item" onClick={() => navigate('/login')}>
-          <LogOut size={22} color="#F54E25" />
-          <span style={{ color: '#F54E25' }}>Logout</span>
-        </div>
+        {isNurse ? (
+          <>
+            <div className="mob-nav-item" onClick={() => navigate('/nurse-dashboard')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <FileText size={20} color="#A3AED0" />
+              </div>
+              <span>Report</span>
+            </div>
+            <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
+              <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
+                <HeartPulse size={20} color="white" />
+              </div>
+              <span style={{ color: '#F54E25' }}>Patients</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/nurseprofile')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <User size={20} color="#A3AED0" />
+              </div>
+              <span>Profile</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/login')}>
+              <LogOut size={22} color="#F54E25" />
+              <span style={{ color: '#F54E25' }}>Logout</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <LayoutGrid size={20} color="#A3AED0" />
+              </div>
+              <span>Dashboard</span>
+            </div>
+            <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
+              <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
+                <HeartPulse size={20} color="white" />
+              </div>
+              <span style={{ color: '#F54E25' }}>Patient Management</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/admin-user-management')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <Users size={20} color="#A3AED0" />
+              </div>
+              <span>Users</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/admin-staff-management')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <Stethoscope size={20} color="#A3AED0" />
+              </div>
+              <span>Staff</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/login')}>
+              <LogOut size={22} color="#F54E25" />
+              <span style={{ color: '#F54E25' }}>Logout</span>
+            </div>
+          </>
+        )}
       </div>
 
       {aiModalOpen &&
@@ -2087,6 +1827,12 @@ const AdminPatientDatabase = () => {
         )}
     </div>
   );
-};
+}
 
-export default AdminPatientDatabase;
+export default function AdminPatientDatabase() {
+  return <PatientDatabaseShell mode="admin" />;
+}
+
+export function NursePatientDatabase() {
+  return <PatientDatabaseShell mode="nurse" />;
+}

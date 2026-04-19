@@ -888,8 +888,10 @@ const Admission = () => {
                   <ClipboardList className="input-icon" size={22} />
                   <select name="reasonForAdmission" className={errors.reasonForAdmission ? 'input-error' : ''} value={formData.reasonForAdmission} onChange={handleChange}>
                     <option value="">Select Reason</option>
-                    <option value="Substance Abuse">Substance Abuse</option>
-                    <option value="Non-Substance Abuse">Non-Substance Abuse</option>
+                    <option value="Drugs">Drugs</option>
+                    <option value="Alcohol">Alcohol</option>
+                    <option value="Gambling">Gambling</option>
+                    <option value="Mental health">Mental health</option>
                   </select>
                 </div>
                 {errors.reasonForAdmission && <div className="error-message">{errors.reasonForAdmission}</div>}

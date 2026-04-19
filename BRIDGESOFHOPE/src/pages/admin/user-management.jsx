@@ -1,14 +1,12 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   LayoutGrid,
-  BarChart2,
   HeartPulse,
   Users,
   LogOut,
   Search,
   Filter,
   Eye,
-  Edit2,
   RotateCcw,
   RefreshCw,
   X,
@@ -16,6 +14,8 @@ import {
   ArrowRightSquare,
   ChevronDown,
   Stethoscope,
+  Archive,
+  Trash2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
@@ -23,8 +23,30 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 
 const USER_STATUS_OPTIONS = ['Active', 'Inactive'];
-const FILTER_STATUS_OPTIONS = ['All Users', ...USER_STATUS_OPTIONS];
-const SORT_FIELD_OPTIONS = ['User ID', 'Name', 'Registered Date', 'Status', 'Last Active'];
+const FILTER_STATUS_OPTIONS = ['All Users', ...USER_STATUS_OPTIONS, 'Archived'];
+const SORT_FIELD_OPTIONS = ['User ID', 'Registered Date', 'Status', 'Last Active'];
+const ARCHIVE_KEY = 'bh_um_archived_user_ids';
+
+const getArchivedIdSet = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || '[]');
+    return new Set(Array.isArray(v) ? v.filter(Boolean).map(String) : []);
+  } catch {
+    return new Set();
+  }
+};
+
+const setArchivedIdSet = (set) => {
+  localStorage.setItem(ARCHIVE_KEY, JSON.stringify([...set]));
+  refreshAppData();
+};
+
+/** Short display ID (last 6 hex chars of UUID, no dashes). */
+const formatSimpleUserId = (rawId) => {
+  const s = String(rawId).replace(/-/g, '');
+  if (s.length >= 6) return s.slice(-6).toUpperCase();
+  return String(rawId).slice(0, 6).toUpperCase();
+};
 const ACTIVE_WINDOW_MS = 15 * 60 * 1000;
 const RESET_PASSWORD_REDIRECT_PATH = '/newpass';
 const defaultDirectionForField = (field) => {
@@ -94,8 +116,11 @@ const toUiUser = (row, idx = 0) => {
   const status = getPresenceStatus(lastActiveAt);
   const role = row.role || row.account_type || 'Customer';
   const source = row.source || 'web';
+  const archivedSet = getArchivedIdSet();
+  const isArchived = archivedSet.has(String(uid));
   return {
     id: uid,
+    displayId: formatSimpleUserId(uid),
     fullName,
     email,
     phone,
@@ -105,6 +130,7 @@ const toUiUser = (row, idx = 0) => {
     lastActiveAt,
     role,
     source,
+    isArchived,
   };
 };
 
@@ -131,21 +157,83 @@ const sortUsers = (rows, field, direction) => {
   const asc = direction === 'asc';
   cp.sort((a, b) => {
     let r = 0;
-    if (field === 'Name') {
-      r = a.fullName.localeCompare(b.fullName, undefined, { sensitivity: 'base' });
-    } else if (field === 'Registered Date') {
+    if (field === 'Registered Date') {
       r = asTimestamp(a.registeredAt) - asTimestamp(b.registeredAt);
     } else if (field === 'Status') {
       r = a.status.localeCompare(b.status, undefined, { sensitivity: 'base' });
     } else if (field === 'Last Active') {
       r = asTimestamp(a.lastActiveAt) - asTimestamp(b.lastActiveAt);
     } else {
-      r = String(a.id).localeCompare(String(b.id), undefined, { sensitivity: 'base' });
+      r = String(a.displayId || a.id).localeCompare(String(b.displayId || b.id), undefined, { sensitivity: 'base' });
     }
     return asc ? r : -r;
   });
   return cp;
 };
+
+function UsersStatusChart({ active, inactive, archived, total }) {
+  if (!total) {
+    return <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>No users in this directory yet.</p>;
+  }
+  const a = active / total;
+  const i = inactive / total;
+  const ar = archived / total;
+  return (
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          height: 32,
+          borderRadius: 12,
+          overflow: 'hidden',
+          maxWidth: 480,
+          border: '1px solid #E9EDF7',
+          background: '#f8fafc',
+        }}
+      >
+        {a > 0 && (
+          <div
+            style={{ flex: Math.max(a, 0.02), minWidth: a > 0.03 ? 6 : 0, background: '#22c55e' }}
+            title={`Active: ${active}`}
+          />
+        )}
+        {i > 0 && (
+          <div
+            style={{ flex: Math.max(i, 0.02), minWidth: i > 0.03 ? 6 : 0, background: '#94a3b8' }}
+            title={`Inactive: ${inactive}`}
+          />
+        )}
+        {ar > 0 && (
+          <div
+            style={{ flex: Math.max(ar, 0.02), minWidth: ar > 0.03 ? 6 : 0, background: '#cbd5e1' }}
+            title={`Archived: ${archived}`}
+          />
+        )}
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          gap: 18,
+          marginTop: 12,
+          flexWrap: 'wrap',
+          fontSize: 12,
+          fontWeight: 700,
+          color: '#475569',
+        }}
+      >
+        <span>
+          <span style={{ color: '#22c55e' }}>●</span> Active {active}
+        </span>
+        <span>
+          <span style={{ color: '#64748b' }}>●</span> Inactive {inactive}
+        </span>
+        <span>
+          <span style={{ color: '#94a3b8' }}>●</span> Archived {archived}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 const UserManagement = () => {
   const navigate = useNavigate();
@@ -159,8 +247,6 @@ const UserManagement = () => {
   const [sortField, setSortField] = useState('Registered Date');
 
   const [selectedUser, setSelectedUser] = useState(null);
-  const [editUser, setEditUser] = useState(null);
-  const [savingId, setSavingId] = useState(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
   const [presenceTick, setPresenceTick] = useState(Date.now());
 
@@ -276,10 +362,14 @@ const UserManagement = () => {
   }, []);
 
   const usersWithLiveStatus = useMemo(() => {
-    return users.map((u) => ({
-      ...u,
-      status: getPresenceStatus(u.lastActiveAt),
-    }));
+    return users.map((u) => {
+      const presence = getPresenceStatus(u.lastActiveAt);
+      return {
+        ...u,
+        status: presence,
+        listStatus: u.isArchived ? 'Archived' : presence,
+      };
+    });
   }, [users, presenceTick]);
 
   const filtered = useMemo(() => {
@@ -287,26 +377,31 @@ const UserManagement = () => {
     const bySearch = usersWithLiveStatus.filter((u) => {
       if (!q) return true;
       return (
-        String(u.fullName || '').toLowerCase().includes(q) ||
-        String(u.email || '').toLowerCase().includes(q) ||
-        String(u.id || '').toLowerCase().includes(q) ||
-        String(u.phone || '').toLowerCase().includes(q)
+        String(u.displayId || '').toLowerCase().includes(q) ||
+        String(u.id || '').toLowerCase().includes(q)
       );
     });
-    const byFilter = bySearch.filter((u) => statusFilter === 'All Users' || u.status === statusFilter);
+    const byFilter = bySearch.filter((u) => {
+      if (statusFilter === 'Archived') return u.isArchived;
+      if (u.isArchived) return false;
+      if (statusFilter === 'All Users') return true;
+      return u.status === statusFilter;
+    });
     return sortUsers(byFilter, sortField, defaultDirectionForField(sortField));
   }, [usersWithLiveStatus, search, statusFilter, sortField]);
 
   const summary = useMemo(() => {
+    const nonArchived = usersWithLiveStatus.filter((u) => !u.isArchived);
+    const archived = usersWithLiveStatus.filter((u) => u.isArchived).length;
     const total = usersWithLiveStatus.length;
-    const active = usersWithLiveStatus.filter((u) => u.status === 'Active').length;
-    const inactive = usersWithLiveStatus.filter((u) => u.status === 'Inactive').length;
-    return { total, active, inactive };
+    const active = nonArchived.filter((u) => u.status === 'Active').length;
+    const inactive = nonArchived.filter((u) => u.status === 'Inactive').length;
+    return { total, active, inactive, archived };
   }, [usersWithLiveStatus]);
 
   const resetPassword = async () => {
     if (!selectedUser?.email || selectedUser.email === 'N/A') {
-      setFormError('Select a user with a valid email before sending a reset link.');
+      setFormError('No email on file for this account. Password reset is unavailable.');
       return;
     }
     if (!isSupabaseConfigured()) {
@@ -319,42 +414,57 @@ const UserManagement = () => {
       const redirectTo = `${window.location.origin}${RESET_PASSWORD_REDIRECT_PATH}`;
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
-      setFormError(`Password reset link sent to ${email}.`);
+      setFormError(`Password reset link sent.`);
     } catch (err) {
       console.error(err);
       setFormError(err.message || 'Could not send password reset link.');
     }
   };
 
-  const saveEdit = async () => {
-    if (!editUser) return;
-    const original = users.find((u) => u.id === editUser.id);
-    setSavingId(editUser.id);
-    setUsers((prev) => prev.map((u) => (u.id === editUser.id ? { ...editUser } : u)));
+  const archiveSelectedUser = () => {
+    if (!selectedUser?.id) return;
+    const set = getArchivedIdSet();
+    set.add(String(selectedUser.id));
+    setArchivedIdSet(set);
+    setSelectedUser(null);
+    void loadUsers();
+  };
+
+  const unarchiveSelectedUser = () => {
+    if (!selectedUser?.id) return;
+    const set = getArchivedIdSet();
+    set.delete(String(selectedUser.id));
+    setArchivedIdSet(set);
+    setSelectedUser(null);
+    void loadUsers();
+  };
+
+  const deleteSelectedUser = async () => {
+    if (!selectedUser?.id) return;
+    if (
+      !window.confirm(
+        'Remove this user from the directory? Their login may still exist in Authentication until removed in Supabase.'
+      )
+    ) {
+      return;
+    }
+    setFormError('');
     try {
-      if (isSupabaseConfigured()) {
-        const { error } = await supabase
-          .from('profiles')
-          .update({
-            full_name: editUser.fullName,
-            phone: editUser.phone,
-            // Keep schema-safe updates only; profile does not store raw "address"/"role" columns.
-            street: editUser.address,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', editUser.id);
-        if (error) throw error;
-        refreshAppData();
+      if (!isSupabaseConfigured()) {
+        setFormError('Connect Supabase to delete profiles from the directory.');
+        return;
       }
-      setEditUser(null);
+      const { error } = await supabase.from('profiles').delete().eq('id', selectedUser.id);
+      if (error) throw error;
+      const set = getArchivedIdSet();
+      set.delete(String(selectedUser.id));
+      setArchivedIdSet(set);
+      setSelectedUser(null);
+      refreshAppData();
+      await loadUsers();
     } catch (err) {
       console.error(err);
-      setFormError(err.message || 'Failed to save user info.');
-      if (original) {
-        setUsers((prev) => prev.map((u) => (u.id === original.id ? original : u)));
-      }
-    } finally {
-      setSavingId(null);
+      setFormError(err.message || 'Could not delete this profile.');
     }
   };
 
@@ -376,10 +486,6 @@ const UserManagement = () => {
         .icon-box.inactive { background: transparent; color: #A3AED0; }
         .um-main { flex: 1; min-height: 100vh; margin-left: ${isExpanded ? '280px' : '110px'}; transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1); padding: 40px; }
         .um-card { background: white; border: 1px solid #E9EDF7; border-radius: 20px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
-        .um-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
-        .um-summary-card { background: white; border: 1px solid #E9EDF7; border-radius: 16px; padding: 20px; }
-        .um-summary-label { font-size: 12px; color: #707EAE; font-weight: 600; }
-        .um-summary-value { margin-top: 10px; font-size: 28px; font-weight: 800; color: #1B2559; }
         .db-search-input { padding: 10px 12px 10px 36px; border: 1px solid #E9EDF7; border-radius: 12px; font-size: 13px; width: 280px; outline: none; font-family: 'Inter', sans-serif; color: #1B2559; background: white; }
         .db-search-input:focus { border-color: #2563EB; }
         .db-sort-select { border: 1px solid #E9EDF7; border-radius: 8px; padding: 4px 8px; font-size: 13px; font-weight: 600; outline: none; color: #1B2559; cursor: pointer; background: white; }
@@ -455,6 +561,7 @@ const UserManagement = () => {
         }
         .um-status-pill--active { color: #166534; background: #ECFDF3; border: 1px solid #BBF7D0; }
         .um-status-pill--inactive { color: #475569; background: #F1F5F9; border: 1px solid #E2E8F0; }
+        .um-status-pill--archived { color: #64748b; background: #F8FAFC; border: 1px solid #CBD5E1; }
         .um-status-dot { width: 8px; height: 8px; border-radius: 50%; }
         .um-status-dot--active { background: #22c55e; }
         .um-status-dot--inactive { background: #94a3b8; }
@@ -472,7 +579,6 @@ const UserManagement = () => {
           .db-mobile-only { display: flex !important; }
           .um-main { margin-left: 0 !important; width: 100vw !important; padding: 20px 12px 100px 12px !important; }
           .um-controls { flex-direction: column !important; align-items: stretch !important; gap: 12px !important; }
-          .um-summary-grid { grid-template-columns: 1fr !important; }
           .db-search-input { width: 100% !important; }
           .um-table-wrap { overflow-x: auto; }
           .um-modal-body { grid-template-columns: 1fr; }
@@ -491,10 +597,6 @@ const UserManagement = () => {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
             <div className="icon-box inactive"><LayoutGrid size={22} /></div>
             <span className="sidebar-label">Dashboard</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/analytics'); }}>
-            <div className="icon-box inactive"><BarChart2 size={22} /></div>
-            <span className="sidebar-label">Analytics</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
             <div className="icon-box inactive"><HeartPulse size={22} /></div>
@@ -535,7 +637,7 @@ const UserManagement = () => {
         <div style={{ width: '100%' }}>
           <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Customer / User Management</h1>
           <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 22, fontWeight: 500 }}>
-            View and manage user accounts from web and mobile in one admin panel.
+            View-only directory: simple IDs, presence status, and account actions. Names and contact details are hidden.
           </p>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: -10, marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
@@ -547,19 +649,14 @@ const UserManagement = () => {
             </button>
           </div>
 
-          <div className="um-summary-grid">
-            <div className="um-summary-card">
-              <div className="um-summary-label">Total Users</div>
-              <div className="um-summary-value">{summary.total}</div>
-            </div>
-            <div className="um-summary-card">
-              <div className="um-summary-label">Active Users</div>
-              <div className="um-summary-value">{summary.active}</div>
-            </div>
-            <div className="um-summary-card">
-              <div className="um-summary-label">Inactive</div>
-              <div className="um-summary-value">{summary.inactive}</div>
-            </div>
+          <div className="um-card" style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1B2559', marginBottom: 12 }}>User distribution</div>
+            <UsersStatusChart
+              active={summary.active}
+              inactive={summary.inactive}
+              archived={summary.archived}
+              total={summary.total}
+            />
           </div>
 
           <div className="um-card">
@@ -570,7 +667,7 @@ const UserManagement = () => {
                   <input
                     className="db-search-input"
                     type="text"
-                    placeholder="Search name, email, user ID, phone..."
+                    placeholder="Search by user ID…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -669,38 +766,41 @@ const UserManagement = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['User ID', 'Full Name', 'Email Address', 'Phone Number', 'Location / Address', 'Status', 'Registered Date', 'Last Active', 'Actions'].map((col, idx) => (
-                      <th className="um-th" key={col} style={{ padding: '12px 14px', borderRight: idx < 8 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>{col}</th>
+                    {['User ID', 'Status', 'Registered Date', 'Last Active', 'Actions'].map((col, idx) => (
+                      <th className="um-th" key={col} style={{ padding: '12px 14px', borderRight: idx < 4 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {loading && <tr><td colSpan={9} style={{ padding: 18, color: '#64748b' }}>Loading users...</td></tr>}
-                  {!loading && filtered.length === 0 && <tr><td colSpan={9} style={{ padding: 18, color: '#64748b' }}>No users match your search/filter.</td></tr>}
-                  {!loading && filtered.map((u) => (
+                  {loading && <tr><td colSpan={5} style={{ padding: 18, color: '#64748b' }}>Loading users...</td></tr>}
+                  {!loading && filtered.length === 0 && <tr><td colSpan={5} style={{ padding: 18, color: '#64748b' }}>No users match your search/filter.</td></tr>}
+                  {!loading && filtered.map((u) => {
+                    const ls = u.listStatus || (u.isArchived ? 'Archived' : u.status);
+                    const pillClass =
+                      ls === 'Active'
+                        ? 'um-status-pill--active'
+                        : ls === 'Archived'
+                          ? 'um-status-pill--archived'
+                          : 'um-status-pill--inactive';
+                    const dotClass =
+                      ls === 'Active' ? 'um-status-dot--active' : 'um-status-dot--inactive';
+                    return (
                     <tr key={u.id} className="um-row" style={{ borderBottom: '1px solid #F4F7FE' }}>
-                      <td style={{ padding: '14px', color: '#1B2559', fontWeight: 700 }}>{u.id}</td>
-                      <td style={{ padding: '14px', color: '#1B2559', fontWeight: 600 }}>{u.fullName}</td>
-                      <td style={{ padding: '14px', color: '#1B2559' }}>{u.email}</td>
-                      <td style={{ padding: '14px', color: '#707EAE' }}>{u.phone}</td>
-                      <td style={{ padding: '14px', color: '#707EAE' }}>{u.address}</td>
-                      <td style={{ padding: '14px', minWidth: 170 }}>
-                        <span className={`um-status-pill ${u.status === 'Active' ? 'um-status-pill--active' : 'um-status-pill--inactive'}`}>
-                          <span className={`um-status-dot ${u.status === 'Active' ? 'um-status-dot--active' : 'um-status-dot--inactive'}`} />
-                          {u.status}
+                      <td style={{ padding: '14px', color: '#1B2559', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{u.displayId}</td>
+                      <td style={{ padding: '14px', minWidth: 140 }}>
+                        <span className={`um-status-pill ${pillClass}`}>
+                          {ls !== 'Archived' && <span className={`um-status-dot ${dotClass}`} />}
+                          {ls}
                         </span>
                       </td>
                       <td style={{ padding: '14px', color: '#1B2559' }}>{safeDateText(u.registeredAt)}</td>
                       <td style={{ padding: '14px', color: '#1B2559' }}>{safeDateTimeText(u.lastActiveAt)}</td>
                       <td style={{ padding: '14px' }}>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <button className="db-view-btn" onClick={() => setSelectedUser(u)}><Eye size={13} /> View</button>
-                          <button className="db-edit-btn" onClick={() => setEditUser({ ...u })}><Edit2 size={13} /> Edit</button>
-                          <button className="db-action-btn" onClick={() => void resetPassword()}><RotateCcw size={13} /> Reset</button>
-                        </div>
+                        <button type="button" className="db-view-btn" onClick={() => setSelectedUser(u)}><Eye size={13} /> View</button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -714,12 +814,6 @@ const UserManagement = () => {
             <LayoutGrid size={20} color="#A3AED0" />
           </div>
           <span>Dashboard</span>
-        </div>
-        <div className="mob-nav-item" onClick={() => navigate('/analytics')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <BarChart2 size={20} color="#A3AED0" />
-          </div>
-          <span>Analytics</span>
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}>
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
@@ -745,62 +839,56 @@ const UserManagement = () => {
         <div className="um-modal-backdrop" onClick={() => setSelectedUser(null)}>
           <div className="um-modal" onClick={(e) => e.stopPropagation()}>
             <div className="um-modal-head">
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#1B2559' }}>User Details</div>
-              <button className="db-action-btn" onClick={() => setSelectedUser(null)}><X size={16} /></button>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#1B2559' }}>User account</div>
+              <button type="button" className="db-action-btn" onClick={() => setSelectedUser(null)}><X size={16} /></button>
             </div>
             <div className="um-modal-body">
-              <div className="um-modal-field"><span className="um-modal-label">Full Name</span><div className="um-input">{selectedUser.fullName}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Email</span><div className="um-input">{selectedUser.email}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Phone</span><div className="um-input">{selectedUser.phone}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Address</span><div className="um-input">{selectedUser.address}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Registered Date</span><div className="um-input">{safeDateText(selectedUser.registeredAt)}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Last Active</span><div className="um-input">{safeDateText(selectedUser.lastActiveAt)}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Current Status</span><div className="um-input">{selectedUser.status}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Role / Account Type</span><div className="um-input">{selectedUser.role}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Source</span><div className="um-input">{selectedUser.source}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Usage</span><div className="um-input">Web and mobile usage data can be added here.</div></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editUser && (
-        <div className="um-modal-backdrop" onClick={() => setEditUser(null)}>
-          <div className="um-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="um-modal-head">
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#1B2559' }}>Edit User Info</div>
-              <button className="db-action-btn" onClick={() => setEditUser(null)}><X size={16} /></button>
-            </div>
-            <div className="um-modal-body">
-              <label className="um-modal-field">
-                <span className="um-modal-label">Full Name</span>
-                <input className="um-input" value={editUser.fullName} onChange={(e) => setEditUser((p) => ({ ...p, fullName: e.target.value }))} />
-              </label>
-              <label className="um-modal-field">
-                <span className="um-modal-label">Email (read only)</span>
-                <input className="um-input" value={editUser.email} readOnly />
-              </label>
-              <label className="um-modal-field">
-                <span className="um-modal-label">Phone Number</span>
-                <input className="um-input" value={editUser.phone} onChange={(e) => setEditUser((p) => ({ ...p, phone: e.target.value }))} />
-              </label>
-              <label className="um-modal-field">
-                <span className="um-modal-label">Address</span>
-                <input className="um-input" value={editUser.address} onChange={(e) => setEditUser((p) => ({ ...p, address: e.target.value }))} />
-              </label>
-              <label className="um-modal-field">
-                <span className="um-modal-label">Role / Account Type</span>
-                <input className="um-input" value={editUser.role} onChange={(e) => setEditUser((p) => ({ ...p, role: e.target.value }))} />
-              </label>
+              <div className="um-modal-field" style={{ gridColumn: '1 / -1' }}>
+                <span className="um-modal-label">User ID</span>
+                <div className="um-input" style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{selectedUser.displayId}</div>
+              </div>
               <div className="um-modal-field">
                 <span className="um-modal-label">Status</span>
-                <div className="um-input">{editUser.status}</div>
+                <div className="um-input">
+                  {selectedUser.listStatus || (selectedUser.isArchived ? 'Archived' : selectedUser.status)}
+                </div>
+              </div>
+              <div className="um-modal-field">
+                <span className="um-modal-label">Role</span>
+                <div className="um-input">{selectedUser.role}</div>
+              </div>
+              <div className="um-modal-field">
+                <span className="um-modal-label">Registered</span>
+                <div className="um-input">{safeDateText(selectedUser.registeredAt)}</div>
+              </div>
+              <div className="um-modal-field">
+                <span className="um-modal-label">Last active</span>
+                <div className="um-input">{safeDateTimeText(selectedUser.lastActiveAt)}</div>
+              </div>
+              <div className="um-modal-field" style={{ gridColumn: '1 / -1' }}>
+                <UsersStatusChart
+                  active={summary.active}
+                  inactive={summary.inactive}
+                  archived={summary.archived}
+                  total={summary.total}
+                />
               </div>
             </div>
-            <div style={{ padding: 20, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button className="db-action-btn" onClick={() => setEditUser(null)}>Cancel</button>
-              <button className="db-edit-btn" disabled={savingId === editUser.id} onClick={() => void saveEdit()}>
-                {savingId === editUser.id ? 'Saving...' : 'Save Changes'}
+            <div style={{ padding: '16px 20px', borderTop: '1px solid #EEF2FF', display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" className="db-action-btn" onClick={() => void resetPassword()} disabled={!selectedUser.email || selectedUser.email === 'N/A'}>
+                <RotateCcw size={13} /> Send password reset
+              </button>
+              {!selectedUser.isArchived ? (
+                <button type="button" className="db-action-btn" onClick={() => archiveSelectedUser()}>
+                  <Archive size={13} /> Archive
+                </button>
+              ) : (
+                <button type="button" className="db-action-btn" onClick={() => unarchiveSelectedUser()}>
+                  Restore from archive
+                </button>
+              )}
+              <button type="button" className="db-action-btn" style={{ color: '#b91c1c', borderColor: '#fecaca', background: '#fef2f2' }} onClick={() => void deleteSelectedUser()}>
+                <Trash2 size={13} /> Delete account
               </button>
             </div>
           </div>

@@ -18,8 +18,8 @@ export function getWebOAuthRedirectUrl() {
 }
 
 /**
- * Starts Google OAuth (browser redirect). On success the page navigates away.
- * Call setOAuthExpectedRole before this when the user chose a role on the login form.
+ * Starts Google OAuth (browser redirect). On success the app routes by the account's
+ * role from profiles.account_type / JWT (see resolveAccountRole in RoleGuard).
  */
 export async function startGoogleOAuthWeb() {
   const redirectTo = getWebOAuthRedirectUrl();

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import {
   LayoutGrid,
-  BarChart2,
   HeartPulse,
   Users,
   LogOut,
@@ -16,11 +15,14 @@ import {
   ChevronDown,
   Stethoscope,
   ArrowUpDown,
+  UserPlus,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
+import { formatAuthError } from '@/lib/authErrors';
+import { getPasswordPolicyError } from '@/lib/passwordPolicy';
 
 const META_KEY = 'bh_staff_admin_meta';
 const LOCAL_STAFF_KEY = 'bh_staff_directory';
@@ -245,6 +247,15 @@ const StaffManagement = () => {
   const [savingId, setSavingId] = useState(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
 
+  const [addNurseOpen, setAddNurseOpen] = useState(false);
+  const [addNurseFullName, setAddNurseFullName] = useState('');
+  const [addNurseEmail, setAddNurseEmail] = useState('');
+  const [addNursePhone, setAddNursePhone] = useState('');
+  const [addNursePassword, setAddNursePassword] = useState('');
+  const [addNurseConfirmPassword, setAddNurseConfirmPassword] = useState('');
+  const [addNurseSubmitting, setAddNurseSubmitting] = useState(false);
+  const [addNurseError, setAddNurseError] = useState('');
+
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
@@ -388,6 +399,108 @@ const StaffManagement = () => {
     }
   };
 
+  const closeAddNurseModal = () => {
+    setAddNurseOpen(false);
+    setAddNurseFullName('');
+    setAddNurseEmail('');
+    setAddNursePhone('');
+    setAddNursePassword('');
+    setAddNurseConfirmPassword('');
+    setAddNurseError('');
+  };
+
+  const createNurseAccount = async () => {
+    setAddNurseError('');
+    const fullName = addNurseFullName.trim();
+    const email = addNurseEmail.trim();
+    const phone = addNursePhone.trim();
+    if (!fullName) {
+      setAddNurseError('Full name is required.');
+      return;
+    }
+    if (!email) {
+      setAddNurseError('Email is required.');
+      return;
+    }
+    const pwErr = getPasswordPolicyError(addNursePassword);
+    if (pwErr) {
+      setAddNurseError(pwErr);
+      return;
+    }
+    if (addNursePassword !== addNurseConfirmPassword) {
+      setAddNurseError('Passwords do not match.');
+      return;
+    }
+    if (!isSupabaseConfigured()) {
+      setAddNurseError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      return;
+    }
+
+    const {
+      data: { session: adminSession },
+    } = await supabase.auth.getSession();
+    if (!adminSession?.access_token || !adminSession?.refresh_token) {
+      setAddNurseError('Your session expired. Sign in again.');
+      return;
+    }
+
+    setAddNurseSubmitting(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password: addNursePassword,
+        options: {
+          data: {
+            account_type: 'nurse',
+            full_name: fullName,
+            contact_number: phone,
+          },
+        },
+      });
+      if (error) {
+        setAddNurseError(formatAuthError(error));
+        return;
+      }
+      const newId = data?.user?.id;
+      if (!newId) {
+        setAddNurseError('Could not create the account. Check Auth settings (e.g. email confirmations).');
+        return;
+      }
+      const { error: profileError } = await supabase.from('profiles').upsert(
+        {
+          id: newId,
+          full_name: fullName,
+          phone: phone || null,
+          account_type: 'nurse',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' },
+      );
+      if (profileError) {
+        setAddNurseError(
+          `Auth user was created, but saving the profile failed: ${profileError.message}. Update RLS or the profiles table if needed.`,
+        );
+        return;
+      }
+      refreshAppData();
+      await loadStaff();
+      closeAddNurseModal();
+    } catch (err) {
+      console.error(err);
+      setAddNurseError(err?.message || 'Failed to create nurse account.');
+    } finally {
+      setAddNurseSubmitting(false);
+      try {
+        await supabase.auth.setSession({
+          access_token: adminSession.access_token,
+          refresh_token: adminSession.refresh_token,
+        });
+      } catch (e) {
+        console.warn('[staff-management] Could not restore admin session after creating nurse:', e);
+      }
+    }
+  };
+
   const applySuspend = (s, suspended) => {
     persistMetaForId(s.id, { suspended });
     void loadStaff();
@@ -503,10 +616,6 @@ const StaffManagement = () => {
             <div className="icon-box inactive"><LayoutGrid size={22} /></div>
             <span className="sidebar-label">Dashboard</span>
           </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/analytics'); }}>
-            <div className="icon-box inactive"><BarChart2 size={22} /></div>
-            <span className="sidebar-label">Analytics</span>
-          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
             <div className="icon-box inactive"><HeartPulse size={22} /></div>
             <span className="sidebar-label">Patient Management</span>
@@ -553,9 +662,23 @@ const StaffManagement = () => {
             <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
               Active means seen within the last 15 minutes. Department, branch, and shift use local admin notes when columns are missing in the database.
             </span>
-            <button type="button" className="db-action-btn" onClick={() => void loadStaff()} disabled={loading}>
-              <RefreshCw size={13} /> {loading ? 'Refreshing...' : `Refresh (${safeDateTimeText(lastRefreshedAt)})`}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="db-edit-btn"
+                onClick={() => {
+                  setAddNurseError('');
+                  setAddNurseOpen(true);
+                }}
+                disabled={!isSupabaseConfigured() || loading}
+                title={!isSupabaseConfigured() ? 'Configure Supabase in .env first' : 'Create a nurse login in Auth and profiles'}
+              >
+                <UserPlus size={14} /> Add nurse account
+              </button>
+              <button type="button" className="db-action-btn" onClick={() => void loadStaff()} disabled={loading}>
+                <RefreshCw size={13} /> {loading ? 'Refreshing...' : `Refresh (${safeDateTimeText(lastRefreshedAt)})`}
+              </button>
+            </div>
           </div>
 
           <div className="um-summary-grid um-summary-grid--six">
@@ -795,12 +918,6 @@ const StaffManagement = () => {
           </div>
           <span>Dashboard</span>
         </div>
-        <div className="mob-nav-item" onClick={() => navigate('/analytics')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <BarChart2 size={20} color="#A3AED0" />
-          </div>
-          <span>Analytics</span>
-        </div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}>
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
             <HeartPulse size={20} color="#A3AED0" />
@@ -848,6 +965,91 @@ const StaffManagement = () => {
               <div className="um-modal-field"><span className="um-modal-label">Assigned Patients (manual)</span><div className="um-input">{selected.assignedPatientsCount}</div></div>
               <div className="um-modal-field"><span className="um-modal-label">Registered</span><div className="um-input">{safeDateText(selected.registeredAt)}</div></div>
               <div className="um-modal-field"><span className="um-modal-label">Last Active</span><div className="um-input">{safeDateTimeText(selected.lastActiveAt)}</div></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addNurseOpen && (
+        <div className="um-modal-backdrop" onClick={() => !addNurseSubmitting && closeAddNurseModal()} role="presentation">
+          <div className="um-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="add-nurse-title">
+            <div className="um-modal-head">
+              <div id="add-nurse-title" style={{ fontSize: 18, fontWeight: 800, color: '#1B2559' }}>Add nurse account</div>
+              <button type="button" className="db-action-btn" disabled={addNurseSubmitting} onClick={() => closeAddNurseModal()}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="um-modal-body">
+              <p style={{ gridColumn: '1 / -1', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+                Creates a Supabase Auth user and a <code style={{ fontSize: 12 }}>profiles</code> row with{' '}
+                <code style={{ fontSize: 12 }}>account_type: nurse</code>. The nurse can sign in with this email and password.
+                If your project requires email confirmation, they must verify before logging in.
+              </p>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Full name</span>
+                <input
+                  className="um-input"
+                  autoComplete="name"
+                  value={addNurseFullName}
+                  onChange={(e) => setAddNurseFullName(e.target.value)}
+                  disabled={addNurseSubmitting}
+                />
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Email</span>
+                <input
+                  className="um-input"
+                  type="email"
+                  autoComplete="off"
+                  value={addNurseEmail}
+                  onChange={(e) => setAddNurseEmail(e.target.value)}
+                  disabled={addNurseSubmitting}
+                />
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Phone (optional)</span>
+                <input
+                  className="um-input"
+                  type="tel"
+                  autoComplete="tel"
+                  value={addNursePhone}
+                  onChange={(e) => setAddNursePhone(e.target.value)}
+                  disabled={addNurseSubmitting}
+                />
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Password</span>
+                <input
+                  className="um-input"
+                  type="password"
+                  autoComplete="new-password"
+                  value={addNursePassword}
+                  onChange={(e) => setAddNursePassword(e.target.value)}
+                  disabled={addNurseSubmitting}
+                />
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Confirm password</span>
+                <input
+                  className="um-input"
+                  type="password"
+                  autoComplete="new-password"
+                  value={addNurseConfirmPassword}
+                  onChange={(e) => setAddNurseConfirmPassword(e.target.value)}
+                  disabled={addNurseSubmitting}
+                />
+              </label>
+              {addNurseError && (
+                <div style={{ gridColumn: '1 / -1', color: '#b91c1c', fontWeight: 600, fontSize: 13 }}>{addNurseError}</div>
+              )}
+            </div>
+            <div style={{ padding: 20, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="db-action-btn" disabled={addNurseSubmitting} onClick={() => closeAddNurseModal()}>
+                Cancel
+              </button>
+              <button type="button" className="db-edit-btn" disabled={addNurseSubmitting} onClick={() => void createNurseAccount()}>
+                {addNurseSubmitting ? 'Creating…' : 'Create account'}
+              </button>
             </div>
           </div>
         </div>

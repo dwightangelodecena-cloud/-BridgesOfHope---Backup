@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, X, Phone, MapPin, Building2, Hash } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, X, Phone, MapPin, Building2, Hash, CheckCircle } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import logo from '@/assets/logo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -13,6 +13,7 @@ import {
   saveAddressDraft,
   clearAddressDraft,
 } from '@/lib/addressPersistence';
+import { getPasswordStrengthChecks, getPasswordPolicyError, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
 
 const SignUp = () => {
   const navigate = useNavigate();
@@ -187,18 +188,8 @@ const SignUp = () => {
     if (!formData.email.trim()) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = "Invalid email format";
 
-    const p = formData.password;
-    if (!p.trim()) {
-      newErrors.password = "Password is required";
-    } else if (/\s/.test(p)) {
-      newErrors.password = "Password must not contain spaces.";
-    } else if (p.length < 8) {
-      newErrors.password = "Password must be at least 8 characters long.";
-    } else if (!/[A-Z]/.test(p)) {
-      newErrors.password = "Password must include at least one uppercase letter.";
-    } else if (!/\d/.test(p)) {
-      newErrors.password = "Password must include at least one number.";
-    }
+    const pwErr = getPasswordPolicyError(formData.password);
+    if (pwErr) newErrors.password = pwErr;
 
     if (!formData.confirmPassword.trim()) {
       newErrors.confirmPassword = "Please confirm your password";
@@ -288,6 +279,8 @@ const SignUp = () => {
 
     navigate('/login');
   };
+
+  const pwChecks = getPasswordStrengthChecks(formData.password);
 
   return (
     <div className="signup-container">
@@ -392,6 +385,29 @@ const SignUp = () => {
           margin-top: 5px;
           font-weight: 500;
           margin-left: 4px;
+        }
+
+        .password-requirements {
+          margin-top: 10px;
+          text-align: left;
+          font-size: 0.72rem;
+          color: #64748b;
+          line-height: 1.55;
+        }
+        .password-requirements .req-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 3px;
+          font-weight: 500;
+        }
+        .password-requirements .req-row.met { color: #059669; }
+        .password-requirements .req-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          border: 1.5px solid #94a3b8;
+          flex-shrink: 0;
         }
 
         .input-wrapper input:focus {
@@ -793,6 +809,32 @@ const SignUp = () => {
                   <button type="button" className="eye-icon" onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={22} /> : <Eye size={22} />}</button>
                 </div>
                 {errors.password && <div className="error-message">{errors.password}</div>}
+                <div className="password-requirements" aria-label="Password requirements">
+                  <div className={`req-row ${pwChecks.lengthOk ? 'met' : ''}`}>
+                    {pwChecks.lengthOk ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    At least {PASSWORD_MIN_LENGTH} characters
+                  </div>
+                  <div className={`req-row ${pwChecks.upper ? 'met' : ''}`}>
+                    {pwChecks.upper ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    One uppercase letter
+                  </div>
+                  <div className={`req-row ${pwChecks.lower ? 'met' : ''}`}>
+                    {pwChecks.lower ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    One lowercase letter
+                  </div>
+                  <div className={`req-row ${pwChecks.number ? 'met' : ''}`}>
+                    {pwChecks.number ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    One number
+                  </div>
+                  <div className={`req-row ${pwChecks.special ? 'met' : ''}`}>
+                    {pwChecks.special ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    One special character (! @ # $ % …)
+                  </div>
+                  <div className={`req-row ${pwChecks.noSpaces ? 'met' : ''}`}>
+                    {pwChecks.noSpaces ? <CheckCircle size={13} /> : <span className="req-dot" />}
+                    No spaces
+                  </div>
+                </div>
               </div>
 
               <div className="form-group">

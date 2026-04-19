@@ -70,7 +70,7 @@ const emptyForm: FormData = {
   agreeToTerms: false,
 };
 
-const REASON_OPTIONS = ['Substance Abuse', 'Non-Substance Abuse'] as const;
+const REASON_OPTIONS = ['Drugs', 'Alcohol', 'Gambling', 'Mental health'] as const;
 
 export default function AdmissionForm() {
   const router = useRouter();
