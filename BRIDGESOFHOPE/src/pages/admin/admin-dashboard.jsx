@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
-import { LayoutGrid, HeartPulse, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope } from 'lucide-react';
+import { LayoutGrid, HeartPulse, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope, LayoutTemplate } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -819,6 +819,10 @@ const AdminDashboard = () => {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
             <div className="icon-box inactive"><Stethoscope size={22} /></div>
             <span className="sidebar-label">Staff Management</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
+            <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
+            <span className="sidebar-label">Content management</span>
           </div>
         </nav>
         <div className="sidebar-footer">

@@ -16,6 +16,7 @@ import {
   Stethoscope,
   ArrowUpDown,
   UserPlus,
+  LayoutTemplate,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
@@ -26,6 +27,7 @@ import { getPasswordPolicyError } from '@/lib/passwordPolicy';
 
 const META_KEY = 'bh_staff_admin_meta';
 const LOCAL_STAFF_KEY = 'bh_staff_directory';
+const FIXED_BRANCH = 'Imus';
 
 const ROLE_FILTER_OPTIONS = ['All Staff', 'Nurses', 'Clinic Staff'];
 const STATUS_FILTER_OPTIONS = [
@@ -145,6 +147,19 @@ const isStaffAccount = (account) => {
   return a.includes('staff') || a === 'clinic' || a.includes('clinic');
 };
 
+const toTitleCase = (value) =>
+  String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+
+const normalizeMiddleInitial = (value) => String(value || '').trim().replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase();
+
+const composeName = (firstName, lastName, middleInitial) =>
+  [toTitleCase(firstName), normalizeMiddleInitial(middleInitial), toTitleCase(lastName)].filter(Boolean).join(' ');
+
 const staffMatchesRoleFilter = (row, roleFilter) => {
   if (roleFilter === 'All Staff') return true;
   const acc = row.account_type || row.role || '';
@@ -173,14 +188,18 @@ const mapRowToStaff = (row, idx, meta) => {
   return {
     id,
     staffId: sid,
-    fullName: row.full_name || row.name || 'Unknown',
+    fullName:
+      row.full_name ||
+      row.name ||
+      composeName(row.first_name, row.last_name, row.middle_initial) ||
+      'Unknown',
     email: row.email || 'N/A',
     phone: row.phone || row.contact_number || row.mobile || 'N/A',
     address: buildAddressFromRow(row),
     roleLabel,
     roleRaw: accountRaw,
     department: m.department || row.department || 'General',
-    branch: m.branch || row.branch || 'Main',
+    branch: m.branch || row.branch || FIXED_BRANCH,
     shift: m.shift || row.shift || '—',
     employmentType: m.employmentType || row.employment_type || 'Full-time',
     status: suspended ? 'Inactive' : presence,
@@ -247,14 +266,21 @@ const StaffManagement = () => {
   const [savingId, setSavingId] = useState(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
 
-  const [addNurseOpen, setAddNurseOpen] = useState(false);
-  const [addNurseFullName, setAddNurseFullName] = useState('');
-  const [addNurseEmail, setAddNurseEmail] = useState('');
-  const [addNursePhone, setAddNursePhone] = useState('');
-  const [addNursePassword, setAddNursePassword] = useState('');
-  const [addNurseConfirmPassword, setAddNurseConfirmPassword] = useState('');
-  const [addNurseSubmitting, setAddNurseSubmitting] = useState(false);
-  const [addNurseError, setAddNurseError] = useState('');
+  const [addStaffOpen, setAddStaffOpen] = useState(false);
+  const [addStaffFirstName, setAddStaffFirstName] = useState('');
+  const [addStaffLastName, setAddStaffLastName] = useState('');
+  const [addStaffMiddleInitial, setAddStaffMiddleInitial] = useState('');
+  const [addStaffEmail, setAddStaffEmail] = useState('');
+  const [addStaffPhone, setAddStaffPhone] = useState('');
+  const [addStaffRole, setAddStaffRole] = useState('staff');
+  const [addStaffDepartment, setAddStaffDepartment] = useState('');
+  const [addStaffShift, setAddStaffShift] = useState('');
+  const [addStaffEmploymentType, setAddStaffEmploymentType] = useState('Full-time');
+  const [addStaffAddress, setAddStaffAddress] = useState('');
+  const [addStaffPassword, setAddStaffPassword] = useState('');
+  const [addStaffConfirmPassword, setAddStaffConfirmPassword] = useState('');
+  const [addStaffSubmitting, setAddStaffSubmitting] = useState(false);
+  const [addStaffError, setAddStaffError] = useState('');
 
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
@@ -345,19 +371,6 @@ const StaffManagement = () => {
     return sortStaff(byStatus, sortField, sortDirection);
   }, [staff, search, roleFilter, statusFilter, sortField, sortDirection]);
 
-  const summary = useMemo(() => {
-    const activeNurses = staff.filter(
-      (s) => isNurseAccount(s.roleRaw) && s.presence === 'Active' && !s.suspended,
-    ).length;
-    const activeClinicStaff = staff.filter(
-      (s) => isStaffAccount(s.roleRaw) && !isNurseAccount(s.roleRaw) && s.presence === 'Active' && !s.suspended,
-    ).length;
-    const available = staff.filter((s) => s.availability === 'Available' && !s.suspended).length;
-    const onDuty = staff.filter((s) => s.duty === 'On Duty' && !s.suspended).length;
-    const inactive = staff.filter((s) => s.presence === 'Inactive' || s.suspended).length;
-    return { activeNurses, activeClinicStaff, available, onDuty, inactive, total: staff.length };
-  }, [staff]);
-
   const saveEdit = async () => {
     if (!editRow) return;
     setSavingId(editRow.id);
@@ -383,7 +396,7 @@ const StaffManagement = () => {
       }
       persistMetaForId(editRow.id, {
         department: editRow.department,
-        branch: editRow.branch,
+        branch: FIXED_BRANCH,
         shift: editRow.shift,
         employmentType: editRow.employmentType,
         assignedPatientsCount: editRow.assignedPatientsCount,
@@ -399,40 +412,75 @@ const StaffManagement = () => {
     }
   };
 
-  const closeAddNurseModal = () => {
-    setAddNurseOpen(false);
-    setAddNurseFullName('');
-    setAddNurseEmail('');
-    setAddNursePhone('');
-    setAddNursePassword('');
-    setAddNurseConfirmPassword('');
-    setAddNurseError('');
+  const closeAddStaffModal = () => {
+    setAddStaffOpen(false);
+    setAddStaffFirstName('');
+    setAddStaffLastName('');
+    setAddStaffMiddleInitial('');
+    setAddStaffEmail('');
+    setAddStaffPhone('');
+    setAddStaffRole('staff');
+    setAddStaffDepartment('');
+    setAddStaffShift('');
+    setAddStaffEmploymentType('Full-time');
+    setAddStaffAddress('');
+    setAddStaffPassword('');
+    setAddStaffConfirmPassword('');
+    setAddStaffError('');
   };
 
-  const createNurseAccount = async () => {
-    setAddNurseError('');
-    const fullName = addNurseFullName.trim();
-    const email = addNurseEmail.trim();
-    const phone = addNursePhone.trim();
-    if (!fullName) {
-      setAddNurseError('Full name is required.');
+  const createStaffAccount = async () => {
+    setAddStaffError('');
+    const firstName = toTitleCase(addStaffFirstName);
+    const lastName = toTitleCase(addStaffLastName);
+    const middleInitial = normalizeMiddleInitial(addStaffMiddleInitial);
+    const fullName = composeName(firstName, lastName, middleInitial);
+    const email = addStaffEmail.trim();
+    const phone = addStaffPhone.trim();
+    const department = addStaffDepartment.trim();
+    const branch = FIXED_BRANCH;
+    const shift = addStaffShift.trim();
+    const employmentType = addStaffEmploymentType.trim();
+    const address = addStaffAddress.trim();
+    if (!firstName) {
+      setAddStaffError('First name is required.');
+      return;
+    }
+    if (!lastName) {
+      setAddStaffError('Last name is required.');
       return;
     }
     if (!email) {
-      setAddNurseError('Email is required.');
+      setAddStaffError('Email is required.');
       return;
     }
-    const pwErr = getPasswordPolicyError(addNursePassword);
+    if (!phone) {
+      setAddStaffError('Phone is required.');
+      return;
+    }
+    if (!department) {
+      setAddStaffError('Department is required.');
+      return;
+    }
+    if (!shift) {
+      setAddStaffError('Shift is required.');
+      return;
+    }
+    if (!employmentType) {
+      setAddStaffError('Employment type is required.');
+      return;
+    }
+    const pwErr = getPasswordPolicyError(addStaffPassword);
     if (pwErr) {
-      setAddNurseError(pwErr);
+      setAddStaffError(pwErr);
       return;
     }
-    if (addNursePassword !== addNurseConfirmPassword) {
-      setAddNurseError('Passwords do not match.');
+    if (addStaffPassword !== addStaffConfirmPassword) {
+      setAddStaffError('Passwords do not match.');
       return;
     }
     if (!isSupabaseConfigured()) {
-      setAddNurseError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      setAddStaffError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
       return;
     }
 
@@ -440,63 +488,81 @@ const StaffManagement = () => {
       data: { session: adminSession },
     } = await supabase.auth.getSession();
     if (!adminSession?.access_token || !adminSession?.refresh_token) {
-      setAddNurseError('Your session expired. Sign in again.');
+      setAddStaffError('Your session expired. Sign in again.');
       return;
     }
 
-    setAddNurseSubmitting(true);
+    setAddStaffSubmitting(true);
     try {
+      const accountType = addStaffRole === 'nurse' ? 'nurse' : 'staff';
       const { data, error } = await supabase.auth.signUp({
         email,
-        password: addNursePassword,
+        password: addStaffPassword,
         options: {
           data: {
-            account_type: 'nurse',
+            account_type: accountType,
+            first_name: firstName,
+            last_name: lastName,
+            middle_initial: middleInitial,
             full_name: fullName,
             contact_number: phone,
+            department,
+            branch,
+            shift,
+            employment_type: employmentType,
+            address: address || null,
           },
         },
       });
       if (error) {
-        setAddNurseError(formatAuthError(error));
+        setAddStaffError(formatAuthError(error));
         return;
       }
       const newId = data?.user?.id;
       if (!newId) {
-        setAddNurseError('Could not create the account. Check Auth settings (e.g. email confirmations).');
+        setAddStaffError('Could not create the account. Check Auth settings (e.g. email confirmations).');
         return;
       }
       const { error: profileError } = await supabase.from('profiles').upsert(
         {
           id: newId,
+          first_name: firstName,
+          last_name: lastName,
+          middle_initial: middleInitial,
           full_name: fullName,
           phone: phone || null,
-          account_type: 'nurse',
+          contact_number: phone || null,
+          account_type: accountType,
+          department,
+          branch,
+          shift,
+          employment_type: employmentType,
+          address: address || null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'id' },
       );
       if (profileError) {
-        setAddNurseError(
+        setAddStaffError(
           `Auth user was created, but saving the profile failed: ${profileError.message}. Update RLS or the profiles table if needed.`,
         );
         return;
       }
       refreshAppData();
       await loadStaff();
-      closeAddNurseModal();
+      closeAddStaffModal();
     } catch (err) {
       console.error(err);
-      setAddNurseError(err?.message || 'Failed to create nurse account.');
+      setAddStaffError(err?.message || 'Failed to create staff account.');
     } finally {
-      setAddNurseSubmitting(false);
+      setAddStaffSubmitting(false);
       try {
         await supabase.auth.setSession({
           access_token: adminSession.access_token,
           refresh_token: adminSession.refresh_token,
         });
       } catch (e) {
-        console.warn('[staff-management] Could not restore admin session after creating nurse:', e);
+        console.warn('[staff-management] Could not restore admin session after creating staff:', e);
       }
     }
   };
@@ -636,6 +702,10 @@ const StaffManagement = () => {
             <div className="icon-box active"><Stethoscope size={22} /></div>
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Staff Management</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
+            <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
+            <span className="sidebar-label">Content management</span>
+          </div>
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
@@ -653,58 +723,31 @@ const StaffManagement = () => {
 
       <main className="um-main">
         <div style={{ width: '100%', minWidth: 0 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Staff / Nurse Management</h1>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Staff Management</h1>
           <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 22, fontWeight: 500 }}>
-            Monitor nurses and clinic staff—availability, duty status, and assignments in one place.
+            Monitor nurses and clinic staff in Imus—availability, duty status, and assignments in one place.
           </p>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: -10, marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
-              Active means seen within the last 15 minutes. Department, branch, and shift use local admin notes when columns are missing in the database.
+              Active means seen within the last 15 minutes. Branch is fixed to Imus. Department and shift use local admin notes when columns are missing in the database.
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className="db-edit-btn"
                 onClick={() => {
-                  setAddNurseError('');
-                  setAddNurseOpen(true);
+                  setAddStaffError('');
+                  setAddStaffOpen(true);
                 }}
                 disabled={!isSupabaseConfigured() || loading}
-                title={!isSupabaseConfigured() ? 'Configure Supabase in .env first' : 'Create a nurse login in Auth and profiles'}
+                title={!isSupabaseConfigured() ? 'Configure Supabase in .env first' : 'Create a staff login in Auth and profiles'}
               >
-                <UserPlus size={14} /> Add nurse account
+                <UserPlus size={14} /> Add staff account
               </button>
               <button type="button" className="db-action-btn" onClick={() => void loadStaff()} disabled={loading}>
                 <RefreshCw size={13} /> {loading ? 'Refreshing...' : `Refresh (${safeDateTimeText(lastRefreshedAt)})`}
               </button>
-            </div>
-          </div>
-
-          <div className="um-summary-grid um-summary-grid--six">
-            <div className="um-summary-card">
-              <div className="um-summary-label">Active Nurses</div>
-              <div className="um-summary-value">{summary.activeNurses}</div>
-            </div>
-            <div className="um-summary-card">
-              <div className="um-summary-label">Active Clinic Staff</div>
-              <div className="um-summary-value">{summary.activeClinicStaff}</div>
-            </div>
-            <div className="um-summary-card">
-              <div className="um-summary-label">Available</div>
-              <div className="um-summary-value">{summary.available}</div>
-            </div>
-            <div className="um-summary-card">
-              <div className="um-summary-label">On Duty</div>
-              <div className="um-summary-value">{summary.onDuty}</div>
-            </div>
-            <div className="um-summary-card">
-              <div className="um-summary-label">Inactive / Suspended</div>
-              <div className="um-summary-value">{summary.inactive}</div>
-            </div>
-            <div className="um-summary-card">
-              <div className="um-summary-label">Total Personnel</div>
-              <div className="um-summary-value">{summary.total}</div>
             </div>
           </div>
 
@@ -970,29 +1013,49 @@ const StaffManagement = () => {
         </div>
       )}
 
-      {addNurseOpen && (
-        <div className="um-modal-backdrop" onClick={() => !addNurseSubmitting && closeAddNurseModal()} role="presentation">
-          <div className="um-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="add-nurse-title">
+      {addStaffOpen && (
+        <div className="um-modal-backdrop" onClick={() => !addStaffSubmitting && closeAddStaffModal()} role="presentation">
+          <div className="um-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="add-staff-title">
             <div className="um-modal-head">
-              <div id="add-nurse-title" style={{ fontSize: 18, fontWeight: 800, color: '#1B2559' }}>Add nurse account</div>
-              <button type="button" className="db-action-btn" disabled={addNurseSubmitting} onClick={() => closeAddNurseModal()}>
+              <div id="add-staff-title" style={{ fontSize: 18, fontWeight: 800, color: '#1B2559' }}>Add staff account</div>
+              <button type="button" className="db-action-btn" disabled={addStaffSubmitting} onClick={() => closeAddStaffModal()}>
                 <X size={16} />
               </button>
             </div>
             <div className="um-modal-body">
               <p style={{ gridColumn: '1 / -1', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
                 Creates a Supabase Auth user and a <code style={{ fontSize: 12 }}>profiles</code> row with{' '}
-                <code style={{ fontSize: 12 }}>account_type: nurse</code>. The nurse can sign in with this email and password.
-                If your project requires email confirmation, they must verify before logging in.
+                required profile fields. Choose role (<code style={{ fontSize: 12 }}>staff</code> or{' '}
+                <code style={{ fontSize: 12 }}>nurse</code>) and provide identity details before creating the account.
               </p>
               <label className="um-modal-field">
-                <span className="um-modal-label">Full name</span>
+                <span className="um-modal-label">First name</span>
                 <input
                   className="um-input"
-                  autoComplete="name"
-                  value={addNurseFullName}
-                  onChange={(e) => setAddNurseFullName(e.target.value)}
-                  disabled={addNurseSubmitting}
+                  autoComplete="given-name"
+                  value={addStaffFirstName}
+                  onChange={(e) => setAddStaffFirstName(e.target.value)}
+                  disabled={addStaffSubmitting}
+                />
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Last name</span>
+                <input
+                  className="um-input"
+                  autoComplete="family-name"
+                  value={addStaffLastName}
+                  onChange={(e) => setAddStaffLastName(e.target.value)}
+                  disabled={addStaffSubmitting}
+                />
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Middle initial (optional)</span>
+                <input
+                  className="um-input"
+                  maxLength={1}
+                  value={addStaffMiddleInitial}
+                  onChange={(e) => setAddStaffMiddleInitial(e.target.value.toUpperCase())}
+                  disabled={addStaffSubmitting}
                 />
               </label>
               <label className="um-modal-field">
@@ -1001,21 +1064,58 @@ const StaffManagement = () => {
                   className="um-input"
                   type="email"
                   autoComplete="off"
-                  value={addNurseEmail}
-                  onChange={(e) => setAddNurseEmail(e.target.value)}
-                  disabled={addNurseSubmitting}
+                  value={addStaffEmail}
+                  onChange={(e) => setAddStaffEmail(e.target.value)}
+                  disabled={addStaffSubmitting}
                 />
               </label>
               <label className="um-modal-field">
-                <span className="um-modal-label">Phone (optional)</span>
+                <span className="um-modal-label">Phone</span>
                 <input
                   className="um-input"
                   type="tel"
                   autoComplete="tel"
-                  value={addNursePhone}
-                  onChange={(e) => setAddNursePhone(e.target.value)}
-                  disabled={addNurseSubmitting}
+                  value={addStaffPhone}
+                  onChange={(e) => setAddStaffPhone(e.target.value)}
+                  disabled={addStaffSubmitting}
                 />
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Role</span>
+                <select
+                  className="um-input"
+                  value={addStaffRole}
+                  onChange={(e) => setAddStaffRole(e.target.value)}
+                  disabled={addStaffSubmitting}
+                >
+                  <option value="staff">Staff</option>
+                  <option value="nurse">Nurse</option>
+                </select>
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Department</span>
+                <input className="um-input" value={addStaffDepartment} onChange={(e) => setAddStaffDepartment(e.target.value)} disabled={addStaffSubmitting} />
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Branch</span>
+                <input className="um-input" value={FIXED_BRANCH} disabled />
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Shift</span>
+                <input className="um-input" value={addStaffShift} onChange={(e) => setAddStaffShift(e.target.value)} disabled={addStaffSubmitting} />
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Employment type</span>
+                <select className="um-input" value={addStaffEmploymentType} onChange={(e) => setAddStaffEmploymentType(e.target.value)} disabled={addStaffSubmitting}>
+                  <option value="Full-time">Full-time</option>
+                  <option value="Part-time">Part-time</option>
+                  <option value="Contract">Contract</option>
+                  <option value="Reliever">Reliever</option>
+                </select>
+              </label>
+              <label className="um-modal-field" style={{ gridColumn: '1 / -1' }}>
+                <span className="um-modal-label">Address (optional)</span>
+                <input className="um-input" value={addStaffAddress} onChange={(e) => setAddStaffAddress(e.target.value)} disabled={addStaffSubmitting} />
               </label>
               <label className="um-modal-field">
                 <span className="um-modal-label">Password</span>
@@ -1023,9 +1123,9 @@ const StaffManagement = () => {
                   className="um-input"
                   type="password"
                   autoComplete="new-password"
-                  value={addNursePassword}
-                  onChange={(e) => setAddNursePassword(e.target.value)}
-                  disabled={addNurseSubmitting}
+                  value={addStaffPassword}
+                  onChange={(e) => setAddStaffPassword(e.target.value)}
+                  disabled={addStaffSubmitting}
                 />
               </label>
               <label className="um-modal-field">
@@ -1034,21 +1134,21 @@ const StaffManagement = () => {
                   className="um-input"
                   type="password"
                   autoComplete="new-password"
-                  value={addNurseConfirmPassword}
-                  onChange={(e) => setAddNurseConfirmPassword(e.target.value)}
-                  disabled={addNurseSubmitting}
+                  value={addStaffConfirmPassword}
+                  onChange={(e) => setAddStaffConfirmPassword(e.target.value)}
+                  disabled={addStaffSubmitting}
                 />
               </label>
-              {addNurseError && (
-                <div style={{ gridColumn: '1 / -1', color: '#b91c1c', fontWeight: 600, fontSize: 13 }}>{addNurseError}</div>
+              {addStaffError && (
+                <div style={{ gridColumn: '1 / -1', color: '#b91c1c', fontWeight: 600, fontSize: 13 }}>{addStaffError}</div>
               )}
             </div>
             <div style={{ padding: 20, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="db-action-btn" disabled={addNurseSubmitting} onClick={() => closeAddNurseModal()}>
+              <button type="button" className="db-action-btn" disabled={addStaffSubmitting} onClick={() => closeAddStaffModal()}>
                 Cancel
               </button>
-              <button type="button" className="db-edit-btn" disabled={addNurseSubmitting} onClick={() => void createNurseAccount()}>
-                {addNurseSubmitting ? 'Creating…' : 'Create account'}
+              <button type="button" className="db-edit-btn" disabled={addStaffSubmitting} onClick={() => void createStaffAccount()}>
+                {addStaffSubmitting ? 'Creating…' : 'Create account'}
               </button>
             </div>
           </div>

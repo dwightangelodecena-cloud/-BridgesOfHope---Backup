@@ -1,59 +1,50 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Phone,
-  Smartphone,
-  MapPin,
   Menu,
   X,
-  Mail,
-  Monitor,
   ChevronUp,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ArrowRight,
-  Star,
   Brain,
   Frown,
   ShieldAlert,
   Route,
-  Award,
-  Newspaper,
 } from 'lucide-react';
-/* eslint-disable-next-line no-unused-vars */
-import { motion, AnimatePresence, useInView, LayoutGroup } from 'framer-motion';
-import { Swiper, SwiperSlide } from 'swiper/react';
-import { Pagination, Autoplay, Navigation } from 'swiper/modules';
-import 'swiper/css';
-import 'swiper/css/pagination';
-import 'swiper/css/navigation';
+import { motion, LayoutGroup } from 'framer-motion';
+
+import {
+  loadSiteContent,
+  saveMergedSiteContent,
+  SITE_CONTENT_EVENT,
+  getLandingThemeStyles,
+  normalizeSectionOrder,
+  parseBrandingLogoHeightPx,
+} from '@/lib/siteContentStore';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { pullSiteContentFromSupabase } from '@/lib/siteContentRemote';
+import { LandingPageBodySections } from '@/components/landing/LandingPageBodySections';
 
 // ─── Asset imports (unchanged) ──────────────────────────────────────────────
 import logo from '@/assets/logo.png';
-import heroImg from '@/assets/landingpage.png';
 import gma from '@/assets/gmanewstv.png';
 import tv5 from '@/assets/tv5.png';
 import wsj from '@/assets/wsj.png';
 import vice from '@/assets/vicenews.png';
 import rappler from '@/assets/rappler.png';
 import reaksyon from '@/assets/reaksyon.png';
-import containerImg from '@/assets/Container.png';
 import prog1 from '@/assets/carousel11.jpg';
 import prog2 from '@/assets/carousel2.png';
 import prog3 from '@/assets/carousel3.jpg';
 import prog4 from '@/assets/carousel4.png';
 import prog5 from '@/assets/prog5.jpg';
-import iphoneMockup from '@/assets/iphone.png';
-import dohBadge from '@/assets/doh.png';
-import hopeLogo from '@/assets/hoperecoverylogo.png';
 import about1 from '@/assets/about1.jpg';
 import about2 from '@/assets/about2.jpg';
 import about3 from '@/assets/about3.jpg';
 import about4 from '@/assets/about4.jpg';
 
 
-/** Press row: paired with `partnerLinks` in the page component. */
+/** Press row defaults — image modules; URLs overridden via CMS `proof.pressOutlets`. */
 const PRESS_OUTLETS = [
   { img: gma, name: 'GMA News TV' },
   { img: tv5, name: 'TV5' },
@@ -61,6 +52,15 @@ const PRESS_OUTLETS = [
   { img: vice, name: 'VICE News' },
   { img: rappler, name: 'Rappler' },
   { img: reaksyon, name: 'TV5 Reaksyon' },
+];
+
+const DEFAULT_PRESS_ARTICLE_URLS = [
+  'https://bridgesofhope.com.ph/index.php/news-gma7s-brigada-features-bridges-of-hope-in-episode-on-alcoholism/',
+  'https://bridgesofhope.com.ph/index.php/bridges-of-hope-program-director-gimo-gomez-on-tv5-the-evening-news/',
+  'https://bridgesofhope.com.ph/index.php/wall-street-journals-trefor-moss-interviews-bridges-of-hope/',
+  'https://bridgesofhope.com.ph/index.php/vice-news-on-philippine-shabu-cartel/',
+  'https://bridgesofhope.com.ph/index.php/rappler-goes-inside-bridges-of-hope/',
+  'https://bridgesofhope.com.ph/index.php/program-director-gimo-gomez-appears-on-tv5-reaksyon/',
 ];
 
 // ─── Data ────────────────────────────────────────────────────────────────────
@@ -180,6 +180,13 @@ const NAV_ITEMS = [
   { id: 'contact', label: 'Contact' },
 ];
 
+const PROBLEM_ICON_MAP = {
+  brain: Brain,
+  frown: Frown,
+  shield: ShieldAlert,
+  route: Route,
+};
+
 /** Document Y of element top (not offsetTop — avoids offsetParent / transform bugs). */
 function sectionDocumentTop(el) {
   const r = el.getBoundingClientRect();
@@ -265,25 +272,10 @@ const VALUES = [
   },
 ];
 
-// ─── Utilities ───────────────────────────────────────────────────────────────
-function ScrollReveal({ children, className, delay = 0, y = 40 }) {
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: '-8% 0px -6% 0px' });
-  return (
-    <motion.div
-      ref={ref}
-      className={className}
-      initial={{ opacity: 0, y }}
-      animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y }}
-      transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1], delay }}
-    >
-      {children}
-    </motion.div>
-  );
-}
-
 // ─── Component ───────────────────────────────────────────────────────────────
 const LandingPage = () => {
+  const [searchParams] = useSearchParams();
+  const cmsEditMode = searchParams.get('cmsEdit') === '1';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [navElevated, setNavElevated] = useState(false);
@@ -293,6 +285,87 @@ const LandingPage = () => {
   const navigate = useNavigate();
   const scrollSpyPauseRef = useRef(null);
   const scrollSpyRafRef = useRef(null);
+
+  const [siteContent, setSiteContent] = useState(() => loadSiteContent());
+  useEffect(() => {
+    const sync = () => setSiteContent(loadSiteContent());
+    window.addEventListener('storage', sync);
+    window.addEventListener(SITE_CONTENT_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener(SITE_CONTENT_EVENT, sync);
+    };
+  }, []);
+
+  /** Load published site content from Supabase when configured (visitors use anon read). */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!isSupabaseConfigured()) return;
+      const merged = await pullSiteContentFromSupabase();
+      if (cancelled || !merged) return;
+      saveMergedSiteContent(merged);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const m = siteContent;
+  const heroWords = m.hero?.rotateWords?.length ? m.hero.rotateWords : HERO_ROTATE_WORDS;
+  const problemItems = m.problem.items.map((item, i) => ({
+    icon: PROBLEM_ICON_MAP[item.iconKey] || [Brain, Frown, ShieldAlert, Route][i] || Brain,
+    title: item.title,
+    text: item.text,
+  }));
+  const programSlides = PROGRAM_SLIDES.map((slide, i) => {
+    const patch = m.services.slides?.[i] || {};
+    const img =
+      typeof patch.imageUrl === 'string' && patch.imageUrl.trim() ? patch.imageUrl.trim() : slide.img;
+    return { ...slide, ...patch, img };
+  });
+  const testimonialStories = m.testimonials.stories;
+  const faqItems = m.faq.items;
+  const valueCards = useMemo(
+    () =>
+      VALUES.map((v, i) => {
+        const patch = m.about.values?.[i] || {};
+        const customImg =
+          typeof patch.imageUrl === 'string' && patch.imageUrl.trim() ? patch.imageUrl.trim() : null;
+        return {
+          ...v,
+          title: patch.title ?? v.title,
+          desc: patch.desc ?? v.desc,
+          alt: patch.alt ?? v.alt,
+          img: customImg || v.img,
+        };
+      }),
+    [m.about.values],
+  );
+
+  const logoSrc =
+    typeof m.branding?.logoUrl === 'string' && m.branding.logoUrl.trim() ? m.branding.logoUrl.trim() : logo;
+
+  const headerLogoImgStyle = useMemo(() => {
+    const h = parseBrandingLogoHeightPx(m.branding?.headerLogoHeightPx);
+    return h ? { height: h, width: 'auto' } : undefined;
+  }, [m.branding?.headerLogoHeightPx]);
+
+  const pressOutletRows = useMemo(
+    () =>
+      PRESS_OUTLETS.map((outlet, i) => {
+        const po = m.proof?.pressOutlets?.[i] || {};
+        const href =
+          typeof po.articleUrl === 'string' && po.articleUrl.trim()
+            ? po.articleUrl.trim()
+            : DEFAULT_PRESS_ARTICLE_URLS[i];
+        const src =
+          typeof po.imageUrl === 'string' && po.imageUrl.trim() ? po.imageUrl.trim() : outlet.img;
+        return { name: outlet.name, src, href };
+      }),
+    [m.proof?.pressOutlets],
+  );
+
+  const landingSectionOrder = useMemo(() => normalizeSectionOrder(m.sectionOrder), [m.sectionOrder]);
 
   const scrollToSection = useCallback((sectionId) => {
     const el = document.getElementById(sectionId);
@@ -395,7 +468,7 @@ const LandingPage = () => {
       /** Align spy with the same offset used for scroll targets (nav + gap). */
       const activationY = y + getNavScrollPaddingPx();
       let current = null;
-      for (const item of NAV_ITEMS) {
+      for (const item of m.navItems) {
         const sec = document.getElementById(item.id);
         if (!sec) continue;
         if (sectionDocumentTop(sec) <= activationY) current = item.id;
@@ -442,12 +515,13 @@ const LandingPage = () => {
       if (scrollSpyRafRef.current !== null) cancelAnimationFrame(scrollSpyRafRef.current);
       if (scrollSpyPauseRef.current) window.clearTimeout(scrollSpyPauseRef.current);
     };
-  }, []);
+  }, [m.navItems]);
 
   useEffect(() => {
-    const id = setInterval(() => setHeroWordIndex((i) => (i + 1) % HERO_ROTATE_WORDS.length), 2800);
+    const n = heroWords.length || 1;
+    const id = setInterval(() => setHeroWordIndex((i) => (i + 1) % n), 2800);
     return () => clearInterval(id);
-  }, []);
+  }, [heroWords.length]);
 
   const onNavSectionClick = (e, id) => {
     e.preventDefault();
@@ -456,17 +530,8 @@ const LandingPage = () => {
     scrollToSection(id);
   };
 
-  const partnerLinks = {
-    [gma]: 'https://bridgesofhope.com.ph/index.php/news-gma7s-brigada-features-bridges-of-hope-in-episode-on-alcoholism/',
-    [tv5]: 'https://bridgesofhope.com.ph/index.php/bridges-of-hope-program-director-gimo-gomez-on-tv5-the-evening-news/',
-    [wsj]: 'https://bridgesofhope.com.ph/index.php/wall-street-journals-trefor-moss-interviews-bridges-of-hope/',
-    [vice]: 'https://bridgesofhope.com.ph/index.php/vice-news-on-philippine-shabu-cartel/',
-    [rappler]: 'https://bridgesofhope.com.ph/index.php/rappler-goes-inside-bridges-of-hope/',
-    [reaksyon]: 'https://bridgesofhope.com.ph/index.php/program-director-gimo-gomez-appears-on-tv5-reaksyon/',
-  };
-
   return (
-    <div className="lp-root">
+    <div className="lp-root" style={getLandingThemeStyles(m.theme)}>
       <style>{`
         /* Inter only (weights in index.css) — one typeface across the landing page. */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -563,7 +628,7 @@ const LandingPage = () => {
         }
         img, svg, video, canvas { max-width: 100%; }
 
-        #hero, #problem, #services, #proof, #testimonials, #about, #faq, #cta-final, #contact {
+        #hero, #problem, #services, #proof, #testimonials, #about, #custom-cms, #faq, #cta-final, #contact {
           scroll-margin-top: var(--lp-nav-scroll-offset);
         }
 
@@ -606,6 +671,7 @@ const LandingPage = () => {
         .programs-section.snap-page,
         .testimonials-section.snap-page,
         .about-section.snap-page,
+        .lp-cms-dynamic.snap-page,
         .faq-section.snap-page,
         .footer-cta-section.snap-page {
           align-items: center;
@@ -616,6 +682,17 @@ const LandingPage = () => {
           justify-content: flex-end;
           padding-block: 0;
           padding-inline: 0;
+        }
+
+        /* CMS-driven blocks: only as tall as content (not a full-screen “strip” like hero) */
+        .lp-cms-dynamic.snap-page {
+          min-height: auto !important;
+          justify-content: flex-start;
+          align-items: stretch;
+          padding-block: 0 !important;
+          padding-inline: 0;
+          flex-grow: 0;
+          width: 100%;
         }
 
         /* ── Tokens (8px grid, refined neutrals, warm accent) ── */
@@ -3256,7 +3333,7 @@ const LandingPage = () => {
       <nav className={`nav-drawer${isMenuOpen ? ' open' : ''}`}>
         <div className="nav-drawer-head">
           <div className="nav-drawer-brand">
-            <img src={logo} alt="" aria-hidden />
+            <img src={logoSrc} alt="" aria-hidden style={headerLogoImgStyle} />
             Menu
           </div>
           <button
@@ -3269,7 +3346,7 @@ const LandingPage = () => {
           </button>
         </div>
         <div className="nav-drawer-links">
-          {NAV_ITEMS.map((item) => (
+          {m.navItems.map((item) => (
             <a
               key={item.id}
               href={`#${item.id}`}
@@ -3294,11 +3371,11 @@ const LandingPage = () => {
       <header className={`nav-shell${navElevated ? ' elevated' : ''}`}>
         <div className="nav">
           <button type="button" className="nav-logo" onClick={scrollToTop} aria-label="Bridges of Hope — Home">
-            <img src={logo} alt="Bridges of Hope" />
+            <img src={logoSrc} alt="Bridges of Hope" style={headerLogoImgStyle} />
           </button>
           <LayoutGroup id="nav-desktop-pills">
             <nav className="nav-links-desktop" aria-label="Primary">
-              {NAV_ITEMS.map((item) => (
+              {m.navItems.map((item) => (
                 <a
                   key={item.id}
                   href={`#${item.id}`}
@@ -3329,492 +3406,24 @@ const LandingPage = () => {
         </div>
       </header>
 
-      {/* ══════ HERO ══════ */}
-      <section className="hero-section full-bleed snap-page" id="hero">
-        <motion.img
-          src={heroImg}
-          className="hero-bg-img"
-          alt=""
-          aria-hidden
-          initial={{ scale: 1.1 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 1.6, ease: [0.16, 1, 0.3, 1] }}
-        />
-        <div className="hero-overlay" aria-hidden />
-        <motion.div
-          className="hero-inner"
-          initial="hidden"
-          animate="visible"
-          variants={{ visible: { transition: { staggerChildren: 0.1, delayChildren: 0.25 } }, hidden: {} }}
-        >
-          <div className="hero-grid">
-            <div className="hero-content">
-              <motion.div className="hero-kicker" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.5 } } }}>
-                <span aria-hidden />
-                Private care · DOH accredited · Evidence-based
-              </motion.div>
-              <motion.h1
-                className="hero-headline"
-                variants={{ hidden: { opacity: 0, y: 30 }, visible: { opacity: 1, y: 0, transition: { duration: 0.65, ease: [0.16,1,0.3,1] } } }}
-              >
-                <span className="static">Start your journey</span>
-                <span className="static">toward</span>
-                <span className="hero-rotate-track" aria-live="polite">
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={HERO_ROTATE_WORDS[heroWordIndex]}
-                      className="hero-rotate-word"
-                      initial={{ opacity: 0, y: 32 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -24 }}
-                      transition={{ duration: 0.48, ease: [0.16, 1, 0.3, 1] }}
-                    >
-                      {HERO_ROTATE_WORDS[heroWordIndex]}
-                    </motion.span>
-                  </AnimatePresence>
-                </span>
-                <span className="hero-suffix">& lasting healing.</span>
-              </motion.h1>
-
-              <motion.p
-                className="hero-sub"
-                variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16,1,0.3,1] } } }}
-              >
-                Stop carrying it alone. Medically supervised care, therapy, and aftercare—personalized for you—in a discreet, judgment-free environment.
-              </motion.p>
-
-              <motion.div
-                className="hero-actions"
-                variants={{ hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.16,1,0.3,1] } } }}
-              >
-                <motion.button type="button" className="btn-hero-primary" onClick={() => navigate('/login')} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  Begin confidential intake <ArrowRight size={17} strokeWidth={2.5} />
-                </motion.button>
-                <motion.button type="button" className="btn-hero-ghost" onClick={(e) => onNavSectionClick(e, 'services')} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  See how we help
-                </motion.button>
-              </motion.div>
-            </div>
-            <div className="hero-aside" aria-hidden>
-              <div className="hero-orbs" />
-            </div>
-          </div>
-        </motion.div>
-      </section>
-
-      {/* ══════ PROBLEM ══════ */}
-      <section id="problem" className="problem-section full-bleed snap-page">
-        <div className="container">
-          <ScrollReveal className="problem-header">
-            <span className="eyebrow">You are not alone</span>
-            <h2>
-              When addiction takes hold, <em className="text-accent">everything</em> can feel heavier—<span className="serif" style={{ fontStyle: 'italic', fontWeight: 500 }}>and harder to fix alone.</span>
-            </h2>
-            <p className="section-lead">
-              Naming the struggle is the first step toward relief. These are some of the realities families tell us every day.
-            </p>
-          </ScrollReveal>
-          <div className="problem-grid">
-            {PROBLEM_ITEMS.map(({ icon: Icon, title, text }, i) => (
-              <ScrollReveal key={title} delay={0.06 * i} y={28}>
-                <div className="problem-card">
-                  <div className="problem-icon" aria-hidden>
-                    <Icon size={22} strokeWidth={1.85} />
-                  </div>
-                  <div className="problem-card-copy">
-                    <h3>{title}</h3>
-                    <p>{text}</p>
-                  </div>
-                  <span className="problem-card-index" aria-hidden>0{i + 1}</span>
-                </div>
-              </ScrollReveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ══════ SERVICES / SOLUTION ══════ */}
-      <section id="services" className="programs-section full-bleed snap-page">
-        <div className="container">
-          <ScrollReveal className="programs-header">
-            <span className="eyebrow">How we help</span>
-            <h2 className="section-title">
-              A full continuum of <em className="text-accent">care</em>—built for real life
-            </h2>
-            <p className="section-lead">From assessment and detox to therapy, aftercare, and family support—every layer works together so recovery can last.</p>
-          </ScrollReveal>
-
-          <ScrollReveal y={18} delay={0.06}>
-            <div
-              id="programs-swiper-shell"
-              className="programs-swiper-shell programs-swiper-outer"
-            >
-              <button
-                type="button"
-                className="prog-swiper-nav prog-swiper-nav--prev"
-                aria-label="Previous program"
-              >
-                <ChevronLeft size={22} strokeWidth={2.35} aria-hidden />
-              </button>
-              <Swiper
-                modules={[Pagination, Autoplay, Navigation]}
-                className="programs-swiper"
-                slidesPerView={1}
-                spaceBetween={0}
-                loop
-                loopAdditionalSlides={2}
-                speed={580}
-                grabCursor
-                autoplay={{ delay: 4200, disableOnInteraction: false, pauseOnMouseEnter: true }}
-                navigation={{
-                  prevEl: '#programs-swiper-shell .prog-swiper-nav--prev',
-                  nextEl: '#programs-swiper-shell .prog-swiper-nav--next',
-                }}
-                pagination={{ clickable: true, dynamicBullets: false }}
-              >
-                {PROGRAM_SLIDES.map((prog) => (
-                  <SwiperSlide key={prog.number}>
-                    <div className="prog-card">
-                      <div className="prog-card-img">
-                        <img src={prog.img} alt={prog.title} />
-                      </div>
-                      <div className="prog-card-body">
-                        <span className="prog-number" aria-hidden>{prog.number}</span>
-                        <span className="prog-tag">Program {prog.number}</span>
-                        <h3>{prog.title}</h3>
-                        <p className="prog-card-desc">{prog.text}</p>
-                      </div>
-                    </div>
-                  </SwiperSlide>
-                ))}
-              </Swiper>
-              <button
-                type="button"
-                className="prog-swiper-nav prog-swiper-nav--next"
-                aria-label="Next program"
-              >
-                <ChevronRight size={22} strokeWidth={2.35} aria-hidden />
-              </button>
-            </div>
-          </ScrollReveal>
-        </div>
-      </section>
-
-      {/* ══════ PROOF / CREDIBILITY ══════ */}
-      <section id="proof" className="proof-section full-bleed snap-page" aria-label="Credibility and press coverage">
-        <div className="container">
-          <ScrollReveal className="proof-header">
-            <span className="eyebrow">Proof &amp; presence</span>
-            <h2 className="section-title">
-              Trusted by families—and <em className="text-accent">recognized</em> in the stories that matter.
-            </h2>
-            <p className="section-lead">
-              Accreditation, experience, and editorial coverage you can verify.
-            </p>
-          </ScrollReveal>
-          <div className="proof-stats">
-            <ScrollReveal delay={0.05} y={20}>
-              <div className="proof-stat">
-                <div className="proof-stat-icon" aria-hidden><Award size={22} strokeWidth={1.75} /></div>
-                <strong>20+ yrs</strong>
-                <span>Serving individuals &amp; families with structured, compassionate care.</span>
-              </div>
-            </ScrollReveal>
-            <ScrollReveal delay={0.1} y={20}>
-              <div className="proof-stat">
-                <div className="proof-stat-icon proof-stat-icon--photo" aria-hidden><img src={dohBadge} alt="" /></div>
-                <strong>DOH</strong>
-                <span>Accredited facility with clinical oversight you can trust.</span>
-              </div>
-            </ScrollReveal>
-            <ScrollReveal delay={0.15} y={20}>
-              <div className="proof-stat">
-                <div className="proof-stat-icon" aria-hidden><Newspaper size={22} strokeWidth={1.75} /></div>
-                <strong>Featured</strong>
-                <span>Covered by leading outlets—see the reporting for yourself.</span>
-              </div>
-            </ScrollReveal>
-          </div>
-        </div>
-        <motion.div
-          className="partners-inner"
-          initial={{ opacity: 0, y: 28 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <p className="partners-label">As seen in</p>
-          <motion.div
-            className="partners-row"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: '-40px' }}
-            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.065, delayChildren: 0.08 } } }}
-          >
-            {PRESS_OUTLETS.map(({ img, name }) => (
-              <motion.a
-                key={name}
-                className="partners-link"
-                href={partnerLinks[img]}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`${name}: read press coverage (opens in new tab)`}
-                variants={{ hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { duration: 0.42, ease: [0.16, 1, 0.3, 1] } } }}
-              >
-                <img src={img} alt="" loading="lazy" decoding="async" />
-              </motion.a>
-            ))}
-          </motion.div>
-        </motion.div>
-      </section>
-
-      {/* ══════ TESTIMONIALS ══════ */}
-      <section id="testimonials" className="testimonials-section full-bleed snap-page">
-        <div className="container">
-          <ScrollReveal className="testi-header">
-            <span className="eyebrow">Stories</span>
-            <h2 className="section-title">
-              Hope &amp; <em className="text-accent">recovery</em>
-            </h2>
-            <p className="section-lead">
-              Real stories from people who found their path to sobriety.
-            </p>
-          </ScrollReveal>
-
-          <div className="testi-grid">
-            {TESTIMONIAL_STORIES.map((story, i) => (
-              <ScrollReveal key={story.id} delay={0.08 + i * 0.12} y={36}>
-                <article className="testi-card">
-                  <div className="testi-stars-row">
-                    <div className="testi-stars" role="img" aria-label="5 out of 5 stars">
-                      {[...Array(5)].map((_, j) => (
-                        <Star key={j} size={15} strokeWidth={0} aria-hidden />
-                      ))}
-                    </div>
-                  </div>
-                  <blockquote className="testi-quote" cite="Bridges of Hope">
-                    {story.text}
-                  </blockquote>
-                  <footer className="testi-footer">
-                    <div className="testi-avatar" aria-hidden>
-                      {story.initial}
-                    </div>
-                    <div>
-                      <div className="testi-name">{story.name}</div>
-                      <div className="testi-role">{story.role}</div>
-                    </div>
-                  </footer>
-                </article>
-              </ScrollReveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ══════ ABOUT ══════ */}
-      <section id="about" className="about-section full-bleed snap-page">
-        <div className="container">
-          <div className="about-grid">
-            <ScrollReveal className="about-visual-wrap" y={24}>
-              <div className="about-img-frame">
-                <img src={containerImg} alt="Bridges of Hope facility" />
-              </div>
-              <p className="about-photo-caption">DOH-accredited · Certified facility</p>
-            </ScrollReveal>
-
-            <ScrollReveal className="about-copy" delay={0.14} y={30}>
-              <span className="eyebrow">About us</span>
-              <h2>The <em className="text-accent">largest</em> and most <em className="text-accent">trusted</em> addiction treatment center</h2>
-              <p className="about-body">
-                Bridges of Hope provides professional, private, and compassionate treatment for people struggling with addiction—through world-class facilities and a dedicated clinical team that truly cares.
-              </p>
-              <div className="about-stats">
-                <div className="about-stat">
-                  <strong>2,000+</strong>
-                  <span>Patients treated</span>
-                </div>
-                <div className="about-stat">
-                  <strong>15+</strong>
-                  <span>Years experience</span>
-                </div>
-                <div className="about-stat">
-                  <strong>95%</strong>
-                  <span>Completion rate</span>
-                </div>
-              </div>
-            </ScrollReveal>
-          </div>
-
-          <ScrollReveal className="about-values-row" y={28} delay={0.08}>
-            <div className="about-values-inner">
-              <div className="values-intro-wrap">
-                <header className="values-section-header">
-                  <span className="eyebrow values-eyebrow">Our core values</span>
-                  <h3 className="values-section-title">
-                    <span className="values-head-prefix">A Foundation Built on</span>
-                    <span className="values-title-gradient">Complete Healing</span>
-                  </h3>
-                  <p className="values-section-lead">
-                      We combine expert clinical methods with a deeply personal approach to ensure you and your family feel supported at every step.
-                  </p>
-                </header>
-              </div>
-              <div className="values-photo-grid" role="list">
-                {VALUES.map(({ title, desc, img, alt }) => (
-                  <article className="value-photo-card" key={title} role="listitem" tabIndex={0}>
-                    <div className="value-photo-media">
-                      <img
-                        src={img}
-                        alt={alt}
-                        loading="lazy"
-                        decoding="async"
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                      />
-                    </div>
-                    <div className="value-photo-scrim" aria-hidden />
-                    <div className="value-photo-copy">
-                      <div className="value-photo-copy-inner">
-                        <h4 className="value-photo-title">{title}</h4>
-                        <p className="value-photo-desc">{desc}</p>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          </ScrollReveal>
-        </div>
-      </section>
-
-      {/* ══════ FAQ ══════ */}
-      <section id="faq" className="faq-section full-bleed snap-page">
-        <div className="container">
-          <div className="faq-orbit">
-            <ScrollReveal className="faq-header">
-              <span className="eyebrow">Questions</span>
-              <h2 className="section-title">
-                Straight answers, <em className="text-accent">no jargon</em>
-              </h2>
-              <p className="section-lead">
-                A few things people ask before they reach out—clear, honest, and designed to reduce anxiety.
-              </p>
-            </ScrollReveal>
-            <div className="faq-list" role="list">
-              {FAQ_ITEMS.map((item, i) => (
-                <div key={item.q} className={`faq-item${openFaqIndex === i ? ' is-open' : ''}`} role="listitem">
-                  <button
-                    type="button"
-                    className="faq-trigger"
-                    aria-expanded={openFaqIndex === i}
-                    aria-controls={`faq-panel-${i}`}
-                    id={`faq-trigger-${i}`}
-                    onClick={() => toggleFaq(i)}
-                  >
-                    <span>{item.q}</span>
-                    <ChevronDown className="faq-chevron" size={20} strokeWidth={2} aria-hidden />
-                  </button>
-                  <div className="faq-panel" id={`faq-panel-${i}`} role="region" aria-labelledby={`faq-trigger-${i}`}>
-                    <div className="faq-panel-inner">
-                      <p>{item.a}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ══════ FOOTER CTA ══════ */}
-      <motion.section
-        id="cta-final"
-        className="footer-cta-section full-bleed snap-page"
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-      >
-        <div className="container" style={{ position: 'relative', zIndex: 1 }}>
-          <ScrollReveal>
-            <div className="footer-cta-layout">
-              <div className="footer-cta-copy">
-                <div className="footer-cta-eyebrow"><span className="eyebrow">Your next chapter</span></div>
-                <h2>Book a confidential conversation—<br /><em className="text-accent">today.</em></h2>
-                <p className="lead">Recovery is possible with the right team beside you. One message or call can change the trajectory of your life.</p>
-                <motion.div style={{ marginTop: '1.35rem' }} initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.15, duration: 0.5 }}>
-                  <motion.button type="button" className="btn-primary btn-accent" onClick={() => navigate('/login')} whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }}>
-                    Start confidential intake <ArrowRight size={17} />
-                  </motion.button>
-                </motion.div>
-              </div>
-              <div className="cta-contact-grid">
-                <motion.div
-                  className="cta-phone-mockup-wrap"
-                  initial={{ opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-                >
-                  <img
-                    src={iphoneMockup}
-                    alt="Bridges of Hope iPhone app mockup"
-                    className="cta-phone-mockup"
-                  />
-                </motion.div>
-              </div>
-            </div>
-          </ScrollReveal>
-        </div>
-      </motion.section>
-
-      {/* ══════ FOOTER INFO ══════ */}
-      <footer id="contact" className="footer-info full-bleed snap-page">
-        <div className="footer-accent-bar" aria-hidden />
-        <div className="container footer-info-main">
-          <ScrollReveal y={24}>
-            <div className="footer-grid">
-              <div className="footer-brand">
-                <img src={hopeLogo} alt="Hope Recovery logo" />
-                <p>Transforming lives through compassionate, evidence-based addiction treatment since 2003.</p>
-              </div>
-              <div>
-                <h4 className="footer-col-head">Explore</h4>
-                <a href="#problem" className="footer-legal-link" onClick={(e) => { e.preventDefault(); scrollToSection('problem'); }}>Challenge</a>
-                <a href="#services" className="footer-legal-link" onClick={(e) => { e.preventDefault(); scrollToSection('services'); }}>Services</a>
-                <a href="#proof" className="footer-legal-link" onClick={(e) => { e.preventDefault(); scrollToSection('proof'); }}>Proof &amp; Presence</a>
-                <a href="#testimonials" className="footer-legal-link" onClick={(e) => { e.preventDefault(); scrollToSection('testimonials'); }}>Stories</a>
-                <a href="#faq" className="footer-legal-link" onClick={(e) => { e.preventDefault(); scrollToSection('faq'); }}>FAQ</a>
-              </div>
-              <div>
-                <h4 className="footer-col-head">Contact</h4>
-                <div className="footer-contact-item"><Phone size={16} /><a href="tel:5551234567">(555) 123-4567</a></div>
-                <div className="footer-contact-item"><Mail size={16} /><a href="mailto:info@hoperecovery.com">info@hoperecovery.com</a></div>
-                <div className="footer-contact-item" style={{ alignItems: 'flex-start' }}>
-                  <MapPin size={16} style={{ marginTop: 2, flexShrink: 0 }} />
-                  <span>123 Recovery Way<br />Cavite, Philippines</span>
-                </div>
-              </div>
-              <div>
-                <h4 className="footer-col-head">Legal</h4>
-                <a href="#" className="footer-legal-link">Terms of Service</a>
-                <a href="#" className="footer-legal-link">Privacy Policy</a>
-                <a href="#" className="footer-legal-link">Cookie Policy</a>
-              </div>
-            </div>
-          </ScrollReveal>
-        </div>
-        <div className="footer-bottom-strip full-bleed">
-          <div className="container">
-            <div className="footer-bottom">
-              <span className="footer-copy">© {new Date().getFullYear()} Bridges of Hope. All rights reserved.</span>
-              <div className="footer-brand-name">
-                <img src={hopeLogo} alt="" style={{ height: 20, opacity: 0.45 }} />
-                <span>Hope Recovery</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <LandingPageBodySections
+        order={landingSectionOrder}
+        m={m}
+        cmsEditMode={cmsEditMode}
+        heroWords={heroWords}
+        heroWordIndex={heroWordIndex}
+        problemItems={problemItems}
+        programSlides={programSlides}
+        testimonialStories={testimonialStories}
+        faqItems={faqItems}
+        valueCards={valueCards}
+        navigate={navigate}
+        onNavSectionClick={onNavSectionClick}
+        scrollToSection={scrollToSection}
+        openFaqIndex={openFaqIndex}
+        toggleFaq={toggleFaq}
+        pressOutletRows={pressOutletRows}
+      />
 
       {/* ── Back to top ── */}
       <button type="button" className={`back-top${showBackToTop ? ' visible' : ''}`} onClick={scrollToTop} aria-label="Back to top">

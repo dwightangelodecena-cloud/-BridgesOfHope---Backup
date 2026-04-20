@@ -30,6 +30,7 @@ import UserManagement from '@/pages/admin/user-management';
 import AdmissionManagement from '@/pages/admin/admission-management';
 import DischargeManagement from '@/pages/admin/discharge-management';
 import StaffManagement from '@/pages/admin/staff-management';
+import ContentManagement from '@/pages/admin/content-management';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
 
@@ -53,6 +54,7 @@ const ROUTE_TITLES = {
   '/patient-database': 'Patient database',
   '/admin-patient-database': 'Admin patient database',
   '/analytics': 'Analytics',
+  '/admin-content-management': 'Content management',
 };
 
 function getPageTitle(pathname) {
@@ -239,6 +241,14 @@ function App() {
           element={
             <RoleGuard allowedRoles={['admin']}>
               <DischargeManagement />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-content-management"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <ContentManagement />
             </RoleGuard>
           }
         />

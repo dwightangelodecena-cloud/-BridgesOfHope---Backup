@@ -18,6 +18,7 @@ import {
   ChevronRight,
   ChevronDown,
   Stethoscope,
+  LayoutTemplate,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
@@ -461,6 +462,10 @@ const AdmissionManagement = () => {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
             <div className="icon-box inactive"><Stethoscope size={22} /></div>
             <span className="sidebar-label">Staff Management</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
+            <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
+            <span className="sidebar-label">Content management</span>
           </div>
         </nav>
         <div className="sidebar-footer">
