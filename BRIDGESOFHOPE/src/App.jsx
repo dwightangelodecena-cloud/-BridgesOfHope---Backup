@@ -12,7 +12,6 @@ import AuthCallback from '@/pages/auth/auth-callback';
 
 // Family/User Pages
 import HomeDashboard from '@/pages/family/home';
-import Admission from '@/pages/family/admission';
 import Service from '@/pages/family/service';
 import Progress from '@/pages/family/progress';
 import Profile from '@/pages/family/profile';
@@ -42,7 +41,6 @@ const ROUTE_TITLES = {
   '/forgot': 'Forgot password',
   '/verify': 'Verify',
   '/newpass': 'New password',
-  '/admission': 'Admission',
   '/services': 'Services',
   '/progress': 'Progress',
   '/profile': 'Profile',
@@ -109,14 +107,6 @@ function App() {
           element={
             <RoleGuard allowedRoles={['family']}>
               <HomeDashboard />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/admission"
-          element={
-            <RoleGuard allowedRoles={['family']}>
-              <Admission />
             </RoleGuard>
           }
         />

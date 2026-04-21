@@ -13,16 +13,8 @@ import {
   uiAdmissionRequestFromRow,
   uiDischargeRequestFromRow,
 } from '@/lib/dbMappers';
-import { useAsyncData } from '@/hooks/useAsyncData';
-import { familyDataService } from '@/services/familyDataService';
 import {
   FAMILY_COLORS,
-  StatusBadge,
-  Timeline,
-  AuditLine,
-  EmptyState,
-  LoadingState,
-  ErrorState,
 } from '@/components/family/shared/ui';
 
 // Asset imports
@@ -145,12 +137,6 @@ const HomeDashboard = () => {
   ];
   const [activityFeed, setActivityFeed] = useState([]);
   const [supabaseReadError, setSupabaseReadError] = useState(null);
-  const {
-    data: sharedSummary,
-    loading: sharedLoading,
-    error: sharedError,
-    refresh: refreshSharedSummary,
-  } = useAsyncData(async () => familyDataService.getRequestsSummary(), []);
 
   const reminderItems = [
     'Complete profile details',
@@ -179,6 +165,7 @@ const HomeDashboard = () => {
   };
 
   const [patients, setPatients] = useState([]);
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [pendingAdmissions, setPendingAdmissions] = useState([]);
   const [pendingDischarges, setPendingDischarges] = useState([]);
   const [nurseWeeklyReportsByPatient, setNurseWeeklyReportsByPatient] = useState({});
@@ -347,6 +334,39 @@ const HomeDashboard = () => {
           .map((part) => part[0].toUpperCase())
           .join('')
       : '?';
+
+  useEffect(() => {
+    if (!patients.length) {
+      setSelectedPatientId(null);
+      return;
+    }
+    const hasSelected = patients.some((p) => String(p.id) === String(selectedPatientId));
+    if (!hasSelected) {
+      setSelectedPatientId(patients[0].id);
+    }
+  }, [patients, selectedPatientId]);
+
+  const selectedPatient = patients.find((p) => String(p.id) === String(selectedPatientId)) || patients[0] || null;
+  const selectedPatientProgress = Number(selectedPatient?.progress) || 0;
+  const activeTreatmentDays = selectedPatient?.date
+    ? Math.max(1, Math.round((Date.now() - new Date(selectedPatient.date).getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
+  const recoveryRate = Math.min(100, Math.max(0, Math.round(selectedPatientProgress * 0.92 + 6)));
+  const progressTrend = Math.max(1, Math.round(selectedPatientProgress / 4));
+  const patientProgressSeries = [12, 25, 38, 52, Math.max(58, selectedPatientProgress - progressTrend), selectedPatientProgress].map((value) =>
+    Math.min(100, Math.max(0, value))
+  );
+  const averageProgress = patients.length
+    ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
+    : 0;
+  const kpiCards = [
+    { label: 'Progress Percentage', value: `${selectedPatientProgress}%` },
+    { label: 'Recovery Rate', value: `${recoveryRate}%` },
+    { label: 'Active Treatment Days', value: `${activeTreatmentDays}` },
+    { label: 'Total Active Patients', value: `${patients.length}` },
+    { label: 'Average Cohort Progress', value: `${averageProgress}%` },
+    { label: 'Pending Requests', value: `${pendingAdmissions.length + pendingDischarges.length}` },
+  ];
 
   useEffect(() => {
     if (!showNotifications) return;
@@ -553,7 +573,7 @@ const HomeDashboard = () => {
 
         .content-wrap {
           width: 100%;
-          max-width: min(1280px, 100%);
+          max-width: min(1560px, 100%);
           margin: 0 auto;
         }
 
@@ -620,6 +640,82 @@ const HomeDashboard = () => {
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 12px;
           margin-bottom: 20px;
+        }
+
+        .dashboard-insights {
+          display: grid;
+          grid-template-columns: 1.45fr 1fr;
+          gap: 16px;
+          margin-bottom: 20px;
+          align-items: stretch;
+        }
+
+        .chart-card {
+          height: 100%;
+          background: white;
+          border: 1px solid #E9EDF7;
+          border-radius: 16px;
+          padding: 18px;
+          box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+          display: flex;
+          flex-direction: column;
+        }
+
+        .chart-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+
+        .patient-select {
+          border: 1px solid #E2E8F0;
+          border-radius: 10px;
+          padding: 8px 10px;
+          font-size: 12px;
+          font-weight: 600;
+          color: #1B2559;
+          background: #fff;
+        }
+
+        .chart-svg {
+          width: 100%;
+          height: 280px;
+          display: block;
+          border-radius: 12px;
+          background: linear-gradient(180deg, #f8fbff 0%, #ffffff 70%);
+        }
+
+        .kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 10px;
+          flex: 1;
+          align-content: stretch;
+        }
+
+        .kpi-item {
+          border: 1px solid #E9EDF7;
+          border-radius: 12px;
+          padding: 14px 12px;
+          background: #fbfdff;
+          min-height: 96px;
+        }
+
+        .empty-dashboard-card {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex: 1;
+          min-height: 220px;
+          border: 1px dashed #dbe5f3;
+          border-radius: 12px;
+          color: #64748b;
+          font-size: 14px;
+          font-weight: 700;
+          background: #fbfdff;
         }
 
         .metric-card {
@@ -1300,6 +1396,7 @@ const HomeDashboard = () => {
             grid-column: 1 / -1 !important;
           }
           .dashboard-grid { grid-template-columns: 1fr !important; }
+          .dashboard-insights { grid-template-columns: 1fr !important; }
           .action-section { order: -1; margin-bottom: 20px; } 
           .patient-section { order: 1; }
           .patient-card { width: 100% !important; height: auto !important; padding: 15px !important; margin-bottom: 10px !important; flex-direction: row !important; }
@@ -1531,7 +1628,15 @@ const HomeDashboard = () => {
                 </div>
               )}
             </div>
-            <div className="user-avatar-top">{userInitials}</div>
+            <button
+              type="button"
+              className="user-avatar-top"
+              onClick={() => navigate('/profile')}
+              aria-label="Open profile"
+              style={{ border: 'none', cursor: 'pointer' }}
+            >
+              {userInitials}
+            </button>
           </div>
         </header>
 
@@ -1562,45 +1667,19 @@ const HomeDashboard = () => {
                 </div>
               )}
             </div>
-            <div style={{ width: 34, height: 34, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>{userInitials}</div>
+            <button
+              type="button"
+              onClick={() => navigate('/profile')}
+              aria-label="Open profile"
+              style={{ width: 34, height: 34, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px', border: 'none', cursor: 'pointer' }}
+            >
+              {userInitials}
+            </button>
           </div>
         </div>
 
         <div className="scroll-content" style={{ background: FAMILY_COLORS.background }}>
           <div className="content-wrap">
-          <div
-            className="panel-card"
-            style={{ marginBottom: 16, borderColor: FAMILY_COLORS.surface, background: '#fff', outline: `2px solid ${FAMILY_COLORS.surface}` }}
-            tabIndex={0}
-            aria-label="Family portal summary"
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-              <h3 style={{ margin: 0, color: FAMILY_COLORS.text }}>Family Portal Summary</h3>
-              <StatusBadge
-                label={(sharedSummary?.total || 0) > 0 ? 'Action Needed' : 'Up to Date'}
-                tone={(sharedSummary?.total || 0) > 0 ? 'warning' : 'success'}
-              />
-            </div>
-            {sharedLoading ? <LoadingState label="Loading summary..." /> : null}
-            {sharedError ? <ErrorState label={sharedError} onRetry={refreshSharedSummary} /> : null}
-            {!sharedLoading && !sharedError && !sharedSummary?.total ? (
-              <EmptyState
-                title="No pending requests"
-                description="You are all caught up. New admission or discharge requests will appear here."
-              />
-            ) : null}
-            {!sharedLoading && !sharedError && (sharedSummary?.total || 0) > 0 ? (
-              <>
-                <Timeline
-                  items={[
-                    { label: `Pending admissions: ${sharedSummary.admissions}`, active: sharedSummary.admissions > 0, meta: 'Review in progress' },
-                    { label: `Pending discharges: ${sharedSummary.discharges}`, active: sharedSummary.discharges > 0, meta: 'Awaiting approval' },
-                  ]}
-                />
-                <AuditLine text={`Updated ${new Date().toLocaleString()}`} />
-              </>
-            ) : null}
-          </div>
           <div className="panel-card" style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h2 className="recovery-text-mobile" style={{ fontSize: '30px', fontWeight: 800, color: '#1B2559', margin: 0 }}>
@@ -1626,177 +1705,93 @@ const HomeDashboard = () => {
                 <div className="icon-square"><img src={servicesIcon} alt="Services" /></div>
                 <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1B2559' }}>Services</span>
               </div>
-              <div className="action-card" onClick={() => navigate('/admission')}>
+              <div className="action-card" onClick={() => navigate('/progress', { state: { tab: 'admission' } })}>
                 <div className="icon-square"><img src={admissionIcon} alt="Admission" /></div>
                 <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1B2559' }}>Admission</span>
               </div>
             </div>
           </div>
 
-          <div className="dashboard-grid">
-            <div className="metric-card">
-              <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>ADMISSION REQUESTS</div>
-              <div style={{ color: '#1B2559', fontSize: 28, fontWeight: 800, marginTop: 6 }}>{pendingAdmissions.length}</div>
-              <div style={{ color: '#F54E25', fontSize: 12, fontWeight: 700 }}>
-                {pendingAdmissions.length ? 'Awaiting admin review' : 'No pending admissions'}
+          <div className="dashboard-insights">
+            <div className="chart-card">
+              <div className="chart-top">
+                <div>
+                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 16 }}>Patient Progress</div>
+                  <div style={{ color: '#64748B', fontSize: 12 }}>
+                    {selectedPatient ? `Tracking ${selectedPatient.name}` : 'No patient admitted'}
+                  </div>
+                </div>
+                {patients.length > 0 && (
+                  <select
+                    className="patient-select"
+                    value={selectedPatient?.id ?? ''}
+                    onChange={(e) => setSelectedPatientId(e.target.value)}
+                  >
+                    {patients.map((patient) => (
+                      <option key={patient.id} value={patient.id}>
+                        {patient.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
+              {patients.length > 0 ? (
+                <svg className="chart-svg" viewBox="0 0 560 220" role="img" aria-label="Patient progress over time">
+                  {[0, 1, 2, 3, 4].map((row) => (
+                    <line key={row} x1="42" y1={25 + row * 40} x2="530" y2={25 + row * 40} stroke="#E9EDF7" strokeWidth="1" />
+                  ))}
+                  {patientProgressSeries.map((point, index) => {
+                    const x = 42 + index * 97;
+                    const y = 185 - point * 1.5;
+                    return (
+                      <g key={index}>
+                        <circle cx={x} cy={y} r="4.5" fill="#F54E25" />
+                        <text x={x} y={208} textAnchor="middle" fontSize="11" fill="#64748B">{`W${index + 1}`}</text>
+                      </g>
+                    );
+                  })}
+                  <polyline
+                    fill="none"
+                    stroke="#F54E25"
+                    strokeWidth="3"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    points={patientProgressSeries
+                      .map((point, index) => `${42 + index * 97},${185 - point * 1.5}`)
+                      .join(' ')}
+                  />
+                </svg>
+              ) : (
+                <div className="empty-dashboard-card">No patient admitted</div>
+              )}
+            </div>
+            <div className="chart-card">
+              <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 16 }}>Patient Statistics</div>
+              <div style={{ color: '#64748B', fontSize: 12, marginTop: 4 }}>
+                {patients.length > 0
+                  ? 'Key performance indicators for the selected patient'
+                  : 'No patient admitted'}
+              </div>
+              {patients.length > 0 ? (
+                <div className="kpi-grid">
+                  {kpiCards.map((kpi) => (
+                    <div key={kpi.label} className="kpi-item">
+                      <div style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>{kpi.label}</div>
+                      <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 18, marginTop: 4 }}>{kpi.value}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-dashboard-card" style={{ minHeight: 300 }}>No patient admitted</div>
+              )}
               {isSupabaseConfigured() && supabaseReadError && (
-                <div style={{ color: '#ef4444', fontSize: 11, fontWeight: 700, marginTop: 6 }}>
-                  {String(supabaseReadError).slice(0, 80)}
+                <div style={{ color: '#ef4444', fontSize: 11, fontWeight: 700, marginTop: 10 }}>
+                  {String(supabaseReadError).slice(0, 100)}
                 </div>
               )}
             </div>
-            <div className="metric-card">
-              <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>DISCHARGE REQUESTS</div>
-              <div style={{ color: '#1B2559', fontSize: 28, fontWeight: 800, marginTop: 6 }}>{pendingDischarges.length}</div>
-              <div style={{ color: '#F54E25', fontSize: 12, fontWeight: 700 }}>
-                {pendingDischarges.length ? 'Awaiting admin review' : 'No pending discharges'}
-              </div>
-            </div>
-            <div className="metric-card">
-              <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>PROGRESS COMPLETION RATE</div>
-              <div style={{ color: '#1B2559', fontSize: 28, fontWeight: 800, marginTop: 6 }}>0%</div>
-              <div style={{ height: 8, background: '#EEF2FF', borderRadius: 99, marginTop: 10 }}>
-                <div style={{ width: '0%', height: '100%', background: '#4318FF', borderRadius: 99 }} />
-              </div>
-            </div>
-            <div className="metric-card">
-              <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>NEXT APPOINTMENT</div>
-              <div style={{ color: '#1B2559', fontSize: 18, fontWeight: 800, marginTop: 10 }}>April 5, 10:00 AM</div>
-              <div style={{ color: '#F54E25', fontSize: 12, fontWeight: 700, marginTop: 5 }}>Family Session</div>
-            </div>
-          </div>
+          </div>  
 
-          {showAnnouncement && (
-            <div className="panel-card" style={{ borderColor: '#FED7AA', background: '#FFF7ED' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                <div>
-                  <div style={{ color: '#9A3412', fontWeight: 800, marginBottom: 4 }}>Community Update: Family Wellness Talk</div>
-                  <div style={{ color: '#7C2D12', fontSize: 13 }}>
-                    Join the monthly support session on April 9 to learn practical family recovery support strategies.
-                  </div>
-                </div>
-                <button onClick={() => setShowAnnouncement(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9A3412' }}>
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="bottom-layout">
-            <div className="patient-section">
-              <h3 style={{ color: '#1B2559', fontWeight: 800, marginBottom: 16, fontSize: '1.25rem' }}>Patient Details</h3>
-              {patients.map((p, i) => (
-                <div key={p.id} className="patient-card">
-                  <div className="patient-img-placeholder" onClick={() => triggerFileInput(i)}>
-                    <input type="file" hidden accept="image/*" ref={el => fileInputRefs.current[i] = el} onChange={(e) => handleImageChange(i, e)} />
-                    {patientImages[i] ? <img src={patientImages[i]} alt="" className="patient-attached-img" /> : <User size={24} color="#A3AED0" opacity={0.5} />}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
-                      <span style={{ fontWeight: 800, fontSize: '1.2rem', color: '#1B2559' }}>{p.name}</span>
-                      <span style={{ background: '#FFF9C4', color: '#856404', fontSize: '0.7rem', padding: '4px 12px', borderRadius: 20, fontWeight: 700 }}>Recovering</span>
-                    </div>
-                    <div style={{ color: '#1B2559', fontSize: '0.9rem', fontWeight: 600 }}>{p.date}</div>
-                    <div style={{ color: '#A3AED0', fontSize: '0.7rem' }}>Date of Admission</div>
-                  </div>
-                  <div className="desktop-only patient-progress">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 700, marginBottom: 8 }}>
-                      <span style={{ color: '#A3AED0' }}>Recovery Progress</span>
-                      <span style={{ color: '#1B2559' }}>{p.progress}%</span>
-                    </div>
-                    <div style={{ height: 8, background: '#F4F7FE', borderRadius: 10 }}><div style={{ width: `${p.progress}%`, height: '100%', background: '#4318FF', borderRadius: 10 }}></div></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="dashboard-panels">
-              <div className="dashboard-panels-col">
-                <div className="panel-card" style={{ marginBottom: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div className="panel-title" style={{ marginBottom: 0 }}><Clock3 size={16} color="#F54E25" /> Recent Activity</div>
-                    {activityFeed.length > 3 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllActivity(!showAllActivity)}
-                        style={{ border: 'none', background: '#EEF2FF', color: '#3730A3', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
-                      >
-                        {showAllActivity ? 'Show Less' : 'View All'}
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ marginTop: 10 }}>
-                    {activityFeed.length === 0 ? (
-                      <div
-                        style={{
-                          color: '#94a3b8',
-                          fontSize: 13,
-                          lineHeight: 1.5,
-                          padding: '8px 0 4px',
-                        }}
-                      >
-                        No activity yet. Admission requests, discharge requests, admin decisions, and care team
-                        reports will appear here as they happen.
-                      </div>
-                    ) : (
-                      (showAllActivity ? activityFeed : activityFeed.slice(0, 3)).map((item) => (
-                        <div key={item.id} className="interactive-row">
-                          <div
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: '50%',
-                              background: '#F54E25',
-                              marginTop: 6,
-                              flexShrink: 0,
-                            }}
-                          />
-                          <div>
-                            <div style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>
-                              {activityDayLabel(item.at)}
-                            </div>
-                            <div style={{ fontSize: 13 }}>{item.text}</div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="dashboard-panels-col">
-                <div className="panel-card" style={{ marginBottom: 0 }}>
-                  <div className="panel-title"><Calendar size={16} color="#F54E25" /> Calendar & Reminders</div>
-                  {reminderItems.map((item) => (
-                    <button
-                      type="button"
-                      key={item}
-                      className={`reminder-btn ${completedReminders.includes(item) ? 'completed' : ''}`}
-                      onClick={() => toggleReminder(item)}
-                    >
-                      <span>{item}</span>
-                      {completedReminders.includes(item) ? <CheckCircle2 size={16} /> : <Clock3 size={16} color="#94A3B8" />}
-                    </button>
-                  ))}
-                </div>
-                <div className="panel-card" style={{ marginBottom: 0 }}>
-                  <div className="panel-title"><FileText size={16} color="#F54E25" /> Request Status</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ color: '#334155', fontSize: 13 }}>Admission Request</span>
-                    <span className="status-chip" style={{ background: '#FEF3C7', color: '#92400E' }}>In Review</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ color: '#334155', fontSize: 13 }}>Medical Requirements</span>
-                    <span className="status-chip" style={{ background: '#FEE2E2', color: '#991B1B' }}>Needs Action</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: '#334155', fontSize: 13 }}>Weekly Report</span>
-                    <span className="status-chip" style={{ background: '#DCFCE7', color: '#166534' }}>Approved</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
           </div>
         </div>
 

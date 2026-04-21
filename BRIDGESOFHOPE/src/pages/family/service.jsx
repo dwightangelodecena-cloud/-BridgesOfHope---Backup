@@ -549,7 +549,7 @@ const Service = () => {
               </div>
             </div>
             <div className="action-buttons">
-              <button className="btn-admit" onClick={() => navigate('/admission')}>Admit a patient</button>
+              <button className="btn-admit" onClick={() => navigate('/progress', { state: { tab: 'admission' } })}>Admit a patient</button>
               <X className="btn-close" size={32} onClick={() => navigate('/home')} />
             </div>
           </div>
@@ -659,7 +659,7 @@ const Service = () => {
               </div>
 
               <div className="mobile-admit-wrapper">
-                <button className="btn-admit" onClick={() => navigate('/admission')}>Admit a patient</button>
+                <button className="btn-admit" onClick={() => navigate('/progress', { state: { tab: 'admission' } })}>Admit a patient</button>
               </div>
             </div>
           </div>
