@@ -7,7 +7,9 @@
     "dev": "vite --host",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:staff-welcome-email": "npx supabase functions deploy send-staff-welcome-email",
+    "deploy:create-staff-auth-user": "npx supabase functions deploy create-staff-auth-user"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

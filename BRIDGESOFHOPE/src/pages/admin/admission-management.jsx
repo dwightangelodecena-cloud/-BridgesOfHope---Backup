@@ -19,6 +19,9 @@ import {
   ChevronDown,
   Stethoscope,
   LayoutTemplate,
+  Calendar,
+  User,
+  FileText,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
@@ -39,6 +42,7 @@ import {
 import { approveAdmissionInDatabase } from '@/lib/approveAdmissionSupabase';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
+import { verifyAdminApprovalPin } from '@/lib/adminApprovalPin';
 
 const FILTER_OPTIONS = ['All Admissions', ...ADMISSION_WORKFLOW_STATUSES];
 
@@ -289,8 +293,11 @@ const AdmissionManagement = () => {
       setTfaError('Enter a valid 4-digit code.');
       return;
     }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const envPin = import.meta.env.VITE_ADMIN_APPROVAL_PIN;
-    if (envPin !== undefined && envPin !== '' && String(pin) !== String(envPin)) {
+    if (!verifyAdminApprovalPin(pin, user?.id || 'global', envPin)) {
       setTfaError('Incorrect code.');
       return;
     }
@@ -467,8 +474,20 @@ const AdmissionManagement = () => {
             <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
             <span className="sidebar-label">Content management</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
+            <div className="icon-box inactive"><Calendar size={22} /></div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
+            <div className="icon-box inactive"><FileText size={22} /></div>
+            <span className="sidebar-label">Printable reports</span>
+          </div>
         </nav>
         <div className="sidebar-footer">
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
+            <div className="icon-box inactive"><User size={22} /></div>
+            <span className="sidebar-label">Profile & Security</span>
+          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
             <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? 0 : 10, flexShrink: 0 }} />
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
@@ -486,7 +505,7 @@ const AdmissionManagement = () => {
         <div style={{ width: '100%' }}>
           <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Admission Management</h1>
           <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 20, fontWeight: 500 }}>
-            Active and incoming patient admissions. Costs use fees from Services (admission fee + monthly branch rates).
+            Active and incoming patient admissions. Costs use fees from Services (admission fee + Imus monthly rate).
           </p>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
@@ -629,7 +648,10 @@ const AdmissionManagement = () => {
                     pageRows.map((r) => (
                       <tr key={r.requestId} className="am-row" style={{ borderBottom: '1px solid #F4F7FE' }}>
                         <td style={{ padding: '12px', fontWeight: 700, color: '#1B2559', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{r.admissionDisplayId}</td>
-                        <td style={{ padding: '12px', fontWeight: 600 }}>{r.patientName}</td>
+                        <td style={{ padding: '12px', fontWeight: 600 }}>
+                          <div style={{ fontWeight: 700, color: '#1B2559' }}>{r.patientName}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{r.patientGender || 'N/A'}</div>
+                        </td>
                         <td style={{ padding: '12px', maxWidth: 200, color: '#334155' }}>{r.reason}</td>
                         <td style={{ padding: '12px', color: '#707EAE' }}>{r.assignedStaff}</td>
                         <td style={{ padding: '12px' }}>{r.admissionType}</td>
@@ -723,12 +745,13 @@ const AdmissionManagement = () => {
             <div className="am-modal-body">
               <div className="am-modal-field"><span className="am-modal-label">Patient ID</span><div className="am-input">{viewRow.admissionDisplayId}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Patient</span><div className="am-input">{viewRow.patientName}</div></div>
+              <div className="am-modal-field"><span className="am-modal-label">Gender</span><div className="am-input">{viewRow.patientGender || 'N/A'}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Status</span><div className="am-input">{viewRow.status}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Admission date</span><div className="am-input">{formatDate(viewRow.admissionDate)}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Assigned staff</span><div className="am-input">{viewRow.assignedStaff}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Admission type</span><div className="am-input">{viewRow.admissionType}</div></div>
               <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}><span className="am-modal-label">Reason / concern</span><div className="am-input">{viewRow.reason}</div></div>
-              <div className="am-modal-field"><span className="am-modal-label">Branch (monthly rate)</span><div className="am-input">{BRANCH_LABEL[viewRow.pricingDetail.branch] || '—'}</div></div>
+              <div className="am-modal-field"><span className="am-modal-label">Location (monthly rate)</span><div className="am-input">{BRANCH_LABEL[viewRow.pricingDetail.branch] || 'Imus Branch'}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Months of care (estimate)</span><div className="am-input">{viewRow.pricingDetail.monthsOfCare}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Estimated total</span><div className="am-input" style={{ fontWeight: 800, color: '#05CD99' }}>{formatPhp(viewRow.estimatedCost)}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Guardian</span><div className="am-input">{viewRow.guardianName || '—'}</div></div>
@@ -755,7 +778,7 @@ const AdmissionManagement = () => {
                 <input className="am-input" value={editRow._editType} onChange={(e) => setEditRow((p) => ({ ...p, _editType: e.target.value }))} />
               </label>
               <label className="am-modal-field">
-                <span className="am-modal-label">Branch (monthly fee)</span>
+                <span className="am-modal-label">Location (monthly fee)</span>
                 <select className="am-input" value={editRow._editBranch} onChange={(e) => setEditRow((p) => ({ ...p, _editBranch: e.target.value }))}>
                   {BRANCH_KEYS.map((k) => (
                     <option key={k} value={k}>{BRANCH_LABEL[k]}</option>
@@ -778,7 +801,7 @@ const AdmissionManagement = () => {
               </label>
               <label className="am-modal-field" style={{ gridColumn: '1 / -1', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <input type="checkbox" checked={editRow._editIncMo} onChange={(e) => setEditRow((p) => ({ ...p, _editIncMo: e.target.checked }))} />
-                <span className="am-modal-label" style={{ margin: 0 }}>Include monthly fee (branch rate × months)</span>
+                <span className="am-modal-label" style={{ margin: 0 }}>Include monthly fee (Imus rate × months)</span>
               </label>
             </div>
             <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

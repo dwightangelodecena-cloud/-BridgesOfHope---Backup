@@ -7,16 +7,14 @@ export const ADMISSION_FEE_PHP = 30_000;
 /** Monthly residential fee by branch (same labels as service.jsx). */
 export const MONTHLY_FEE_BY_BRANCH = {
   imus: 35_000,
-  amadeo: 33_000,
 };
 
 export const BRANCH_LABEL = {
   imus: 'Imus Branch',
-  amadeo: 'Amadeo Branch',
 };
 
 /** Select keys for UI / stored values. */
-export const BRANCH_KEYS = ['imus', 'amadeo'];
+export const BRANCH_KEYS = ['imus'];
 
 /**
  * @param {{ branch?: keyof typeof MONTHLY_FEE_BY_BRANCH | ''; monthsOfCare?: number; includeAdmissionFee?: boolean; includeMonthly?: boolean }} opts

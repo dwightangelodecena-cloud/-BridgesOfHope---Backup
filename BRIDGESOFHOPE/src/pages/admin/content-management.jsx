@@ -20,6 +20,10 @@ import {
   ChevronLeft,
   ChevronRight,
   PanelRight,
+  Calendar,
+  User,
+  FileText,
+  Construction,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
@@ -33,6 +37,10 @@ import {
   normalizeSectionOrder,
 } from '@/lib/siteContentStore';
 import { pullSiteContentFromSupabase, pushSiteContentToSupabase } from '@/lib/siteContentRemote';
+import {
+  DEFAULT_CMS_MAINTENANCE_MESSAGE,
+  setCmsMaintenanceRemote,
+} from '@/lib/cmsMaintenance';
 import { buildCustomBlock } from '@/lib/customBlockFactory';
 import { SortableRow, SortableVerticalList } from '@/components/admin/CmsSortable';
 import CustomBlocksVisualEditor from '@/components/admin/CustomBlocksVisualEditor';
@@ -200,6 +208,9 @@ function ContentManagement() {
   const [propsPanelOpen, setPropsPanelOpen] = useState(true);
   const [savedMsg, setSavedMsg] = useState('');
   const [err, setErr] = useState('');
+  /** While true, the public home page shows a full-screen maintenance overlay for visitors. */
+  const [publicMaint, setPublicMaint] = useState(true);
+  const [maintSyncErr, setMaintSyncErr] = useState('');
 
   const normalizedSectionOrder = useMemo(
     () => normalizeSectionOrder(content.sectionOrder),
@@ -251,6 +262,18 @@ function ContentManagement() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void setCmsMaintenanceRemote(publicMaint, DEFAULT_CMS_MAINTENANCE_MESSAGE).then((r) => {
+      if (cancelled) return;
+      setMaintSyncErr(r.ok ? '' : r.error || 'Could not sync public maintenance mode.');
+    });
+    return () => {
+      cancelled = true;
+      void setCmsMaintenanceRemote(false);
+    };
+  }, [publicMaint]);
 
   const handleSave = async () => {
     setErr('');
@@ -499,8 +522,20 @@ function ContentManagement() {
             <div className="icon-box active"><LayoutTemplate size={22} /></div>
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Content management</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
+            <div className="icon-box inactive"><Calendar size={22} /></div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
+            <div className="icon-box inactive"><FileText size={22} /></div>
+            <span className="sidebar-label">Printable reports</span>
+          </div>
         </nav>
         <div className="sidebar-footer">
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
+            <div className="icon-box inactive"><User size={22} /></div>
+            <span className="sidebar-label">Profile & Security</span>
+          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
             <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? 0 : 10, flexShrink: 0 }} />
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
@@ -516,6 +551,40 @@ function ContentManagement() {
               <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
                 CMS · Home page · Save syncs to Supabase and local storage
               </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                  marginTop: 8,
+                }}
+              >
+                <label
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: publicMaint ? '#b45309' : '#64748b',
+                    userSelect: 'none',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={publicMaint}
+                    onChange={(e) => setPublicMaint(e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: '#F54E25' }}
+                  />
+                  <Construction size={16} strokeWidth={2.25} aria-hidden />
+                  Public site: maintenance screen
+                </label>
+                {maintSyncErr ? (
+                  <span style={{ fontSize: 12, color: '#b91c1c', fontWeight: 600 }}>{maintSyncErr}</span>
+                ) : null}
+              </div>
             </div>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
@@ -525,7 +594,12 @@ function ContentManagement() {
             <button type="button" className="cm-btn cm-btn-ghost" onClick={handleReset}>
               <RotateCcw size={16} /> Reset
             </button>
-            <button type="button" className="cm-btn cm-btn-ghost" onClick={() => window.open('/', '_blank', 'noopener,noreferrer')}>
+            <button
+              type="button"
+              className="cm-btn cm-btn-ghost"
+              onClick={() => window.open('/?cmsEdit=1', '_blank', 'noopener,noreferrer')}
+              title="Opens the home page without the maintenance overlay"
+            >
               <ExternalLink size={16} /> Preview site
             </button>
             <button

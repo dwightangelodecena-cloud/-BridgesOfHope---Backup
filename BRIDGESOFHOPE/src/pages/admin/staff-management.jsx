@@ -17,17 +17,54 @@ import {
   ArrowUpDown,
   UserPlus,
   LayoutTemplate,
+  Calendar,
+  User,
+  FileText,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
-import { formatAuthError } from '@/lib/authErrors';
-import { getPasswordPolicyError } from '@/lib/passwordPolicy';
+import { createStaffAuthUserViaEdgeFunction } from '@/lib/createStaffAuthUser';
+import { getStaffInitialPassword } from '@/lib/staffInitialPassword';
+import { sendStaffWelcomeEmailViaEdgeFunction } from '@/lib/sendStaffWelcomeEmail';
+import {
+  buildStaffLoginEmail,
+  getStaffLoginDomainForRole,
+  randomEmailDisambiguator,
+} from '@/lib/institutionalStaffEmail';
 
 const META_KEY = 'bh_staff_admin_meta';
 const LOCAL_STAFF_KEY = 'bh_staff_directory';
 const FIXED_BRANCH = 'Imus';
+/** New accounts from this dialog are nurses; login email uses nurse.<root>. */
+const ADD_STAFF_ACCOUNT_TYPE = 'nurse';
+const ADD_STAFF_EMPLOYMENT_TYPE = 'Full-time';
+/** Saved automatically on create; admin sets the real shift in Edit staff. */
+const ADD_STAFF_SHIFT_PLACEHOLDER = 'Unassigned';
+
+/** Preset shifts — Edit staff uses a dropdown (no free typing). */
+const SHIFT_PRESET_OPTIONS = [
+  'Unassigned',
+  'Day (7am–3pm)',
+  'Evening (3pm–11pm)',
+  'Night (11pm–7am)',
+  'Rotating',
+  'On-call',
+];
+
+function shiftValueForSelect(stored) {
+  const s = String(stored ?? '').trim();
+  if (!s || s === '—') return ADD_STAFF_SHIFT_PLACEHOLDER;
+  return s;
+}
+
+function shiftSelectOptions(currentStored) {
+  const v = shiftValueForSelect(currentStored);
+  const set = new Set(SHIFT_PRESET_OPTIONS);
+  if (!set.has(v)) set.add(v);
+  return Array.from(set);
+}
 
 const ROLE_FILTER_OPTIONS = ['All Staff', 'Nurses', 'Clinic Staff'];
 const STATUS_FILTER_OPTIONS = [
@@ -193,7 +230,8 @@ const mapRowToStaff = (row, idx, meta) => {
       row.name ||
       composeName(row.first_name, row.last_name, row.middle_initial) ||
       'Unknown',
-    email: row.email || 'N/A',
+    email: (row.login_email && String(row.login_email).trim()) || (row.email && String(row.email).trim()) || 'N/A',
+    personalEmail: row.personal_email ? String(row.personal_email).trim() : '',
     phone: row.phone || row.contact_number || row.mobile || 'N/A',
     address: buildAddressFromRow(row),
     roleLabel,
@@ -270,17 +308,22 @@ const StaffManagement = () => {
   const [addStaffFirstName, setAddStaffFirstName] = useState('');
   const [addStaffLastName, setAddStaffLastName] = useState('');
   const [addStaffMiddleInitial, setAddStaffMiddleInitial] = useState('');
-  const [addStaffEmail, setAddStaffEmail] = useState('');
+  const [addStaffPersonalEmail, setAddStaffPersonalEmail] = useState('');
   const [addStaffPhone, setAddStaffPhone] = useState('');
-  const [addStaffRole, setAddStaffRole] = useState('staff');
   const [addStaffDepartment, setAddStaffDepartment] = useState('');
-  const [addStaffShift, setAddStaffShift] = useState('');
-  const [addStaffEmploymentType, setAddStaffEmploymentType] = useState('Full-time');
   const [addStaffAddress, setAddStaffAddress] = useState('');
-  const [addStaffPassword, setAddStaffPassword] = useState('');
-  const [addStaffConfirmPassword, setAddStaffConfirmPassword] = useState('');
   const [addStaffSubmitting, setAddStaffSubmitting] = useState(false);
   const [addStaffError, setAddStaffError] = useState('');
+  /** After successful create: show email result or copy credentials if email failed. */
+  const [staffWelcomeModal, setStaffWelcomeModal] = useState(null);
+
+  const institutionalEmailPreview = useMemo(() => {
+    const domain = getStaffLoginDomainForRole(ADD_STAFF_ACCOUNT_TYPE);
+    const firstName = toTitleCase(addStaffFirstName);
+    const lastName = toTitleCase(addStaffLastName);
+    if (!String(firstName || '').trim() || !String(lastName || '').trim()) return `@${domain}`;
+    return buildStaffLoginEmail({ firstName, lastName }, domain);
+  }, [addStaffFirstName, addStaffLastName]);
 
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
@@ -351,6 +394,7 @@ const StaffManagement = () => {
       return (
         String(s.fullName || '').toLowerCase().includes(q) ||
         String(s.email || '').toLowerCase().includes(q) ||
+        String(s.personalEmail || '').toLowerCase().includes(q) ||
         String(s.staffId || '').toLowerCase().includes(q) ||
         String(s.roleLabel || '').toLowerCase().includes(q) ||
         String(s.department || '').toLowerCase().includes(q)
@@ -417,15 +461,10 @@ const StaffManagement = () => {
     setAddStaffFirstName('');
     setAddStaffLastName('');
     setAddStaffMiddleInitial('');
-    setAddStaffEmail('');
+    setAddStaffPersonalEmail('');
     setAddStaffPhone('');
-    setAddStaffRole('staff');
     setAddStaffDepartment('');
-    setAddStaffShift('');
-    setAddStaffEmploymentType('Full-time');
     setAddStaffAddress('');
-    setAddStaffPassword('');
-    setAddStaffConfirmPassword('');
     setAddStaffError('');
   };
 
@@ -435,12 +474,22 @@ const StaffManagement = () => {
     const lastName = toTitleCase(addStaffLastName);
     const middleInitial = normalizeMiddleInitial(addStaffMiddleInitial);
     const fullName = composeName(firstName, lastName, middleInitial);
-    const email = addStaffEmail.trim();
+    const personalEmailRaw = addStaffPersonalEmail.trim();
+    const looseEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+    if (!personalEmailRaw) {
+      setAddStaffError('Personal email is required so we can send login credentials.');
+      return;
+    }
+    if (!looseEmail(personalEmailRaw)) {
+      setAddStaffError('Personal email looks invalid.');
+      return;
+    }
+    const domain = getStaffLoginDomainForRole(ADD_STAFF_ACCOUNT_TYPE);
     const phone = addStaffPhone.trim();
     const department = addStaffDepartment.trim();
     const branch = FIXED_BRANCH;
-    const shift = addStaffShift.trim();
-    const employmentType = addStaffEmploymentType.trim();
+    const shift = ADD_STAFF_SHIFT_PLACEHOLDER;
+    const employmentType = ADD_STAFF_EMPLOYMENT_TYPE;
     const address = addStaffAddress.trim();
     if (!firstName) {
       setAddStaffError('First name is required.');
@@ -450,33 +499,12 @@ const StaffManagement = () => {
       setAddStaffError('Last name is required.');
       return;
     }
-    if (!email) {
-      setAddStaffError('Email is required.');
-      return;
-    }
     if (!phone) {
       setAddStaffError('Phone is required.');
       return;
     }
     if (!department) {
       setAddStaffError('Department is required.');
-      return;
-    }
-    if (!shift) {
-      setAddStaffError('Shift is required.');
-      return;
-    }
-    if (!employmentType) {
-      setAddStaffError('Employment type is required.');
-      return;
-    }
-    const pwErr = getPasswordPolicyError(addStaffPassword);
-    if (pwErr) {
-      setAddStaffError(pwErr);
-      return;
-    }
-    if (addStaffPassword !== addStaffConfirmPassword) {
-      setAddStaffError('Passwords do not match.');
       return;
     }
     if (!isSupabaseConfigured()) {
@@ -493,34 +521,49 @@ const StaffManagement = () => {
     }
 
     setAddStaffSubmitting(true);
+    const temporaryPassword = getStaffInitialPassword();
     try {
-      const accountType = addStaffRole === 'nurse' ? 'nurse' : 'staff';
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password: addStaffPassword,
-        options: {
-          data: {
-            account_type: accountType,
-            first_name: firstName,
-            last_name: lastName,
-            middle_initial: middleInitial,
-            full_name: fullName,
-            contact_number: phone,
-            department,
-            branch,
-            shift,
-            employment_type: employmentType,
-            address: address || null,
-          },
-        },
-      });
-      if (error) {
-        setAddStaffError(formatAuthError(error));
+      const accountType = ADD_STAFF_ACCOUNT_TYPE;
+      const userMetadata = {
+        account_type: accountType,
+        first_name: firstName,
+        last_name: lastName,
+        middle_initial: middleInitial,
+        full_name: fullName,
+        contact_number: phone,
+        department,
+        branch,
+        shift,
+        employment_type: employmentType,
+        address: address || null,
+        personal_email: personalEmailRaw || null,
+      };
+      let newId = null;
+      let createdLoginEmail = '';
+      for (let attempt = 0; attempt < 15; attempt++) {
+        const suffixToken = attempt === 0 ? '' : randomEmailDisambiguator();
+        const signUpEmail = buildStaffLoginEmail({ firstName, lastName }, domain, suffixToken);
+        const createResult = await createStaffAuthUserViaEdgeFunction({
+          email: signUpEmail,
+          password: temporaryPassword,
+          user_metadata: { ...userMetadata, institutional_email: signUpEmail },
+        });
+        if (createResult.ok && createResult.userId) {
+          newId = createResult.userId;
+          createdLoginEmail = signUpEmail;
+          break;
+        }
+        if (createResult.duplicateEmail) continue;
+        setAddStaffError(
+          createResult.error ||
+            'Could not create the account. Deploy the create-staff-auth-user Edge Function if you have not already.',
+        );
         return;
       }
-      const newId = data?.user?.id;
       if (!newId) {
-        setAddStaffError('Could not create the account. Check Auth settings (e.g. email confirmations).');
+        setAddStaffError(
+          'Could not create the account after several tries (login email collisions). Try again or contact support.',
+        );
         return;
       }
       const { error: profileError } = await supabase.from('profiles').upsert(
@@ -532,6 +575,8 @@ const StaffManagement = () => {
           full_name: fullName,
           phone: phone || null,
           contact_number: phone || null,
+          personal_email: personalEmailRaw || null,
+          login_email: createdLoginEmail,
           account_type: accountType,
           department,
           branch,
@@ -548,9 +593,26 @@ const StaffManagement = () => {
         );
         return;
       }
+
+      const emailResult = await sendStaffWelcomeEmailViaEdgeFunction({
+        personalEmail: personalEmailRaw,
+        institutionalEmail: createdLoginEmail,
+        temporaryPassword,
+        fullName,
+      });
+
       refreshAppData();
       await loadStaff();
       closeAddStaffModal();
+      setStaffWelcomeModal({
+        fullName,
+        personalEmail: personalEmailRaw,
+        institutionalEmail: createdLoginEmail,
+        temporaryPassword,
+        emailSent: emailResult.ok,
+        sendError: emailResult.ok ? '' : emailResult.error || 'Email was not sent.',
+        skipped: Boolean(emailResult.skipped),
+      });
     } catch (err) {
       console.error(err);
       setAddStaffError(err?.message || 'Failed to create staff account.');
@@ -706,8 +768,20 @@ const StaffManagement = () => {
             <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
             <span className="sidebar-label">Content management</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
+            <div className="icon-box inactive"><Calendar size={22} /></div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
+            <div className="icon-box inactive"><FileText size={22} /></div>
+            <span className="sidebar-label">Printable reports</span>
+          </div>
         </nav>
         <div className="sidebar-footer">
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
+            <div className="icon-box inactive"><User size={22} /></div>
+            <span className="sidebar-label">Profile & Security</span>
+          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
             <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? 0 : 10, flexShrink: 0 }} />
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
@@ -886,20 +960,20 @@ const StaffManagement = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['Staff ID', 'Full Name', 'Role', 'Department', 'Contact', 'Branch', 'Shift', 'Status', 'Availability', 'Actions'].map((col, idx) => (
-                      <th className="um-th" key={col} style={{ padding: '12px 14px', borderRight: idx < 9 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>{col}</th>
+                    {['Staff ID', 'Full Name', 'Login email', 'Personal email', 'Role', 'Department', 'Contact', 'Branch', 'Shift', 'Status', 'Availability', 'Actions'].map((col, idx) => (
+                      <th className="um-th" key={col} style={{ padding: '12px 14px', borderRight: idx < 11 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {loading && (
                     <tr>
-                      <td colSpan={10} style={{ padding: 18, color: '#64748b' }}>Loading staff...</td>
+                      <td colSpan={12} style={{ padding: 18, color: '#64748b' }}>Loading staff...</td>
                     </tr>
                   )}
                   {!loading && filtered.length === 0 && (
                     <tr>
-                      <td colSpan={10} style={{ padding: 18, color: '#64748b' }}>
+                      <td colSpan={12} style={{ padding: 18, color: '#64748b' }}>
                         No staff match your search or filters. Profiles need account type nurse or staff in Supabase, or add demo rows to localStorage key {LOCAL_STAFF_KEY}.
                       </td>
                     </tr>
@@ -909,6 +983,8 @@ const StaffManagement = () => {
                       <tr key={s.id} className="um-row" style={{ borderBottom: '1px solid #F4F7FE' }}>
                         <td style={{ padding: '14px', color: '#1B2559', fontWeight: 700 }}>{s.staffId}</td>
                         <td style={{ padding: '14px', color: '#1B2559', fontWeight: 600 }}>{s.fullName}</td>
+                        <td style={{ padding: '14px', color: '#1B2559', maxWidth: 200, wordBreak: 'break-word', fontSize: 12, fontFamily: 'ui-monospace, monospace' }}>{s.email}</td>
+                        <td style={{ padding: '14px', color: '#707EAE', maxWidth: 200, wordBreak: 'break-word', fontSize: 12 }}>{s.personalEmail || '—'}</td>
                         <td style={{ padding: '14px', color: '#1B2559' }}>{s.roleLabel}</td>
                         <td style={{ padding: '14px', color: '#707EAE' }}>{s.department}</td>
                         <td style={{ padding: '14px', color: '#707EAE' }}>{s.phone}</td>
@@ -995,7 +1071,13 @@ const StaffManagement = () => {
               <div className="um-modal-field"><span className="um-modal-label">Full Name</span><div className="um-input">{selected.fullName}</div></div>
               <div className="um-modal-field"><span className="um-modal-label">Role</span><div className="um-input">{selected.roleLabel}</div></div>
               <div className="um-modal-field"><span className="um-modal-label">Department</span><div className="um-input">{selected.department}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Email</span><div className="um-input">{selected.email}</div></div>
+              <div className="um-modal-field"><span className="um-modal-label">Login email</span><div className="um-input">{selected.email}</div></div>
+              {selected.personalEmail ? (
+                <div className="um-modal-field">
+                  <span className="um-modal-label">Personal email</span>
+                  <div className="um-input">{selected.personalEmail}</div>
+                </div>
+              ) : null}
               <div className="um-modal-field"><span className="um-modal-label">Phone</span><div className="um-input">{selected.phone}</div></div>
               <div className="um-modal-field"><span className="um-modal-label">Address</span><div className="um-input">{selected.address}</div></div>
               <div className="um-modal-field"><span className="um-modal-label">Branch / Unit</span><div className="um-input">{selected.branch}</div></div>
@@ -1024,9 +1106,16 @@ const StaffManagement = () => {
             </div>
             <div className="um-modal-body">
               <p style={{ gridColumn: '1 / -1', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
-                Creates a Supabase Auth user and a <code style={{ fontSize: 12 }}>profiles</code> row with{' '}
-                required profile fields. Choose role (<code style={{ fontSize: 12 }}>staff</code> or{' '}
-                <code style={{ fontSize: 12 }}>nurse</code>) and provide identity details before creating the account.
+                Creates a Supabase Auth user and a <code style={{ fontSize: 12 }}>profiles</code> row.{' '}
+                <strong>Login email</strong> format: <strong>lastname</strong> plus the{' '}
+                <strong>first letter of the first name</strong>, e.g. Decena + Dwight → <code style={{ fontSize: 12 }}>decenad</code>@{' '}
+                <code style={{ fontSize: 12 }}>nurse.bridgesofhope.ph</code> (root:{' '}
+                <code style={{ fontSize: 12 }}>VITE_STAFF_EMAIL_ROOT_DOMAIN</code>).{' '}
+                <strong>Shift</strong> is saved as <code style={{ fontSize: 12 }}>Unassigned</code> until you set it in{' '}
+                <strong>Edit staff</strong>. <strong>Employment</strong> is full-time for all.{' '}
+                <strong>Password:</strong> every new staff member gets the <strong>same</strong> organization default
+                password (not a unique one per person). It is emailed to their <strong>personal email</strong> along with
+                their login address when Resend is set up.
               </p>
               <label className="um-modal-field">
                 <span className="um-modal-label">First name</span>
@@ -1058,14 +1147,30 @@ const StaffManagement = () => {
                   disabled={addStaffSubmitting}
                 />
               </label>
-              <label className="um-modal-field">
-                <span className="um-modal-label">Email</span>
+              <label className="um-modal-field" style={{ gridColumn: '1 / -1' }}>
+                <span className="um-modal-label">Assigned login email</span>
+                <div
+                  className="um-input"
+                  style={{
+                    background: '#f8fafc',
+                    color: '#0f172a',
+                    fontFamily: 'ui-monospace, monospace',
+                    fontSize: 13,
+                  }}
+                  title="lastname + first initial of first name @ domain"
+                >
+                  {institutionalEmailPreview || `lastnamef@${getStaffLoginDomainForRole(ADD_STAFF_ACCOUNT_TYPE)}`}
+                </div>
+              </label>
+              <label className="um-modal-field" style={{ gridColumn: '1 / -1' }}>
+                <span className="um-modal-label">Personal email (required — credentials sent here)</span>
                 <input
                   className="um-input"
                   type="email"
-                  autoComplete="off"
-                  value={addStaffEmail}
-                  onChange={(e) => setAddStaffEmail(e.target.value)}
+                  autoComplete="email"
+                  placeholder="e.g. their Gmail address"
+                  value={addStaffPersonalEmail}
+                  onChange={(e) => setAddStaffPersonalEmail(e.target.value)}
                   disabled={addStaffSubmitting}
                 />
               </label>
@@ -1081,18 +1186,6 @@ const StaffManagement = () => {
                 />
               </label>
               <label className="um-modal-field">
-                <span className="um-modal-label">Role</span>
-                <select
-                  className="um-input"
-                  value={addStaffRole}
-                  onChange={(e) => setAddStaffRole(e.target.value)}
-                  disabled={addStaffSubmitting}
-                >
-                  <option value="staff">Staff</option>
-                  <option value="nurse">Nurse</option>
-                </select>
-              </label>
-              <label className="um-modal-field">
                 <span className="um-modal-label">Department</span>
                 <input className="um-input" value={addStaffDepartment} onChange={(e) => setAddStaffDepartment(e.target.value)} disabled={addStaffSubmitting} />
               </label>
@@ -1100,45 +1193,28 @@ const StaffManagement = () => {
                 <span className="um-modal-label">Branch</span>
                 <input className="um-input" value={FIXED_BRANCH} disabled />
               </label>
-              <label className="um-modal-field">
-                <span className="um-modal-label">Shift</span>
-                <input className="um-input" value={addStaffShift} onChange={(e) => setAddStaffShift(e.target.value)} disabled={addStaffSubmitting} />
-              </label>
-              <label className="um-modal-field">
-                <span className="um-modal-label">Employment type</span>
-                <select className="um-input" value={addStaffEmploymentType} onChange={(e) => setAddStaffEmploymentType(e.target.value)} disabled={addStaffSubmitting}>
-                  <option value="Full-time">Full-time</option>
-                  <option value="Part-time">Part-time</option>
-                  <option value="Contract">Contract</option>
-                  <option value="Reliever">Reliever</option>
-                </select>
-              </label>
               <label className="um-modal-field" style={{ gridColumn: '1 / -1' }}>
                 <span className="um-modal-label">Address (optional)</span>
                 <input className="um-input" value={addStaffAddress} onChange={(e) => setAddStaffAddress(e.target.value)} disabled={addStaffSubmitting} />
               </label>
-              <label className="um-modal-field">
-                <span className="um-modal-label">Password</span>
-                <input
-                  className="um-input"
-                  type="password"
-                  autoComplete="new-password"
-                  value={addStaffPassword}
-                  onChange={(e) => setAddStaffPassword(e.target.value)}
-                  disabled={addStaffSubmitting}
-                />
-              </label>
-              <label className="um-modal-field">
-                <span className="um-modal-label">Confirm password</span>
-                <input
-                  className="um-input"
-                  type="password"
-                  autoComplete="new-password"
-                  value={addStaffConfirmPassword}
-                  onChange={(e) => setAddStaffConfirmPassword(e.target.value)}
-                  disabled={addStaffSubmitting}
-                />
-              </label>
+              <div
+                className="um-modal-field"
+                style={{
+                  gridColumn: '1 / -1',
+                  padding: '12px 14px',
+                  borderRadius: 12,
+                  background: '#f1f5f9',
+                  border: '1px solid #e2e8f0',
+                  fontSize: 13,
+                  color: '#475569',
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong>Same default password for each staff member.</strong> Each hire receives that shared initial
+                password by email (with their own login email). Resend must be configured for delivery. To change the
+                shared default for the whole site, set <code style={{ fontSize: 12 }}>VITE_STAFF_DEFAULT_INITIAL_PASSWORD</code>{' '}
+                in <code style={{ fontSize: 12 }}>.env</code> (see <code style={{ fontSize: 12 }}>.env.example</code>).
+              </div>
               {addStaffError && (
                 <div style={{ gridColumn: '1 / -1', color: '#b91c1c', fontWeight: 600, fontSize: 13 }}>{addStaffError}</div>
               )}
@@ -1187,7 +1263,17 @@ const StaffManagement = () => {
               </label>
               <label className="um-modal-field">
                 <span className="um-modal-label">Shift</span>
-                <input className="um-input" value={editRow.shift} onChange={(e) => setEditRow((p) => ({ ...p, shift: e.target.value }))} />
+                <select
+                  className="um-input"
+                  value={shiftValueForSelect(editRow.shift)}
+                  onChange={(e) => setEditRow((p) => ({ ...p, shift: e.target.value }))}
+                >
+                  {shiftSelectOptions(editRow.shift).map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="um-modal-field">
                 <span className="um-modal-label">Employment Type</span>
@@ -1208,6 +1294,131 @@ const StaffManagement = () => {
               <button type="button" className="db-action-btn" onClick={() => setEditRow(null)}>Cancel</button>
               <button type="button" className="db-edit-btn" disabled={savingId === editRow.id} onClick={() => void saveEdit()}>
                 {savingId === editRow.id ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {staffWelcomeModal && (
+        <div className="um-modal-backdrop" onClick={() => setStaffWelcomeModal(null)} role="presentation">
+          <div
+            className="um-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="staff-welcome-title"
+            style={{ width: 'min(92vw, 520px)' }}
+          >
+            <div className="um-modal-head">
+              <div id="staff-welcome-title" style={{ fontSize: 18, fontWeight: 800, color: '#1B2559' }}>
+                Account created
+              </div>
+              <button type="button" className="db-action-btn" onClick={() => setStaffWelcomeModal(null)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="um-modal-body" style={{ gridTemplateColumns: '1fr' }}>
+              {staffWelcomeModal.emailSent ? (
+                <p style={{ fontSize: 14, color: '#166534', fontWeight: 600, lineHeight: 1.5 }}>
+                  Login details were emailed to <strong>{staffWelcomeModal.personalEmail}</strong>.
+                </p>
+              ) : (
+                <>
+                  <p style={{ fontSize: 14, color: '#b45309', lineHeight: 1.5, marginBottom: staffWelcomeModal.skipped ? 0 : 10 }}>
+                    {staffWelcomeModal.skipped
+                      ? 'Welcome email is not configured (deploy the Edge Function and set RESEND_API_KEY). Share the credentials below securely.'
+                      : staffWelcomeModal.sendError || 'The welcome email could not be sent. Share the credentials below securely.'}
+                  </p>
+                  {!staffWelcomeModal.skipped && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: '#475569',
+                        lineHeight: 1.55,
+                        padding: '12px 14px',
+                        background: '#f8fafc',
+                        borderRadius: 12,
+                        border: '1px solid #e2e8f0',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <strong style={{ color: '#1B2559' }}>Why inbox is empty (Resend)</strong>
+                      <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                        <li>
+                          In <strong>test / unverified domain</strong> mode, Resend often only delivers to{' '}
+                          <strong>your own account email</strong>. Put that address in <strong>Personal email</strong> when
+                          creating staff, or verify your domain at{' '}
+                          <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer">
+                            resend.com/domains
+                          </a>{' '}
+                          and set <code style={{ fontSize: 12 }}>RESEND_FROM</code> or{' '}
+                          <code style={{ fontSize: 12 }}>RESEND_FROM_EMAIL</code> (Supabase secrets) to an address on that
+                          domain.
+                        </li>
+                        <li>
+                          Check spam for{' '}
+                          <strong>{staffWelcomeModal.personalEmail || 'the personal email you entered'}</strong>.
+                        </li>
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+              <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+                Staff member: <strong>{staffWelcomeModal.fullName}</strong>
+              </p>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Login email</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'wrap' }}>
+                  <div className="um-input" style={{ flex: '1 1 200px', fontFamily: 'ui-monospace, monospace', fontSize: 13 }}>
+                    {staffWelcomeModal.institutionalEmail}
+                  </div>
+                  <button
+                    type="button"
+                    className="db-view-btn"
+                    style={{ flexShrink: 0 }}
+                    onClick={() => void navigator.clipboard?.writeText?.(staffWelcomeModal.institutionalEmail)}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </label>
+              <label className="um-modal-field">
+                <span className="um-modal-label">Initial password</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'wrap' }}>
+                  <div className="um-input" style={{ flex: '1 1 200px', fontFamily: 'ui-monospace, monospace', fontSize: 13 }}>
+                    {staffWelcomeModal.temporaryPassword}
+                  </div>
+                  <button
+                    type="button"
+                    className="db-view-btn"
+                    style={{ flexShrink: 0 }}
+                    onClick={() => void navigator.clipboard?.writeText?.(staffWelcomeModal.temporaryPassword)}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </label>
+              <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
+                Ask them to sign in and change their password from profile / security settings when available.
+              </p>
+            </div>
+            <div
+              style={{
+                padding: '16px 20px',
+                borderTop: '1px solid #EEF2FF',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                flexShrink: 0,
+              }}
+            >
+              <button
+                type="button"
+                className="db-edit-btn"
+                style={{ minWidth: 120, justifyContent: 'center' }}
+                onClick={() => setStaffWelcomeModal(null)}
+              >
+                Done
               </button>
             </div>
           </div>

@@ -14,6 +14,11 @@ import {
   uiDischargeRequestFromRow,
 } from '@/lib/dbMappers';
 import {
+  loadVisitationSettings,
+  listVisitationRequestsByFamily,
+  createVisitationRequest,
+} from '@/lib/visitationAppointments';
+import {
   FAMILY_COLORS,
 } from '@/components/family/shared/ui';
 
@@ -34,6 +39,17 @@ const HomeDashboard = () => {
   const [completedReminders, setCompletedReminders] = useState([]);
   const [displayName, setDisplayName] = useState('Family User');
   const [userInitials, setUserInitials] = useState('FU');
+  const [familyUserId, setFamilyUserId] = useState('');
+  const [visitationSettings, setVisitationSettings] = useState(() => loadVisitationSettings());
+  const [familyVisitationRequests, setFamilyVisitationRequests] = useState([]);
+  const [visitationSaving, setVisitationSaving] = useState(false);
+  const [visitationForm, setVisitationForm] = useState({
+    patientId: '',
+    patientName: '',
+    preferredDate: '',
+    preferredTime: '',
+    note: '',
+  });
 
   // AI Chat Logic State
   const [inputValue, setInputValue] = useState('');
@@ -90,6 +106,7 @@ const HomeDashboard = () => {
       if (isMounted) {
         setDisplayName(resolvedName);
         setUserInitials(deriveInitials(resolvedName));
+        setFamilyUserId(user?.id || 'local-family');
       }
     };
 
@@ -98,6 +115,21 @@ const HomeDashboard = () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!familyUserId) return;
+    const loadVisitation = () => {
+      setVisitationSettings(loadVisitationSettings());
+      setFamilyVisitationRequests(listVisitationRequestsByFamily(familyUserId));
+    };
+    loadVisitation();
+    window.addEventListener('storage', loadVisitation);
+    window.addEventListener(APP_DATA_REFRESH, loadVisitation);
+    return () => {
+      window.removeEventListener('storage', loadVisitation);
+      window.removeEventListener(APP_DATA_REFRESH, loadVisitation);
+    };
+  }, [familyUserId]);
 
   const handleSendMessage = () => {
     if (!inputValue.trim() || isTyping) return;
@@ -169,6 +201,30 @@ const HomeDashboard = () => {
   const [pendingAdmissions, setPendingAdmissions] = useState([]);
   const [pendingDischarges, setPendingDischarges] = useState([]);
   const [nurseWeeklyReportsByPatient, setNurseWeeklyReportsByPatient] = useState({});
+
+  const submitVisitationRequest = async () => {
+    const patientName = String(visitationForm.patientName || '').trim();
+    const preferredDate = String(visitationForm.preferredDate || '').trim();
+    const preferredTime = String(visitationForm.preferredTime || '').trim();
+    if (!patientName || !preferredDate || !preferredTime) return;
+    setVisitationSaving(true);
+    try {
+      createVisitationRequest({
+        familyId: familyUserId || 'local-family',
+        familyName: displayName,
+        patientId: visitationForm.patientId || '',
+        patientName,
+        preferredDate,
+        preferredTime,
+        note: String(visitationForm.note || '').trim(),
+      });
+      setVisitationForm({ patientId: '', patientName: '', preferredDate: '', preferredTime: '', note: '' });
+      setFamilyVisitationRequests(listVisitationRequestsByFamily(familyUserId || 'local-family'));
+      window.dispatchEvent(new Event('storage'));
+    } finally {
+      setVisitationSaving(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -1584,6 +1640,12 @@ const HomeDashboard = () => {
           </div>
           <span className="sidebar-label">Progress</span>
         </div>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
+          <div className="sidebar-icon-wrap">
+            <Calendar size={22} color="#707EAE" />
+          </div>
+          <span className="sidebar-label">Appointments</span>
+        </div>
 
         <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '20px' }}>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}>
@@ -1792,6 +1854,223 @@ const HomeDashboard = () => {
             </div>
           </div>  
 
+          <div className="panel-card" style={{ marginTop: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div className="panel-title" style={{ marginBottom: 0 }}>
+                <Calendar size={16} color="#F54E25" /> Visitation Appointment
+              </div>
+              <span className="status-chip" style={{ background: '#EEF2FF', color: '#3730A3' }}>
+                Fixed schedule: {visitationSettings.days.join(', ')} · {visitationSettings.startTime} - {visitationSettings.endTime}
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <select
+                value={visitationForm.patientId}
+                onChange={(e) => {
+                  const selected = patients.find((p) => String(p.id) === String(e.target.value));
+                  setVisitationForm((prev) => ({
+                    ...prev,
+                    patientId: e.target.value,
+                    patientName: selected?.name || '',
+                  }));
+                }}
+                style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '9px 10px', fontSize: 12 }}
+              >
+                <option value="">Select patient</option>
+                {patients.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={visitationForm.preferredDate}
+                onChange={(e) => setVisitationForm((prev) => ({ ...prev, preferredDate: e.target.value }))}
+                style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '9px 10px', fontSize: 12 }}
+              />
+              <input
+                type="time"
+                value={visitationForm.preferredTime}
+                onChange={(e) => setVisitationForm((prev) => ({ ...prev, preferredTime: e.target.value }))}
+                style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '9px 10px', fontSize: 12 }}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
+              <input
+                type="text"
+                value={visitationForm.note}
+                onChange={(e) => setVisitationForm((prev) => ({ ...prev, note: e.target.value }))}
+                placeholder="Note (optional): preferred reason or constraints"
+                style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '9px 10px', fontSize: 12 }}
+              />
+              <button
+                type="button"
+                onClick={submitVisitationRequest}
+                disabled={visitationSaving}
+                style={{ border: 'none', background: '#F54E25', color: 'white', borderRadius: 8, padding: '9px 12px', fontSize: 12, fontWeight: 700, cursor: visitationSaving ? 'not-allowed' : 'pointer' }}
+              >
+                {visitationSaving ? 'Submitting...' : 'Request slot'}
+              </button>
+            </div>
+            <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+              {familyVisitationRequests.slice(0, 4).map((row) => (
+                <div key={row.id} className="interactive-row">
+                  <div>
+                    <div style={{ fontSize: 13, color: '#1E293B', fontWeight: 700 }}>
+                      {row.patientName} · {row.preferredDate} {row.preferredTime}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#64748B' }}>
+                      {row.status === 'Approved' || row.status === 'Rescheduled'
+                        ? `Confirmed: ${row.confirmedDate || row.preferredDate} ${row.confirmedTime || row.preferredTime}`
+                        : 'Waiting for admin confirmation'}
+                    </div>
+                  </div>
+                  <span
+                    className="status-chip"
+                    style={{
+                      background: row.status === 'Approved' ? '#DCFCE7' : row.status === 'Declined' ? '#FEE2E2' : row.status === 'Rescheduled' ? '#E0E7FF' : '#FEF3C7',
+                      color: row.status === 'Approved' ? '#166534' : row.status === 'Declined' ? '#991B1B' : row.status === 'Rescheduled' ? '#3730A3' : '#92400E',
+                    }}
+                  >
+                    {row.status}
+                  </span>
+                </div>
+              ))}
+              {familyVisitationRequests.length === 0 ? (
+                <div style={{ color: '#94a3b8', fontSize: 12 }}>No visitation requests yet.</div>
+              ) : null}
+            </div>
+          </div>
+
+          {showAnnouncement && (
+            <div className="panel-card" style={{ borderColor: '#FED7AA', background: '#FFF7ED' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ color: '#9A3412', fontWeight: 800, marginBottom: 4 }}>Community Update: Family Wellness Talk</div>
+                  <div style={{ color: '#7C2D12', fontSize: 13 }}>
+                    Join the monthly support session on April 9 to learn practical family recovery support strategies.
+                  </div>
+                </div>
+                <button onClick={() => setShowAnnouncement(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9A3412' }}>
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="bottom-layout">
+            <div className="patient-section">
+              <h3 style={{ color: '#1B2559', fontWeight: 800, marginBottom: 16, fontSize: '1.25rem' }}>Patient Details</h3>
+              {patients.map((p, i) => (
+                <div key={p.id} className="patient-card">
+                  <div className="patient-img-placeholder" onClick={() => triggerFileInput(i)}>
+                    <input type="file" hidden accept="image/*" ref={el => fileInputRefs.current[i] = el} onChange={(e) => handleImageChange(i, e)} />
+                    {patientImages[i] ? <img src={patientImages[i]} alt="" className="patient-attached-img" /> : <User size={24} color="#A3AED0" opacity={0.5} />}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
+                      <span style={{ fontWeight: 800, fontSize: '1.2rem', color: '#1B2559' }}>{p.name}</span>
+                      <span style={{ background: '#FFF9C4', color: '#856404', fontSize: '0.7rem', padding: '4px 12px', borderRadius: 20, fontWeight: 700 }}>Recovering</span>
+                    </div>
+                    <div style={{ color: '#1B2559', fontSize: '0.9rem', fontWeight: 600 }}>{p.date}</div>
+                    <div style={{ color: '#A3AED0', fontSize: '0.7rem' }}>Date of Admission</div>
+                  </div>
+                  <div className="desktop-only patient-progress">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 700, marginBottom: 8 }}>
+                      <span style={{ color: '#A3AED0' }}>Recovery Progress</span>
+                      <span style={{ color: '#1B2559' }}>{p.progress}%</span>
+                    </div>
+                    <div style={{ height: 8, background: '#F4F7FE', borderRadius: 10 }}><div style={{ width: `${p.progress}%`, height: '100%', background: '#4318FF', borderRadius: 10 }}></div></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="dashboard-panels">
+              <div className="dashboard-panels-col">
+                <div className="panel-card" style={{ marginBottom: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div className="panel-title" style={{ marginBottom: 0 }}><Clock3 size={16} color="#F54E25" /> Recent Activity</div>
+                    {activityFeed.length > 3 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllActivity(!showAllActivity)}
+                        style={{ border: 'none', background: '#EEF2FF', color: '#3730A3', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+                      >
+                        {showAllActivity ? 'Show Less' : 'View All'}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    {activityFeed.length === 0 ? (
+                      <div
+                        style={{
+                          color: '#94a3b8',
+                          fontSize: 13,
+                          lineHeight: 1.5,
+                          padding: '8px 0 4px',
+                        }}
+                      >
+                        No activity yet. Admission requests, discharge requests, admin decisions, and care team
+                        reports will appear here as they happen.
+                      </div>
+                    ) : (
+                      (showAllActivity ? activityFeed : activityFeed.slice(0, 3)).map((item) => (
+                        <div key={item.id} className="interactive-row">
+                          <div
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              background: '#F54E25',
+                              marginTop: 6,
+                              flexShrink: 0,
+                            }}
+                          />
+                          <div>
+                            <div style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>
+                              {activityDayLabel(item.at)}
+                            </div>
+                            <div style={{ fontSize: 13 }}>{item.text}</div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="dashboard-panels-col">
+                <div className="panel-card" style={{ marginBottom: 0 }}>
+                  <div className="panel-title"><Calendar size={16} color="#F54E25" /> Calendar & Reminders</div>
+                  {reminderItems.map((item) => (
+                    <button
+                      type="button"
+                      key={item}
+                      className={`reminder-btn ${completedReminders.includes(item) ? 'completed' : ''}`}
+                      onClick={() => toggleReminder(item)}
+                    >
+                      <span>{item}</span>
+                      {completedReminders.includes(item) ? <CheckCircle2 size={16} /> : <Clock3 size={16} color="#94A3B8" />}
+                    </button>
+                  ))}
+                </div>
+                <div className="panel-card" style={{ marginBottom: 0 }}>
+                  <div className="panel-title"><FileText size={16} color="#F54E25" /> Request Status</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ color: '#334155', fontSize: 13 }}>Admission Request</span>
+                    <span className="status-chip" style={{ background: '#FEF3C7', color: '#92400E' }}>In Review</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ color: '#334155', fontSize: 13 }}>Medical Requirements</span>
+                    <span className="status-chip" style={{ background: '#FEE2E2', color: '#991B1B' }}>Needs Action</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#334155', fontSize: 13 }}>Weekly Report</span>
+                    <span className="status-chip" style={{ background: '#DCFCE7', color: '#166534' }}>Approved</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           </div>
         </div>
 
@@ -1801,6 +2080,7 @@ const HomeDashboard = () => {
             <span style={{ fontSize: '10px', fontWeight: 700, color: '#F54E25' }}>Home</span>
           </div>
           <TrendingUp size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
+          <Calendar size={24} color="#A3AED0" onClick={() => navigate('/appointments')} />
           <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
           <LogOut size={24} color="#F54E25" onClick={() => navigate('/login')} />
         </div>

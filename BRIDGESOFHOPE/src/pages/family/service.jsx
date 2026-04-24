@@ -594,14 +594,6 @@ const Service = () => {
                   <div className="branch-price">₱35,000</div>
                 </div>
 
-                <div className="branch-item" style={{ borderTop: '1px solid #F1F1F1' }}>
-                  <div className="branch-info">
-                    <Landmark size={24} color="#707EAE" />
-                    <div><span className="branch-name">Amadeo Branch</span><span className="branch-type">Provincial Rate</span></div>
-                  </div>
-                  <div className="branch-price">₱33,000</div>
-                </div>
-
                 {isExpanded && (
                   <div className="expanded-details">
                     <div className="detail-group">

@@ -20,6 +20,9 @@ import {
   ChevronDown,
   Stethoscope,
   LayoutTemplate,
+  Calendar,
+  User,
+  FileText,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
@@ -480,8 +483,20 @@ const DischargeManagement = () => {
             <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
             <span className="sidebar-label">Content management</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
+            <div className="icon-box inactive"><Calendar size={22} /></div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
+            <div className="icon-box inactive"><FileText size={22} /></div>
+            <span className="sidebar-label">Printable reports</span>
+          </div>
         </nav>
         <div className="sidebar-footer">
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
+            <div className="icon-box inactive"><User size={22} /></div>
+            <span className="sidebar-label">Profile & Security</span>
+          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
             <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? 0 : 10, flexShrink: 0 }} />
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
@@ -499,7 +514,7 @@ const DischargeManagement = () => {
         <div style={{ width: '100%' }} className="dm-print-area">
           <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Discharge Management</h1>
           <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 20, fontWeight: 500 }}>
-            Ready-for-discharge and completed discharges. Totals use the same fee structure as Services (admission + monthly branch rates).
+            Ready-for-discharge and completed discharges. Totals use the same fee structure as Services (admission + Imus monthly rate).
           </p>
 
           <div className="dm-no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
@@ -724,8 +739,8 @@ const DischargeManagement = () => {
               <div className="dm-modal-field"><span className="dm-modal-label">Discharge date</span><div className="dm-input">{formatDate(viewRow.dischargeDate)}</div></div>
               <div className="dm-modal-field"><span className="dm-modal-label">Final status</span><div className="dm-input">{viewRow.finalStatus}</div></div>
               <div className="dm-modal-field"><span className="dm-modal-label">Total cost</span><div className="dm-input" style={{ fontWeight: 800, color: '#05CD99' }}>{formatPhp(viewRow.totalCost)}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Branch</span><div className="dm-input">{BRANCH_LABEL[viewRow.pricingDetail?.branch] || 'Imus Branch'}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Pricing basis</span><div className="dm-input">Admission fee + monthly rate × months (see Services page)</div></div>
+              <div className="dm-modal-field"><span className="dm-modal-label">Location</span><div className="dm-input">{BRANCH_LABEL[viewRow.pricingDetail?.branch] || 'Imus Branch'}</div></div>
+              <div className="dm-modal-field"><span className="dm-modal-label">Pricing basis</span><div className="dm-input">Admission fee + Imus monthly rate × months (see Services page)</div></div>
             </div>
           </div>
         </div>
@@ -744,7 +759,7 @@ const DischargeManagement = () => {
                 <input className="dm-input" value={editRow._staff} onChange={(e) => setEditRow((p) => ({ ...p, _staff: e.target.value }))} />
               </label>
               <label className="dm-modal-field">
-                <span className="dm-modal-label">Branch (monthly)</span>
+                <span className="dm-modal-label">Location (monthly)</span>
                 <select className="dm-input" value={editRow._branch} onChange={(e) => setEditRow((p) => ({ ...p, _branch: e.target.value }))}>
                   {BRANCH_KEYS.map((k) => (
                     <option key={k} value={k}>{BRANCH_LABEL[k]}</option>
