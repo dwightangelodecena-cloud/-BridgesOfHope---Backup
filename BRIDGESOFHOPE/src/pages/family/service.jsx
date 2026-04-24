@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, X, Landmark, Users, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, X, Landmark, Users, ChevronDown, ChevronUp, DollarSign, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAsyncData } from '@/hooks/useAsyncData';
@@ -60,8 +60,9 @@ const Service = () => {
           border-right: 1px solid #F1F1F1;
           display: flex;
           flex-direction: column;
-          padding: 25px 0;
+          padding: 25px 0 170px;
           z-index: 100;
+          position: relative;
         }
 
         .sidebar-logo-container {
@@ -85,20 +86,26 @@ const Service = () => {
           cursor: pointer;
           transition: all 0.2s ease;
           color: #707EAE;
+          border: 2px solid transparent;
+          border-radius: 12px;
+          margin: 0 20px 14px;
         }
 
         .nav-item-active {
-          background: #F54E25;
-          margin: 0 20px;
-          border-radius: 12px;
-          color: white !important;
+          border-color: #F54E25;
         }
-
-        .nav-item-active span { color: white !important; }
 
         .sidebar-label {
           font-weight: 700;
           font-size: 16px;
+        }
+        .sidebar-primary { width: 100%; }
+        .sidebar-footer {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 20px;
+          width: 100%;
         }
 
         /* Main View Styling */
@@ -497,7 +504,8 @@ const Service = () => {
         <div className="sidebar-logo-container">
           <img src={logo} alt="BH Logo" className="sidebar-logo" />
         </div>
-        <div className="sidebar-nav-item nav-item-active" onClick={() => navigate('/home')}>
+        <div className="sidebar-primary">
+        <div className="sidebar-nav-item" onClick={() => navigate('/home')}>
           <Home size={22} />
           <span className="sidebar-label">Dashboard</span>
         </div>
@@ -505,8 +513,13 @@ const Service = () => {
           <TrendingUp size={22} />
           <span className="sidebar-label">Progress</span>
         </div>
-        <div style={{ marginTop: 'auto' }}>
-          <div className="sidebar-nav-item"><User size={22} /><span className="sidebar-label">Profile</span></div>
+        <div className="sidebar-nav-item" onClick={() => navigate('/appointments')}>
+          <Calendar size={22} />
+          <span className="sidebar-label">Appointments</span>
+        </div>
+        </div>
+        <div className="sidebar-footer">
+          <div className="sidebar-nav-item" onClick={() => navigate('/profile')}><User size={22} /><span className="sidebar-label">Profile</span></div>
           <div className="sidebar-nav-item" onClick={() => navigate('/login')}>
             <LogOut size={22} color="#F54E25" /><span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
           </div>

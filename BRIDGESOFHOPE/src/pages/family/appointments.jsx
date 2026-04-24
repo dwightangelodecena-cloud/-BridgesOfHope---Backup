@@ -300,10 +300,11 @@ export default function FamilyAppointmentsPage() {
           display: flex;
           flex-direction: column;
           align-items: center;
-          padding: 25px 0;
+          padding: 25px 0 170px;
           z-index: 100;
           transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           cursor: pointer;
+          position: relative;
         }
         .sidebar-logo-container { display: flex; justify-content: center; width: 100%; margin-bottom: 40px; }
         .sidebar-logo { width: ${isExpanded ? '120px' : '70px'}; transition: width 0.3s ease; }
@@ -311,11 +312,21 @@ export default function FamilyAppointmentsPage() {
           display: flex; align-items: center; width: 100%;
           padding: 0 ${isExpanded ? '35px' : '0'};
           justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 20px; margin-bottom: 25px; box-sizing: border-box; border: 2px solid transparent; border-radius: 12px;
+          gap: 20px; margin-bottom: 25px; min-height: 52px; box-sizing: border-box; border: 2px solid transparent; border-radius: 12px;
         }
         .sidebar-nav-item.sidebar-nav-active { border-color: #F54E25; }
         .sidebar-icon-wrap { padding: 12px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 700; font-size: 18px; color: #707EAE; white-space: nowrap; }
+        .sidebar-primary { width: 100%; }
+        .sidebar-footer {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 20px;
+          width: 100%;
+        }
+        .sidebar-footer .sidebar-nav-item { margin-bottom: 0; }
+        .sidebar-footer .sidebar-nav-item + .sidebar-nav-item { margin-top: 14px; }
         .main-view {
           flex: 1;
           display: flex;
@@ -540,19 +551,21 @@ export default function FamilyAppointmentsPage() {
       `}</style>
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container"><img src={logo} alt="BH" className="sidebar-logo" /></div>
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
-          <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div>
-          <span className="sidebar-label">Dashboard</span>
+        <div className="sidebar-primary">
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
+            <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Dashboard</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
+            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Progress</span>
+          </div>
+          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => e.stopPropagation()}>
+            <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
         </div>
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-          <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div>
-          <span className="sidebar-label">Progress</span>
-        </div>
-        <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => e.stopPropagation()}>
-          <div className="sidebar-icon-wrap"><Calendar size={22} color="#F54E25" /></div>
-          <span className="sidebar-label" style={{ color: '#F54E25' }}>Appointments</span>
-        </div>
-        <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '20px' }}>
+        <div className="sidebar-footer">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}>
             <div className="sidebar-icon-wrap"><User size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Profile</span>

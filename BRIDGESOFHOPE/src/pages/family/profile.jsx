@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAsyncData } from '@/hooks/useAsyncData';
@@ -134,10 +134,11 @@ const Profile = () => {
           display: flex;
           flex-direction: column;
           align-items: center;
-          padding: 25px 0;
+          padding: 25px 0 170px;
           z-index: 100;
           transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           cursor: pointer;
+          position: relative;
         }
 
         .sidebar-logo-container {
@@ -160,8 +161,12 @@ const Profile = () => {
           justify-content: ${isExpanded ? 'flex-start' : 'center'};
           gap: 20px;
           margin-bottom: 25px;
+          min-height: 52px;
           box-sizing: border-box;
+          border: 2px solid transparent;
+          border-radius: 12px;
         }
+        .sidebar-nav-item.sidebar-nav-active { border-color: #F54E25; }
 
         .sidebar-label {
           display: ${isExpanded ? 'block' : 'none'};
@@ -170,6 +175,24 @@ const Profile = () => {
           color: #707EAE;
           white-space: nowrap;
         }
+        .sidebar-icon-wrap {
+          padding: 12px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .sidebar-primary { width: 100%; }
+        .sidebar-footer {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 20px;
+          width: 100%;
+        }
+        .sidebar-footer .sidebar-nav-item { margin-bottom: 0; }
+        .sidebar-footer .sidebar-nav-item + .sidebar-nav-item { margin-top: 14px; }
 
         .main-view {
           flex: 1;
@@ -584,27 +607,29 @@ const Profile = () => {
           <img src={logo} alt="BH" className="sidebar-logo" />
         </div>
 
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-            <Home size={22} color="#707EAE" />
+        <div className="sidebar-primary">
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
+            <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Dashboard</span>
           </div>
-        </div>
 
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-            <TrendingUp size={22} color="#707EAE" />
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
+            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Progress</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
+            <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
         </div>
 
-        <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '20px' }}>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}>
-            <User size={22} color="#F54E25" />
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Profile</span>
+        <div className="sidebar-footer">
+          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}>
+            <div className="sidebar-icon-wrap"><User size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Profile</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" style={{ cursor: 'pointer' }} />
+            <div className="sidebar-icon-wrap"><LogOut size={22} color="#F54E25" style={{ cursor: 'pointer' }} /></div>
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
           </div>
         </div>

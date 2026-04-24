@@ -466,13 +466,17 @@ const Progress = () => {
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .progress-container { display: flex; width: 100vw; height: 100vh; background: #F4F7FE; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }
-        .sidebar { width: ${isExpanded ? '280px' : '110px'}; background: white; border-right: 1px solid #F1F1F1; display: flex; flex-direction: column; padding: 25px 0; z-index: 100; transition: width 0.3s; cursor: pointer; }
+        .sidebar { width: ${isExpanded ? '280px' : '110px'}; background: white; border-right: 1px solid #F1F1F1; display: flex; flex-direction: column; padding: 25px 0 170px; z-index: 100; transition: width 0.3s; cursor: pointer; position: relative; }
         .sidebar-logo-container { display: flex; justify-content: center; width: 100%; margin-bottom: 40px; }
         .sidebar-logo { width: ${isExpanded ? '180px' : '70px'}; transition: width 0.3s; }
-        .sidebar-nav-item { display: flex; align-items: center; width: 100%; padding: 0 ${isExpanded ? '35px' : '0'}; justify-content: ${isExpanded ? 'flex-start' : 'center'}; gap: 20px; margin-bottom: 25px; border: 2px solid transparent; border-radius: 12px; color: #707EAE; }
+        .sidebar-nav-item { display: flex; align-items: center; width: 100%; padding: 0 ${isExpanded ? '35px' : '0'}; justify-content: ${isExpanded ? 'flex-start' : 'center'}; gap: 20px; margin-bottom: 25px; min-height: 52px; box-sizing: border-box; border: 2px solid transparent; border-radius: 12px; color: #707EAE; }
         .sidebar-nav-item.sidebar-nav-active { border-color: #F54E25; }
         .sidebar-icon-wrap { padding: 12px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
         .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 700; font-size: 18px; color: #707EAE; }
+        .sidebar-primary { width: 100%; }
+        .sidebar-footer { position: absolute; left: 0; right: 0; bottom: 20px; width: 100%; }
+        .sidebar-footer .sidebar-nav-item { margin-bottom: 0; }
+        .sidebar-footer .sidebar-nav-item + .sidebar-nav-item { margin-top: 14px; }
         .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .top-nav { height: 85px; background: white; display: flex; align-items: center; padding: 0 30px; border-bottom: 1px solid #F1F1F1; }
         .top-nav-left { display: flex; align-items: center; gap: 40px; }
@@ -643,15 +647,21 @@ const Progress = () => {
 
       <aside className="sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container"><img src={logo} alt="BH" className="sidebar-logo" /></div>
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
-          <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span>
+        <div className="sidebar-primary">
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
+            <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span>
+          </div>
+          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
+            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
+            <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
         </div>
-        <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-          <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
-        </div>
-        <div style={{ marginTop: 'auto', width: '100%' }}>
-          <div className="sidebar-nav-item" onClick={() => navigate('/profile')}><User size={22} /><span className="sidebar-label">Profile</span></div>
-          <div className="sidebar-nav-item" onClick={() => navigate('/login')}><LogOut size={22} color="#F54E25" /><span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span></div>
+        <div className="sidebar-footer">
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}><User size={22} /><span className="sidebar-label">Profile</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}><LogOut size={22} color="#F54E25" /><span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span></div>
         </div>
       </aside>
 
@@ -933,6 +943,14 @@ const Progress = () => {
             <TrendingUp size={24} color="#F54E25" />
             <span style={{ fontSize: '10px', fontWeight: 700, color: '#F54E25' }}>Requests</span>
           </div>
+          <button
+            type="button"
+            aria-label="Appointments"
+            onClick={() => navigate('/appointments')}
+            style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Calendar size={24} color="#A3AED0" />
+          </button>
           <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
           <LogOut size={24} color="#A3AED0" onClick={() => navigate('/login')} />
         </nav>

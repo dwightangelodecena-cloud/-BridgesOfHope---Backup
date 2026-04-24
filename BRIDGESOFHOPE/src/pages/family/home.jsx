@@ -456,10 +456,11 @@ const HomeDashboard = () => {
           display: flex;
           flex-direction: column;
           align-items: center;
-          padding: 25px 0;
+          padding: 25px 0 170px;
           z-index: 100;
           transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           cursor: pointer;
+          position: relative;
         }
 
         .sidebar-logo-container {
@@ -482,6 +483,7 @@ const HomeDashboard = () => {
           justify-content: ${isExpanded ? 'flex-start' : 'center'};
           gap: 20px;
           margin-bottom: 25px;
+          min-height: 52px;
           box-sizing: border-box;
           border: 2px solid transparent;
           border-radius: 12px;
@@ -507,6 +509,18 @@ const HomeDashboard = () => {
           color: #707EAE;
           white-space: nowrap;
         }
+        .sidebar-primary {
+          width: 100%;
+        }
+        .sidebar-footer {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 20px;
+          width: 100%;
+        }
+        .sidebar-footer .sidebar-nav-item { margin-bottom: 0; }
+        .sidebar-footer .sidebar-nav-item + .sidebar-nav-item { margin-top: 14px; }
 
         .top-nav-actions {
           margin-left: auto;
@@ -1626,28 +1640,29 @@ const HomeDashboard = () => {
         <div className="sidebar-logo-container">
           <img src={logo} alt="BH" className="sidebar-logo" />
         </div>
-
-        <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
-          <div className="sidebar-icon-wrap">
-            <Home size={22} color="#707EAE" />
+        <div className="sidebar-primary">
+          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
+            <div className="sidebar-icon-wrap">
+              <Home size={22} color="#707EAE" />
+            </div>
+            <span className="sidebar-label">Dashboard</span>
           </div>
-          <span className="sidebar-label">Dashboard</span>
+
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
+            <div className="sidebar-icon-wrap">
+              <TrendingUp size={22} color="#707EAE" />
+            </div>
+            <span className="sidebar-label">Progress</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
+            <div className="sidebar-icon-wrap">
+              <Calendar size={22} color="#707EAE" />
+            </div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
         </div>
 
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-          <div className="sidebar-icon-wrap">
-            <TrendingUp size={22} color="#707EAE" />
-          </div>
-          <span className="sidebar-label">Progress</span>
-        </div>
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
-          <div className="sidebar-icon-wrap">
-            <Calendar size={22} color="#707EAE" />
-          </div>
-          <span className="sidebar-label">Appointments</span>
-        </div>
-
-        <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '20px' }}>
+        <div className="sidebar-footer">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}>
             <User size={22} color="#707EAE" />
             <span className="sidebar-label">Profile</span>
