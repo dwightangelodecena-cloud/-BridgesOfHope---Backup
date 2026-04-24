@@ -13,7 +13,7 @@ import AuthCallback from '@/pages/auth/auth-callback';
 // Family/User Pages
 import HomeDashboard from '@/pages/family/home';
 import Service from '@/pages/family/service';
-import Progress from '@/pages/family/progress';
+import Progress from '@/pages/family/requestmanagement';
 import Profile from '@/pages/family/profile';
 import ChangePass from '@/pages/auth/changepass';
 

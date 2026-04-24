@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, MessageCircle, X, Send, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, MessageCircle, X, Send, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown, ClipboardList } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
@@ -449,7 +449,10 @@ const HomeDashboard = () => {
           font-weight: 700;
           font-size: 18px;
           color: #707EAE;
-          white-space: nowrap;
+          max-width: 140px;
+          white-space: normal;
+          overflow-wrap: anywhere;
+          line-height: 1.2;
         }
 
         .top-nav-actions {
@@ -1580,9 +1583,9 @@ const HomeDashboard = () => {
 
         <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
           <div className="sidebar-icon-wrap">
-            <TrendingUp size={22} color="#707EAE" />
+            <ClipboardList size={22} color="#707EAE" />
           </div>
-          <span className="sidebar-label">Progress</span>
+          <span className="sidebar-label">Request Management</span>
         </div>
 
         <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '20px' }}>
@@ -1800,7 +1803,7 @@ const HomeDashboard = () => {
             <Home size={24} color="#F54E25" />
             <span style={{ fontSize: '10px', fontWeight: 700, color: '#F54E25' }}>Home</span>
           </div>
-          <TrendingUp size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
+          <ClipboardList size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
           <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
           <LogOut size={24} color="#F54E25" onClick={() => navigate('/login')} />
         </div>

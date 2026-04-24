@@ -41,7 +41,10 @@ const Progress = () => {
     municipalityCity: '',
     street: '',
     barangay: '',
-    patientName: '',
+    patientLastName: '',
+    patientFirstName: '',
+    patientMiddleName: '',
+    patientGender: '',
     patientBirthday: '',
     reasonForAdmission: '',
     agreeToTerms: false,
@@ -90,12 +93,21 @@ const Progress = () => {
     { key: 'municipalityCity', label: 'Municipality/City' },
     { key: 'barangay', label: 'Barangay' },
     { key: 'street', label: 'Street' },
-    { key: 'patientName', label: 'Patient Name' },
+    { key: 'patientLastName', label: 'Patient Last Name' },
+    { key: 'patientFirstName', label: 'Patient First Name' },
+    { key: 'patientMiddleName', label: 'Patient Middle Name' },
+    { key: 'patientGender', label: 'Patient Gender' },
     { key: 'patientBirthday', label: 'Patient Birthday' },
     { key: 'reasonForAdmission', label: 'Reason for Admission' },
   ];
   const admissionCompletedFields = admissionRequiredFields.filter((field) => String(admissionForm[field.key]).trim()).length;
   const admissionProgressPercent = Math.round((admissionCompletedFields / admissionRequiredFields.length) * 100);
+
+  const getPatientFullName = (form = admissionForm) =>
+    [form.patientFirstName, form.patientMiddleName, form.patientLastName]
+      .map((part) => String(part || '').trim())
+      .filter(Boolean)
+      .join(' ');
 
   useEffect(() => {
     const requestedTab = location.state?.tab;
@@ -305,7 +317,10 @@ const Progress = () => {
     if (!admissionForm.municipalityCity.trim()) errs.municipalityCity = 'Municipality/City is required.';
     if (!admissionForm.street.trim()) errs.street = 'Street is required.';
     if (!admissionForm.barangay.trim()) errs.barangay = 'Barangay is required.';
-    if (!admissionForm.patientName.trim()) errs.patientName = 'Patient name is required.';
+    if (!admissionForm.patientLastName.trim()) errs.patientLastName = 'Patient last name is required.';
+    if (!admissionForm.patientFirstName.trim()) errs.patientFirstName = 'Patient first name is required.';
+    if (!admissionForm.patientMiddleName.trim()) errs.patientMiddleName = 'Patient middle name is required.';
+    if (!admissionForm.patientGender.trim()) errs.patientGender = 'Patient gender is required.';
     if (!admissionForm.patientBirthday) errs.patientBirthday = 'Patient birthday is required.';
     if (!admissionForm.reasonForAdmission) errs.reasonForAdmission = 'Please select a reason.';
     if (!admissionForm.agreeToTerms) errs.agreeToTerms = 'You must agree to the terms.';
@@ -346,7 +361,11 @@ const Progress = () => {
       guardian_municipality_city: admissionForm.municipalityCity.trim(),
       guardian_street: admissionForm.street.trim(),
       guardian_barangay: admissionForm.barangay.trim(),
-      patient_name: admissionForm.patientName.trim(),
+      patient_name: getPatientFullName(),
+      patient_last_name: admissionForm.patientLastName.trim(),
+      patient_first_name: admissionForm.patientFirstName.trim(),
+      patient_middle_name: admissionForm.patientMiddleName.trim(),
+      patient_gender: admissionForm.patientGender.trim(),
       patient_birth_date: admissionForm.patientBirthday,
       reason_for_admission: admissionForm.reasonForAdmission,
     };
@@ -357,7 +376,7 @@ const Progress = () => {
         guardian_full_name: admissionForm.fullName.trim(),
         guardian_email: admissionForm.email.trim(),
         guardian_phone: admissionForm.phoneNumber.trim(),
-        patient_name: admissionForm.patientName.trim(),
+        patient_name: getPatientFullName(),
         patient_birth_date: admissionForm.patientBirthday,
         reason_for_admission: admissionForm.reasonForAdmission,
       };
@@ -367,7 +386,7 @@ const Progress = () => {
       setAdmissionErrors({ submit: error.message || 'Could not submit request.' });
       return;
     }
-    await appendActivityFeed(`Admission request submitted for ${admissionForm.patientName.trim()}. Pending admin review.`, { familyId: user.id });
+    await appendActivityFeed(`Admission request submitted for ${getPatientFullName()}. Pending admin review.`, { familyId: user.id });
     refreshAppData();
     addProcessingNotification();
     setAdmissionForm({
@@ -378,7 +397,10 @@ const Progress = () => {
       municipalityCity: '',
       street: '',
       barangay: '',
-      patientName: '',
+      patientLastName: '',
+      patientFirstName: '',
+      patientMiddleName: '',
+      patientGender: '',
       patientBirthday: '',
       reasonForAdmission: '',
       agreeToTerms: false,
@@ -647,7 +669,7 @@ const Progress = () => {
           <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span>
         </div>
         <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-          <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
+          <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
         </div>
         <div style={{ marginTop: 'auto', width: '100%' }}>
           <div className="sidebar-nav-item" onClick={() => navigate('/profile')}><User size={22} /><span className="sidebar-label">Profile</span></div>
@@ -832,9 +854,33 @@ const Progress = () => {
                     </div>
 
                     <div className="field">
-                      <label>Patient Name *</label>
-                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientName" placeholder="Patient's full name" value={admissionForm.patientName} onChange={handleAdmissionChange} /></div>
-                      {admissionErrors.patientName && <div className="error">{admissionErrors.patientName}</div>}
+                      <label>Patient Last Name *</label>
+                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientLastName" placeholder="Patient's last name" value={admissionForm.patientLastName} onChange={handleAdmissionChange} /></div>
+                      {admissionErrors.patientLastName && <div className="error">{admissionErrors.patientLastName}</div>}
+                    </div>
+                    <div className="field">
+                      <label>Patient First Name *</label>
+                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientFirstName" placeholder="Patient's first name" value={admissionForm.patientFirstName} onChange={handleAdmissionChange} /></div>
+                      {admissionErrors.patientFirstName && <div className="error">{admissionErrors.patientFirstName}</div>}
+                    </div>
+                    <div className="field">
+                      <label>Patient Middle Name *</label>
+                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientMiddleName" placeholder="Patient's middle name" value={admissionForm.patientMiddleName} onChange={handleAdmissionChange} /></div>
+                      {admissionErrors.patientMiddleName && <div className="error">{admissionErrors.patientMiddleName}</div>}
+                    </div>
+                    <div className="field">
+                      <label>Patient Gender *</label>
+                      <div className="input-wrapper">
+                        <User className="input-icon" size={18} />
+                        <select name="patientGender" value={admissionForm.patientGender} onChange={handleAdmissionChange}>
+                          <option value="">Select Gender</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
+                          <option value="Prefer not to say">Prefer not to say</option>
+                        </select>
+                      </div>
+                      {admissionErrors.patientGender && <div className="error">{admissionErrors.patientGender}</div>}
                     </div>
                     <div className="field">
                       <label>Patient Birthday *</label>
@@ -930,7 +976,7 @@ const Progress = () => {
         <nav className="mobile-bottom-nav">
           <Home size={24} color="#A3AED0" onClick={() => navigate('/home')} />
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} onClick={() => navigate('/progress')}>
-            <TrendingUp size={24} color="#F54E25" />
+            <ClipboardList size={24} color="#F54E25" />
             <span style={{ fontSize: '10px', fontWeight: 700, color: '#F54E25' }}>Requests</span>
           </div>
           <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
