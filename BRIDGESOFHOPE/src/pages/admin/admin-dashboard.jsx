@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
-import { LayoutGrid, HeartPulse, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope, LayoutTemplate } from 'lucide-react';
+import { LayoutGrid, HeartPulse, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope, LayoutTemplate, User, Calendar, FileText } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { refreshAppData, APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import { verifyAdminApprovalPin } from '@/lib/adminApprovalPin';
 import {
   uiPatientFromRow,
   uiAdmissionRequestFromRow,
@@ -254,6 +255,10 @@ const AdminDashboard = () => {
   const [modalView, setModalView] = useState(null); // 'admissions' | 'discharges' | 'confirm' | '2fa'
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestType, setRequestType] = useState(null); // 'admission' or 'discharge'
+  const [decisionAction, setDecisionAction] = useState('approve'); // 'approve' | 'decline'
+  const [decisionNote, setDecisionNote] = useState('');
+  const [admissionFitChecked, setAdmissionFitChecked] = useState(false);
+  const [dischargeReadyChecked, setDischargeReadyChecked] = useState(false);
   const [twoFAError, setTwoFAError] = useState('');
   const [twoFAConfirming, setTwoFAConfirming] = useState(false);
 
@@ -262,18 +267,32 @@ const AdminDashboard = () => {
   const availableBeds = 50 - totalPatients;
   const occupancyPerc = Math.round((totalPatients / 50) * 100);
 
-  // --- HANDLERS ---
-  const handleApproveClick = (req, type) => {
+  const resetDecisionForm = () => {
+    setDecisionNote('');
+    setAdmissionFitChecked(false);
+    setDischargeReadyChecked(false);
     setTwoFAError('');
+  };
+
+  const openDecisionModal = (req, type, action) => {
     setSelectedRequest(req);
     setRequestType(type);
+    setDecisionAction(action);
+    resetDecisionForm();
     setModalView('confirm');
   };
 
-  const handleDeclineClick = async (req, type) => {
+  // --- HANDLERS ---
+  const handleApproveClick = (req, type) => {
+    openDecisionModal(req, type, 'approve');
+  };
+
+  const handleDeclineClick = async (req, type, context = {}) => {
+    const note = String(context.note || '').trim();
+    if (!note) return { ok: false, error: 'Decision note is required.' };
     if (!isSupabaseConfigured()) {
       const declinedList = JSON.parse(localStorage.getItem('bh_declined_requests') || '[]');
-      declinedList.push({ ...req, declinedAt: new Date().toISOString(), type });
+      declinedList.push({ ...req, declinedAt: new Date().toISOString(), type, decisionNote: note });
       localStorage.setItem('bh_declined_requests', JSON.stringify(declinedList));
       if (type === 'admission') {
         const updated = pendingAdmissions.filter((p) => p.id !== req.id);
@@ -290,11 +309,11 @@ const AdminDashboard = () => {
       }
       await appendActivityFeed(
         type === 'admission'
-          ? `Admission request for ${req.name || 'patient'} was declined by the admin.`
-          : `Discharge request for ${req.name || 'patient'} was declined by the admin.`,
+          ? `Admission request for ${req.name || 'patient'} was declined by the admin. Note: ${note}`
+          : `Discharge request for ${req.name || 'patient'} was declined by the admin. Note: ${note}`,
         { familyId: req.family_id }
       );
-      return;
+      return { ok: true };
     }
 
     const {
@@ -312,7 +331,7 @@ const AdminDashboard = () => {
         .update({ status: 'declined', decided_at: decidedAt, decided_by: decidedBy })
         .eq('id', req.requestId ?? req.id);
       await appendActivityFeed(
-        `Admission request for ${req.name || 'patient'} was declined by the admin.`,
+        `Admission request for ${req.name || 'patient'} was declined by the admin. Note: ${note}`,
         { familyId: req.family_id }
       );
     } else {
@@ -321,7 +340,7 @@ const AdminDashboard = () => {
         .update({ status: 'declined', decided_at: decidedAt, decided_by: decidedBy })
         .eq('id', req.dischargeRequestId);
       await appendActivityFeed(
-        `Discharge request for ${req.name || 'patient'} was declined by the admin.`,
+        `Discharge request for ${req.name || 'patient'} was declined by the admin. Note: ${note}`,
         { familyId: req.family_id }
       );
     }
@@ -340,10 +359,61 @@ const AdminDashboard = () => {
         .eq('status', 'pending');
       setModalView((count || 0) > 0 ? 'discharges' : null);
     }
+    return { ok: true };
   };
 
-  const executeDashboardApproval = async (req, type) => {
+  const markForFacilityDecision = async (req, note) => {
+    const trimmed = String(note || '').trim();
+    if (!trimmed) return { ok: false, error: 'Facility decision note is required.' };
+    const record = {
+      id: Date.now(),
+      type: 'discharge',
+      requestId: req.dischargeRequestId || req.id,
+      patientId: req.patientId || req.id,
+      patientName: req.name || 'Patient',
+      note: trimmed,
+      createdAt: new Date().toISOString(),
+    };
+    const existing = JSON.parse(localStorage.getItem('bh_facility_decisions') || '[]');
+    localStorage.setItem('bh_facility_decisions', JSON.stringify([record, ...existing].slice(0, 500)));
+
+    if (isSupabaseConfigured() && req.dischargeRequestId) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      let decidedBy = user?.id ?? null;
+      if (decidedBy) {
+        const { data: profileRow } = await supabase.from('profiles').select('id').eq('id', decidedBy).maybeSingle();
+        if (!profileRow) decidedBy = null;
+      }
+      const decidedAt = new Date().toISOString();
+      const { error } = await supabase
+        .from('discharge_requests')
+        .update({ status: 'for_facility_decision', decided_at: decidedAt, decided_by: decidedBy })
+        .eq('id', req.dischargeRequestId)
+        .eq('status', 'pending');
+      if (error) {
+        console.warn('[dashboard] facility decision status update skipped:', error.message);
+      }
+    }
+
+    await appendActivityFeed(
+      `Discharge request for ${req.name || 'patient'} was marked for facility decision. Note: ${trimmed}`,
+      { familyId: req.family_id }
+    );
+    refreshAppData();
+    await syncData();
+    const pendingCount = isSupabaseConfigured()
+      ? (await supabase.from('discharge_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')).count || 0
+      : pendingDischarges.length;
+    setModalView(pendingCount > 0 ? 'discharges' : null);
+    return { ok: true };
+  };
+
+  const executeDashboardApproval = async (req, type, context = {}) => {
     if (!req || !type) return { ok: false, error: 'Missing request.' };
+    const note = String(context.note || '').trim();
+    if (!note) return { ok: false, error: 'Decision note is required.' };
 
     if (!isSupabaseConfigured()) {
       if (type === 'admission') {
@@ -354,7 +424,7 @@ const AdminDashboard = () => {
         setPendingAdmissions(updatedPending);
         localStorage.setItem('bh_pending_admissions', JSON.stringify(updatedPending));
         await addActivity('New Patient is added', `${req.name} - ${req.reason}`, 'users');
-        await appendActivityFeed(`Admission approved: ${req.name || 'Patient'} is now admitted.`, { familyId: req.family_id });
+        await appendActivityFeed(`Admission approved: ${req.name || 'Patient'} is now admitted. Note: ${note}`, { familyId: req.family_id });
         window.dispatchEvent(new Event('storage'));
         setModalView(updatedPending.length > 0 ? 'admissions' : null);
       } else if (type === 'discharge') {
@@ -365,7 +435,7 @@ const AdminDashboard = () => {
         setPendingDischarges(updatedPending);
         localStorage.setItem('bh_pending_discharges', JSON.stringify(updatedPending));
         await addActivity('Patient discharged successfully', `${req.name} - Treatment completed`, 'check');
-        await appendActivityFeed(`Discharge approved: ${req.name || 'Patient'} has been discharged.`, { familyId: req.family_id });
+        await appendActivityFeed(`Discharge approved: ${req.name || 'Patient'} has been discharged. Note: ${note}`, { familyId: req.family_id });
         window.dispatchEvent(new Event('storage'));
         setModalView(updatedPending.length > 0 ? 'discharges' : null);
       }
@@ -400,7 +470,7 @@ const AdminDashboard = () => {
         'users'
       );
       await appendActivityFeed(
-        `Admission approved: ${req.name || req.patient_name || 'Patient'} is now admitted.`,
+        `Admission approved: ${req.name || req.patient_name || 'Patient'} is now admitted. Note: ${note}`,
         { familyId: req.family_id }
       );
     } else if (type === 'discharge') {
@@ -445,7 +515,7 @@ const AdminDashboard = () => {
         };
       }
       await addActivity('Patient discharged successfully', `${req.name} - Treatment completed`, 'check');
-      await appendActivityFeed(`Discharge approved: ${req.name || 'Patient'} has been discharged.`, { familyId: req.family_id });
+      await appendActivityFeed(`Discharge approved: ${req.name || 'Patient'} has been discharged. Note: ${note}`, { familyId: req.family_id });
     }
 
     refreshAppData();
@@ -472,6 +542,30 @@ const AdminDashboard = () => {
   const handleProceedClick = () => {
     setTwoFAError('');
     if (!selectedRequest || !requestType) return;
+    const note = decisionNote.trim();
+    if (!note) {
+      setTwoFAError('Decision note is required.');
+      return;
+    }
+    if (requestType === 'admission' && !admissionFitChecked) {
+      setTwoFAError('Confirm medical fit for rehab before approval.');
+      return;
+    }
+    if (requestType === 'discharge' && !dischargeReadyChecked) {
+      setTwoFAError('Confirm facility processing readiness before continuing.');
+      return;
+    }
+    if (decisionAction === 'decline') {
+      void (async () => {
+        const res = await handleDeclineClick(selectedRequest, requestType, { note });
+        if (!res.ok) {
+          setTwoFAError(res.error || 'Decline failed.');
+          return;
+        }
+        setModalView(null);
+      })();
+      return;
+    }
     pendingTwoFARef.current = { request: selectedRequest, requestType };
     setModalView('2fa');
   };
@@ -490,8 +584,11 @@ const AdminDashboard = () => {
       setTwoFAError('Enter a valid 4-digit code.');
       return;
     }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const envPin = import.meta.env.VITE_ADMIN_APPROVAL_PIN;
-    if (envPin !== undefined && envPin !== '' && String(pin) !== String(envPin)) {
+    if (!verifyAdminApprovalPin(pin, user?.id || 'global', envPin)) {
       setTwoFAError('Incorrect code.');
       return;
     }
@@ -499,7 +596,7 @@ const AdminDashboard = () => {
     if (!ctx) return;
     setTwoFAError('');
     setTwoFAConfirming(true);
-    const result = await executeDashboardApproval(ctx.request, ctx.requestType);
+    const result = await executeDashboardApproval(ctx.request, ctx.requestType, { note: decisionNote.trim() });
     setTwoFAConfirming(false);
     if (!result.ok) {
       setTwoFAError(result.error || 'Approval failed.');
@@ -791,8 +888,12 @@ const AdminDashboard = () => {
       `}</style>
 
       {/* SIDEBAR */}
-      <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container">
+      <aside className="desktop-sidebar" onClick={() => setIsExpanded((prev) => !prev)}>
+        <div
+          className="sidebar-logo-container"
+          title={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          style={{ cursor: 'pointer' }}
+        >
           <img src={logoBH} alt="BH" className="sidebar-logo" />
         </div>
         <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
@@ -824,8 +925,20 @@ const AdminDashboard = () => {
             <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
             <span className="sidebar-label">Content management</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
+            <div className="icon-box inactive"><Calendar size={22} /></div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
+            <div className="icon-box inactive"><FileText size={22} /></div>
+            <span className="sidebar-label">Printable reports</span>
+          </div>
         </nav>
         <div className="sidebar-footer">
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
+            <div className="icon-box inactive"><User size={22} /></div>
+            <span className="sidebar-label">Profile & Security</span>
+          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
             <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? '0' : '10px', flexShrink: 0 }} />
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
@@ -845,7 +958,32 @@ const AdminDashboard = () => {
         <div className="dashboard-inner">
           <h1 className="dashboard-title-desktop" style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', marginBottom: 32 }}>Dashboard</h1>
 
-          <div className="dashboard-three-panels" role="region" aria-label="Dashboard summary">
+          <div className="dashboard-analytics-slot">
+            <DashboardAnalyticsErrorBoundary>
+              <Suspense
+                fallback={(
+                  <div
+                    style={{
+                      padding: 28,
+                      textAlign: 'center',
+                      color: '#64748b',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      border: '1px dashed #e2e8f0',
+                      borderRadius: 16,
+                      background: '#fafafa',
+                    }}
+                  >
+                    Loading analytics…
+                  </div>
+                )}
+              >
+                <AdminAnalyticsSection />
+              </Suspense>
+            </DashboardAnalyticsErrorBoundary>
+          </div>
+
+          <div className="dashboard-three-panels" role="region" aria-label="Dashboard summary" style={{ marginTop: 24 }}>
             {/* 1 — Admission: all admission-related cards */}
             <section className="dashboard-panel" aria-labelledby="dash-admission-heading">
               <h2 id="dash-admission-heading" className="dashboard-panel-title">Admission</h2>
@@ -895,6 +1033,17 @@ const AdminDashboard = () => {
                     <div className="metric-value">{pipelineMetrics.forDischarge}</div>
                     <div className="metric-title">For discharge</div>
                     <div className="metric-subtitle">Marked in admission workflow</div>
+                  </div>
+                </div>
+
+                <div className="metric-card" onClick={() => navigate('/admin-reports')} style={{ cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><FileText size={24} /></div>
+                    <span className="metric-badge" style={{ background: '#ECFEFF', color: '#0E7490' }}>Export</span>
+                  </div>
+                  <div>
+                    <div className="metric-title" style={{ fontSize: 22, fontWeight: 800, marginTop: 8 }}>Printable reports</div>
+                    <div className="metric-subtitle">Census, occupancy, weekly compliance, PDFs</div>
                   </div>
                 </div>
               </div>
@@ -971,33 +1120,9 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                 </div>
+
               </div>
             </section>
-          </div>
-
-          <div className="dashboard-analytics-slot">
-            <DashboardAnalyticsErrorBoundary>
-              <Suspense
-                fallback={(
-                  <div
-                    style={{
-                      padding: 28,
-                      textAlign: 'center',
-                      color: '#64748b',
-                      fontSize: 14,
-                      fontWeight: 600,
-                      border: '1px dashed #e2e8f0',
-                      borderRadius: 16,
-                      background: '#fafafa',
-                    }}
-                  >
-                    Loading analytics…
-                  </div>
-                )}
-              >
-                <AdminAnalyticsSection />
-              </Suspense>
-            </DashboardAnalyticsErrorBoundary>
           </div>
 
           {/* Recent Activity */}
@@ -1057,10 +1182,11 @@ const AdminDashboard = () => {
                     <div>Family Member's Number: {req.familyNumber || '09123456789'}</div>
                     <div>Family Member's E-Mail Address: {req.familyEmail || 'Sample@email.com'}</div>
                     <div>Patient Number: {req.patientNumber || '09123456789'}</div>
+                    <div>Patient Gender: {req.patient_gender || 'N/A'}</div>
                   </div>
                   <div className="req-buttons">
                     <button className="btn-approve" onClick={() => handleApproveClick(req, 'admission')}>Approve</button>
-                    <button className="btn-decline" onClick={() => handleDeclineClick(req, 'admission')}>Decline</button>
+                    <button className="btn-decline" onClick={() => openDecisionModal(req, 'admission', 'decline')}>Decline</button>
                   </div>
                 </div>
               ))}
@@ -1118,7 +1244,7 @@ const AdminDashboard = () => {
                   </div>
                   <div className="req-buttons">
                     <button className="btn-approve" onClick={() => handleApproveClick(req, 'discharge')}>Approve</button>
-                    <button className="btn-decline" onClick={() => handleDeclineClick(req, 'discharge')}>Decline</button>
+                    <button className="btn-decline" onClick={() => openDecisionModal(req, 'discharge', 'decline')}>Decline</button>
                   </div>
                 </div>
               ))}
@@ -1161,6 +1287,9 @@ const AdminDashboard = () => {
                 <div>Family Member's Number: {selectedRequest.familyNumber || '09123456789'}</div>
                 <div>Family Member's E-Mail Address: {selectedRequest.familyEmail || 'Sample@email.com'}</div>
                 <div>Patient Number: {selectedRequest.patientNumber || '09123456789'}</div>
+                {requestType === 'admission' ? (
+                  <div>Patient Gender: {selectedRequest.patient_gender || 'N/A'}</div>
+                ) : null}
                 {requestType === 'discharge' && selectedRequest.dischargeReasonDetails && (
                   <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #E2E8F0' }}>
                     <div style={{ fontWeight: 700, color: '#1B2559', marginBottom: 4 }}>Discharge details</div>
@@ -1179,6 +1308,40 @@ const AdminDashboard = () => {
                     )}
                   </div>
                 )}
+              </div>
+              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: '#1B2559' }}>
+                  <input
+                    type="checkbox"
+                    checked={requestType === 'admission' ? admissionFitChecked : dischargeReadyChecked}
+                    onChange={(e) => {
+                      if (requestType === 'admission') setAdmissionFitChecked(e.target.checked);
+                      else setDischargeReadyChecked(e.target.checked);
+                    }}
+                  />
+                  {requestType === 'admission'
+                    ? 'Medical condition reviewed: patient is fit for rehab.'
+                    : 'Facility processing readiness confirmed (admin office can process discharge).'}
+                </label>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#1B2559' }}>
+                  Decision note (required)
+                  <textarea
+                    value={decisionNote}
+                    onChange={(e) => setDecisionNote(e.target.value)}
+                    placeholder="Write your decision justification..."
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      marginTop: 6,
+                      border: '1px solid #E2E8F0',
+                      borderRadius: 8,
+                      padding: 10,
+                      fontSize: 13,
+                      color: '#1B2559',
+                      resize: 'vertical',
+                    }}
+                  />
+                </label>
               </div>
               {twoFAError ? (
                 <div
@@ -1200,8 +1363,30 @@ const AdminDashboard = () => {
                   disabled={twoFAConfirming}
                   onClick={handleProceedClick}
                 >
-                  Continue
+                  {decisionAction === 'decline' ? 'Confirm Decline' : 'Continue'}
                 </button>
+                {requestType === 'discharge' && decisionAction !== 'decline' ? (
+                  <button
+                    type="button"
+                    className="btn-decline"
+                    disabled={twoFAConfirming}
+                    onClick={async () => {
+                      const note = decisionNote.trim();
+                      if (!note) {
+                        setTwoFAError('Facility decision note is required.');
+                        return;
+                      }
+                      if (!dischargeReadyChecked) {
+                        setTwoFAError('Confirm facility processing readiness before marking for facility decision.');
+                        return;
+                      }
+                      const res = await markForFacilityDecision(selectedRequest, note);
+                      if (!res.ok) setTwoFAError(res.error || 'Could not mark request for facility decision.');
+                    }}
+                  >
+                    Mark For Facility Decision
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="btn-decline"
@@ -1241,6 +1426,24 @@ const AdminDashboard = () => {
             <Stethoscope size={20} color="#A3AED0" />
           </div>
           <span>Staff</span>
+        </div>
+        <div className="mob-nav-item" onClick={() => navigate('/admin-appointments')}>
+          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+            <Calendar size={20} color="#A3AED0" />
+          </div>
+          <span>Appointments</span>
+        </div>
+        <div className="mob-nav-item" onClick={() => navigate('/admin-reports')}>
+          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+            <FileText size={20} color="#A3AED0" />
+          </div>
+          <span>Reports</span>
+        </div>
+        <div className="mob-nav-item" onClick={() => navigate('/admin-profile')}>
+          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+            <User size={20} color="#A3AED0" />
+          </div>
+          <span>Profile</span>
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/login')}>
           <LogOut size={22} color="#F54E25" />

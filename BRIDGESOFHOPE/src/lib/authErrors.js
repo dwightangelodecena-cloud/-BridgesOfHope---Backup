@@ -1,3 +1,9 @@
+/** True when signUp fails because the email is already registered */
+export function isSignupEmailDuplicate(error) {
+  if (!error?.message) return false;
+  return error.message.toLowerCase().includes('user already registered');
+}
+
 /** Map Supabase Auth API errors to short UI messages */
 export function formatAuthError(error) {
   if (!error?.message) return 'Something went wrong. Please try again.';

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Home, TrendingUp, User, LogOut, X, Landmark, Users, ChevronDown, ChevronUp, DollarSign, Bell, CheckCircle2 } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAsyncData } from '@/hooks/useAsyncData';
@@ -101,6 +102,7 @@ const Service = () => {
           z-index: 100;
           transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           cursor: pointer;
+          position: relative;
         }
 
         .sidebar-logo-container {
@@ -124,6 +126,7 @@ const Service = () => {
           gap: 20px;
           margin-bottom: 25px;
           box-sizing: border-box;
+          cursor: pointer;
           border: 2px solid transparent;
           border-radius: 12px;
         }
@@ -140,13 +143,20 @@ const Service = () => {
           justify-content: center;
           flex-shrink: 0;
         }
-
         .sidebar-label {
           display: ${isExpanded ? 'block' : 'none'};
           font-weight: 700;
           font-size: 18px;
           color: #707EAE;
           white-space: nowrap;
+        }
+        .sidebar-primary { width: 100%; }
+        .sidebar-footer {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 20px;
+          width: 100%;
         }
 
         /* Main View Styling */
@@ -634,7 +644,7 @@ const Service = () => {
         <div className="sidebar-logo-container">
           <img src={logo} alt="BH" className="sidebar-logo" />
         </div>
-
+        <div className="sidebar-primary">
         <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
           <div className="sidebar-icon-wrap">
             <Home size={22} color="#707EAE" />
@@ -649,14 +659,17 @@ const Service = () => {
           <span className="sidebar-label">Progress</span>
         </div>
 
-        <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '20px' }}>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}>
-            <User size={22} color="#707EAE" />
-            <span className="sidebar-label">Profile</span>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
+          <div className="sidebar-icon-wrap">
+            <Calendar size={22} color="#707EAE" />
           </div>
+          <span className="sidebar-label">Appointments</span>
+        </div>
+        </div>
+        <div className="sidebar-footer">
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}><User size={22} color="#707EAE" /><span className="sidebar-label">Profile</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" style={{ cursor: 'pointer' }} />
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
+            <LogOut size={22} color="#F54E25" /><span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
           </div>
         </div>
       </aside>
@@ -811,14 +824,6 @@ const Service = () => {
                     <div><span className="branch-name">Imus Branch</span><span className="branch-type">City Rate</span></div>
                   </div>
                   <div className="branch-price">₱35,000</div>
-                </div>
-
-                <div className="branch-item" style={{ borderTop: '1px solid #F1F1F1' }}>
-                  <div className="branch-info">
-                    <Landmark size={24} color="#707EAE" />
-                    <div><span className="branch-name">Amadeo Branch</span><span className="branch-type">Provincial Rate</span></div>
-                  </div>
-                  <div className="branch-price">₱33,000</div>
                 </div>
 
                 {isExpanded && (

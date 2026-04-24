@@ -45,6 +45,7 @@ export function uiAdmissionRequestFromRow(r) {
     guardian_email: r.guardian_email,
     guardian_phone: r.guardian_phone,
     patient_birth_date: r.patient_birth_date,
+    patient_gender: r.patient_gender,
   };
 }
 

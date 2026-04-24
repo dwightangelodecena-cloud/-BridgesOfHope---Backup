@@ -23,6 +23,13 @@ import {
 } from '@/lib/siteContentStore';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { pullSiteContentFromSupabase } from '@/lib/siteContentRemote';
+import {
+  CMS_MAINTENANCE_EVENT,
+  CMS_MAINTENANCE_STORAGE_KEY,
+  DEFAULT_CMS_MAINTENANCE_MESSAGE,
+  fetchCmsMaintenanceFromSupabase,
+  readCmsMaintenanceMirror,
+} from '@/lib/cmsMaintenance';
 import { LandingPageBodySections } from '@/components/landing/LandingPageBodySections';
 
 // ─── Asset imports (unchanged) ──────────────────────────────────────────────
@@ -276,6 +283,8 @@ const VALUES = [
 const LandingPage = () => {
   const [searchParams] = useSearchParams();
   const cmsEditMode = searchParams.get('cmsEdit') === '1';
+  const bypassMaintenance =
+    cmsEditMode || searchParams.get('live') === '1';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [navElevated, setNavElevated] = useState(false);
@@ -287,6 +296,48 @@ const LandingPage = () => {
   const scrollSpyRafRef = useRef(null);
 
   const [siteContent, setSiteContent] = useState(() => loadSiteContent());
+  const [cmsMaint, setCmsMaint] = useState(() => readCmsMaintenanceMirror());
+
+  useEffect(() => {
+    if (bypassMaintenance) return undefined;
+
+    let cancelled = false;
+    const apply = (payload) => {
+      if (cancelled) return;
+      setCmsMaint({
+        active: Boolean(payload?.active),
+        message: String(payload?.message || '').trim(),
+      });
+    };
+
+    const pull = async () => {
+      const remote = await fetchCmsMaintenanceFromSupabase();
+      const mirror = readCmsMaintenanceMirror();
+      const next = remote != null ? remote : mirror;
+      apply(next);
+    };
+
+    void pull();
+
+    const onStorage = (e) => {
+      if (e.key !== CMS_MAINTENANCE_STORAGE_KEY) return;
+      apply(readCmsMaintenanceMirror());
+    };
+    const onCustom = (e) => {
+      apply(e.detail || { active: false, message: '' });
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(CMS_MAINTENANCE_EVENT, onCustom);
+    const interval = window.setInterval(() => void pull(), 20000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(CMS_MAINTENANCE_EVENT, onCustom);
+      window.clearInterval(interval);
+    };
+  }, [bypassMaintenance]);
+
   useEffect(() => {
     const sync = () => setSiteContent(loadSiteContent());
     window.addEventListener('storage', sync);
@@ -530,8 +581,78 @@ const LandingPage = () => {
     scrollToSection(id);
   };
 
+  const showMaintenance = !bypassMaintenance && cmsMaint.active;
+
   return (
     <div className="lp-root" style={getLandingThemeStyles(m.theme)}>
+      {showMaintenance && (
+        <div
+          className="lp-maintenance-overlay"
+          role="alertdialog"
+          aria-live="polite"
+          aria-busy="true"
+          aria-label="Site maintenance"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2147483000,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'clamp(1.25rem, 4vw, 2.5rem)',
+            background: 'linear-gradient(160deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 41, 59, 0.96) 100%)',
+            color: '#f8fafc',
+            textAlign: 'center',
+            fontFamily: 'inherit',
+          }}
+        >
+          <img
+            src={logo}
+            alt="Bridges of Hope"
+            style={{
+              width: 'clamp(140px, 28vw, 200px)',
+              height: 'auto',
+              marginBottom: '1.75rem',
+              filter: 'brightness(1.05)',
+            }}
+          />
+          <h1
+            style={{
+              fontSize: 'clamp(1.35rem, 3.5vw, 1.85rem)',
+              fontWeight: 800,
+              letterSpacing: '-0.02em',
+              marginBottom: '0.75rem',
+              lineHeight: 1.2,
+            }}
+          >
+            Under maintenance
+          </h1>
+          <p
+            style={{
+              fontSize: 'clamp(0.95rem, 2.2vw, 1.05rem)',
+              lineHeight: 1.55,
+              maxWidth: 420,
+              color: 'rgba(248, 250, 252, 0.88)',
+              marginBottom: '1.5rem',
+            }}
+          >
+            {cmsMaint.message || DEFAULT_CMS_MAINTENANCE_MESSAGE}
+          </p>
+          <a
+            href="/login"
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: '#fda4af',
+              textDecoration: 'underline',
+              textUnderlineOffset: 3,
+            }}
+          >
+            Staff login
+          </a>
+        </div>
+      )}
       <style>{`
         /* Inter only (weights in index.css) — one typeface across the landing page. */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

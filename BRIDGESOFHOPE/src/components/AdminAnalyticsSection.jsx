@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     TrendingUp,
     AlertTriangle,
@@ -54,6 +55,8 @@ const OUTCOME_OPTIONS = [
     { value: 'Declining', label: 'Declining' },
     { value: 'Discharged', label: 'Discharged' },
 ];
+
+const BED_CAPACITY = 50;
 
 function parseTs(iso) {
     if (!iso) return null;
@@ -200,6 +203,18 @@ async function fetchAnalyticsFromSupabase() {
         .select('*')
         .eq('status', 'pending');
     if (aErr) throw aErr;
+    const { data: allAdmissionRows, error: allAdmErr } = await supabase
+        .from('admission_requests')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10000);
+    if (allAdmErr) throw allAdmErr;
+
+    const { data: pendingDisRows, error: dPendErr } = await supabase
+        .from('discharge_requests')
+        .select('*')
+        .eq('status', 'pending');
+    if (dPendErr) throw dPendErr;
 
     const { data: decAdm, error: decAdmErr } = await supabase.from('admission_requests').select('*').eq('status', 'declined');
     if (decAdmErr) console.warn('[analytics] declined admissions', decAdmErr);
@@ -207,20 +222,34 @@ async function fetchAnalyticsFromSupabase() {
     const { data: decDis, error: decDisErr } = await supabase.from('discharge_requests').select('*').eq('status', 'declined');
     if (decDisErr) console.warn('[analytics] declined discharges', decDisErr);
 
+    const { data: weeklyRows, error: wrErr } = await supabase
+        .from('weekly_reports')
+        .select('*')
+        .order('submitted_at', { ascending: false })
+        .limit(5000);
+    if (wrErr) console.warn('[analytics] weekly reports', wrErr);
+
     const patients = (patientRows || []).map(mapPatientFromDbRow);
     const pendingAdmissions = (pendingRows || []).map(mapPendingAdmissionFromDb);
+    const admissionRequests = allAdmissionRows || [];
+    const pendingDischarges = pendingDisRows || [];
+    const weeklyReports = weeklyRows || [];
     const declined = [
         ...mapDeclinedFromDb(decAdmErr ? [] : decAdm, 'admission'),
         ...mapDeclinedFromDb(decDisErr ? [] : decDis, 'discharge'),
     ];
 
-    return { patients, pendingAdmissions, declined };
+    return { patients, pendingAdmissions, admissionRequests, pendingDischarges, weeklyReports, declined };
 }
 
 export default function AdminAnalyticsSection() {
+    const navigate = useNavigate();
     const [snapshot, setSnapshot] = useState({
         patients: [],
         pendingAdmissions: [],
+        admissionRequests: [],
+        pendingDischarges: [],
+        weeklyReports: [],
         declined: [],
     });
     const [remoteLoading, setRemoteLoading] = useState(false);
@@ -235,10 +264,38 @@ export default function AdminAnalyticsSection() {
     const [filterAge, setFilterAge] = useState('all');
     const [filterTherapist, setFilterTherapist] = useState('all');
     const [filterOutcome, setFilterOutcome] = useState('all');
+    const [selectedProgramKey, setSelectedProgramKey] = useState('drugs');
 
     const loadLocalSnapshot = useCallback(() => ({
         patients: JSON.parse(localStorage.getItem('bh_patients') || '[]'),
         pendingAdmissions: JSON.parse(localStorage.getItem('bh_pending_admissions') || '[]'),
+        admissionRequests: (() => {
+            const pending = JSON.parse(localStorage.getItem('bh_pending_admissions') || '[]').map((r) => ({
+                ...r,
+                status: 'pending',
+                created_at: r.created_at || r.requestTime || r.createdAt || null,
+            }));
+            const declined = JSON.parse(localStorage.getItem('bh_declined_requests') || '[]')
+                .filter((r) => r.type === 'admission')
+                .map((r) => ({
+                    ...r,
+                    status: 'declined',
+                    created_at: r.created_at || r.requestTime || r.createdAt || null,
+                    reason_for_admission: r.reason || '',
+                }));
+            const approved = JSON.parse(localStorage.getItem('bh_patients') || '[]').map((p) => ({
+                id: `approved-${p.id}`,
+                status: 'approved',
+                created_at: p.admitted_at || p.admissionDate || p.createdAt || null,
+                reason_for_admission: p.concern || p.reason || p.primary_concern || '',
+                patient_gender: p.gender || null,
+                patient_birth_date: p.dateOfBirth || null,
+                assigned_staff: p.assigned_staff || p.therapist || p.assignedStaff || null,
+            }));
+            return [...pending, ...declined, ...approved];
+        })(),
+        pendingDischarges: JSON.parse(localStorage.getItem('bh_pending_discharges') || '[]'),
+        weeklyReports: JSON.parse(localStorage.getItem('bh_nurse_weekly_reports') || '[]'),
         declined: JSON.parse(localStorage.getItem('bh_declined_requests') || '[]'),
     }), []);
 
@@ -408,6 +465,51 @@ export default function AdminAnalyticsSection() {
         });
     }, [snapshot.declined, periodStartMs, filterProgram, filterGender, filterTherapist]);
 
+    const filteredPendingDischarges = useMemo(() => {
+        return snapshot.pendingDischarges.filter((req) => {
+            const rt = requestTimeMs(req);
+            const reason = req.reason_category || req.reason_details || req.reason || '';
+            if (!programMatchesFilter(mapProgramKey(reason), filterProgram)) return false;
+            if (filterGender !== 'all') {
+                const g = req.patient_gender || req.gender;
+                if (g && String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
+            }
+            if (filterTherapist !== 'all') {
+                const st = String(req.assigned_staff || req.assignedStaff || req.therapist || '').trim() || 'Unassigned';
+                if (st !== filterTherapist) return false;
+            }
+            return true;
+        });
+    }, [snapshot.pendingDischarges, filterProgram, filterGender, filterTherapist]);
+
+    const filteredAdmissionRequests = useMemo(() => {
+        return (snapshot.admissionRequests || []).filter((req) => {
+            const rt = requestTimeMs(req);
+            if (rt != null && rt < periodStartMs) return false;
+            const reason = req.reason_for_admission || req.reason || '';
+            if (!programMatchesFilter(mapProgramKey(reason), filterProgram)) return false;
+            if (filterGender !== 'all') {
+                const g = req.patient_gender || req.gender;
+                if (g && String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
+            }
+            if (filterAge !== 'all' && req.patient_birth_date) {
+                const dob = new Date(req.patient_birth_date);
+                if (!Number.isNaN(dob.getTime())) {
+                    let age = new Date().getFullYear() - dob.getFullYear();
+                    const m = new Date().getMonth() - dob.getMonth();
+                    if (m < 0 || (m === 0 && new Date().getDate() < dob.getDate())) age--;
+                    const b = ageBucket(age);
+                    if (!b || b !== filterAge) return false;
+                }
+            }
+            if (filterTherapist !== 'all') {
+                const st = String(req.assigned_staff || req.assignedStaff || req.therapist || '').trim() || 'Unassigned';
+                if (st !== filterTherapist) return false;
+            }
+            return true;
+        });
+    }, [snapshot.admissionRequests, periodStartMs, filterProgram, filterGender, filterAge, filterTherapist]);
+
     const trendCohort = useMemo(
         () =>
             normalizedPatients.filter((p) => {
@@ -437,6 +539,124 @@ export default function AdminAnalyticsSection() {
         const total = approved + pending + declined;
         return { total: total > 0 ? total : 0, approved, pending, declined };
     }, [filteredPatients, filteredPending, filteredDeclined]);
+
+    const admissionFunnel = useMemo(() => {
+        const approved = filteredAdmissionRequests.filter((r) => String(r.status).toLowerCase() === 'approved').length;
+        const pending = filteredAdmissionRequests.filter((r) => String(r.status).toLowerCase() === 'pending').length;
+        const declined = filteredAdmissionRequests.filter((r) => String(r.status).toLowerCase() === 'declined').length;
+        const submitted = approved + pending + declined;
+        return { submitted, approved, pending, declined };
+    }, [filteredAdmissionRequests]);
+
+    const dischargeQueueAging = useMemo(() => {
+        const now = Date.now();
+        const buckets = { '0-2d': 0, '3-7d': 0, '8+d': 0 };
+        filteredPendingDischarges.forEach((req) => {
+            const created = requestTimeMs(req);
+            if (!created) return;
+            const ageDays = Math.floor((now - created) / 86400000);
+            if (ageDays <= 2) buckets['0-2d'] += 1;
+            else if (ageDays <= 7) buckets['3-7d'] += 1;
+            else buckets['8+d'] += 1;
+        });
+        return buckets;
+    }, [filteredPendingDischarges]);
+
+    const occupancyKpi = useMemo(() => {
+        const bedCapacity = BED_CAPACITY;
+        const activePatients = normalizedPatients.filter((p) => !p.discharged_at).filter((p) => {
+            if (!programMatchesFilter(p.programKeyRaw, filterProgram)) return false;
+            if (filterGender !== 'all' && String(p.gender).toLowerCase() !== String(filterGender).toLowerCase()) {
+                return false;
+            }
+            if (filterAge !== 'all') {
+                const b = ageBucket(p.age);
+                if (!b || b !== filterAge) return false;
+            }
+            if (filterTherapist !== 'all' && (p.therapist || 'Unassigned') !== filterTherapist) {
+                return false;
+            }
+            return true;
+        });
+        const activeCount = activePatients.length;
+        const occupancyPercent = bedCapacity > 0 ? Math.round((activeCount / bedCapacity) * 100) : 0;
+        const availableBeds = Math.max(0, bedCapacity - activeCount);
+        return { bedCapacity, activeCount, occupancyPercent, availableBeds };
+    }, [normalizedPatients, filterProgram, filterGender, filterAge, filterTherapist]);
+
+    /** #7 Occupancy forecast: pipeline scenarios from pending admits/discharges (planning horizon ≈ next week). */
+    const occupancyForecast = useMemo(() => {
+        const cap = BED_CAPACITY;
+        const current = occupancyKpi.activeCount;
+        const padm = filteredPending.length;
+        const pdis = filteredPendingDischarges.length;
+        const clamp = (n) => Math.max(0, Math.min(cap, n));
+        const ifAllAdmits = clamp(current + padm);
+        const ifAllDischarges = clamp(current - pdis);
+        const netIfAll = clamp(current + padm - pdis);
+        const pct = (n) => (cap > 0 ? Math.round((n / cap) * 100) : 0);
+        return {
+            pendingAdmissions: padm,
+            pendingDischarges: pdis,
+            ifAllAdmits,
+            ifAllDischarges,
+            netIfAll,
+            pctAdmits: pct(ifAllAdmits),
+            pctDischarges: pct(ifAllDischarges),
+            pctNet: pct(netIfAll),
+        };
+    }, [occupancyKpi.activeCount, filteredPending.length, filteredPendingDischarges.length]);
+
+    const staffWorkload = useMemo(() => {
+        const activePatients = filteredPatients.filter((p) => !p.discharged_at);
+        const counts = new Map();
+        activePatients.forEach((p) => {
+            const staffName = String(p.therapist || p.assigned_staff || 'Unassigned').trim() || 'Unassigned';
+            counts.set(staffName, (counts.get(staffName) || 0) + 1);
+        });
+        const rows = Array.from(counts.entries())
+            .map(([name, count]) => ({
+                name,
+                displayName: name === 'Unassigned' ? 'No staff assigned yet' : name,
+                count,
+            }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 6);
+        const max = rows.length ? Math.max(...rows.map((r) => r.count)) : 1;
+        const unassignedCount = counts.get('Unassigned') || 0;
+        const total = activePatients.length;
+        const unassignedPercent = total > 0 ? Math.round((unassignedCount / total) * 100) : 0;
+        const unassignedPatients = activePatients
+            .filter((p) => (String(p.therapist || '').trim() || 'Unassigned') === 'Unassigned')
+            .slice(0, 8)
+            .map((p) => p.name);
+        return { rows, max, unassignedCount, total, unassignedPercent, unassignedPatients };
+    }, [filteredPatients]);
+
+    const declineReasonBreakdown = useMemo(() => {
+        const reasonMap = new Map();
+        filteredDeclined.forEach((r) => {
+            const raw = String(r.reason || '').trim();
+            const normalized = raw
+                ? raw.toLowerCase().includes('alcohol')
+                    ? 'Alcohol concern'
+                    : raw.toLowerCase().includes('drug')
+                        ? 'Drug concern'
+                        : raw.toLowerCase().includes('gambl')
+                            ? 'Gambling concern'
+                            : raw.length > 40
+                                ? `${raw.slice(0, 40)}...`
+                                : raw
+                : 'Unspecified';
+            reasonMap.set(normalized, (reasonMap.get(normalized) || 0) + 1);
+        });
+        const rows = Array.from(reasonMap.entries())
+            .map(([reason, count]) => ({ reason, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 6);
+        const total = rows.reduce((sum, r) => sum + r.count, 0);
+        return { rows, total };
+    }, [filteredDeclined]);
 
     const appPerc = metrics.total > 0 ? Math.round((metrics.approved / metrics.total) * 100) : 0;
     const penPerc = metrics.total > 0 ? Math.round((metrics.pending / metrics.total) * 100) : 0;
@@ -508,6 +728,13 @@ export default function AdminAnalyticsSection() {
         for (let v = 0; v <= barAxisMax; v += barTickStep) ticks.push(v);
         return ticks;
     }, [barAxisMax, barTickStep]);
+
+    const selectedProgramPatients = useMemo(() => {
+        return filteredPatients.filter((p) => {
+            const key = p.programKeyRaw === 'other' ? 'mental_health' : p.programKeyRaw;
+            return key === selectedProgramKey;
+        });
+    }, [filteredPatients, selectedProgramKey]);
 
     const lineSeries = useMemo(() => {
         const days = 56;
@@ -629,7 +856,9 @@ export default function AdminAnalyticsSection() {
 
         return {
             successDelta,
+            currentSuccessRate: curM.sr,
             peakDayName,
+            peakDayCount: maxD,
             bestProgLabel,
             bestProgRate: Math.round(bestRate * 100),
             stayDelta,
@@ -1139,41 +1368,373 @@ export default function AdminAnalyticsSection() {
                 .stat-label-s { font-size: 14px; color: #64748b; font-weight: 700; margin-bottom: 8px; letter-spacing: 0.02em; }
                 .stat-val-s { font-size: 34px; font-weight: 900; color: #0f172a; letter-spacing: -0.03em; line-height: 1.1; }
 
-                .alerts-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
-                .alert-card {
-                    padding: 20px 22px;
-                    border-radius: 16px;
-                    color: white;
-                    display: flex;
-                    align-items: center;
-                    gap: 16px;
-                    min-height: 88px;
-                    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-                    border: 1px solid rgba(255,255,255,0.15);
+                .insights-chart-box {
+                    background: white;
+                    border-radius: 22px;
+                    padding: 26px 30px;
+                    border: 1px solid #e8ecf4;
+                    box-shadow: 0 8px 28px rgba(27, 37, 89, 0.06);
+                    margin-bottom: 26px;
                 }
-                .alert-card-text {
-                    font-size: clamp(15px, 1.15vw, 18px);
+                .insights-grid {
+                    margin-top: 20px;
+                    display: grid;
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    gap: 18px;
+                }
+                .insight-card {
+                    border: 1px solid #e2e8f0;
+                    border-radius: 14px;
+                    padding: 16px 16px 14px;
+                    background: #f8fafc;
+                }
+                .insight-label {
+                    font-size: 12px;
+                    color: #64748b;
                     font-weight: 700;
-                    line-height: 1.4;
-                    flex: 1;
+                    margin-bottom: 8px;
                 }
-                .alert-icon {
-                    width: 44px;
-                    height: 44px;
-                    border-radius: 12px;
-                    background: rgba(255,255,255,0.22);
-                    color: white;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    flex-shrink: 0;
+                .insight-value {
+                    font-size: 26px;
+                    font-weight: 900;
+                    color: #0f172a;
+                    line-height: 1.1;
+                    margin-bottom: 6px;
+                }
+                .insight-sub {
+                    font-size: 11px;
+                    color: #475569;
+                    font-weight: 600;
+                    line-height: 1.4;
                 }
 
-                .charts-row { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 22px; margin-bottom: 22px; }
+                .charts-row { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 24px; margin-bottom: 26px; }
+                .mini-charts-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-bottom: 26px; }
+                .mini-chart-box {
+                    background: white;
+                    border-radius: 20px;
+                    padding: 22px 24px;
+                    border: 1px solid #e8ecf4;
+                    box-shadow: 0 10px 28px rgba(27, 37, 89, 0.07);
+                    position: relative;
+                    overflow: hidden;
+                }
+                .mini-chart-box::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    height: 3px;
+                    background: linear-gradient(90deg, #F54E25, #ff8a65, #fb923c);
+                }
+                .mini-chart-title {
+                    font-size: 16px;
+                    font-weight: 800;
+                    color: #0f172a;
+                    margin-bottom: 4px;
+                }
+                .mini-chart-subtitle {
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #64748b;
+                    margin-bottom: 16px;
+                }
+                .mini-bars {
+                    display: grid;
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    gap: 14px;
+                    align-items: end;
+                    min-height: 170px;
+                    padding: 20px 6px 14px;
+                    border-top: 1px dashed #e2e8f0;
+                    border-bottom: 1px solid #e2e8f0;
+                    background:
+                        repeating-linear-gradient(
+                            to top,
+                            rgba(226, 232, 240, 0.55) 0px,
+                            rgba(226, 232, 240, 0.55) 1px,
+                            transparent 1px,
+                            transparent 30px
+                        );
+                }
+                .mini-bars--aging {
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                }
+                .mini-bar-wrap {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 6px;
+                }
+                .mini-bar {
+                    width: 60px;
+                    border-radius: 10px 10px 4px 4px;
+                    background: linear-gradient(180deg, #ff8a65 0%, #F54E25 100%);
+                    min-height: 6px;
+                    box-shadow: 0 6px 16px rgba(245, 78, 37, 0.25);
+                    transition: transform 0.16s ease, box-shadow 0.16s ease;
+                }
+                .mini-bar:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(245, 78, 37, 0.35); }
+                .mini-bar-value {
+                    font-size: 13px;
+                    font-weight: 900;
+                    color: #0f172a;
+                }
+                .mini-bar-label {
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #64748b;
+                    text-align: center;
+                    line-height: 1.2;
+                }
+                .extra-kpi-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 22px;
+                    margin-bottom: 26px;
+                }
+                .occupancy-forecast-wrap {
+                    background: white;
+                    border: 1px solid #e8ecf4;
+                    border-radius: 22px;
+                    padding: 28px 28px 30px;
+                    box-shadow: 0 14px 36px rgba(27, 37, 89, 0.09);
+                    margin-bottom: 30px;
+                }
+                .occupancy-forecast-wrap .extra-kpi-title {
+                    font-size: 18px;
+                    font-weight: 800;
+                    margin-bottom: 10px;
+                    letter-spacing: -0.02em;
+                }
+                .occupancy-forecast-wrap .extra-kpi-sub {
+                    font-size: 14px;
+                    line-height: 1.55;
+                    margin-bottom: 6px;
+                    max-width: 920px;
+                }
+                .occupancy-forecast-grid {
+                    display: grid;
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    gap: 20px;
+                    margin-top: 10px;
+                }
+                .occupancy-forecast-tile {
+                    border: 1px solid #e2e8f0;
+                    border-radius: 16px;
+                    padding: 20px 18px 22px;
+                    min-height: 128px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    background: linear-gradient(180deg, #fafbff 0%, #ffffff 100%);
+                }
+                .occupancy-forecast-tile-label {
+                    font-size: 12px;
+                    font-weight: 800;
+                    color: #64748b;
+                    text-transform: uppercase;
+                    letter-spacing: 0.04em;
+                    margin-bottom: 10px;
+                    line-height: 1.25;
+                }
+                .occupancy-forecast-tile-value {
+                    font-size: 36px;
+                    font-weight: 900;
+                    color: #0f172a;
+                    line-height: 1.05;
+                    letter-spacing: -0.03em;
+                }
+                .occupancy-forecast-tile-sub {
+                    font-size: 13px;
+                    font-weight: 700;
+                    color: #94a3b8;
+                    margin-top: 8px;
+                }
+                .occupancy-forecast-tile--stress {
+                    border-color: #fecaca;
+                    background: linear-gradient(180deg, #fff7f7 0%, #ffffff 100%);
+                }
+                .occupancy-forecast-tile--stress .occupancy-forecast-tile-value {
+                    color: #b91c1c;
+                }
+                .occupancy-forecast-tile--relief {
+                    border-color: #bbf7d0;
+                    background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+                }
+                .occupancy-forecast-tile--relief .occupancy-forecast-tile-value {
+                    color: #15803d;
+                }
+                .occupancy-forecast-tile--net {
+                    border-color: #bfdbfe;
+                    background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+                }
+                .occupancy-forecast-tile--net .occupancy-forecast-tile-value {
+                    color: #1d4ed8;
+                }
+                .extra-kpi-card {
+                    background: white;
+                    border: 1px solid #e8ecf4;
+                    border-radius: 20px;
+                    padding: 20px 22px;
+                    box-shadow: 0 10px 28px rgba(27, 37, 89, 0.07);
+                }
+                .extra-kpi-title {
+                    font-size: 15px;
+                    font-weight: 800;
+                    color: #0f172a;
+                    margin-bottom: 4px;
+                }
+                .extra-kpi-sub {
+                    font-size: 12px;
+                    color: #64748b;
+                    font-weight: 600;
+                    margin-bottom: 14px;
+                }
+                .kpi-big-number {
+                    font-size: 28px;
+                    font-weight: 900;
+                    color: #0f172a;
+                    line-height: 1.1;
+                    margin-bottom: 4px;
+                }
+                .kpi-progress-track {
+                    width: 100%;
+                    height: 10px;
+                    border-radius: 999px;
+                    background: #e2e8f0;
+                    overflow: hidden;
+                    margin-top: 10px;
+                }
+                .kpi-progress-fill {
+                    height: 100%;
+                    border-radius: 999px;
+                    background: linear-gradient(90deg, #22c55e 0%, #16a34a 100%);
+                }
+                .tiny-list {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                .tiny-list-row {
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr) auto;
+                    gap: 10px;
+                    align-items: center;
+                }
+                .tiny-list-label {
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #334155;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+                .tiny-list-value {
+                    font-size: 12px;
+                    font-weight: 800;
+                    color: #0f172a;
+                }
+                .tiny-list-bar {
+                    grid-column: 1 / -1;
+                    width: 100%;
+                    height: 7px;
+                    border-radius: 999px;
+                    background: #e2e8f0;
+                    overflow: hidden;
+                }
+                .tiny-list-bar-fill {
+                    height: 100%;
+                    border-radius: 999px;
+                    background: linear-gradient(90deg, #60a5fa 0%, #2563eb 100%);
+                }
+                .tiny-list-bar-fill--danger {
+                    background: linear-gradient(90deg, #fb7185 0%, #e11d48 100%);
+                }
+                .decline-list {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                }
+                .decline-item-head {
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr) auto;
+                    gap: 10px;
+                    align-items: center;
+                }
+                .decline-item-label {
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #334155;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+                .decline-item-count {
+                    font-size: 12px;
+                    font-weight: 800;
+                    color: #0f172a;
+                }
+                .decline-item-track {
+                    width: 100%;
+                    height: 7px;
+                    border-radius: 999px;
+                    background: #e2e8f0;
+                    overflow: hidden;
+                }
+                .decline-item-fill {
+                    height: 100%;
+                    border-radius: 999px;
+                    background: linear-gradient(90deg, #fb7185 0%, #e11d48 100%);
+                }
+                .warn-pill {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 11px;
+                    font-weight: 800;
+                    color: #9a3412;
+                    background: #fff7ed;
+                    border: 1px solid #fed7aa;
+                    border-radius: 999px;
+                    padding: 4px 10px;
+                    margin-bottom: 12px;
+                }
+                .workload-action-box {
+                    margin-top: 12px;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 12px;
+                    padding: 10px 12px;
+                    background: #f8fafc;
+                }
+                .workload-action-link {
+                    margin-top: 8px;
+                    border: none;
+                    background: #1d4ed8;
+                    color: white;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    font-weight: 700;
+                    padding: 7px 10px;
+                    cursor: pointer;
+                }
+                .workload-action-link:hover { background: #1e40af; }
+                .kpi-note-box {
+                    margin-top: 12px;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 12px;
+                    padding: 10px 12px;
+                    background: #f8fafc;
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #334155;
+                    line-height: 1.45;
+                }
                 .chart-box {
                     background: white;
                     border-radius: 22px;
-                    padding: 28px;
+                    padding: 30px;
                     border: 1px solid #e8ecf4;
                     box-shadow: 0 8px 28px rgba(27, 37, 89, 0.06);
                 }
@@ -1184,12 +1745,12 @@ export default function AdminAnalyticsSection() {
                     position: relative;
                     width: 100%;
                     min-height: 280px;
-                    padding: 12px 8px 42px 48px;
+                    padding: 16px 10px 46px 52px;
                 }
                 .line-chart-frame {
                     position: relative;
                     min-height: 300px;
-                    padding: 12px 12px 48px 52px;
+                    padding: 16px 14px 52px 56px;
                 }
                 .chart-box--admissions-line .chart-title {
                     font-size: clamp(18px, 1.35vw, 21px);
@@ -1268,8 +1829,13 @@ export default function AdminAnalyticsSection() {
 
                 @media (max-width: 1200px) {
                     .stats-row { grid-template-columns: repeat(3, 1fr); }
-                    .alerts-row { grid-template-columns: repeat(2, 1fr); }
+                    .insights-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
                     .charts-row { grid-template-columns: 1fr; }
+                    .mini-charts-row { grid-template-columns: 1fr; }
+                    .extra-kpi-grid { grid-template-columns: 1fr; }
+                    .occupancy-forecast-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+                    .occupancy-forecast-tile { min-height: 112px; padding: 16px 14px 18px; }
+                    .occupancy-forecast-tile-value { font-size: 30px; }
                 }
 
                 @media (max-width: 768px) {
@@ -1283,7 +1849,18 @@ export default function AdminAnalyticsSection() {
                     .mob-nav-item.active { color: #F54E25; }
                     .dropdown, .btn-export { padding: 8px 12px; font-size: 11px; }
                     .stats-row { grid-template-columns: repeat(2, 1fr); }
-                    .alerts-row { grid-template-columns: 1fr; }
+                    .insights-grid { grid-template-columns: 1fr; }
+                    .mini-charts-row { gap: 14px; margin-bottom: 18px; }
+                    .occupancy-forecast-grid { grid-template-columns: 1fr; gap: 14px; }
+                    .occupancy-forecast-wrap { padding: 20px 18px 22px; }
+                    .occupancy-forecast-tile { min-height: 0; padding: 18px 16px; }
+                    .occupancy-forecast-tile-value { font-size: 32px; }
+                    .mini-chart-box { padding: 16px 14px; }
+                    .mini-bars { gap: 10px; padding: 14px 0 10px; min-height: 148px; }
+                    .charts-row { gap: 16px; margin-bottom: 18px; }
+                    .chart-box { padding: 18px; }
+                    .extra-kpi-grid { gap: 14px; margin-bottom: 18px; }
+                    .extra-kpi-card { padding: 16px 14px; }
                     .y-axis-label-line { left: -35px !important; }
                     .chart-container-line {
                         margin-left: 15px;
@@ -1437,22 +2014,209 @@ export default function AdminAnalyticsSection() {
                         </div>
                     </div>
 
-                    <div className="alerts-row">
-                        <div className="alert-card" style={{ background: 'linear-gradient(165deg, #0d7a45 0%, #086F37 100%)' }}>
-                            <div className="alert-icon"><TrendingUp size={22} strokeWidth={2.2} /></div>
-                            <span className="alert-card-text">{insights.successText}</span>
+                    <div className="insights-chart-box">
+                        <div className="chart-head" style={{ marginBottom: 10 }}>
+                            <div className="chart-title">Insights Chart</div>
+                            <div className="chart-desc">Snapshot of core insight metrics from recent activity windows</div>
                         </div>
-                        <div className="alert-card" style={{ background: 'linear-gradient(165deg, #ff6b3d 0%, #F54E25 100%)' }}>
-                            <div className="alert-icon"><AlertTriangle size={22} strokeWidth={2.2} /></div>
-                            <span className="alert-card-text">{insights.noShowText}</span>
+                        <div className="insights-grid">
+                            <div className="insight-card">
+                                <div className="insight-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <TrendingUp size={14} color="#0d7a45" /> Approval Share
+                                </div>
+                                <div className="insight-value">{insights.currentSuccessRate}%</div>
+                                <div className="insight-sub">{insights.successText}</div>
+                            </div>
+                            <div className="insight-card">
+                                <div className="insight-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <AlertTriangle size={14} color="#ea580c" /> Peak Day Load
+                                </div>
+                                <div className="insight-value">{insights.peakDayCount}</div>
+                                <div className="insight-sub">{insights.noShowText}</div>
+                            </div>
+                            <div className="insight-card">
+                                <div className="insight-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <Star size={14} color="#1d4ed8" /> Best Program Completion
+                                </div>
+                                <div className="insight-value">{insights.bestProgRate}%</div>
+                                <div className="insight-sub">{insights.programText}</div>
+                            </div>
+                            <div className="insight-card">
+                                <div className="insight-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <Clock size={14} color="#0f766e" /> Avg Stay Delta
+                                </div>
+                                <div className="insight-value">{insights.stayDelta == null ? '—' : `${insights.stayDelta > 0 ? '+' : ''}${insights.stayDelta}`}</div>
+                                <div className="insight-sub">{insights.stayText}</div>
+                            </div>
                         </div>
-                        <div className="alert-card" style={{ background: 'linear-gradient(165deg, #3b7ff0 0%, #1D4ED8 100%)' }}>
-                            <div className="alert-icon"><Star size={22} strokeWidth={2.2} /></div>
-                            <span className="alert-card-text">{insights.programText}</span>
+                    </div>
+
+                    <div className="mini-charts-row">
+                        <div className="mini-chart-box">
+                            <div className="mini-chart-title">Admission Funnel</div>
+                            <div className="mini-chart-subtitle">Status volume in the selected filter window</div>
+                            <div className="mini-bars">
+                                {[
+                                    { key: 'submitted', label: 'Submitted', value: admissionFunnel.submitted, gradient: 'linear-gradient(180deg, #fb923c 0%, #f97316 100%)' },
+                                    { key: 'approved', label: 'Approved', value: admissionFunnel.approved, gradient: 'linear-gradient(180deg, #22c55e 0%, #16a34a 100%)' },
+                                    { key: 'pending', label: 'Pending', value: admissionFunnel.pending, gradient: 'linear-gradient(180deg, #38bdf8 0%, #0284c7 100%)' },
+                                    { key: 'declined', label: 'Declined', value: admissionFunnel.declined, gradient: 'linear-gradient(180deg, #f87171 0%, #dc2626 100%)' },
+                                ].map((item) => {
+                                    const max = Math.max(1, admissionFunnel.submitted, admissionFunnel.approved, admissionFunnel.pending, admissionFunnel.declined);
+                                    const h = Math.max(8, Math.round((item.value / max) * 110));
+                                    return (
+                                        <div key={item.key} className="mini-bar-wrap">
+                                            <div className="mini-bar-value">{item.value}</div>
+                                            <div className="mini-bar" style={{ height: h, background: item.gradient }} />
+                                            <div className="mini-bar-label">{item.label}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
-                        <div className="alert-card" style={{ background: 'linear-gradient(165deg, #0d7a45 0%, #065f38 100%)' }}>
-                            <div className="alert-icon"><Clock size={22} strokeWidth={2.2} /></div>
-                            <span className="alert-card-text">{insights.stayText}</span>
+
+                        <div className="mini-chart-box">
+                            <div className="mini-chart-title">Discharge Queue Aging</div>
+                            <div className="mini-chart-subtitle">How long pending discharge requests have been waiting</div>
+                            <div className="mini-bars mini-bars--aging">
+                                {[
+                                    { key: '0-2d', label: '0-2 days', value: dischargeQueueAging['0-2d'], gradient: 'linear-gradient(180deg, #22c55e 0%, #15803d 100%)' },
+                                    { key: '3-7d', label: '3-7 days', value: dischargeQueueAging['3-7d'], gradient: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)' },
+                                    { key: '8+d', label: '8+ days', value: dischargeQueueAging['8+d'], gradient: 'linear-gradient(180deg, #ef4444 0%, #b91c1c 100%)' },
+                                ].map((item) => {
+                                    const max = Math.max(1, dischargeQueueAging['0-2d'], dischargeQueueAging['3-7d'], dischargeQueueAging['8+d']);
+                                    const h = Math.max(8, Math.round((item.value / max) * 110));
+                                    return (
+                                        <div key={item.key} className="mini-bar-wrap">
+                                            <div className="mini-bar-value">{item.value}</div>
+                                            <div className="mini-bar" style={{ height: h, background: item.gradient }} />
+                                            <div className="mini-bar-label">{item.label}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="extra-kpi-grid">
+                        <div className="extra-kpi-card">
+                            <div className="extra-kpi-title">Occupancy</div>
+                            <div className="extra-kpi-sub">Facility utilization from active patients and fixed bed capacity</div>
+                            <div className="kpi-big-number">{occupancyKpi.occupancyPercent}%</div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>
+                                {occupancyKpi.activeCount}/{occupancyKpi.bedCapacity} occupied · {occupancyKpi.availableBeds} beds available
+                            </div>
+                            <div className="kpi-progress-track">
+                                <div className="kpi-progress-fill" style={{ width: `${Math.min(100, occupancyKpi.occupancyPercent)}%` }} />
+                            </div>
+                            <div className="kpi-note-box">
+                                Formula: Occupancy % = active patients / bed capacity * 100. Available beds = capacity - active patients.
+                            </div>
+                        </div>
+
+                        <div className="extra-kpi-card">
+                            <div className="extra-kpi-title">Staff Workload</div>
+                            <div className="extra-kpi-sub">Active patients currently assigned per staff</div>
+                            {staffWorkload.unassignedCount >= 3 || staffWorkload.unassignedPercent >= 30 ? (
+                                <div className="warn-pill">
+                                    <AlertTriangle size={12} />
+                                    High unassigned load: {staffWorkload.unassignedCount}/{staffWorkload.total} ({staffWorkload.unassignedPercent}%)
+                                </div>
+                            ) : null}
+                            <div className="tiny-list">
+                                {staffWorkload.rows.length === 0 ? (
+                                    <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>No active assignments in this filter.</div>
+                                ) : staffWorkload.rows.map((row) => (
+                                    <div key={row.name} className="tiny-list-row">
+                                        <div className="tiny-list-label">{row.displayName}</div>
+                                        <div className="tiny-list-value">{row.count}</div>
+                                        <div className="tiny-list-bar">
+                                            <div
+                                                className="tiny-list-bar-fill"
+                                                style={{ width: `${Math.max(8, Math.round((row.count / Math.max(1, staffWorkload.max)) * 100))}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            {staffWorkload.unassignedCount > 0 ? (
+                                <div className="workload-action-box">
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+                                        Unassigned patients: {staffWorkload.unassignedPatients.join(', ')}
+                                        {staffWorkload.unassignedCount > staffWorkload.unassignedPatients.length ? ', ...' : ''}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="workload-action-link"
+                                        onClick={() => navigate('/admin-patient-database')}
+                                    >
+                                        Review in Patient Management
+                                    </button>
+                                </div>
+                            ) : null}
+                        </div>
+
+                        <div className="extra-kpi-card">
+                            <div className="extra-kpi-title">Decline Reason Breakdown</div>
+                            <div className="extra-kpi-sub">Top reasons from declined admission/discharge requests</div>
+                            <div className="decline-list">
+                                {declineReasonBreakdown.rows.length === 0 ? (
+                                    <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>No declined requests for this filter.</div>
+                                ) : declineReasonBreakdown.rows.map((row) => (
+                                    <div key={row.reason}>
+                                        <div className="decline-item-head">
+                                            <div className="decline-item-label">{row.reason}</div>
+                                            <div className="decline-item-count">{row.count}</div>
+                                        </div>
+                                        <div className="decline-item-track" style={{ marginTop: 6 }}>
+                                            <div
+                                                className="decline-item-fill"
+                                                style={{ width: `${Math.max(8, Math.round((row.count / Math.max(1, declineReasonBreakdown.total)) * 100))}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="kpi-note-box">
+                                Note: Reasons are grouped and normalized from declined admission/discharge entries to highlight the most common causes.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="occupancy-forecast-wrap">
+                        <div className="extra-kpi-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <TrendingUp size={24} color="#1d4ed8" strokeWidth={2.25} aria-hidden />
+                            Occupancy forecast (next 7 days)
+                        </div>
+                        <div className="extra-kpi-sub">
+                            Pipeline view: uses current census ({occupancyKpi.activeCount}/{occupancyKpi.bedCapacity}) plus{' '}
+                            <strong>{occupancyForecast.pendingAdmissions}</strong> pending admission(s) and{' '}
+                            <strong>{occupancyForecast.pendingDischarges}</strong> pending discharge(s) in this filter. Assumes decisions land within a typical weekly planning window — not exact admit/discharge dates.
+                        </div>
+                        <div className="occupancy-forecast-grid">
+                            <div className="occupancy-forecast-tile occupancy-forecast-tile--stress">
+                                <div className="occupancy-forecast-tile-label">If all admits clear</div>
+                                <div className="occupancy-forecast-tile-value">{occupancyForecast.ifAllAdmits}</div>
+                                <div className="occupancy-forecast-tile-sub">{occupancyForecast.pctAdmits}% of capacity</div>
+                            </div>
+                            <div className="occupancy-forecast-tile occupancy-forecast-tile--relief">
+                                <div className="occupancy-forecast-tile-label">If all discharges clear</div>
+                                <div className="occupancy-forecast-tile-value">{occupancyForecast.ifAllDischarges}</div>
+                                <div className="occupancy-forecast-tile-sub">{occupancyForecast.pctDischarges}% of capacity</div>
+                            </div>
+                            <div className="occupancy-forecast-tile occupancy-forecast-tile--net">
+                                <div className="occupancy-forecast-tile-label">Net if both clear</div>
+                                <div className="occupancy-forecast-tile-value">{occupancyForecast.netIfAll}</div>
+                                <div className="occupancy-forecast-tile-sub">{occupancyForecast.pctNet}% of capacity</div>
+                            </div>
+                            <div className="occupancy-forecast-tile">
+                                <div className="occupancy-forecast-tile-label">Available beds now</div>
+                                <div className="occupancy-forecast-tile-value">{occupancyKpi.availableBeds}</div>
+                                <div className="occupancy-forecast-tile-sub">After net: {Math.max(0, occupancyKpi.bedCapacity - occupancyForecast.netIfAll)} free</div>
+                            </div>
+                        </div>
+                        <div className="kpi-note-box" style={{ marginTop: 22, fontSize: 13, padding: '14px 16px' }}>
+                            Formula: each scenario clamps to 0–{BED_CAPACITY} beds. “Net if both clear” = current + pending admissions − pending discharges (same cohort filters as the Occupancy card above).
                         </div>
                     </div>
 
@@ -1501,10 +2265,90 @@ export default function AdminAnalyticsSection() {
                                     ))}
                                     <line x1="40" y1="150" x2="500" y2="150" stroke="#e2e8f0" strokeWidth="2" />
 
-                                    <rect x="45" y={150 - barScale(barCounts.drugs)} width="65" height={barScale(barCounts.drugs)} fill="url(#barGrad)" rx="6" />
-                                    <rect x="135" y={150 - barScale(barCounts.alcohol)} width="65" height={barScale(barCounts.alcohol)} fill="url(#barGrad)" rx="6" />
-                                    <rect x="225" y={150 - barScale(barCounts.gambling)} width="65" height={barScale(barCounts.gambling)} fill="url(#barGrad)" rx="6" />
-                                    <rect x="315" y={150 - barScale(barCounts.mental_health)} width="65" height={barScale(barCounts.mental_health)} fill="url(#barGrad)" rx="6" />
+                                    <rect
+                                        x="45"
+                                        y={150 - barScale(barCounts.drugs)}
+                                        width="65"
+                                        height={barScale(barCounts.drugs)}
+                                        fill="url(#barGrad)"
+                                        rx="6"
+                                        style={{ cursor: 'pointer', opacity: selectedProgramKey === 'drugs' ? 1 : 0.8 }}
+                                        onClick={() => setSelectedProgramKey('drugs')}
+                                    />
+                                    <text
+                                        x="77.5"
+                                        y={Math.max(14, 144 - barScale(barCounts.drugs))}
+                                        className="axis-text"
+                                        textAnchor="middle"
+                                        fontSize="12"
+                                        fontWeight="800"
+                                        fill={selectedProgramKey === 'drugs' ? '#0f172a' : '#334155'}
+                                    >
+                                        {barCounts.drugs}
+                                    </text>
+                                    <rect
+                                        x="135"
+                                        y={150 - barScale(barCounts.alcohol)}
+                                        width="65"
+                                        height={barScale(barCounts.alcohol)}
+                                        fill="url(#barGrad)"
+                                        rx="6"
+                                        style={{ cursor: 'pointer', opacity: selectedProgramKey === 'alcohol' ? 1 : 0.8 }}
+                                        onClick={() => setSelectedProgramKey('alcohol')}
+                                    />
+                                    <text
+                                        x="167.5"
+                                        y={Math.max(14, 144 - barScale(barCounts.alcohol))}
+                                        className="axis-text"
+                                        textAnchor="middle"
+                                        fontSize="12"
+                                        fontWeight="800"
+                                        fill={selectedProgramKey === 'alcohol' ? '#0f172a' : '#334155'}
+                                    >
+                                        {barCounts.alcohol}
+                                    </text>
+                                    <rect
+                                        x="225"
+                                        y={150 - barScale(barCounts.gambling)}
+                                        width="65"
+                                        height={barScale(barCounts.gambling)}
+                                        fill="url(#barGrad)"
+                                        rx="6"
+                                        style={{ cursor: 'pointer', opacity: selectedProgramKey === 'gambling' ? 1 : 0.8 }}
+                                        onClick={() => setSelectedProgramKey('gambling')}
+                                    />
+                                    <text
+                                        x="257.5"
+                                        y={Math.max(14, 144 - barScale(barCounts.gambling))}
+                                        className="axis-text"
+                                        textAnchor="middle"
+                                        fontSize="12"
+                                        fontWeight="800"
+                                        fill={selectedProgramKey === 'gambling' ? '#0f172a' : '#334155'}
+                                    >
+                                        {barCounts.gambling}
+                                    </text>
+                                    <rect
+                                        x="315"
+                                        y={150 - barScale(barCounts.mental_health)}
+                                        width="65"
+                                        height={barScale(barCounts.mental_health)}
+                                        fill="url(#barGrad)"
+                                        rx="6"
+                                        style={{ cursor: 'pointer', opacity: selectedProgramKey === 'mental_health' ? 1 : 0.8 }}
+                                        onClick={() => setSelectedProgramKey('mental_health')}
+                                    />
+                                    <text
+                                        x="347.5"
+                                        y={Math.max(14, 144 - barScale(barCounts.mental_health))}
+                                        className="axis-text"
+                                        textAnchor="middle"
+                                        fontSize="12"
+                                        fontWeight="800"
+                                        fill={selectedProgramKey === 'mental_health' ? '#0f172a' : '#334155'}
+                                    >
+                                        {barCounts.mental_health}
+                                    </text>
 
                                     <g transform="translate(77.5, 176)">
                                         <text className="axis-text" textAnchor="middle" fontSize="11">
@@ -1528,6 +2372,30 @@ export default function AdminAnalyticsSection() {
                                         </text>
                                     </g>
                                 </svg>
+                            </div>
+                            <div
+                                style={{
+                                    marginTop: 12,
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: 12,
+                                    padding: '12px 14px',
+                                    background: '#f8fafc',
+                                }}
+                            >
+                                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>
+                                    Selected concern
+                                </div>
+                                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', marginBottom: 6 }}>
+                                    {selectedProgramKey === 'mental_health'
+                                        ? 'Mental health'
+                                        : selectedProgramKey.charAt(0).toUpperCase() + selectedProgramKey.slice(1)}
+                                    : {selectedProgramPatients.length} patient(s)
+                                </div>
+                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, lineHeight: 1.45 }}>
+                                    {selectedProgramPatients.length > 0
+                                        ? `Patients: ${selectedProgramPatients.slice(0, 8).map((p) => p.name).join(', ')}${selectedProgramPatients.length > 8 ? ', ...' : ''}`
+                                        : 'No patients under this concern for the current filters.'}
+                                </div>
                             </div>
                         </div>
 

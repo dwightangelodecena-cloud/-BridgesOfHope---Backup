@@ -13,7 +13,8 @@ import AuthCallback from '@/pages/auth/auth-callback';
 // Family/User Pages
 import HomeDashboard from '@/pages/family/home';
 import Service from '@/pages/family/service';
-import Progress from '@/pages/family/requestmanagement';
+import Progress from '@/pages/family/progress';
+import FamilyAppointmentsPage from '@/pages/family/appointments';
 import Profile from '@/pages/family/profile';
 import ChangePass from '@/pages/auth/changepass';
 
@@ -30,6 +31,9 @@ import AdmissionManagement from '@/pages/admin/admission-management';
 import DischargeManagement from '@/pages/admin/discharge-management';
 import StaffManagement from '@/pages/admin/staff-management';
 import ContentManagement from '@/pages/admin/content-management';
+import AdminProfile from '@/pages/admin/admin-profile';
+import AdminAppointmentsPage from '@/pages/admin/admin-appointments';
+import AdminReportsPage from '@/pages/admin/admin-reports';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
 
@@ -43,6 +47,7 @@ const ROUTE_TITLES = {
   '/newpass': 'New password',
   '/services': 'Services',
   '/progress': 'Progress',
+  '/appointments': 'Appointments',
   '/profile': 'Profile',
   '/changepass': 'Change password',
   '/nurse-dashboard': 'Nurse dashboard',
@@ -53,6 +58,9 @@ const ROUTE_TITLES = {
   '/admin-patient-database': 'Admin patient database',
   '/analytics': 'Analytics',
   '/admin-content-management': 'Content management',
+  '/admin-profile': 'Admin profile',
+  '/admin-appointments': 'Admin appointments',
+  '/admin-reports': 'Printable reports',
 };
 
 function getPageTitle(pathname) {
@@ -123,6 +131,14 @@ function App() {
           element={
             <RoleGuard allowedRoles={['family']}>
               <Progress />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/appointments"
+          element={
+            <RoleGuard allowedRoles={['family']}>
+              <FamilyAppointmentsPage />
             </RoleGuard>
           }
         />
@@ -239,6 +255,30 @@ function App() {
           element={
             <RoleGuard allowedRoles={['admin']}>
               <ContentManagement />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-profile"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <AdminProfile />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-appointments"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <AdminAppointmentsPage />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-reports"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <AdminReportsPage />
             </RoleGuard>
           }
         />

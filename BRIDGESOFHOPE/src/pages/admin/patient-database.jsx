@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutGrid, HeartPulse, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, LayoutTemplate } from 'lucide-react';
+import { LayoutGrid, HeartPulse, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, LayoutTemplate, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/logo2.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -9,6 +9,9 @@ import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import { fetchWeeklyReportRecommendation } from '@/lib/weeklyReportAi';
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
+const ROOM_ASSIGNMENT_STORAGE_KEY = 'bh_patient_room_assignments_v1';
+const STAFF_ASSIGNMENT_STORAGE_KEY = 'bh_patient_staff_assignments_v1';
+const PROGRESS_GOVERNANCE_STORAGE_KEY = 'bh_patient_progress_governance_v1';
 
 /** Editable trajectory while in care. Discharged is derived from `discharged_at` (dashboard discharge approval), not set here. */
 const CLINICAL_STATUS_OPTIONS = ['Improving', 'Stable', 'Declining'];
@@ -88,8 +91,105 @@ const hashPatientId = (id) => {
 
 const displayBedRoomLabel = (patient) => {
   if (!patient || patient.status === 'Discharged') return '—';
+  if (patient.roomCode) return patient.roomCode;
   const n = 200 + (hashPatientId(patient.id) % 56);
   return `Room ${n}`;
+};
+
+const loadRoomAssignments = () => {
+  try {
+    const raw = localStorage.getItem(ROOM_ASSIGNMENT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveRoomAssignments = (map) => {
+  localStorage.setItem(ROOM_ASSIGNMENT_STORAGE_KEY, JSON.stringify(map || {}));
+};
+
+const loadStaffAssignments = () => {
+  try {
+    const raw = localStorage.getItem(STAFF_ASSIGNMENT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveStaffAssignments = (map) => {
+  localStorage.setItem(STAFF_ASSIGNMENT_STORAGE_KEY, JSON.stringify(map || {}));
+};
+
+const loadProgressGovernance = () => {
+  try {
+    const raw = localStorage.getItem(PROGRESS_GOVERNANCE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveProgressGovernance = (map) => {
+  localStorage.setItem(PROGRESS_GOVERNANCE_STORAGE_KEY, JSON.stringify(map || {}));
+};
+
+const applyRoomAssignmentOverrides = (patients) => {
+  const overrides = loadRoomAssignments();
+  return (patients || []).map((p) => {
+    const ov = overrides[String(p.id)] || null;
+    if (!ov) return p;
+    return {
+      ...p,
+      roomCode: ov.roomCode || p.roomCode || '',
+      roomGenderSegment: ov.roomGenderSegment || p.roomGenderSegment || '',
+      roomPlacementNote: ov.roomPlacementNote || p.roomPlacementNote || '',
+    };
+  });
+};
+
+const applyStaffAssignmentOverrides = (patients) => {
+  const overrides = loadStaffAssignments();
+  return (patients || []).map((p) => {
+    const ov = overrides[String(p.id)] || null;
+    if (!ov) return p;
+    return {
+      ...p,
+      caseLoadManager: ov.caseLoadManager || p.caseLoadManager || '',
+      programStaff: ov.programStaff || p.programStaff || '',
+      medicalStaffNote: ov.medicalStaffNote || p.medicalStaffNote || '',
+    };
+  });
+};
+
+const applyProgressGovernanceOverrides = (patients) => {
+  const overrides = loadProgressGovernance();
+  return (patients || []).map((p) => {
+    const ov = overrides[String(p.id)] || null;
+    if (!ov) return p;
+    return {
+      ...p,
+      progress: Number.isFinite(Number(ov.progress)) ? Number(ov.progress) : p.progress,
+      clinicalStatus: ov.clinicalStatus || p.clinicalStatus || 'Stable',
+      progressUpdatedBy: ov.progressUpdatedBy || p.progressUpdatedBy || '',
+      progressUpdatedAt: ov.progressUpdatedAt || p.progressUpdatedAt || '',
+    };
+  });
+};
+
+const normalizedRoomSegmentFromGender = (genderRaw) => {
+  const g = String(genderRaw || '').trim().toLowerCase();
+  if (g === 'male') return 'Male';
+  if (g === 'female') return 'Female';
+  return '';
+};
+
+const makePatientGenderFallbackKey = ({ name, familyId, birthDate }) => {
+  return `${String(name || '').trim().toLowerCase()}|${String(familyId || '')}|${String(birthDate || '')}`;
 };
 
 const renderAiInline = (text, keyPrefix) => {
@@ -186,6 +286,14 @@ const toUiPatient = (row) => {
     familyId: row.family_id,
     dischargedAt: row.discharged_at,
     dateOfBirth: row.date_of_birth,
+    roomCode: row.room_code || '',
+    roomGenderSegment: row.room_gender_segment || '',
+    roomPlacementNote: row.room_placement_note || '',
+    caseLoadManager: row.case_load_manager || '',
+    programStaff: row.program_staff || '',
+    medicalStaffNote: row.medical_staff_note || '',
+    progressUpdatedBy: row.progress_updated_by || row.status_updated_by || '',
+    progressUpdatedAt: row.progress_updated_at || row.status_updated_at || '',
   };
 };
 
@@ -315,6 +423,14 @@ const mapLegacyLocalPatients = () => {
       familyId: p.family_id || null,
       dischargedAt,
       dateOfBirth: p.date_of_birth || null,
+      roomCode: p.room_code || p.roomCode || '',
+      roomGenderSegment: p.room_gender_segment || p.roomGenderSegment || '',
+      roomPlacementNote: p.room_placement_note || p.roomPlacementNote || '',
+      caseLoadManager: p.case_load_manager || p.caseLoadManager || '',
+      programStaff: p.program_staff || p.programStaff || '',
+      medicalStaffNote: p.medical_staff_note || p.medicalStaffNote || '',
+      progressUpdatedBy: p.progress_updated_by || p.status_updated_by || p.progressUpdatedBy || '',
+      progressUpdatedAt: p.progress_updated_at || p.status_updated_at || p.progressUpdatedAt || '',
     };
   });
 };
@@ -346,13 +462,17 @@ function PatientDatabaseShell({ mode = 'admin' }) {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiText, setAiText] = useState('');
   const [aiError, setAiError] = useState('');
+  const [roomForm, setRoomForm] = useState({ roomCode: '', roomGenderSegment: '', roomPlacementNote: '' });
+  const [roomSaving, setRoomSaving] = useState(false);
+  const [staffForm, setStaffForm] = useState({ caseLoadManager: '', programStaff: '', medicalStaffNote: '' });
+  const [staffSaving, setStaffSaving] = useState(false);
 
   const loadPatients = async () => {
     setLoading(true);
     setFormError('');
     try {
       if (!isSupabaseConfigured()) {
-        setPatients(mapLegacyLocalPatients());
+        setPatients(applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(mapLegacyLocalPatients()))));
         return;
       }
 
@@ -369,15 +489,46 @@ function PatientDatabaseShell({ mode = 'admin' }) {
 
       if (error) throw error;
 
-      const fromDb = (data || []).map(toUiPatient);
+      const { data: admissionRows, error: admErr } = await supabase
+        .from('admission_requests')
+        .select('patient_name, family_id, patient_birth_date, patient_gender, created_at')
+        .order('created_at', { ascending: false })
+        .limit(10000);
+      if (admErr) console.warn('[patient-db] admission gender fallback:', admErr.message);
+
+      const fallbackGenderMap = new Map();
+      (admissionRows || []).forEach((r) => {
+        const key = makePatientGenderFallbackKey({
+          name: r.patient_name,
+          familyId: r.family_id,
+          birthDate: r.patient_birth_date,
+        });
+        if (!key || fallbackGenderMap.has(key)) return;
+        if (normalizedRoomSegmentFromGender(r.patient_gender)) {
+          fallbackGenderMap.set(key, r.patient_gender);
+        }
+      });
+
+      const fromDb = (data || []).map((row) => {
+        const ui = toUiPatient(row);
+        const normalized = normalizedRoomSegmentFromGender(ui.gender);
+        if (normalized) return ui;
+        const key = makePatientGenderFallbackKey({
+          name: ui.name,
+          familyId: ui.familyId,
+          birthDate: ui.dateOfBirth,
+        });
+        const fallbackGender = fallbackGenderMap.get(key) || '';
+        return fallbackGender ? { ...ui, gender: fallbackGender } : ui;
+      });
       if (fromDb.length > 0) {
-        setPatients(fromDb);
+        setPatients(applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(fromDb))));
         return;
       }
 
       const legacyMapped = mapLegacyLocalPatients();
       if (legacyMapped.length > 0) {
-        setPatients(legacyMapped);
+        setPatients(applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(legacyMapped))));
         return;
       }
 
@@ -386,7 +537,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
       console.error(err);
       const legacyMapped = mapLegacyLocalPatients();
       if (legacyMapped.length > 0) {
-        setPatients(legacyMapped);
+        setPatients(applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(legacyMapped))));
         setFormError(
           `${err.message || 'Failed to load from server.'} Showing locally saved patients.`
         );
@@ -446,6 +597,16 @@ function PatientDatabaseShell({ mode = 'admin' }) {
     const sel = SORT_MENU_ITEMS.find((i) => i.id === sortSelectionId) ?? SORT_MENU_ITEMS[1];
     return sortPatients(byStatus, sel.sortKey, sel.direction);
   }, [patients, search, sortSelectionId, cohortFilter, concernCategoryFilter, statusFilter]);
+
+  const missingStaffAssignments = useMemo(() => {
+    const inCare = (patients || []).filter((p) => String(p.status || '').toLowerCase() !== 'discharged');
+    const rows = inCare.filter((p) => !String(p.caseLoadManager || '').trim() || !String(p.programStaff || '').trim());
+    return {
+      totalInCare: inCare.length,
+      missingCount: rows.length,
+      names: rows.slice(0, 6).map((p) => p.name),
+    };
+  }, [patients]);
 
   const getStatusStyle = (status) => {
     switch (status) {
@@ -522,6 +683,238 @@ function PatientDatabaseShell({ mode = 'admin' }) {
       cancelled = true;
     };
   }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    if (!selectedPatient) {
+      setRoomForm({ roomCode: '', roomGenderSegment: '', roomPlacementNote: '' });
+      setStaffForm({ caseLoadManager: '', programStaff: '', medicalStaffNote: '' });
+      return;
+    }
+    const autoSegment = normalizedRoomSegmentFromGender(selectedPatient.gender);
+    setRoomForm({
+      roomCode: selectedPatient.roomCode || '',
+      roomGenderSegment: autoSegment || selectedPatient.roomGenderSegment || '',
+      roomPlacementNote: selectedPatient.roomPlacementNote || '',
+    });
+    setStaffForm({
+      caseLoadManager: selectedPatient.caseLoadManager || '',
+      programStaff: selectedPatient.programStaff || '',
+      medicalStaffNote: selectedPatient.medicalStaffNote || '',
+    });
+  }, [selectedPatient]);
+
+  const saveRoomAssignment = async () => {
+    if (!selectedPatient?.id || isNurse) return;
+    const autoSegment = normalizedRoomSegmentFromGender(selectedPatient.gender);
+    if (!autoSegment) {
+      setFormError('Patient gender is required before saving room assignment.');
+      return;
+    }
+    if (!roomForm.roomCode.trim()) {
+      setFormError('Room code is required.');
+      return;
+    }
+
+    setFormError('');
+    setRoomSaving(true);
+    const payload = {
+      roomCode: roomForm.roomCode.trim(),
+      roomGenderSegment: autoSegment,
+      roomPlacementNote: roomForm.roomPlacementNote.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      if (isSupabaseConfigured() && isSupabasePatientId(selectedPatient.id)) {
+        const { error } = await supabase
+          .from('patients')
+          .update({
+            room_code: payload.roomCode,
+            room_gender_segment: payload.roomGenderSegment || null,
+            room_placement_note: payload.roomPlacementNote || null,
+          })
+          .eq('id', selectedPatient.id);
+        if (error) {
+          console.warn('[patient-db] room assignment db update skipped:', error.message);
+        }
+      }
+
+      const overrides = loadRoomAssignments();
+      overrides[String(selectedPatient.id)] = payload;
+      saveRoomAssignments(overrides);
+
+      setPatients((prev) => prev.map((p) => (
+        String(p.id) === String(selectedPatient.id)
+          ? { ...p, roomCode: payload.roomCode, roomGenderSegment: payload.roomGenderSegment, roomPlacementNote: payload.roomPlacementNote }
+          : p
+      )));
+      setSelectedPatient((prev) => (
+        prev
+          ? { ...prev, roomCode: payload.roomCode, roomGenderSegment: payload.roomGenderSegment, roomPlacementNote: payload.roomPlacementNote }
+          : prev
+      ));
+
+      refreshAppData();
+      setFormError('');
+    } catch (e) {
+      console.error(e);
+      setFormError(e.message || 'Failed to save room assignment.');
+    } finally {
+      setRoomSaving(false);
+    }
+  };
+
+  const saveStaffAssignment = async () => {
+    if (!selectedPatient?.id || isNurse) return;
+    const caseLoadManager = String(staffForm.caseLoadManager || '').trim();
+    const programStaff = String(staffForm.programStaff || '').trim();
+    const medicalStaffNote = String(staffForm.medicalStaffNote || '').trim();
+    if (!caseLoadManager || !programStaff) {
+      setFormError('Case Load Manager and Program Staff are required.');
+      return;
+    }
+    setFormError('');
+    setStaffSaving(true);
+    const payload = {
+      caseLoadManager,
+      programStaff,
+      medicalStaffNote,
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      if (isSupabaseConfigured() && isSupabasePatientId(selectedPatient.id)) {
+        const { error } = await supabase
+          .from('patients')
+          .update({
+            case_load_manager: payload.caseLoadManager,
+            program_staff: payload.programStaff,
+            medical_staff_note: payload.medicalStaffNote || null,
+          })
+          .eq('id', selectedPatient.id);
+        if (error) {
+          console.warn('[patient-db] staff assignment db update skipped:', error.message);
+        }
+      }
+
+      const overrides = loadStaffAssignments();
+      overrides[String(selectedPatient.id)] = payload;
+      saveStaffAssignments(overrides);
+
+      setPatients((prev) => prev.map((p) => (
+        String(p.id) === String(selectedPatient.id)
+          ? { ...p, caseLoadManager, programStaff, medicalStaffNote }
+          : p
+      )));
+      setSelectedPatient((prev) => (prev
+        ? { ...prev, caseLoadManager, programStaff, medicalStaffNote }
+        : prev));
+      refreshAppData();
+    } catch (e) {
+      console.error(e);
+      setFormError(e.message || 'Failed to save staff assignment.');
+    } finally {
+      setStaffSaving(false);
+    }
+  };
+
+  const resolveUpdaterLabel = async () => {
+    if (!isSupabaseConfigured()) return mode === 'nurse' ? 'Nurse (local)' : 'Admin (local)';
+    try {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      const email = String(user?.email || '').trim();
+      if (email) return email;
+      if (user?.id) return `user:${String(user.id).slice(0, 8)}`;
+    } catch {
+      /* ignore */
+    }
+    return mode === 'nurse' ? 'Nurse' : 'Admin';
+  };
+
+  const computeGovernedProgressFromReports = () => {
+    const submittedCount = [1, 2, 3, 4, 5, 6, 7]
+      .map((w) => weeklyReportsByWeek[w])
+      .filter(Boolean).length;
+    const progress = Math.max(0, Math.min(100, Math.round((submittedCount / 7) * 100)));
+    let clinicalStatus = 'Declining';
+    if (progress >= 67) clinicalStatus = 'Improving';
+    else if (progress >= 34) clinicalStatus = 'Stable';
+    return { progress, clinicalStatus, submittedCount };
+  };
+
+  const applyProgressGovernance = async () => {
+    if (!selectedPatient?.id || selectedPatient.status === 'Discharged') return;
+    setFormError('');
+    const governed = computeGovernedProgressFromReports();
+    const updatedAt = new Date().toISOString();
+    const updatedBy = await resolveUpdaterLabel();
+    const patientId = selectedPatient.id;
+
+    try {
+      if (isSupabaseConfigured() && isSupabasePatientId(patientId)) {
+        const { error } = await supabase
+          .from('patients')
+          .update({
+            progress_percent: governed.progress,
+            clinical_status: governed.clinicalStatus,
+            progress_updated_by: updatedBy,
+            progress_updated_at: updatedAt,
+            status_updated_by: updatedBy,
+            status_updated_at: updatedAt,
+          })
+          .eq('id', patientId);
+        if (error) {
+          // Keep system resilient if governance columns are not yet in DB.
+          const { error: fallbackErr } = await supabase
+            .from('patients')
+            .update({
+              progress_percent: governed.progress,
+              clinical_status: governed.clinicalStatus,
+            })
+            .eq('id', patientId);
+          if (fallbackErr) console.warn('[patient-db] progress governance db update skipped:', fallbackErr.message);
+        }
+      }
+
+      const overrides = loadProgressGovernance();
+      overrides[String(patientId)] = {
+        progress: governed.progress,
+        clinicalStatus: governed.clinicalStatus,
+        progressUpdatedBy: updatedBy,
+        progressUpdatedAt: updatedAt,
+      };
+      saveProgressGovernance(overrides);
+
+      setPatients((prev) => prev.map((p) => (
+        String(p.id) === String(patientId)
+          ? {
+              ...p,
+              progress: governed.progress,
+              clinicalStatus: governed.clinicalStatus,
+              progressUpdatedBy: updatedBy,
+              progressUpdatedAt: updatedAt,
+            }
+          : p
+      )));
+      setSelectedPatient((prev) => (
+        prev
+          ? {
+              ...prev,
+              progress: governed.progress,
+              clinicalStatus: governed.clinicalStatus,
+              progressUpdatedBy: updatedBy,
+              progressUpdatedAt: updatedAt,
+            }
+          : prev
+      ));
+      setFormError('');
+      refreshAppData();
+    } catch (e) {
+      console.error(e);
+      setFormError(e.message || 'Failed to apply progress governance.');
+    }
+  };
 
   const openWeeklyAiModal = useCallback(
     (weekNum) => {
@@ -1070,11 +1463,26 @@ function PatientDatabaseShell({ mode = 'admin' }) {
               <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
               <span className="sidebar-label">Content management</span>
             </div>
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
+              <div className="icon-box inactive"><Calendar size={22} /></div>
+              <span className="sidebar-label">Appointments</span>
+            </div>
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
+              <div className="icon-box inactive"><FileText size={22} /></div>
+              <span className="sidebar-label">Printable reports</span>
+            </div>
           </nav>
         )}
 
         <div className="sidebar-footer">
-          {!isNurse ? null : (
+          {!isNurse ? (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
+              <div className="icon-box inactive">
+                <User size={22} />
+              </div>
+              <span className="sidebar-label">Profile & Security</span>
+            </div>
+          ) : (
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
               <div className="icon-box inactive">
                 <User size={22} />
@@ -1129,16 +1537,16 @@ function PatientDatabaseShell({ mode = 'admin' }) {
         {selectedPatient ? (
           /* VIEW MODE */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div className="view-top-row" style={{ display: 'flex', gap: 24, flexDirection: 'row' }}>
+            <div className="view-top-row" style={{ display: 'flex', gap: 18, flexDirection: 'row', alignItems: 'stretch' }}>
 
               {/* Card 1: Basic Info */}
-              <div className="info-card" style={{ flex: '1.2', display: 'flex', gap: 24, padding: '24px' }}>
+              <div className="info-card" style={{ flex: '1.05', display: 'flex', gap: 20, padding: '22px', minHeight: 280 }}>
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   <div style={{ width: 84, height: 84, background: '#FF1F1F', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <User size={44} color="white" />
                   </div>
                 </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                     <div>
                       <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Patient Name</p>
@@ -1152,7 +1560,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                       <p style={{ fontSize: 20, fontWeight: 800, color: '#1B2559' }}>{selectedPatient.age}</p>
                     </div>
                   </div>
-                  <div style={{ borderTop: '1px solid #F4F7FE', paddingTop: 16 }}>
+                  <div style={{ borderTop: '1px solid #F4F7FE', paddingTop: 14, marginTop: 24 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <div>
                         <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Primary Concern</p>
@@ -1168,7 +1576,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
               </div>
 
               {/* Card 2: Status, bed, assigned nurse + progress (layout matches nurse reference) */}
-              <div className="info-card" style={{ flex: '1.4', padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div className="info-card" style={{ flex: '1.35', padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 280 }}>
                 {(() => {
                   const trajectoryLabel =
                     selectedPatient.status === 'Discharged' ? 'Discharged' : selectedPatient.clinicalStatus;
@@ -1232,11 +1640,109 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                   <div style={{ width: '100%', height: 16, background: '#E9EDF7', borderRadius: 99, overflow: 'hidden' }}>
                     <div style={{ width: `${selectedPatient.progress}%`, height: '100%', background: getProgressColor(selectedPatient), borderRadius: 99 }} />
                   </div>
+                  {!isNurse && selectedPatient.status !== 'Discharged' ? (
+                    <div style={{ marginTop: 12, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: 10 }}>
+                      <p style={{ color: '#334155', fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                        Progress governance (temporary rule)
+                      </p>
+                      <p style={{ color: '#64748b', fontSize: 11, marginBottom: 8, lineHeight: 1.45 }}>
+                        Progress % = submitted weekly reports / 7 * 100. Status bucket: 0-33 Declining, 34-66 Stable, 67-100 Improving.
+                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontSize: 11, color: '#475569', fontWeight: 700 }}>
+                          Last update: {selectedPatient.progressUpdatedBy ? `${selectedPatient.progressUpdatedBy} · ${formatDate(selectedPatient.progressUpdatedAt)}` : 'No governance update yet'}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={applyProgressGovernance}
+                          style={{ background: '#1D4ED8', color: 'white', border: 'none', borderRadius: 8, padding: '7px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          Apply governance update
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
+                {!isNurse && selectedPatient.status !== 'Discharged' ? (
+                  <div style={{ marginTop: 16, borderTop: '1px solid #F4F7FE', paddingTop: 14 }}>
+                    <p style={{ color: '#64748b', fontSize: 12, fontWeight: 700, marginBottom: 10 }}>Room assignment (gender-segregated)</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                      <input
+                        type="text"
+                        value={roomForm.roomCode}
+                        onChange={(e) => setRoomForm((prev) => ({ ...prev, roomCode: e.target.value }))}
+                        placeholder="Room code (e.g., Room 203)"
+                        style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
+                      />
+                      <input
+                        type="text"
+                        value={normalizedRoomSegmentFromGender(selectedPatient.gender) || roomForm.roomGenderSegment || 'N/A'}
+                        readOnly
+                        placeholder="Room gender segment"
+                        style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#F8FAFC', color: '#475569', fontWeight: 700 }}
+                      />
+                    </div>
+                    <textarea
+                      value={roomForm.roomPlacementNote}
+                      onChange={(e) => setRoomForm((prev) => ({ ...prev, roomPlacementNote: e.target.value }))}
+                      placeholder="Condition-based placement note (required in policy)."
+                      rows={2}
+                      style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, resize: 'vertical' }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                      <button
+                        type="button"
+                        onClick={saveRoomAssignment}
+                        disabled={roomSaving}
+                        style={{ background: '#F54E25', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: roomSaving ? 'not-allowed' : 'pointer' }}
+                      >
+                        {roomSaving ? 'Saving...' : 'Save assignment'}
+                      </button>
+                    </div>
+                    <div style={{ marginTop: 14, borderTop: '1px dashed #E2E8F0', paddingTop: 12 }}>
+                      <p style={{ color: '#64748b', fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+                        Staff assignment model (required)
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          value={staffForm.caseLoadManager}
+                          onChange={(e) => setStaffForm((prev) => ({ ...prev, caseLoadManager: e.target.value }))}
+                          placeholder="Case Load Manager (required)"
+                          style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
+                        />
+                        <input
+                          type="text"
+                          value={staffForm.programStaff}
+                          onChange={(e) => setStaffForm((prev) => ({ ...prev, programStaff: e.target.value }))}
+                          placeholder="Program Staff (required)"
+                          style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={staffForm.medicalStaffNote}
+                        onChange={(e) => setStaffForm((prev) => ({ ...prev, medicalStaffNote: e.target.value }))}
+                        placeholder="Medical staff (optional/shared)"
+                        style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                        <button
+                          type="button"
+                          onClick={saveStaffAssignment}
+                          disabled={staffSaving}
+                          style={{ background: '#0F766E', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: staffSaving ? 'not-allowed' : 'pointer' }}
+                        >
+                          {staffSaving ? 'Saving...' : 'Save staff model'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {/* Card 3: Vitals grid — labels only; nurses will populate values later */}
-              <div className="info-card" style={{ flex: '1.4', padding: '24px', display: 'flex', flexDirection: 'column' }}>
+              <div className="info-card" style={{ flex: '1.35', padding: '22px', display: 'flex', flexDirection: 'column', minHeight: 280 }}>
                 {(() => {
                   const blank = '—';
                   const cell = (label) => (
@@ -1607,6 +2113,24 @@ function PatientDatabaseShell({ mode = 'admin' }) {
               </div>
             </div>
 
+            {!isNurse && missingStaffAssignments.missingCount > 0 ? (
+              <div
+                style={{
+                  marginBottom: 16,
+                  border: '1px solid #FECACA',
+                  background: '#FEF2F2',
+                  color: '#991B1B',
+                  borderRadius: 12,
+                  padding: '10px 12px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                Admin alert: {missingStaffAssignments.missingCount} of {missingStaffAssignments.totalInCare} in-care patients are missing Case Load Manager or Program Staff.
+                {missingStaffAssignments.names.length ? ` Sample: ${missingStaffAssignments.names.join(', ')}` : ''}
+              </div>
+            ) : null}
+
             {/* Table */}
             <div className="db-table-mobile">
               {formError && (
@@ -1664,6 +2188,26 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                           </div>
                           <span style={{ color: '#1B2559', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600 }}>{patient.progress}%</span>
                         </div>
+                        {!isNurse ? (
+                          <div style={{ marginTop: 8 }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '3px 8px',
+                                borderRadius: 999,
+                                fontSize: 10,
+                                fontWeight: 800,
+                                letterSpacing: '0.02em',
+                                background: patient.progressUpdatedAt ? '#DCFCE7' : '#FEF3C7',
+                                color: patient.progressUpdatedAt ? '#166534' : '#92400E',
+                                border: `1px solid ${patient.progressUpdatedAt ? '#BBF7D0' : '#FDE68A'}`,
+                              }}
+                            >
+                              {patient.progressUpdatedAt ? 'Governance updated' : 'Governance pending'}
+                            </span>
+                          </div>
+                        ) : null}
                       </td>
                       <td style={{ padding: '16px 20px' }}>
                         <button type="button" className="db-view-btn" onClick={() => setSelectedPatient(patient)}>View</button>
