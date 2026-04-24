@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, MessageCircle, X, Send, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, MessageCircle, X, Send, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown, ClipboardList } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
@@ -35,7 +35,7 @@ const HomeDashboard = () => {
   const [showReport, setShowReport] = useState(false);
   const [weeklyReportExpandedPatientId, setWeeklyReportExpandedPatientId] = useState(null);
   const [showAllActivity, setShowAllActivity] = useState(false);
-  const [showAnnouncement, setShowAnnouncement] = useState(true);
+  const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [completedReminders, setCompletedReminders] = useState([]);
   const [displayName, setDisplayName] = useState('Family User');
   const [userInitials, setUserInitials] = useState('FU');
@@ -198,6 +198,7 @@ const HomeDashboard = () => {
 
   const [patients, setPatients] = useState([]);
   const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [insightsCarouselIndex, setInsightsCarouselIndex] = useState(0);
   const [pendingAdmissions, setPendingAdmissions] = useState([]);
   const [pendingDischarges, setPendingDischarges] = useState([]);
   const [nurseWeeklyReportsByPatient, setNurseWeeklyReportsByPatient] = useState({});
@@ -403,26 +404,35 @@ const HomeDashboard = () => {
   }, [patients, selectedPatientId]);
 
   const selectedPatient = patients.find((p) => String(p.id) === String(selectedPatientId)) || patients[0] || null;
-  const selectedPatientProgress = Number(selectedPatient?.progress) || 0;
-  const activeTreatmentDays = selectedPatient?.date
-    ? Math.max(1, Math.round((Date.now() - new Date(selectedPatient.date).getTime()) / (1000 * 60 * 60 * 24)))
-    : 0;
-  const recoveryRate = Math.min(100, Math.max(0, Math.round(selectedPatientProgress * 0.92 + 6)));
-  const progressTrend = Math.max(1, Math.round(selectedPatientProgress / 4));
-  const patientProgressSeries = [12, 25, 38, 52, Math.max(58, selectedPatientProgress - progressTrend), selectedPatientProgress].map((value) =>
-    Math.min(100, Math.max(0, value))
-  );
-  const averageProgress = patients.length
-    ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
-    : 0;
-  const kpiCards = [
-    { label: 'Progress Percentage', value: `${selectedPatientProgress}%` },
-    { label: 'Recovery Rate', value: `${recoveryRate}%` },
-    { label: 'Active Treatment Days', value: `${activeTreatmentDays}` },
-    { label: 'Total Active Patients', value: `${patients.length}` },
-    { label: 'Average Cohort Progress', value: `${averageProgress}%` },
-    { label: 'Pending Requests', value: `${pendingAdmissions.length + pendingDischarges.length}` },
+  const hasRealPatients = patients.length > 0;
+  const samplePatientCards = [
+    { id: 'sample-1', name: 'Maria Santos (Sample)', date: 'April 10, 2026', progress: 68, recoveryRate: 72 },
+    { id: 'sample-2', name: 'Elena Cruz (Sample)', date: 'April 18, 2026', progress: 74, recoveryRate: 78 },
+    { id: 'sample-3', name: 'Sofia Reyes (Sample)', date: 'April 22, 2026', progress: 81, recoveryRate: 84 },
   ];
+  const insightsCarouselSource = hasRealPatients ? patients : samplePatientCards;
+  const insightsCardPatient = insightsCarouselSource[insightsCarouselIndex] || insightsCarouselSource[0] || null;
+  const selectedPatientProgress = Number(insightsCardPatient?.progress) || 0;
+  const recoveryRate = hasRealPatients
+    ? Math.min(100, Math.max(0, Math.round(selectedPatientProgress * 0.92 + 6)))
+    : Number(insightsCardPatient?.recoveryRate || 0);
+  const progressTrend = Math.max(1, Math.round(selectedPatientProgress / 4));
+  const patientProgressSeries = hasRealPatients
+    ? [12, 25, 38, 52, Math.max(58, selectedPatientProgress - progressTrend), selectedPatientProgress].map((value) =>
+        Math.min(100, Math.max(0, value))
+      )
+    : [32, 41, 50, 58, 62, selectedPatientProgress];
+  const recoveryRateSeries = patientProgressSeries.map((value) => Math.min(100, Math.round(value * 0.92 + 6)));
+
+  useEffect(() => {
+    if (!insightsCarouselSource.length) {
+      setInsightsCarouselIndex(0);
+      return;
+    }
+    if (insightsCarouselIndex >= insightsCarouselSource.length) {
+      setInsightsCarouselIndex(0);
+    }
+  }, [insightsCarouselSource, insightsCarouselIndex]);
 
   useEffect(() => {
     if (!showNotifications) return;
@@ -435,6 +445,19 @@ const HomeDashboard = () => {
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [showNotifications]);
+
+  useEffect(() => {
+    if (!showAnnouncement) return;
+    const timer = setTimeout(() => {
+      setShowAnnouncement(false);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [showAnnouncement]);
+
+  const handleNotificationToggle = () => {
+    setShowNotifications((v) => !v);
+    setShowAnnouncement(true);
+  };
 
   return (
     <div className="app-container">
@@ -650,6 +673,17 @@ const HomeDashboard = () => {
           margin: 0 auto;
         }
 
+        .dashboard-stack {
+          display: grid;
+          gap: 16px;
+        }
+
+        .dashboard-stack > .panel-card,
+        .dashboard-stack > .dashboard-insights,
+        .dashboard-stack > .bottom-layout {
+          margin: 0;
+        }
+
         .patient-card {
           width: 100%;
           min-height: 120px;
@@ -681,6 +715,25 @@ const HomeDashboard = () => {
         .patient-section {
           min-width: 0;
           width: 100%;
+        }
+
+        .patient-carousel-controls {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .patient-carousel-btn {
+          border: 1px solid #E2E8F0;
+          background: #fff;
+          color: #1B2559;
+          border-radius: 10px;
+          padding: 6px 10px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
         }
 
         .dashboard-panels {
@@ -717,9 +770,8 @@ const HomeDashboard = () => {
 
         .dashboard-insights {
           display: grid;
-          grid-template-columns: 1.45fr 1fr;
+          grid-template-columns: minmax(0, 1fr);
           gap: 16px;
-          margin-bottom: 20px;
           align-items: stretch;
         }
 
@@ -758,6 +810,25 @@ const HomeDashboard = () => {
           display: block;
           border-radius: 12px;
           background: linear-gradient(180deg, #f8fbff 0%, #ffffff 70%);
+        }
+
+        .insights-split {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+          align-items: stretch;
+        }
+
+        .insight-panel {
+          min-width: 0;
+        }
+
+        .stat-svg {
+          width: 100%;
+          height: 280px;
+          display: block;
+          border-radius: 12px;
+          background: linear-gradient(180deg, #fff7ed 0%, #ffffff 70%);
         }
 
         .kpi-grid {
@@ -1474,6 +1545,7 @@ const HomeDashboard = () => {
           .patient-section { order: 1; }
           .patient-card { width: 100% !important; height: auto !important; padding: 15px !important; margin-bottom: 10px !important; flex-direction: row !important; }
           .patient-img-placeholder { width: 50px !important; height: 50px !important; margin-right: 15px !important; }
+          .insights-split { grid-template-columns: 1fr !important; }
           .mobile-action-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 10px !important; }
           .action-grid-desktop { grid-template-columns: repeat(3, 1fr) !important; }
           .mobile-action-grid .action-card { width: 100% !important; height: 100px !important; border-radius: 15px !important; }
@@ -1653,9 +1725,9 @@ const HomeDashboard = () => {
 
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
             <div className="sidebar-icon-wrap">
-              <TrendingUp size={22} color="#707EAE" />
+              <ClipboardList size={22} color="#707EAE" />
             </div>
-            <span className="sidebar-label">Progress</span>
+            <span className="sidebar-label">Request Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
             <div className="sidebar-icon-wrap">
@@ -1690,7 +1762,7 @@ const HomeDashboard = () => {
                 className="notifications-trigger"
                 aria-expanded={showNotifications}
                 aria-label="Notifications"
-                onClick={() => setShowNotifications((v) => !v)}
+                onClick={handleNotificationToggle}
               >
                 <Bell size={20} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
               </button>
@@ -1729,7 +1801,7 @@ const HomeDashboard = () => {
                 className="notifications-trigger mobile-notifications-trigger"
                 aria-expanded={showNotifications}
                 aria-label="Notifications"
-                onClick={() => setShowNotifications((v) => !v)}
+                onClick={handleNotificationToggle}
               >
                 <Bell size={18} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
               </button>
@@ -1760,7 +1832,24 @@ const HomeDashboard = () => {
 
         <div className="scroll-content" style={{ background: FAMILY_COLORS.background }}>
           <div className="content-wrap">
-          <div className="panel-card" style={{ marginBottom: 20 }}>
+          <div className="dashboard-stack">
+          {showAnnouncement && (
+            <div className="panel-card" style={{ borderColor: '#FED7AA', background: '#FFF7ED' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ color: '#9A3412', fontWeight: 800, marginBottom: 4 }}>Community Update: Family Wellness Talk</div>
+                  <div style={{ color: '#7C2D12', fontSize: 13 }}>
+                    Join the monthly support session on April 9 to learn practical family recovery support strategies.
+                  </div>
+                </div>
+                <button onClick={() => setShowAnnouncement(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9A3412' }}>
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="panel-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h2 className="recovery-text-mobile" style={{ fontSize: '30px', fontWeight: 800, color: '#1B2559', margin: 0 }}>
                 Quick <span style={{ color: '#F54E25' }}>Actions</span>
@@ -1796,74 +1885,108 @@ const HomeDashboard = () => {
             <div className="chart-card">
               <div className="chart-top">
                 <div>
-                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 16 }}>Patient Progress</div>
+                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 16 }}>
+                    {insightsCardPatient.name}
+                  </div>
                   <div style={{ color: '#64748B', fontSize: 12 }}>
-                    {selectedPatient ? `Tracking ${selectedPatient.name}` : 'No patient admitted'}
+                    Patient Progress & Statistics
+                  </div>
+                  <div style={{ marginTop: 6, color: '#475569', fontSize: 11, fontWeight: 700 }}>
+                    {`Admitted: ${insightsCardPatient.date || 'N/A'}  •  Current progress: ${selectedPatientProgress}%`}
                   </div>
                 </div>
-                {patients.length > 0 && (
-                  <select
-                    className="patient-select"
-                    value={selectedPatient?.id ?? ''}
-                    onChange={(e) => setSelectedPatientId(e.target.value)}
+                <div className="patient-carousel-controls" style={{ marginBottom: 0 }}>
+                  <button
+                    type="button"
+                    className="patient-carousel-btn"
+                    onClick={() =>
+                      setInsightsCarouselIndex((prev) =>
+                        insightsCarouselSource.length ? (prev - 1 + insightsCarouselSource.length) % insightsCarouselSource.length : 0
+                      )
+                    }
                   >
-                    {patients.map((patient) => (
-                      <option key={patient.id} value={patient.id}>
-                        {patient.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              {patients.length > 0 ? (
-                <svg className="chart-svg" viewBox="0 0 560 220" role="img" aria-label="Patient progress over time">
-                  {[0, 1, 2, 3, 4].map((row) => (
-                    <line key={row} x1="42" y1={25 + row * 40} x2="530" y2={25 + row * 40} stroke="#E9EDF7" strokeWidth="1" />
-                  ))}
-                  {patientProgressSeries.map((point, index) => {
-                    const x = 42 + index * 97;
-                    const y = 185 - point * 1.5;
-                    return (
-                      <g key={index}>
-                        <circle cx={x} cy={y} r="4.5" fill="#F54E25" />
-                        <text x={x} y={208} textAnchor="middle" fontSize="11" fill="#64748B">{`W${index + 1}`}</text>
-                      </g>
-                    );
-                  })}
-                  <polyline
-                    fill="none"
-                    stroke="#F54E25"
-                    strokeWidth="3"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    points={patientProgressSeries
-                      .map((point, index) => `${42 + index * 97},${185 - point * 1.5}`)
-                      .join(' ')}
-                  />
-                </svg>
-              ) : (
-                <div className="empty-dashboard-card">No patient admitted</div>
-              )}
-            </div>
-            <div className="chart-card">
-              <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 16 }}>Patient Statistics</div>
-              <div style={{ color: '#64748B', fontSize: 12, marginTop: 4 }}>
-                {patients.length > 0
-                  ? 'Key performance indicators for the selected patient'
-                  : 'No patient admitted'}
-              </div>
-              {patients.length > 0 ? (
-                <div className="kpi-grid">
-                  {kpiCards.map((kpi) => (
-                    <div key={kpi.label} className="kpi-item">
-                      <div style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>{kpi.label}</div>
-                      <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 18, marginTop: 4 }}>{kpi.value}</div>
-                    </div>
-                  ))}
+                    Previous
+                  </button>
+                  <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>
+                    {`Card ${insightsCarouselIndex + 1} of ${insightsCarouselSource.length}`}
+                  </div>
+                  <button
+                    type="button"
+                    className="patient-carousel-btn"
+                    onClick={() =>
+                      setInsightsCarouselIndex((prev) =>
+                        insightsCarouselSource.length ? (prev + 1) % insightsCarouselSource.length : 0
+                      )
+                    }
+                  >
+                    Next
+                  </button>
                 </div>
-              ) : (
-                <div className="empty-dashboard-card" style={{ minHeight: 300 }}>No patient admitted</div>
-              )}
+              </div>
+              <div className="insights-split">
+                <div className="insight-panel">
+                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>Patient Progress</div>
+                  <svg className="chart-svg" viewBox="0 0 560 220" role="img" aria-label="Patient progress over time">
+                    {[0, 1, 2, 3, 4].map((row) => (
+                      <line key={row} x1="42" y1={25 + row * 40} x2="530" y2={25 + row * 40} stroke="#E9EDF7" strokeWidth="1" />
+                    ))}
+                    {patientProgressSeries.map((point, index) => {
+                      const x = 42 + index * 97;
+                      const y = 185 - point * 1.5;
+                      return (
+                        <g key={index}>
+                          <circle cx={x} cy={y} r="4.5" fill="#F54E25" />
+                          <text x={x} y={208} textAnchor="middle" fontSize="11" fill="#64748B">{`W${index + 1}`}</text>
+                        </g>
+                      );
+                    })}
+                    <polyline
+                      fill="none"
+                      stroke="#F54E25"
+                      strokeWidth="3"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      points={patientProgressSeries
+                        .map((point, index) => `${42 + index * 97},${185 - point * 1.5}`)
+                        .join(' ')}
+                    />
+                  </svg>
+                </div>
+                <div className="insight-panel">
+                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>Patient Statistics</div>
+                  <div style={{ color: '#64748B', fontSize: 12, marginBottom: 8 }}>
+                    Recovery Rate only
+                  </div>
+                  <svg className="stat-svg" viewBox="0 0 560 220" role="img" aria-label="Recovery rate over time">
+                    {[0, 1, 2, 3, 4].map((row) => (
+                      <line key={row} x1="42" y1={25 + row * 40} x2="530" y2={25 + row * 40} stroke="#FEE2D5" strokeWidth="1" />
+                    ))}
+                    {recoveryRateSeries.map((point, index) => {
+                      const x = 42 + index * 97;
+                      const y = 185 - point * 1.5;
+                      return (
+                        <g key={index}>
+                          <circle cx={x} cy={y} r="4.5" fill="#EA580C" />
+                          <text x={x} y={208} textAnchor="middle" fontSize="11" fill="#64748B">{`W${index + 1}`}</text>
+                        </g>
+                      );
+                    })}
+                    <polyline
+                      fill="none"
+                      stroke="#EA580C"
+                      strokeWidth="3"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      points={recoveryRateSeries
+                        .map((point, index) => `${42 + index * 97},${185 - point * 1.5}`)
+                        .join(' ')}
+                    />
+                  </svg>
+                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 13, marginTop: 8 }}>
+                    Current Recovery Rate: {recoveryRate}%
+                  </div>
+                </div>
+              </div>
               {isSupabaseConfigured() && supabaseReadError && (
                 <div style={{ color: '#ef4444', fontSize: 11, fontWeight: 700, marginTop: 10 }}>
                   {String(supabaseReadError).slice(0, 100)}
@@ -1872,7 +1995,7 @@ const HomeDashboard = () => {
             </div>
           </div>  
 
-          <div className="panel-card" style={{ marginTop: 20 }}>
+          <div className="panel-card" style={{ marginTop: 30 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <div className="panel-title" style={{ marginBottom: 0 }}>
                 <Calendar size={16} color="#F54E25" /> Visitation Appointment
@@ -1958,22 +2081,6 @@ const HomeDashboard = () => {
               ) : null}
             </div>
           </div>
-
-          {showAnnouncement && (
-            <div className="panel-card" style={{ borderColor: '#FED7AA', background: '#FFF7ED' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                <div>
-                  <div style={{ color: '#9A3412', fontWeight: 800, marginBottom: 4 }}>Community Update: Family Wellness Talk</div>
-                  <div style={{ color: '#7C2D12', fontSize: 13 }}>
-                    Join the monthly support session on April 9 to learn practical family recovery support strategies.
-                  </div>
-                </div>
-                <button onClick={() => setShowAnnouncement(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9A3412' }}>
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-          )}
 
           <div className="bottom-layout">
             <div className="patient-section">
@@ -2088,6 +2195,7 @@ const HomeDashboard = () => {
                 </div>
               </div>
             </div>
+          </div>
           </div>
           </div>
         </div>

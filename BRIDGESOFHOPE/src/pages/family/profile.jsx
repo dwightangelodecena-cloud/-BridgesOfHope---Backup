@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight, Calendar } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight, Calendar, ClipboardList } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAsyncData } from '@/hooks/useAsyncData';
@@ -614,8 +614,8 @@ const Profile = () => {
           </div>
 
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div>
-            <span className="sidebar-label">Progress</span>
+            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Request Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
             <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>

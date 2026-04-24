@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Home, TrendingUp, User, LogOut, Bell, CheckCircle2, CheckCircle, Mail, Phone, Calendar, ClipboardList, MapPin, Building2, Hash } from 'lucide-react';
+import { Home, User, LogOut, Bell, CheckCircle2, CheckCircle, Mail, Phone, Calendar, ClipboardList, MapPin, Building2, Hash } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -674,7 +674,7 @@ const Progress = () => {
             <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span>
           </div>
           <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
+            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
             <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>

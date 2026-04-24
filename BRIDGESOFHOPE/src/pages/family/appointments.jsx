@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Home, TrendingUp, User, LogOut, Calendar } from 'lucide-react';
+import { Home, User, LogOut, Calendar, ClipboardList } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/logo2.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -312,11 +312,19 @@ export default function FamilyAppointmentsPage() {
           display: flex; align-items: center; width: 100%;
           padding: 0 ${isExpanded ? '35px' : '0'};
           justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 20px; margin-bottom: 25px; min-height: 52px; box-sizing: border-box; border: 2px solid transparent; border-radius: 12px;
+          gap: 14px; margin-bottom: 25px; min-height: 56px; box-sizing: border-box; border: 2px solid transparent; border-radius: 12px;
         }
         .sidebar-nav-item.sidebar-nav-active { border-color: #F54E25; }
         .sidebar-icon-wrap { padding: 12px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 700; font-size: 18px; color: #707EAE; white-space: nowrap; }
+        .sidebar-label {
+          display: ${isExpanded ? 'block' : 'none'};
+          font-weight: 700;
+          font-size: 16px;
+          line-height: 1.2;
+          color: #707EAE;
+          white-space: normal;
+          word-break: break-word;
+        }
         .sidebar-primary { width: 100%; }
         .sidebar-footer {
           position: absolute;
@@ -557,8 +565,8 @@ export default function FamilyAppointmentsPage() {
             <span className="sidebar-label">Dashboard</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div>
-            <span className="sidebar-label">Progress</span>
+            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Request Management</span>
           </div>
           <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => e.stopPropagation()}>
             <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
