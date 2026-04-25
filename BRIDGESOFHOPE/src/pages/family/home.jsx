@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
   fetchActivityFeedForCurrentUser,
-  activityDayLabel,
   ACTIVITY_FEED_UPDATED,
 } from '@/lib/activityFeed';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
@@ -22,11 +21,8 @@ import {
   FAMILY_COLORS,
 } from '@/components/family/shared/ui';
 
-// Asset imports
-import logo from '@/assets/logo2.png';
-import weeklyIcon from '@/assets/weekly.png';
+import logo from '@/assets/kalingalogo.png';
 import servicesIcon from '@/assets/services.png';
-import admissionIcon from '@/assets/admission.png';
 
 const HomeDashboard = () => {
   const navigate = useNavigate();
@@ -34,8 +30,6 @@ const HomeDashboard = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [weeklyReportExpandedPatientId, setWeeklyReportExpandedPatientId] = useState(null);
-  const [showAllActivity, setShowAllActivity] = useState(false);
-  const [completedReminders, setCompletedReminders] = useState([]);
   const [displayName, setDisplayName] = useState('Family User');
   const [userInitials, setUserInitials] = useState('FU');
   const [familyUserId, setFamilyUserId] = useState('');
@@ -170,12 +164,6 @@ const HomeDashboard = () => {
   const [activityFeed, setActivityFeed] = useState([]);
   const [supabaseReadError, setSupabaseReadError] = useState(null);
 
-  const reminderItems = [
-    'Complete profile details',
-    'Upload latest medical test result',
-    'Review appointment schedule',
-  ];
-
   // --- SYNC: patients, pending requests, weekly reports, activity (Supabase or legacy) ---
   const PENDING_ADMISSIONS_KEY = 'bh_pending_admissions';
   const PENDING_DISCHARGES_KEY = 'bh_pending_discharges';
@@ -197,8 +185,6 @@ const HomeDashboard = () => {
   };
 
   const [patients, setPatients] = useState([]);
-  const [selectedPatientId, setSelectedPatientId] = useState(null);
-  const [insightsCarouselIndex, setInsightsCarouselIndex] = useState(0);
   const [pendingAdmissions, setPendingAdmissions] = useState([]);
   const [pendingDischarges, setPendingDischarges] = useState([]);
   const [nurseWeeklyReportsByPatient, setNurseWeeklyReportsByPatient] = useState({});
@@ -376,12 +362,6 @@ const HomeDashboard = () => {
     fileInputRefs.current[index].click(); // Fixed: Added missing closing parenthesis here
   };
 
-  const toggleReminder = (item) => {
-    setCompletedReminders((prev) =>
-      prev.includes(item) ? prev.filter((entry) => entry !== item) : [...prev, item]
-    );
-  };
-
   const patientCardInitials = (name) =>
     name
       ? String(name)
@@ -391,48 +371,93 @@ const HomeDashboard = () => {
           .map((part) => part[0].toUpperCase())
           .join('')
       : '?';
+  const firstName =
+    String(displayName || 'Family User')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)[0] || 'Family';
 
-  useEffect(() => {
-    if (!patients.length) {
-      setSelectedPatientId(null);
-      return;
-    }
-    const hasSelected = patients.some((p) => String(p.id) === String(selectedPatientId));
-    if (!hasSelected) {
-      setSelectedPatientId(patients[0].id);
-    }
-  }, [patients, selectedPatientId]);
-
-  const selectedPatient = patients.find((p) => String(p.id) === String(selectedPatientId)) || patients[0] || null;
-  const hasRealPatients = patients.length > 0;
-  const samplePatientCards = [
-    { id: 'sample-1', name: 'Maria Santos (Sample)', date: 'April 10, 2026', progress: 68, recoveryRate: 72 },
-    { id: 'sample-2', name: 'Elena Cruz (Sample)', date: 'April 18, 2026', progress: 74, recoveryRate: 78 },
-    { id: 'sample-3', name: 'Sofia Reyes (Sample)', date: 'April 22, 2026', progress: 81, recoveryRate: 84 },
+  const totalPendingRequests = pendingAdmissions.length + pendingDischarges.length;
+  const reportsReceivedCount = Object.values(nurseWeeklyReportsByPatient || {}).reduce(
+    (count, patientWeeks) => count + Object.keys(patientWeeks || {}).length,
+    0
+  );
+  const summaryGraphData = [
+    { label: 'Patients', value: patients.length, color: '#F54E25' },
+    { label: 'Admissions', value: pendingAdmissions.length, color: '#EA580C' },
+    { label: 'Discharges', value: pendingDischarges.length, color: '#2B31ED' },
+    {
+      label: 'Avg Progress',
+      value: patients.length
+        ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
+        : 0,
+      color: '#16A34A',
+    },
+    { label: 'Reports', value: reportsReceivedCount, color: '#7C3AED' },
   ];
-  const insightsCarouselSource = hasRealPatients ? patients : samplePatientCards;
-  const insightsCardPatient = insightsCarouselSource[insightsCarouselIndex] || insightsCarouselSource[0] || null;
-  const selectedPatientProgress = Number(insightsCardPatient?.progress) || 0;
-  const recoveryRate = hasRealPatients
-    ? Math.min(100, Math.max(0, Math.round(selectedPatientProgress * 0.92 + 6)))
-    : Number(insightsCardPatient?.recoveryRate || 0);
-  const progressTrend = Math.max(1, Math.round(selectedPatientProgress / 4));
-  const patientProgressSeries = hasRealPatients
-    ? [12, 25, 38, 52, Math.max(58, selectedPatientProgress - progressTrend), selectedPatientProgress].map((value) =>
-        Math.min(100, Math.max(0, value))
-      )
-    : [32, 41, 50, 58, 62, selectedPatientProgress];
-  const recoveryRateSeries = patientProgressSeries.map((value) => Math.min(100, Math.round(value * 0.92 + 6)));
-
-  useEffect(() => {
-    if (!insightsCarouselSource.length) {
-      setInsightsCarouselIndex(0);
-      return;
+  const summaryGraphMax = Math.max(5, ...summaryGraphData.map((d) => Number(d.value) || 0));
+  const averageProgress = patients.length
+    ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
+    : 0;
+  const reportCoverageRate = patients.length
+    ? Math.min(100, Math.round((reportsReceivedCount / Math.max(1, patients.length * 7)) * 100))
+    : 0;
+  const metricInsights = [
+    {
+      label: 'Care Load',
+      value: totalPendingRequests,
+      note: totalPendingRequests > 5 ? 'High queue' : totalPendingRequests > 0 ? 'Manageable queue' : 'No pending requests',
+      color: '#F59E0B',
+    },
+    {
+      label: 'Avg Recovery Progress',
+      value: `${averageProgress}%`,
+      note: averageProgress >= 70 ? 'Strong recovery trend' : averageProgress >= 40 ? 'Steady recovery' : 'Needs support focus',
+      color: '#16A34A',
+    },
+    {
+      label: 'Report Coverage',
+      value: `${reportCoverageRate}%`,
+      note: 'Submitted nurse reports versus expected weekly slots',
+      color: '#7C3AED',
+    },
+    {
+      label: 'Admission Pressure',
+      value: pendingAdmissions.length,
+      note: pendingAdmissions.length ? 'Follow up with admin review' : 'No pending admissions',
+      color: '#EA580C',
+    },
+  ];
+  const patientTableRows = (patients || []).slice(0, 5);
+  const resolveRequestPatientName = (row) => {
+    const directName = row?.patientName || row?.patient_name || row?.patient || '';
+    if (directName && String(directName).trim() && String(directName).trim().toLowerCase() !== 'patient') {
+      return directName;
     }
-    if (insightsCarouselIndex >= insightsCarouselSource.length) {
-      setInsightsCarouselIndex(0);
-    }
-  }, [insightsCarouselSource, insightsCarouselIndex]);
+    const match = (patients || []).find((p) => String(p?.id || '') === String(row?.id || row?.patientId || row?.patient_id || ''));
+    return match?.name || 'Unknown';
+  };
+  const requestTableRows = [
+    ...pendingAdmissions.map((row) => ({
+      type: 'Admission',
+      name: resolveRequestPatientName(row),
+      status: row?.status || 'Pending',
+      date: row?.createdAt || row?.created_at || '',
+    })),
+    ...pendingDischarges.map((row) => ({
+      type: 'Discharge',
+      name: resolveRequestPatientName(row),
+      status: row?.status || 'Pending',
+      date: row?.createdAt || row?.created_at || '',
+    })),
+  ].slice(0, 6);
+  const patientReportCount = (patientId) => Object.keys(nurseWeeklyReportsByPatient[String(patientId)] || {}).length;
+  const patientStatus = (progress) => {
+    const p = Number(progress) || 0;
+    if (p >= 70) return { label: 'Stable', color: '#166534', bg: '#DCFCE7' };
+    if (p >= 40) return { label: 'Recovering', color: '#92400E', bg: '#FEF3C7' };
+    return { label: 'Needs Attention', color: '#991B1B', bg: '#FEE2E2' };
+  };
 
   useEffect(() => {
     if (!showNotifications) return;
@@ -749,7 +774,7 @@ const HomeDashboard = () => {
         .action-grid-desktop {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
+          gap: 16px;
         }
 
         .dashboard-grid {
@@ -768,11 +793,11 @@ const HomeDashboard = () => {
 
         .chart-card {
           height: 100%;
-          background: white;
-          border: 1px solid #E9EDF7;
-          border-radius: 16px;
-          padding: 18px;
-          box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+          background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+          border: 1px solid #E4EAF6;
+          border-radius: 18px;
+          padding: 20px;
+          box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
           display: flex;
           flex-direction: column;
         }
@@ -812,6 +837,10 @@ const HomeDashboard = () => {
 
         .insight-panel {
           min-width: 0;
+          border: 1px solid #E9EDF7;
+          border-radius: 14px;
+          background: #fff;
+          padding: 14px;
         }
 
         .stat-svg {
@@ -825,8 +854,8 @@ const HomeDashboard = () => {
         .kpi-grid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-          margin-top: 10px;
+          gap: 12px;
+          margin-top: 12px;
           flex: 1;
           align-content: stretch;
         }
@@ -834,9 +863,16 @@ const HomeDashboard = () => {
         .kpi-item {
           border: 1px solid #E9EDF7;
           border-radius: 12px;
-          padding: 14px 12px;
-          background: #fbfdff;
-          min-height: 96px;
+          padding: 16px 14px;
+          background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+          min-height: 130px;
+        }
+        .kpi-note {
+          margin-top: 6px;
+          color: #64748B;
+          font-size: 11px;
+          line-height: 1.35;
+          font-weight: 600;
         }
 
         .empty-dashboard-card {
@@ -867,6 +903,75 @@ const HomeDashboard = () => {
           border-radius: 14px;
           padding: 16px;
           margin-bottom: 14px;
+        }
+
+        .dashboard-overview-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-top: 4px;
+        }
+
+        .overview-item {
+          border: 1px solid #E9EDF7;
+          border-radius: 14px;
+          background: #fff;
+          padding: 14px 16px;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+          min-height: 95px;
+        }
+
+        .overview-label {
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+          margin-bottom: 8px;
+          text-transform: uppercase;
+        }
+
+        .overview-value {
+          color: #1B2559;
+          font-size: 1.4rem;
+          font-weight: 800;
+          line-height: 1.1;
+        }
+
+        .overview-subtext {
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 600;
+          margin-top: 6px;
+        }
+
+        .dashboard-bottom-grid {
+          display: grid;
+          grid-template-columns: 1.5fr 1fr;
+          gap: 16px;
+        }
+
+        .clean-list {
+          display: grid;
+          gap: 10px;
+          margin-top: 10px;
+        }
+
+        .clean-list-item {
+          border: 1px solid #E9EDF7;
+          border-radius: 12px;
+          background: #FCFDFF;
+          padding: 12px 14px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .mini-pill {
+          font-size: 11px;
+          font-weight: 700;
+          border-radius: 999px;
+          padding: 4px 10px;
         }
 
         .panel-title {
@@ -949,7 +1054,7 @@ const HomeDashboard = () => {
 
         .action-card {
           width: 100%;
-          min-height: 120px;
+          min-height: 196px;
           background: white;
           border-radius: 18px;
           display: flex;
@@ -959,6 +1064,41 @@ const HomeDashboard = () => {
           cursor: pointer;
           border: 1px solid #E9EDF7;
           transition: all 0.2s ease;
+        }
+        .action-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+          border-color: #d9e3f5;
+        }
+        .action-main {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          text-align: center;
+        }
+        .action-title {
+          font-size: 0.92rem;
+          font-weight: 800;
+          color: #1B2559;
+          letter-spacing: 0.01em;
+        }
+        .action-subtitle {
+          font-size: 12px;
+          color: #64748B;
+          font-weight: 600;
+          line-height: 1.25;
+          max-width: 240px;
+        }
+        .action-badge {
+          margin-top: 4px;
+          display: inline-flex;
+          align-items: center;
+          border-radius: 999px;
+          padding: 5px 11px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.02em;
         }
 
         .icon-square {
@@ -972,10 +1112,179 @@ const HomeDashboard = () => {
           margin-bottom: 12px;
         }
 
-        .icon-square img {
+        .icon-square svg {
           width: 30px;
-          height: auto;
-          filter: brightness(0) invert(1);
+          height: 30px;
+          stroke: #fff;
+          stroke-width: 2.2;
+        }
+
+        .summary-bars {
+          margin-top: 10px;
+          padding: 14px;
+          background: #F8FAFE;
+          border: 1px solid #E6EDF9;
+          border-radius: 12px;
+        }
+        .summary-vertical-chart {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 12px;
+          align-items: end;
+          min-height: 230px;
+        }
+        .summary-bar-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+        }
+        .summary-bar-stage {
+          width: 100%;
+          max-width: 72px;
+          height: 160px;
+          background: linear-gradient(180deg, #f3f6fd 0%, #e9eff8 100%);
+          border-radius: 12px;
+          border: 1px solid #e2eaf7;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          padding: 8px;
+        }
+        .summary-bar-fill {
+          width: 100%;
+          border-radius: 8px;
+          min-height: 8px;
+          box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.2);
+        }
+        .summary-bar-label-wrap {
+          min-height: 2.6em;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+        }
+        .summary-bar-label {
+          color: #334155;
+          font-size: 11px;
+          font-weight: 800;
+          text-align: center;
+          line-height: 1.25;
+          width: 100%;
+        }
+        .summary-bar-value {
+          color: #0F172A;
+          font-size: 16px;
+          font-weight: 900;
+          line-height: 1;
+        }
+
+        .summary-callout {
+          margin-top: 12px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: #EEF4FF;
+          border: 1px solid #DCE7FF;
+          color: #334155;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .tables-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 18px;
+          margin-top: 18px;
+        }
+        .table-card {
+          background: #fff;
+          border: 1px solid #E6EDF9;
+          border-radius: 14px;
+          overflow: hidden;
+          box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+        }
+        .table-head {
+          padding: 14px 16px;
+          border-bottom: 1px solid #EEF3FB;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        .table-scroll {
+          overflow-x: auto;
+        }
+        .dashboard-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+        }
+        .dashboard-table th {
+          text-align: left;
+          color: #64748B;
+          font-weight: 800;
+          background: #F8FAFE;
+          padding: 12px 14px;
+          border-bottom: 1px solid #EEF3FB;
+        }
+        .dashboard-table td {
+          padding: 12px 14px;
+          color: #1E293B;
+          border-bottom: 1px solid #F3F6FC;
+          font-weight: 600;
+        }
+        .dashboard-table tr:last-child td {
+          border-bottom: none;
+        }
+        .table-patient-wrap {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          min-width: 0;
+        }
+        .table-patient-name {
+          color: #0F172A;
+          font-weight: 800;
+          font-size: 12px;
+        }
+        .table-progress-wrap {
+          display: grid;
+          gap: 6px;
+          min-width: 120px;
+        }
+        .table-progress-track {
+          height: 7px;
+          border-radius: 999px;
+          background: #EAF0FA;
+          overflow: hidden;
+        }
+        .table-progress-fill {
+          height: 100%;
+          border-radius: 999px;
+          background: linear-gradient(90deg, #F54E25 0%, #EA580C 100%);
+        }
+        .table-mini-text {
+          color: #64748B;
+          font-size: 10px;
+          font-weight: 700;
+        }
+        .patient-status-pill {
+          display: inline-flex;
+          align-items: center;
+          border-radius: 999px;
+          padding: 3px 8px;
+          font-size: 10px;
+          font-weight: 800;
+        }
+        .table-status-pill {
+          display: inline-flex;
+          align-items: center;
+          border-radius: 999px;
+          padding: 3px 8px;
+          font-size: 10px;
+          font-weight: 800;
+          text-transform: capitalize;
+          background: #FEF3C7;
+          color: #92400E;
         }
 
         .chat-window {
@@ -1532,6 +1841,10 @@ const HomeDashboard = () => {
           }
           .dashboard-grid { grid-template-columns: 1fr !important; }
           .dashboard-insights { grid-template-columns: 1fr !important; }
+          .dashboard-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .dashboard-bottom-grid { grid-template-columns: 1fr !important; }
+          .tables-grid { grid-template-columns: 1fr !important; }
+          .summary-vertical-chart { grid-template-columns: repeat(5, minmax(58px, 1fr)) !important; }
           .action-section { order: -1; margin-bottom: 20px; } 
           .patient-section { order: 1; }
           .patient-card { width: 100% !important; height: auto !important; padding: 15px !important; margin-bottom: 10px !important; flex-direction: row !important; }
@@ -1539,10 +1852,11 @@ const HomeDashboard = () => {
           .insights-split { grid-template-columns: 1fr !important; }
           .mobile-action-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 10px !important; }
           .action-grid-desktop { grid-template-columns: repeat(3, 1fr) !important; }
-          .mobile-action-grid .action-card { width: 100% !important; height: 100px !important; border-radius: 15px !important; }
+          .mobile-action-grid .action-card { width: 100% !important; height: 122px !important; border-radius: 15px !important; }
           .mobile-action-grid .icon-square { width: 40px !important; height: 40px !important; margin-bottom: 5px !important; }
-          .mobile-action-grid .icon-square img { width: 20px !important; }
+          .mobile-action-grid .icon-square svg { width: 20px !important; height: 20px !important; }
           .mobile-action-grid span { font-size: 10px !important; }
+          .action-subtitle, .action-badge { display: none !important; }
           .mobile-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 70px; background: white; border-top: 1px solid #EEE; display: flex; justify-content: space-around; align-items: center; padding-bottom: env(safe-area-inset-bottom); z-index: 1000; }
           .recovery-text-mobile { font-size: 24px !important; }
           .chat-window { width: 320px; height: 450px; bottom: 85px; right: 15px; border-radius: 20px; }
@@ -1704,7 +2018,7 @@ const HomeDashboard = () => {
 
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container">
-          <img src={logo} alt="BH" className="sidebar-logo" />
+          <img src={logo} alt="Kalinga" className="sidebar-logo" />
         </div>
         <div className="sidebar-primary">
           <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
@@ -1714,9 +2028,16 @@ const HomeDashboard = () => {
             <span className="sidebar-label">Dashboard</span>
           </div>
 
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}>
             <div className="sidebar-icon-wrap">
               <ClipboardList size={22} color="#707EAE" />
+            </div>
+            <span className="sidebar-label">Patient Details</span>
+          </div>
+
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
+            <div className="sidebar-icon-wrap">
+              <TrendingUp size={22} color="#707EAE" />
             </div>
             <span className="sidebar-label">Request Management</span>
           </div>
@@ -1750,7 +2071,7 @@ const HomeDashboard = () => {
         <header className="top-nav">
           <div className="top-nav-left">
             <span className="view-title">Dashboard</span>
-            <span className="welcome-text">Welcome back, {displayName}</span>
+            <span className="welcome-text">Welcome Back, {firstName}</span>
           </div>
           <div className="top-nav-actions">
             <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
@@ -1790,7 +2111,7 @@ const HomeDashboard = () => {
         </header>
 
         <div className="mobile-only mobile-top-bar">
-          <img src={logo} alt="BH" style={{ width: 50 }} />
+          <img src={logo} alt="Kalinga" style={{ width: 50 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
               <button
@@ -1848,16 +2169,30 @@ const HomeDashboard = () => {
                   setIsChatOpen(false);
                 }}
               >
-                <div className="icon-square"><img src={weeklyIcon} alt="Report" /></div>
-                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1B2559' }}>Weekly Report</span>
+                <div className="icon-square"><FileText aria-hidden /></div>
+                <div className="action-main">
+                  <span className="action-title">Weekly Report</span>
+                  <span className="action-subtitle">Review submitted weekly care updates</span>
+                  <span className="action-badge" style={{ background: '#FFF1EB', color: '#C2410C' }}>{reportsReceivedCount} received</span>
+                </div>
               </div>
               <div className="action-card" onClick={() => navigate('/services')}>
-                <div className="icon-square"><img src={servicesIcon} alt="Services" /></div>
-                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1B2559' }}>Services</span>
+                <div className="icon-square">
+                  <img src={servicesIcon} alt="Services" style={{ width: 28, height: 28, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+                </div>
+                <div className="action-main">
+                  <span className="action-title">Services</span>
+                  <span className="action-subtitle">Open billing, inclusions, and support details</span>
+                  <span className="action-badge" style={{ background: '#EEF2FF', color: '#3730A3' }}>Care resources</span>
+                </div>
               </div>
               <div className="action-card" onClick={() => navigate('/progress', { state: { tab: 'admission' } })}>
-                <div className="icon-square"><img src={admissionIcon} alt="Admission" /></div>
-                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1B2559' }}>Admission</span>
+                <div className="icon-square"><ClipboardList aria-hidden /></div>
+                <div className="action-main">
+                  <span className="action-title">Admission</span>
+                  <span className="action-subtitle">Submit new admission request forms</span>
+                  <span className="action-badge" style={{ background: '#FEF3C7', color: '#92400E' }}>{pendingAdmissions.length} pending</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1867,104 +2202,140 @@ const HomeDashboard = () => {
               <div className="chart-top">
                 <div>
                   <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 16 }}>
-                    {insightsCardPatient.name}
+                    Dashboard Summary
                   </div>
                   <div style={{ color: '#64748B', fontSize: 12 }}>
-                    Patient Progress & Statistics
-                  </div>
-                  <div style={{ marginTop: 6, color: '#475569', fontSize: 11, fontWeight: 700 }}>
-                    {`Admitted: ${insightsCardPatient.date || 'N/A'}  •  Current progress: ${selectedPatientProgress}%`}
+                    Clear overview of patient, request, and report data
                   </div>
                 </div>
-                <div className="patient-carousel-controls" style={{ marginBottom: 0 }}>
-                  <button
-                    type="button"
-                    className="patient-carousel-btn"
-                    onClick={() =>
-                      setInsightsCarouselIndex((prev) =>
-                        insightsCarouselSource.length ? (prev - 1 + insightsCarouselSource.length) % insightsCarouselSource.length : 0
-                      )
-                    }
-                  >
-                    Previous
-                  </button>
-                  <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>
-                    {`Card ${insightsCarouselIndex + 1} of ${insightsCarouselSource.length}`}
-                  </div>
-                  <button
-                    type="button"
-                    className="patient-carousel-btn"
-                    onClick={() =>
-                      setInsightsCarouselIndex((prev) =>
-                        insightsCarouselSource.length ? (prev + 1) % insightsCarouselSource.length : 0
-                      )
-                    }
-                  >
-                    Next
-                  </button>
+                <div style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>
+                  Updated from live dashboard data
                 </div>
               </div>
               <div className="insights-split">
                 <div className="insight-panel">
-                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>Patient Progress</div>
-                  <svg className="chart-svg" viewBox="0 0 560 220" role="img" aria-label="Patient progress over time">
-                    {[0, 1, 2, 3, 4].map((row) => (
-                      <line key={row} x1="42" y1={25 + row * 40} x2="530" y2={25 + row * 40} stroke="#E9EDF7" strokeWidth="1" />
-                    ))}
-                    {patientProgressSeries.map((point, index) => {
-                      const x = 42 + index * 97;
-                      const y = 185 - point * 1.5;
-                      return (
-                        <g key={index}>
-                          <circle cx={x} cy={y} r="4.5" fill="#F54E25" />
-                          <text x={x} y={208} textAnchor="middle" fontSize="11" fill="#64748B">{`W${index + 1}`}</text>
-                        </g>
-                      );
-                    })}
-                    <polyline
-                      fill="none"
-                      stroke="#F54E25"
-                      strokeWidth="3"
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                      points={patientProgressSeries
-                        .map((point, index) => `${42 + index * 97},${185 - point * 1.5}`)
-                        .join(' ')}
-                    />
-                  </svg>
+                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>Graph View</div>
+                  <div className="summary-bars">
+                    <div className="summary-vertical-chart">
+                      {summaryGraphData.map((item) => (
+                        <div className="summary-bar-item" key={item.label}>
+                          <div className="summary-bar-value">{item.value}</div>
+                          <div className="summary-bar-stage">
+                            <div
+                              className="summary-bar-fill"
+                              style={{
+                                height: `${Math.max(8, Math.round(((Number(item.value) || 0) / summaryGraphMax) * 100))}%`,
+                                background: item.color,
+                              }}
+                            />
+                          </div>
+                          <div className="summary-bar-label-wrap">
+                            <div className="summary-bar-label">{item.label}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="summary-callout">
+                    Highest metric right now: <strong>{summaryGraphData.reduce((max, item) => (item.value > max.value ? item : max), summaryGraphData[0]).label}</strong>
+                  </div>
                 </div>
                 <div className="insight-panel">
-                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>Patient Statistics</div>
-                  <div style={{ color: '#64748B', fontSize: 12, marginBottom: 8 }}>
-                    Recovery Rate only
-                  </div>
-                  <svg className="stat-svg" viewBox="0 0 560 220" role="img" aria-label="Recovery rate over time">
-                    {[0, 1, 2, 3, 4].map((row) => (
-                      <line key={row} x1="42" y1={25 + row * 40} x2="530" y2={25 + row * 40} stroke="#FEE2D5" strokeWidth="1" />
+                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>Operational Insights</div>
+                  <div className="kpi-grid">
+                    {metricInsights.map((item) => (
+                      <div key={item.label} className="kpi-item">
+                        <div style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>{item.label}</div>
+                        <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 22, marginTop: 6 }}>{item.value}</div>
+                        <div style={{ marginTop: 8, width: 26, height: 6, borderRadius: 99, background: item.color }} />
+                        <div className="kpi-note">{item.note}</div>
+                      </div>
                     ))}
-                    {recoveryRateSeries.map((point, index) => {
-                      const x = 42 + index * 97;
-                      const y = 185 - point * 1.5;
-                      return (
-                        <g key={index}>
-                          <circle cx={x} cy={y} r="4.5" fill="#EA580C" />
-                          <text x={x} y={208} textAnchor="middle" fontSize="11" fill="#64748B">{`W${index + 1}`}</text>
-                        </g>
-                      );
-                    })}
-                    <polyline
-                      fill="none"
-                      stroke="#EA580C"
-                      strokeWidth="3"
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                      points={recoveryRateSeries
-                        .map((point, index) => `${42 + index * 97},${185 - point * 1.5}`)
-                        .join(' ')}
-                    />
-                  </svg>
-                  <div style={{ color: '#1B2559', fontWeight: 800, fontSize: 13, marginTop: 8 }}>
-                    Current Recovery Rate: {recoveryRate}%
+                  </div>
+                </div>
+              </div>
+              <div className="tables-grid">
+                <div className="table-card">
+                  <div className="table-head">
+                    <div className="panel-title" style={{ marginBottom: 0 }}><User size={16} color="#F54E25" /> Patient Snapshot</div>
+                    <span style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>{patients.length} total</span>
+                  </div>
+                  <div className="table-scroll">
+                    <table className="dashboard-table">
+                      <thead>
+                        <tr>
+                          <th>Patient</th>
+                          <th>Admission</th>
+                          <th>Progress</th>
+                          <th>Status</th>
+                          <th>Reports</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {patientTableRows.length ? patientTableRows.map((p) => {
+                          const pProgress = Number(p.progress) || 0;
+                          const status = patientStatus(pProgress);
+                          return (
+                          <tr key={p.id}>
+                            <td>
+                              <div className="table-patient-wrap">
+                                <span className="table-patient-name">{p.name}</span>
+                                <span className="table-mini-text">ID: {String(p.id).slice(0, 8)}</span>
+                              </div>
+                            </td>
+                            <td>{p.date || 'N/A'}</td>
+                            <td>
+                              <div className="table-progress-wrap">
+                                <div style={{ fontSize: 11, fontWeight: 800, color: '#1B2559' }}>{pProgress}%</div>
+                                <div className="table-progress-track">
+                                  <div className="table-progress-fill" style={{ width: `${pProgress}%` }} />
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <span className="patient-status-pill" style={{ background: status.bg, color: status.color }}>
+                                {status.label}
+                              </span>
+                            </td>
+                            <td>{patientReportCount(p.id)}/7</td>
+                          </tr>
+                        )}) : (
+                          <tr>
+                            <td colSpan={5} style={{ color: '#94A3B8' }}>No patient records yet.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div className="table-card">
+                  <div className="table-head">
+                    <div className="panel-title" style={{ marginBottom: 0 }}><ClipboardList size={16} color="#F54E25" /> Request Tracker</div>
+                    <span style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>{totalPendingRequests} pending</span>
+                  </div>
+                  <div className="table-scroll">
+                    <table className="dashboard-table">
+                      <thead>
+                        <tr>
+                          <th>Type</th>
+                          <th>Patient</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {requestTableRows.length ? requestTableRows.map((r, idx) => (
+                          <tr key={`${r.type}-${r.name}-${idx}`}>
+                            <td>{r.type}</td>
+                            <td>{r.name}</td>
+                            <td><span className="table-status-pill">{String(r.status || 'pending').toLowerCase()}</span></td>
+                          </tr>
+                        )) : (
+                          <tr>
+                            <td colSpan={3} style={{ color: '#94A3B8' }}>No pending requests.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>
@@ -1977,114 +2348,124 @@ const HomeDashboard = () => {
           </div>  
 
           <div className="bottom-layout">
-            <div className="patient-section">
-              <h3 style={{ color: '#1B2559', fontWeight: 800, marginBottom: 16, fontSize: '1.25rem' }}>Patient Details</h3>
-              {patients.map((p, i) => (
-                <div key={p.id} className="patient-card">
-                  <div className="patient-img-placeholder" onClick={() => triggerFileInput(i)}>
-                    <input type="file" hidden accept="image/*" ref={el => fileInputRefs.current[i] = el} onChange={(e) => handleImageChange(i, e)} />
-                    {patientImages[i] ? <img src={patientImages[i]} alt="" className="patient-attached-img" /> : <User size={24} color="#A3AED0" opacity={0.5} />}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
-                      <span style={{ fontWeight: 800, fontSize: '1.2rem', color: '#1B2559' }}>{p.name}</span>
-                      <span style={{ background: '#FFF9C4', color: '#856404', fontSize: '0.7rem', padding: '4px 12px', borderRadius: 20, fontWeight: 700 }}>Recovering</span>
-                    </div>
-                    <div style={{ color: '#1B2559', fontSize: '0.9rem', fontWeight: 600 }}>{p.date}</div>
-                    <div style={{ color: '#A3AED0', fontSize: '0.7rem' }}>Date of Admission</div>
-                  </div>
-                  <div className="desktop-only patient-progress">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 700, marginBottom: 8 }}>
-                      <span style={{ color: '#A3AED0' }}>Recovery Progress</span>
-                      <span style={{ color: '#1B2559' }}>{p.progress}%</span>
-                    </div>
-                    <div style={{ height: 8, background: '#F4F7FE', borderRadius: 10 }}><div style={{ width: `${p.progress}%`, height: '100%', background: '#4318FF', borderRadius: 10 }}></div></div>
-                  </div>
+            <div className="panel-card" style={{ marginBottom: 0 }}>
+              <div className="panel-title" style={{ marginBottom: 12 }}>
+                <BarChart3 size={16} color="#F54E25" /> Dashboard Highlights
+              </div>
+              <div className="dashboard-overview-grid">
+                <div className="overview-item">
+                  <div className="overview-label">Active Patients</div>
+                  <div className="overview-value">{patients.length}</div>
+                  <div className="overview-subtext">Currently under care</div>
                 </div>
-              ))}
+                <div className="overview-item">
+                  <div className="overview-label">Pending Requests</div>
+                  <div className="overview-value">{totalPendingRequests}</div>
+                  <div className="overview-subtext">Admissions and discharges</div>
+                </div>
+                <div className="overview-item">
+                  <div className="overview-label">Average Progress</div>
+                  <div className="overview-value">
+                    {patients.length
+                      ? `${Math.round(
+                          patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length
+                        )}%`
+                      : '0%'}
+                  </div>
+                  <div className="overview-subtext">Across all assigned patients</div>
+                </div>
+                <div className="overview-item">
+                  <div className="overview-label">Reports Received</div>
+                  <div className="overview-value">{reportsReceivedCount}</div>
+                  <div className="overview-subtext">Weekly reports submitted by nurse</div>
+                </div>
+              </div>
             </div>
 
-            <div className="dashboard-panels">
-              <div className="dashboard-panels-col">
-                <div className="panel-card" style={{ marginBottom: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div className="panel-title" style={{ marginBottom: 0 }}><Clock3 size={16} color="#F54E25" /> Recent Activity</div>
-                    {activityFeed.length > 3 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllActivity(!showAllActivity)}
-                        style={{ border: 'none', background: '#EEF2FF', color: '#3730A3', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
-                      >
-                        {showAllActivity ? 'Show Less' : 'View All'}
-                      </button>
-                    )}
+            <div className="dashboard-bottom-grid">
+              <div className="panel-card" style={{ marginBottom: 0 }}>
+                <div className="panel-title" style={{ marginBottom: 8 }}>
+                  <Calendar size={16} color="#F54E25" /> Next Steps
+                </div>
+                <div style={{ color: '#64748B', fontSize: 13, marginBottom: 8 }}>
+                  Suggested actions to keep care coordination on track.
+                </div>
+                <div className="clean-list">
+                  <div className="clean-list-item">
+                    <div>
+                      <div style={{ color: '#1B2559', fontWeight: 700, fontSize: 13 }}>Review request management queue</div>
+                      <div style={{ color: '#64748B', fontSize: 12 }}>Check admission/discharge updates from staff</div>
+                    </div>
+                    <span className="mini-pill" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                      {totalPendingRequests || 0} pending
+                    </span>
                   </div>
-                  <div style={{ marginTop: 10 }}>
-                    {activityFeed.length === 0 ? (
-                      <div
-                        style={{
-                          color: '#94a3b8',
-                          fontSize: 13,
-                          lineHeight: 1.5,
-                          padding: '8px 0 4px',
-                        }}
-                      >
-                        No activity yet. Admission requests, discharge requests, admin decisions, and care team
-                        reports will appear here as they happen.
-                      </div>
-                    ) : (
-                      (showAllActivity ? activityFeed : activityFeed.slice(0, 3)).map((item) => (
-                        <div key={item.id} className="interactive-row">
-                          <div
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: '50%',
-                              background: '#F54E25',
-                              marginTop: 6,
-                              flexShrink: 0,
-                            }}
-                          />
-                          <div>
-                            <div style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>
-                              {activityDayLabel(item.at)}
-                            </div>
-                            <div style={{ fontSize: 13 }}>{item.text}</div>
-                          </div>
-                        </div>
-                      ))
-                    )}
+                  <div className="clean-list-item">
+                    <div>
+                      <div style={{ color: '#1B2559', fontWeight: 700, fontSize: 13 }}>Open patient details tab</div>
+                      <div style={{ color: '#64748B', fontSize: 12 }}>View status and progress of all patients</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/patient-details')}
+                      style={{ border: 'none', borderRadius: 8, background: '#EEF2FF', color: '#3730A3', padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Open
+                    </button>
+                  </div>
+                  <div className="clean-list-item">
+                    <div>
+                      <div style={{ color: '#1B2559', fontWeight: 700, fontSize: 13 }}>Check appointment slots</div>
+                      <div style={{ color: '#64748B', fontSize: 12 }}>Plan follow-ups and visit schedules</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/appointments')}
+                      style={{ border: 'none', borderRadius: 8, background: '#ECFDF3', color: '#065F46', padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      View
+                    </button>
                   </div>
                 </div>
               </div>
-              <div className="dashboard-panels-col">
-                <div className="panel-card" style={{ marginBottom: 0 }}>
-                  <div className="panel-title"><Calendar size={16} color="#F54E25" /> Calendar & Reminders</div>
-                  {reminderItems.map((item) => (
+
+              <div className="panel-card" style={{ marginBottom: 0 }}>
+                <div className="panel-title" style={{ marginBottom: 8 }}>
+                  <FileText size={16} color="#F54E25" /> Care Resources
+                </div>
+                <div className="clean-list">
+                  <div className="clean-list-item">
+                    <div style={{ color: '#1B2559', fontWeight: 700, fontSize: 13 }}>View Weekly Reports</div>
                     <button
                       type="button"
-                      key={item}
-                      className={`reminder-btn ${completedReminders.includes(item) ? 'completed' : ''}`}
-                      onClick={() => toggleReminder(item)}
+                      onClick={() => {
+                        setWeeklyReportExpandedPatientId(null);
+                        setShowReport(true);
+                      }}
+                      style={{ border: 'none', borderRadius: 8, background: '#FFF1EB', color: '#C2410C', padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                     >
-                      <span>{item}</span>
-                      {completedReminders.includes(item) ? <CheckCircle2 size={16} /> : <Clock3 size={16} color="#94A3B8" />}
+                      Open
                     </button>
-                  ))}
-                </div>
-                <div className="panel-card" style={{ marginBottom: 0 }}>
-                  <div className="panel-title"><FileText size={16} color="#F54E25" /> Request Status</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ color: '#334155', fontSize: 13 }}>Admission Request</span>
-                    <span className="status-chip" style={{ background: '#FEF3C7', color: '#92400E' }}>In Review</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ color: '#334155', fontSize: 13 }}>Medical Requirements</span>
-                    <span className="status-chip" style={{ background: '#FEE2E2', color: '#991B1B' }}>Needs Action</span>
+                  <div className="clean-list-item">
+                    <div style={{ color: '#1B2559', fontWeight: 700, fontSize: 13 }}>Go to Services</div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/services')}
+                      style={{ border: 'none', borderRadius: 8, background: '#EEF2FF', color: '#3730A3', padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Open
+                    </button>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: '#334155', fontSize: 13 }}>Weekly Report</span>
-                    <span className="status-chip" style={{ background: '#DCFCE7', color: '#166534' }}>Approved</span>
+                  <div className="clean-list-item">
+                    <div style={{ color: '#1B2559', fontWeight: 700, fontSize: 13 }}>Manage Your Profile</div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/profile')}
+                      style={{ border: 'none', borderRadius: 8, background: '#ECFDF3', color: '#065F46', padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Open
+                    </button>
                   </div>
                 </div>
               </div>

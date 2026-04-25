@@ -19,6 +19,8 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
+import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 
 const TAGALOG_PREF_KEY = 'profile_translate_tagalog';
 
@@ -393,29 +395,8 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      <View style={[styles.bottomNav, { paddingBottom: insets.bottom + 10 }]}>
-        <TabItem
-          img={require('../../assets/images/home-icon.png')}
-          label="Home"
-          onPress={() => router.navigate(TAB_ROUTES.home)}
-        />
-        <TabItem
-          img={require('../../assets/images/progress-icon.png')}
-          label="Progress"
-          onPress={() => router.navigate(TAB_ROUTES.progress)}
-        />
-        <TabItem
-          img={require('../../assets/images/messages-icon.png')}
-          label="Message"
-          onPress={() => router.navigate(TAB_ROUTES.messages)}
-        />
-        <TabItem
-          img={require('../../assets/images/profile-icon.png')}
-          label="Profile"
-          active
-          onPress={() => router.navigate(TAB_ROUTES.profile)}
-        />
-      </View>
+      <FamilyWebMobileNav active="profile" />
+      <FamilyFloatingChat />
     </View>
   );
 }
@@ -453,17 +434,6 @@ function ProfileField({
     </View>
   );
 }
-
-const TabItem = ({ img, label, active, onPress }: any) => (
-  <TouchableOpacity style={styles.tabItem} onPress={onPress}>
-    <Image
-      source={img}
-      style={[styles.tabIcon, { tintColor: active ? '#F54E25' : '#999999' }]}
-      resizeMode="contain"
-    />
-    <Text style={[styles.tabLabel, active && styles.activeTabLabel]}>{label}</Text>
-  </TouchableOpacity>
-);
 
 const styles = StyleSheet.create({
   screen: {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { User, LogOut, FileText, ChevronDown, LayoutGrid } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logo from '@/assets/logo2.png';
+import logo from '@/assets/kalingalogo.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
@@ -795,7 +795,7 @@ const WeeklyReport = () => {
       {/* DESKTOP SIDEBAR — matches image: logo, FileText active, LayoutGrid, LogOut */}
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container">
-          <img src={logo} alt="BH" className="sidebar-logo" />
+          <img src={logo} alt="Kalinga" className="sidebar-logo" />
         </div>
 
         <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
@@ -826,7 +826,7 @@ const WeeklyReport = () => {
 
       {/* MOBILE TOP BAR */}
       <div className="mobile-only mobile-top-bar">
-        <img src={logo} alt="BH" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
+        <img src={logo} alt="Kalinga" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
         <span className="mobile-top-bar-title">Weekly Report</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>JD</div>
       </div>

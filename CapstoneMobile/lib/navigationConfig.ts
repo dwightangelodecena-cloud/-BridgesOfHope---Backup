@@ -32,6 +32,9 @@ export const TAB_ROUTES = {
   progress: "/tabs/progress",
   messages: "/tabs/Messages",
   profile: "/tabs/profile",
+  patientDetails: "/tabs/patient-details",
+  appointments: "/tabs/appointments",
+  reports: "/tabs/reports",
   /** Admission / upload documents / admit a patient */
   admission: "/tabs/AdmissionForm",
   services: "/tabs/services",

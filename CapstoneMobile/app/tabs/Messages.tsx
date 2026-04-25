@@ -24,6 +24,8 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
+import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
 
 const { width } = Dimensions.get('window');
@@ -945,7 +947,7 @@ export default function MessageScreen() {
                 <View style={styles.headerCenter}>
                   <Text style={styles.headerBrandTitle}>Messages</Text>
                   <Text style={styles.headerWelcomeLine} numberOfLines={1}>
-                    Welcome back, {displayName}
+                    Welcome Back, {(displayName || 'Family User').trim().split(/\s+/)[0]}
                   </Text>
                 </View>
                 <View style={styles.headerActions}>
@@ -1180,44 +1182,14 @@ export default function MessageScreen() {
       )}
 
       {!activeThreadId ? (
-        <View style={[styles.bottomNav, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-          <TabItem
-            img={require('../../assets/images/home-icon.png')}
-            label="Home"
-            onPress={() => router.navigate(TAB_ROUTES.home)}
-          />
-          <TabItem
-            img={require('../../assets/images/progress-icon.png')}
-            label="Progress"
-            onPress={() => router.navigate(TAB_ROUTES.progress)}
-          />
-          <TabItem
-            img={require('../../assets/images/messages-icon.png')}
-            label="Message"
-            active
-            onPress={() => {}}
-          />
-          <TabItem
-            img={require('../../assets/images/profile-icon.png')}
-            label="Profile"
-            onPress={() => router.navigate(TAB_ROUTES.profile)}
-          />
-        </View>
+        <>
+          <FamilyWebMobileNav active="none" />
+          <FamilyFloatingChat />
+        </>
       ) : null}
     </View>
   );
 }
-
-const TabItem = ({ img, label, active, onPress }: any) => (
-  <TouchableOpacity style={styles.tabItem} onPress={onPress}>
-    <Image
-      source={img}
-      style={[styles.tabIcon, { tintColor: active ? '#F54E25' : '#999999' }]}
-      resizeMode="contain"
-    />
-    <Text style={[styles.tabLabel, active && styles.activeTabLabel]}>{label}</Text>
-  </TouchableOpacity>
-);
 
 const styles = StyleSheet.create({
   screen: {

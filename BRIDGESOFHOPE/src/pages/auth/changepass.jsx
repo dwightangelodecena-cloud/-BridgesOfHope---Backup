@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, X, CheckCircle, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logo from '@/assets/logo.png';
+import logo from '@/assets/kalingalogo.png';
 
 const ChangePass = () => {
   const navigate = useNavigate();

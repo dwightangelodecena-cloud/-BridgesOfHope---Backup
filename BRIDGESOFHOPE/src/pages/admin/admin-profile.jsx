@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { LayoutGrid, HeartPulse, LogOut, Users, ArrowRightSquare, Stethoscope, LayoutTemplate, ClipboardList, User, Calendar, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logoBH from '@/assets/logo2.png';
+import logoBH from '@/assets/kalingalogo.png';
 import { supabase } from '@/lib/supabase';
 import { clearAdminApprovalPin, getAdminApprovalPin, setAdminApprovalPin, verifyAdminApprovalPin } from '@/lib/adminApprovalPin';
 
@@ -216,7 +216,7 @@ const AdminProfile = () => {
       `}</style>
 
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container"><img src={logoBH} alt="BH" className="sidebar-logo" /></div>
+        <div className="sidebar-logo-container"><img src={logoBH} alt="Kalinga" className="sidebar-logo" /></div>
         <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}><div className="icon-box inactive"><LayoutGrid size={22} /></div><span className="sidebar-label">Dashboard</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><HeartPulse size={22} /></div><span className="sidebar-label">Patient Management</span></div>

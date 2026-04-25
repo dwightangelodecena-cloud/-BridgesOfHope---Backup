@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, X, Phone, MapPin, Building2, Hash, CheckCircle } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import logo from '@/assets/logo.png';
+import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
 import { PsgcSearchableSelect } from '@/components/address/PsgcSearchableSelect';

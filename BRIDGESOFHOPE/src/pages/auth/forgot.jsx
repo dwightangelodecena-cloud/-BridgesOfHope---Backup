@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logo from '@/assets/logo.png';
+import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { startGoogleOAuthWeb } from '@/lib/oauthWeb';
 

@@ -33,7 +33,7 @@ import {
 import { LandingPageBodySections } from '@/components/landing/LandingPageBodySections';
 
 // ─── Asset imports (unchanged) ──────────────────────────────────────────────
-import logo from '@/assets/logo.png';
+import logo from '@/assets/kalingalogo.png';
 import gma from '@/assets/gmanewstv.png';
 import tv5 from '@/assets/tv5.png';
 import wsj from '@/assets/wsj.png';

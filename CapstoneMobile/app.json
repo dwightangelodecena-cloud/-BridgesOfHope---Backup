@@ -4,7 +4,7 @@
     "slug": "CapstoneMobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/BOHLogo.png",
+    "icon": "./assets/images/kalingalogo.png",
     "scheme": "capstonemobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -15,9 +15,9 @@
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/BOHLogo.png",
-        "backgroundImage": "./assets/images/BOHLogo.png",
-        "monochromeImage": "./assets/images/BOHLogo.png"
+        "foregroundImage": "./assets/images/kalingalogo.png",
+        "backgroundImage": "./assets/images/kalingalogo.png",
+        "monochromeImage": "./assets/images/kalingalogo.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -25,14 +25,14 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/BOHLogo.png"
+      "favicon": "./assets/images/kalingalogo.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/BOHLogo.png",
+          "image": "./assets/images/kalingalogo.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",

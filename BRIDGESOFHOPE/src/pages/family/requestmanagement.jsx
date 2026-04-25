@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Home, User, LogOut, Bell, CheckCircle2, CheckCircle, Mail, Phone, Calendar, ClipboardList, MapPin, Building2, Hash, BarChart3 } from 'lucide-react';
+import { Home, User, LogOut, Bell, CheckCircle2, CheckCircle, Mail, Phone, Calendar, ClipboardList, MapPin, Building2, Hash, BarChart3, TrendingUp } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -10,7 +10,8 @@ import { PsgcSearchableSelect } from '@/components/address/PsgcSearchableSelect'
 import { AddressFormSection, StreetAddressInput } from '@/components/address/AddressFormSection';
 import { usePsgcAddressCascade } from '@/hooks/usePsgcAddressCascade';
 import { getAddressStorageKey, loadAddressDraft, saveAddressDraft, clearAddressDraft } from '@/lib/addressPersistence';
-import logo from '@/assets/logo2.png';
+import logo from '@/assets/kalingalogo.png';
+import FloatingChatHead from '@/components/family/FloatingChatHead';
 
 const Progress = () => {
   const navigate = useNavigate();
@@ -53,10 +54,18 @@ const Progress = () => {
 
   const [dischargeForm, setDischargeForm] = useState({
     reasonCategory: '',
+    reasonCategoryOther: '',
     reasonDetails: '',
     preferredDate: '',
     pickupAuthorized: '',
     followUpPhone: '',
+    escortName: '',
+    escortRelation: '',
+    escortContact: '',
+    destinationAfterDischarge: '',
+    followUpClinic: '',
+    medicationPlan: '',
+    belongingsChecklist: '',
     otherInfo: '',
   });
   const [dischargeErrors, setDischargeErrors] = useState({});
@@ -95,13 +104,13 @@ const Progress = () => {
     { key: 'street', label: 'Street' },
     { key: 'patientLastName', label: 'Patient Last Name' },
     { key: 'patientFirstName', label: 'Patient First Name' },
-    { key: 'patientMiddleName', label: 'Patient Middle Name' },
     { key: 'patientGender', label: 'Patient Gender' },
     { key: 'patientBirthday', label: 'Patient Birthday' },
     { key: 'reasonForAdmission', label: 'Reason for Admission' },
   ];
   const admissionCompletedFields = admissionRequiredFields.filter((field) => String(admissionForm[field.key]).trim()).length;
   const admissionProgressPercent = Math.round((admissionCompletedFields / admissionRequiredFields.length) * 100);
+  const selectedPatient = patients.find((p) => String(p.id) === String(selectedPatientId));
 
   const getPatientFullName = (form = admissionForm) =>
     [form.patientFirstName, form.patientMiddleName, form.patientLastName]
@@ -319,7 +328,6 @@ const Progress = () => {
     if (!admissionForm.barangay.trim()) errs.barangay = 'Barangay is required.';
     if (!admissionForm.patientLastName.trim()) errs.patientLastName = 'Patient last name is required.';
     if (!admissionForm.patientFirstName.trim()) errs.patientFirstName = 'Patient first name is required.';
-    if (!admissionForm.patientMiddleName.trim()) errs.patientMiddleName = 'Patient middle name is required.';
     if (!admissionForm.patientGender.trim()) errs.patientGender = 'Patient gender is required.';
     if (!admissionForm.patientBirthday) errs.patientBirthday = 'Patient birthday is required.';
     if (!admissionForm.reasonForAdmission) errs.reasonForAdmission = 'Please select a reason.';
@@ -332,9 +340,15 @@ const Progress = () => {
     const errs = {};
     if (!selectedPatientId) errs.selectedPatientId = 'Please select a patient.';
     if (!dischargeForm.reasonCategory) errs.reasonCategory = 'Please select a reason.';
+    if (dischargeForm.reasonCategory === 'Other' && !dischargeForm.reasonCategoryOther.trim()) {
+      errs.reasonCategoryOther = 'Please specify the other reason.';
+    }
     if (!dischargeForm.reasonDetails.trim() || dischargeForm.reasonDetails.trim().length < 15) {
       errs.reasonDetails = 'Reason details must be at least 15 characters.';
     }
+    if (!dischargeForm.escortName.trim()) errs.escortName = 'Authorized escort name is required.';
+    if (!dischargeForm.escortContact.trim()) errs.escortContact = 'Escort contact number is required.';
+    if (!dischargeForm.destinationAfterDischarge.trim()) errs.destinationAfterDischarge = 'Discharge destination is required.';
     setDischargeErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -409,8 +423,20 @@ const Progress = () => {
   };
 
   const submitDischarge = async () => {
-    const selectedPatient = patients.find((p) => String(p.id) === String(selectedPatientId));
     if (!selectedPatient) return;
+    const bundledOtherInfo = [
+      dischargeForm.reasonCategory === 'Other' && dischargeForm.reasonCategoryOther?.trim()
+        ? `Other Reason Category: ${dischargeForm.reasonCategoryOther.trim()}`
+        : '',
+      dischargeForm.otherInfo?.trim() ? `Additional Notes: ${dischargeForm.otherInfo.trim()}` : '',
+      dischargeForm.escortName?.trim() ? `Authorized Escort: ${dischargeForm.escortName.trim()}` : '',
+      dischargeForm.escortRelation?.trim() ? `Escort Relationship: ${dischargeForm.escortRelation.trim()}` : '',
+      dischargeForm.escortContact?.trim() ? `Escort Contact: ${dischargeForm.escortContact.trim()}` : '',
+      dischargeForm.destinationAfterDischarge?.trim() ? `Discharge Destination: ${dischargeForm.destinationAfterDischarge.trim()}` : '',
+      dischargeForm.followUpClinic?.trim() ? `Follow-up Clinic/Doctor: ${dischargeForm.followUpClinic.trim()}` : '',
+      dischargeForm.medicationPlan?.trim() ? `Medication Plan: ${dischargeForm.medicationPlan.trim()}` : '',
+      dischargeForm.belongingsChecklist?.trim() ? `Belongings Checklist: ${dischargeForm.belongingsChecklist.trim()}` : '',
+    ].filter(Boolean).join('\n');
     if (!isSupabaseConfigured()) {
       const pending = JSON.parse(localStorage.getItem('bh_pending_discharges') || '[]');
       pending.push({
@@ -422,7 +448,7 @@ const Progress = () => {
         preferred_discharge_date: dischargeForm.preferredDate || null,
         pickup_authorized: dischargeForm.pickupAuthorized.trim() || null,
         follow_up_phone: dischargeForm.followUpPhone.trim() || null,
-        other_info: dischargeForm.otherInfo.trim() || null,
+        other_info: bundledOtherInfo || null,
         status: 'pending',
       });
       localStorage.setItem('bh_pending_discharges', JSON.stringify(pending));
@@ -435,17 +461,41 @@ const Progress = () => {
         setDischargeErrors({ submit: 'Please sign in to submit a discharge request.' });
         return;
       }
-      const { error } = await supabase.from('discharge_requests').insert({
+      const familyName =
+        user.user_metadata?.full_name
+        || String(admissionForm.fullName || '').trim()
+        || 'Family User';
+      const familyEmail = user.email || String(admissionForm.email || '').trim() || null;
+      const familyPhone = String(admissionForm.phoneNumber || '').trim() || null;
+      const dischargePayload = {
         patient_id: selectedPatient.id,
         family_id: user.id,
+        family_name: familyName,
+        guardian_email: familyEmail,
+        guardian_phone: familyPhone,
         reason_category: dischargeForm.reasonCategory,
         reason_details: dischargeForm.reasonDetails.trim(),
         preferred_discharge_date: dischargeForm.preferredDate || null,
         pickup_authorized: dischargeForm.pickupAuthorized.trim() || null,
         follow_up_phone: dischargeForm.followUpPhone.trim() || null,
-        other_info: dischargeForm.otherInfo.trim() || null,
+        other_info: bundledOtherInfo || null,
         status: 'pending',
-      });
+      };
+      let { error } = await supabase.from('discharge_requests').insert(dischargePayload);
+      if (error) {
+        // Backward compatibility: retry with baseline columns for older schemas.
+        ({ error } = await supabase.from('discharge_requests').insert({
+          patient_id: selectedPatient.id,
+          family_id: user.id,
+          reason_category: dischargeForm.reasonCategory,
+          reason_details: dischargeForm.reasonDetails.trim(),
+          preferred_discharge_date: dischargeForm.preferredDate || null,
+          pickup_authorized: dischargeForm.pickupAuthorized.trim() || null,
+          follow_up_phone: dischargeForm.followUpPhone.trim() || null,
+          other_info: bundledOtherInfo || null,
+          status: 'pending',
+        }));
+      }
       if (error) {
         setDischargeErrors({ submit: error.message });
         return;
@@ -456,14 +506,22 @@ const Progress = () => {
     addProcessingNotification();
     setDischargeForm({
       reasonCategory: '',
+      reasonCategoryOther: '',
       reasonDetails: '',
       preferredDate: '',
       pickupAuthorized: '',
       followUpPhone: '',
+      escortName: '',
+      escortRelation: '',
+      escortContact: '',
+      destinationAfterDischarge: '',
+      followUpClinic: '',
+      medicationPlan: '',
+      belongingsChecklist: '',
       otherInfo: '',
     });
     setSelectedPatientId('');
-    setSuccessModal({ open: true, message: 'Discharge request submitted successfully.' });
+    setSuccessModal({ open: true, message: 'Discharge request submitted and sent to the admin queue.' });
   };
 
   const handlePrimarySubmit = () => {
@@ -534,19 +592,69 @@ const Progress = () => {
         .notif-dropdown-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; color: #334155; font-size: 13px; }
         .content-area { flex: 1; padding: 24px 30px 30px; overflow-y: auto; }
         .content-wrap { width: 100%; max-width: 1600px; margin: 0 auto; }
-        .request-shell { background: #fff; border: 1px solid #E9EDF7; border-radius: 20px; padding: 22px; min-height: calc(100vh - 170px); display: flex; flex-direction: column; }
+        .request-shell { background: #fff; border: 1px solid #E9EDF7; border-radius: 20px; padding: 22px; min-height: calc(100vh - 170px); display: flex; flex-direction: column; box-shadow: 0 14px 35px rgba(15, 23, 42, 0.06); }
         .heading { color: #1B2559; font-size: 24px; font-weight: 800; line-height: 1.2; }
         .subheading { margin-top: 6px; color: #64748B; font-size: 14px; font-weight: 600; }
-        .tabs { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .tab-btn { border: 1px solid #E2E8F0; background: #F8FAFC; border-radius: 12px; padding: 12px; font-weight: 800; color: #334155; cursor: pointer; }
-        .tab-btn.active { background: #FFF5F1; border-color: #F54E25; color: #F54E25; }
+        .tabs { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #F8FAFF; border: 1px solid #E5ECFA; border-radius: 14px; padding: 8px; }
+        .tab-btn { border: 1px solid transparent; background: transparent; border-radius: 10px; padding: 12px; font-weight: 800; color: #475569; cursor: pointer; transition: .18s ease; }
+        .tab-btn:hover { background: #FFFFFF; border-color: #E2E8F0; color: #334155; }
+        .tab-btn.active { background: linear-gradient(180deg, #FFF5F1 0%, #FFFFFF 100%); border-color: #FBCBBE; color: #F54E25; box-shadow: 0 8px 18px rgba(245, 78, 37, 0.12); }
+        .form-surface {
+          margin-top: 16px;
+          border: 1px solid #E7ECF8;
+          border-radius: 16px;
+          background: linear-gradient(180deg, #FDFEFF 0%, #FFFFFF 100%);
+          padding: 16px;
+        }
+        .section-kicker {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: .04em;
+          color: #7C3AED;
+          background: #F3EDFF;
+          border: 1px solid #E9DDFF;
+          padding: 4px 9px;
+          border-radius: 999px;
+          margin-bottom: 8px;
+        }
+        .section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+        .section-title-main { color: #1B2559; font-size: 18px; font-weight: 800; }
+        .section-title-sub { color: #64748B; font-size: 12px; font-weight: 600; }
+        .status-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border-radius: 999px;
+          padding: 5px 10px;
+          font-size: 11px;
+          font-weight: 800;
+          background: #ECFDF3;
+          color: #166534;
+          border: 1px solid #CFF7DC;
+        }
+        .quick-insights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+        .insight-card { border: 1px solid #E8EEF8; border-radius: 12px; background: #F8FAFF; padding: 10px 12px; }
+        .insight-label { color: #64748B; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+        .insight-value { color: #1E293B; font-size: 16px; font-weight: 800; margin-top: 2px; }
         .form-grid { margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-content: start; }
         .full { grid-column: 1 / -1; }
+        .field {
+          border: 1px solid #E9EEF8;
+          border-radius: 14px;
+          background: #FFFFFF;
+          padding: 12px;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+        }
+        .field.full { padding: 14px; }
         .field label { display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; }
         .field input, .field textarea, .field select { width: 100%; border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px 14px; font-size: 14px; color: #1B2559; background: #fff; }
         .field textarea { min-height: 100px; resize: vertical; }
         .error { color: #DC2626; font-size: 12px; margin-top: 4px; font-weight: 600; }
-        .meta-card { border: 1px solid #E9EDF7; background: #FAFCFF; border-radius: 14px; padding: 12px; margin-top: 14px; }
+        .meta-card { border: 1px solid #E9EDF7; background: #FAFCFF; border-radius: 14px; padding: 12px; margin-top: 14px; box-shadow: inset 0 1px 0 #FFFFFF; }
         .input-wrapper { position: relative; display: flex; align-items: center; }
         .input-icon { position: absolute; left: 12px; color: #94A3B8; pointer-events: none; }
         .input-wrapper input, .input-wrapper select { padding-left: 42px; }
@@ -555,8 +663,9 @@ const Progress = () => {
         .input-date { padding-right: 38px !important; }
         .date-field-hint { font-size: 12px; color: #94a3b8; margin-top: 6px; }
         .empty-patient { margin-top: 16px; border: 1px dashed #D4DFEE; background: #F8FBFF; border-radius: 12px; padding: 22px; text-align: center; color: #64748B; font-weight: 700; }
-        .submit-row { margin-top: auto; padding-top: 20px; display: flex; justify-content: flex-end; }
-        .primary-btn { background: #F54E25; color: #fff; border: none; border-radius: 12px; padding: 12px 22px; font-weight: 800; cursor: pointer; }
+        .submit-row { margin-top: 18px; padding-top: 12px; display: flex; justify-content: flex-end; }
+        .primary-btn { background: linear-gradient(145deg, #F97316, #EA580C); color: #fff; border: none; border-radius: 12px; padding: 12px 22px; font-weight: 800; cursor: pointer; box-shadow: 0 10px 24px rgba(234, 88, 12, 0.24); transition: transform .18s ease, box-shadow .18s ease; }
+        .primary-btn:hover { transform: translateY(-1px); box-shadow: 0 14px 28px rgba(234, 88, 12, 0.28); }
         .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 7000; display: flex; align-items: center; justify-content: center; padding: 20px; }
         .modal-box { background: #fff; border-radius: 18px; width: 100%; max-width: 430px; padding: 24px; text-align: center; }
         .modal-title {
@@ -657,6 +766,7 @@ const Progress = () => {
           .content-area { padding: 16px 14px 100px; overflow: visible; }
           .request-shell { min-height: auto; }
           .form-grid { grid-template-columns: 1fr; }
+          .quick-insights { grid-template-columns: 1fr; }
           .mobile-bottom-nav { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: 74px; background: #fff; border-top: 1px solid #F1F1F1; justify-content: space-around; align-items: center; z-index: 500; }
           .terms-modal { max-height: 90vh; border-radius: 16px; }
           .terms-modal-header, .terms-modal-body, .terms-modal-footer { padding-left: 14px; padding-right: 14px; }
@@ -668,13 +778,16 @@ const Progress = () => {
       `}</style>
 
       <aside className="sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container"><img src={logo} alt="BH" className="sidebar-logo" /></div>
+        <div className="sidebar-logo-container"><img src={logo} alt="Kalinga" className="sidebar-logo" /></div>
         <div className="sidebar-primary">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
             <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}>
+            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Patient Details</span>
+          </div>
           <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
+            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
             <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
@@ -713,7 +826,7 @@ const Progress = () => {
         </header>
 
         <div className="mobile-top-bar">
-          <img src={logo} alt="BH" style={{ width: 48 }} />
+          <img src={logo} alt="Kalinga" style={{ width: 48 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
               <button type="button" className="notifications-trigger" aria-expanded={showNotifications} aria-label="Notifications" onClick={() => setShowNotifications((v) => !v)}>
@@ -744,7 +857,29 @@ const Progress = () => {
               </div>
 
               {activeTab === 'admission' && (
-                <>
+                <div className="form-surface">
+                  <div className="section-kicker"><CheckCircle2 size={13} /> Admission workflow</div>
+                  <div className="section-title-row">
+                    <div>
+                      <div className="section-title-main">Admission Request Form</div>
+                      <div className="section-title-sub">Provide guardian and patient details for review.</div>
+                    </div>
+                    <div className="status-pill"><CheckCircle size={13} /> Admin review required</div>
+                  </div>
+                  <div className="quick-insights">
+                    <div className="insight-card">
+                      <div className="insight-label">Completion</div>
+                      <div className="insight-value">{admissionProgressPercent}%</div>
+                    </div>
+                    <div className="insight-card">
+                      <div className="insight-label">Required fields done</div>
+                      <div className="insight-value">{admissionCompletedFields}/{admissionRequiredFields.length}</div>
+                    </div>
+                    <div className="insight-card">
+                      <div className="insight-label">Form status</div>
+                      <div className="insight-value">{admissionProgressPercent === 100 ? 'Ready' : 'In Progress'}</div>
+                    </div>
+                  </div>
                   <div className="meta-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.86rem' }}>Form Completion</span>
@@ -878,7 +1013,7 @@ const Progress = () => {
                       {admissionErrors.patientFirstName && <div className="error">{admissionErrors.patientFirstName}</div>}
                     </div>
                     <div className="field">
-                      <label>Patient Middle Name *</label>
+                      <label>Patient Middle Name (Optional)</label>
                       <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientMiddleName" placeholder="Patient's middle name" value={admissionForm.patientMiddleName} onChange={handleAdmissionChange} /></div>
                       {admissionErrors.patientMiddleName && <div className="error">{admissionErrors.patientMiddleName}</div>}
                     </div>
@@ -890,8 +1025,6 @@ const Progress = () => {
                           <option value="">Select Gender</option>
                           <option value="Male">Male</option>
                           <option value="Female">Female</option>
-                          <option value="Other">Other</option>
-                          <option value="Prefer not to say">Prefer not to say</option>
                         </select>
                       </div>
                       {admissionErrors.patientGender && <div className="error">{admissionErrors.patientGender}</div>}
@@ -952,11 +1085,33 @@ const Progress = () => {
                     {admissionErrors.agreeToTerms && <div className="error full">{admissionErrors.agreeToTerms}</div>}
                     {admissionErrors.submit && <div className="error full">{admissionErrors.submit}</div>}
                   </div>
-                </>
+                </div>
               )}
 
               {activeTab === 'discharge' && (
-                <>
+                <div className="form-surface">
+                  <div className="section-kicker"><TrendingUp size={13} /> Discharge workflow</div>
+                  <div className="section-title-row">
+                    <div>
+                      <div className="section-title-main">Discharge Request Form</div>
+                      <div className="section-title-sub">Submit discharge endorsement and follow-up details.</div>
+                    </div>
+                    <div className="status-pill"><CheckCircle size={13} /> Needs confirmation</div>
+                  </div>
+                  <div className="quick-insights">
+                    <div className="insight-card">
+                      <div className="insight-label">Admitted patients</div>
+                      <div className="insight-value">{patients.length}</div>
+                    </div>
+                    <div className="insight-card">
+                      <div className="insight-label">Selected patient</div>
+                      <div className="insight-value">{selectedPatient ? selectedPatient.name.split(' ')[0] : 'None'}</div>
+                    </div>
+                    <div className="insight-card">
+                      <div className="insight-label">Request state</div>
+                      <div className="insight-value">{selectedPatientId ? 'Draft Ready' : 'Select Patient'}</div>
+                    </div>
+                  </div>
                   <div className="form-grid">
                     <div className="field full">
                       <label>Select Patient *</label>
@@ -970,16 +1125,34 @@ const Progress = () => {
                   {!patients.length && <div className="empty-patient">No admitted patients available for discharge request.</div>}
                   {selectedPatientId && (
                     <div className="form-grid">
-                      <div className="field"><label>Reason Category *</label><select value={dischargeForm.reasonCategory} onChange={(e) => setDischargeForm((p) => ({ ...p, reasonCategory: e.target.value }))}><option value="">Select reason</option><option value="Treatment program completed">Treatment program completed</option><option value="Medical recommendation">Medical recommendation</option><option value="Family request">Family request</option><option value="Transfer">Transfer</option><option value="Other">Other</option></select>{dischargeErrors.reasonCategory && <div className="error">{dischargeErrors.reasonCategory}</div>}</div>
+                      <div className="field"><label>Reason Category *</label><select value={dischargeForm.reasonCategory} onChange={(e) => setDischargeForm((p) => ({ ...p, reasonCategory: e.target.value, reasonCategoryOther: e.target.value === 'Other' ? p.reasonCategoryOther : '' }))}><option value="">Select reason</option><option value="Treatment program completed">Treatment program completed</option><option value="Medical recommendation">Medical recommendation</option><option value="Family request">Family request</option><option value="Other">Other</option></select>{dischargeErrors.reasonCategory && <div className="error">{dischargeErrors.reasonCategory}</div>}</div>
+                      {dischargeForm.reasonCategory === 'Other' && (
+                        <div className="field full">
+                          <label>Specify Other Reason *</label>
+                          <input
+                            value={dischargeForm.reasonCategoryOther}
+                            onChange={(e) => setDischargeForm((p) => ({ ...p, reasonCategoryOther: e.target.value }))}
+                            placeholder="Enter the specific reason category"
+                          />
+                          {dischargeErrors.reasonCategoryOther && <div className="error">{dischargeErrors.reasonCategoryOther}</div>}
+                        </div>
+                      )}
                       <div className="field"><label>Preferred Discharge Date</label><input type="date" value={dischargeForm.preferredDate} onChange={(e) => setDischargeForm((p) => ({ ...p, preferredDate: e.target.value }))} /></div>
                       <div className="field"><label>Authorized Pickup</label><input value={dischargeForm.pickupAuthorized} onChange={(e) => setDischargeForm((p) => ({ ...p, pickupAuthorized: e.target.value }))} /></div>
                       <div className="field"><label>Follow-up Phone</label><input value={dischargeForm.followUpPhone} onChange={(e) => setDischargeForm((p) => ({ ...p, followUpPhone: e.target.value }))} /></div>
+                      <div className="field"><label>Authorized Escort Name *</label><input value={dischargeForm.escortName} onChange={(e) => setDischargeForm((p) => ({ ...p, escortName: e.target.value }))} />{dischargeErrors.escortName && <div className="error">{dischargeErrors.escortName}</div>}</div>
+                      <div className="field"><label>Escort Relationship</label><input value={dischargeForm.escortRelation} onChange={(e) => setDischargeForm((p) => ({ ...p, escortRelation: e.target.value }))} /></div>
+                      <div className="field"><label>Escort Contact Number *</label><input value={dischargeForm.escortContact} onChange={(e) => setDischargeForm((p) => ({ ...p, escortContact: e.target.value }))} />{dischargeErrors.escortContact && <div className="error">{dischargeErrors.escortContact}</div>}</div>
+                      <div className="field full"><label>Destination After Discharge *</label><input value={dischargeForm.destinationAfterDischarge} onChange={(e) => setDischargeForm((p) => ({ ...p, destinationAfterDischarge: e.target.value }))} placeholder="Home address or receiving facility" />{dischargeErrors.destinationAfterDischarge && <div className="error">{dischargeErrors.destinationAfterDischarge}</div>}</div>
+                      <div className="field"><label>Follow-up Clinic / Doctor</label><input value={dischargeForm.followUpClinic} onChange={(e) => setDischargeForm((p) => ({ ...p, followUpClinic: e.target.value }))} /></div>
+                      <div className="field"><label>Medication Plan (Summary)</label><input value={dischargeForm.medicationPlan} onChange={(e) => setDischargeForm((p) => ({ ...p, medicationPlan: e.target.value }))} /></div>
+                      <div className="field full"><label>Belongings Checklist</label><textarea value={dischargeForm.belongingsChecklist} onChange={(e) => setDischargeForm((p) => ({ ...p, belongingsChecklist: e.target.value }))} placeholder="List released belongings, documents, and medications." /></div>
                       <div className="field full"><label>Reason Details *</label><textarea value={dischargeForm.reasonDetails} onChange={(e) => setDischargeForm((p) => ({ ...p, reasonDetails: e.target.value }))} />{dischargeErrors.reasonDetails && <div className="error">{dischargeErrors.reasonDetails}</div>}</div>
                       <div className="field full"><label>Other Information</label><textarea value={dischargeForm.otherInfo} onChange={(e) => setDischargeForm((p) => ({ ...p, otherInfo: e.target.value }))} /></div>
                       {dischargeErrors.submit && <div className="error full">{dischargeErrors.submit}</div>}
                     </div>
                   )}
-                </>
+                </div>
               )}
 
               <div className="submit-row"><button type="button" className="primary-btn" onClick={handlePrimarySubmit}>Submit Request</button></div>
@@ -1013,6 +1186,7 @@ const Progress = () => {
           <LogOut size={24} color="#A3AED0" onClick={() => navigate('/login')} />
         </nav>
       </main>
+      <FloatingChatHead />
 
       {showTermsModal && (
         <div className="modal-overlay" onClick={() => setShowTermsModal(false)}>

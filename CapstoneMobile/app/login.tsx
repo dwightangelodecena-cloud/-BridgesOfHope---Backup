@@ -244,7 +244,7 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Image
-          source={require("../assets/images/BOHLogo.png")}
+          source={require("../assets/images/kalingalogo.png")}
           style={styles.logo}
           resizeMode="contain"
         />
