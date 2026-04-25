@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Home, User, LogOut, Calendar, ClipboardList } from 'lucide-react';
+import { Home, User, LogOut, Calendar, ClipboardList, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/logo2.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -571,6 +571,10 @@ export default function FamilyAppointmentsPage() {
           <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => e.stopPropagation()}>
             <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Appointments</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
+            <div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Reports</span>
           </div>
         </div>
         <div className="sidebar-footer">

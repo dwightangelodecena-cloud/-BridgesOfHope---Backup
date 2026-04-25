@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, MessageCircle, X, Send, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown, ClipboardList } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, MessageCircle, X, Send, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown, ClipboardList, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
@@ -1726,6 +1726,12 @@ const HomeDashboard = () => {
             </div>
             <span className="sidebar-label">Appointments</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
+            <div className="sidebar-icon-wrap">
+              <BarChart3 size={22} color="#707EAE" />
+            </div>
+            <span className="sidebar-label">Reports</span>
+          </div>
         </div>
 
         <div className="sidebar-footer">
@@ -2095,6 +2101,7 @@ const HomeDashboard = () => {
           </div>
           <TrendingUp size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
           <Calendar size={24} color="#A3AED0" onClick={() => navigate('/appointments')} />
+          <BarChart3 size={24} color="#A3AED0" onClick={() => navigate('/reports')} />
           <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
           <LogOut size={24} color="#F54E25" onClick={() => navigate('/login')} />
         </div>

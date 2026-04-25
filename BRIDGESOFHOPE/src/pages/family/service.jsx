@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, User, LogOut, X, Landmark, Users, ChevronDown, ChevronUp, DollarSign, Bell, CheckCircle2, ClipboardList } from 'lucide-react';
+import { Home, User, LogOut, X, Landmark, Users, ChevronDown, ChevronUp, DollarSign, Bell, CheckCircle2, ClipboardList, BarChart3 } from 'lucide-react';
 import { Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -664,6 +664,12 @@ const Service = () => {
             <Calendar size={22} color="#707EAE" />
           </div>
           <span className="sidebar-label">Appointments</span>
+        </div>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
+          <div className="sidebar-icon-wrap">
+            <BarChart3 size={22} color="#707EAE" />
+          </div>
+          <span className="sidebar-label">Reports</span>
         </div>
         </div>
         <div className="sidebar-footer">

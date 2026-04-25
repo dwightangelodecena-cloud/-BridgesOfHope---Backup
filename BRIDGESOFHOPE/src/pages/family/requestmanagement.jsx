@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Home, User, LogOut, Bell, CheckCircle2, CheckCircle, Mail, Phone, Calendar, ClipboardList, MapPin, Building2, Hash } from 'lucide-react';
+import { Home, User, LogOut, Bell, CheckCircle2, CheckCircle, Mail, Phone, Calendar, ClipboardList, MapPin, Building2, Hash, BarChart3 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -680,6 +680,10 @@ const Progress = () => {
             <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Appointments</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
+            <div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Reports</span>
+          </div>
         </div>
         <div className="sidebar-footer">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}><User size={22} /><span className="sidebar-label">Profile</span></div>
@@ -996,6 +1000,14 @@ const Progress = () => {
             style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             <Calendar size={24} color="#A3AED0" />
+          </button>
+          <button
+            type="button"
+            aria-label="Reports"
+            onClick={() => navigate('/reports')}
+            style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <BarChart3 size={24} color="#A3AED0" />
           </button>
           <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
           <LogOut size={24} color="#A3AED0" onClick={() => navigate('/login')} />

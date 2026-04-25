@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight, Calendar, ClipboardList } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight, Calendar, ClipboardList, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAsyncData } from '@/hooks/useAsyncData';
@@ -621,6 +621,10 @@ const Profile = () => {
             <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Appointments</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
+            <div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Reports</span>
+          </div>
         </div>
 
         <div className="sidebar-footer">
@@ -829,6 +833,7 @@ const Profile = () => {
         <div className="mobile-only mobile-bottom-nav">
           <Home size={24} color="#A3AED0" onClick={() => navigate('/home')} />
           <TrendingUp size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
+          <BarChart3 size={24} color="#A3AED0" onClick={() => navigate('/reports')} />
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} onClick={() => navigate('/profile')}>
             <User size={24} color="#F54E25" />
             <span style={{ fontSize: '10px', fontWeight: 700, color: '#F54E25' }}>Profile</span>
