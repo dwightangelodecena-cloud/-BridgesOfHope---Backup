@@ -1,9 +1,12 @@
-import React, { useEffect, useEffect, useMemo, useRef, useState } from 'react';
-import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, FileText, ChevronLeft, Bell, CheckCircle2, TrendingUp, Activity } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, FileText, Bell, CheckCircle2, TrendingUp, Activity, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import { uiPatientFromRow } from '@/lib/dbMappers';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
+import FloatingChatHead from '@/components/family/FloatingChatHead';
 
 export default function FamilyReportsPage() {
   const navigate = useNavigate();
@@ -17,6 +20,16 @@ export default function FamilyReportsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [firstName, setFirstName] = useState('Family');
+  const [userInitials, setUserInitials] = useState('FU');
+  const notificationsDesktopRef = useRef(null);
+  const notificationsMobileRef = useRef(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationItems = [
+    'Submit missing laboratory result before Friday.',
+    'Family support session is scheduled on April 5, 10:00 AM.',
+    'Weekly report reviewed by your assigned counselor.',
+    'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
+  ];
 
   const formatDate = (iso) => {
     if (!iso) return 'N/A';
@@ -193,71 +206,12 @@ export default function FamilyReportsPage() {
     const next = visibleReports[0];
     setSelectedReportId(next?.id ? String(next.id) : '');
   }, [selectedPatient, selectedWeek, visibleReports]);
-  const [selectedWeek, setSelectedWeek] = useState('Week 1');
-  const [userInitials, setUserInitials] = useState('FU');
-  const notificationsDesktopRef = useRef(null);
-  const notificationsMobileRef = useRef(null);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const notificationItems = [
-    'Submit missing laboratory result before Friday.',
-    'Family support session is scheduled on April 5, 10:00 AM.',
-    'Weekly report reviewed by your assigned counselor.',
-    'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
-  ];
-
-  const samplePatients = useMemo(
-    () => [
-      {
-        id: 'p-1',
-        name: 'Maria Santos',
-        age: 29,
-        admissionDate: '2026-03-02',
-        reports: {
-          'Week 1': { summary: 'Stable week. Better sleep pattern and appetite.', progress: '65%', notes: 'No relapse signs observed.' },
-          'Week 2': { summary: 'Participated in all counseling sessions.', progress: '72%', notes: 'Shows improved social interaction.' },
-          'Week 3': { summary: 'Continued recovery trend with good compliance.', progress: '78%', notes: 'Responding well to structured routine.' },
-          'Week 4': { summary: 'Maintained positive behavior and engagement.', progress: '83%', notes: 'Family call positively impacted motivation.' },
-        },
-      },
-      {
-        id: 'p-2',
-        name: 'Elena Cruz',
-        age: 35,
-        admissionDate: '2026-03-09',
-        reports: {
-          'Week 1': { summary: 'Mild withdrawal symptoms managed successfully.', progress: '58%', notes: 'Needs close monitoring during evenings.' },
-          'Week 2': { summary: 'Symptoms reduced; started active participation.', progress: '66%', notes: 'Improved emotional regulation.' },
-          'Week 3': { summary: 'Attended all therapeutic activities this week.', progress: '73%', notes: 'Steady progress with treatment plan.' },
-          'Week 4': { summary: 'Consistent improvement in daily routines.', progress: '79%', notes: 'More openness during individual sessions.' },
-        },
-      },
-      {
-        id: 'p-3',
-        name: 'Sofia Reyes',
-        age: 24,
-        admissionDate: '2026-03-15',
-        reports: {
-          'Week 1': { summary: 'Initial adjustment week; cooperative behavior.', progress: '61%', notes: 'Requires encouragement in group sessions.' },
-          'Week 2': { summary: 'Better adaptation to program schedule.', progress: '69%', notes: 'Shows stronger coping responses.' },
-          'Week 3': { summary: 'Improved confidence and activity attendance.', progress: '75%', notes: 'Maintains good compliance with care plan.' },
-          'Week 4': { summary: 'Positive behavioral consistency observed.', progress: '82%', notes: 'Family support remains a strong factor.' },
-        },
-      },
-    ],
-    []
-  );
-
-  const patient = patientId ? samplePatients.find((p) => p.id === patientId) : null;
 
   useEffect(() => {
-    if (patientId && !samplePatients.some((p) => p.id === patientId)) {
-      navigate('/reports', { replace: true });
-    }
-  }, [patientId, navigate, samplePatients]);
-
-  useEffect(() => {
-    if (patientId) setSelectedWeek('Week 1');
-  }, [patientId]);
+    if (!patientId || !patients.length) return;
+    const match = patients.find((p) => String(p.id) === String(patientId));
+    if (match) setSelectedPatient(match);
+  }, [patientId, patients]);
 
   useEffect(() => {
     let isMounted = true;
@@ -308,8 +262,6 @@ export default function FamilyReportsPage() {
 
   const handleNotificationToggle = () => setShowNotifications((v) => !v);
 
-  const weeklyReport = patient ? patient.reports[selectedWeek] : null;
-
   return (
     <div className="app-container">
       <style>{`
@@ -354,6 +306,9 @@ export default function FamilyReportsPage() {
         .patient-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
         .patient-btn { border: 1px solid #E9EDF7; border-radius: 14px; background: #fff; padding: 14px; text-align: left; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
         .patient-btn:hover { border-color: #f5d0c4; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06); }
+        .patient-btn.active { border-color: #F54E25; box-shadow: 0 8px 20px rgba(245, 78, 37, 0.12); }
+        .loading-msg, .error-msg { margin-top: 12px; font-size: 13px; font-weight: 700; }
+        .error-msg { color: #b91c1c; }
         .patient-name { font-size: 1rem; font-weight: 800; color: #1B2559; margin-bottom: 8px; }
         .patient-meta { font-size: 12px; color: #64748B; font-weight: 600; margin-bottom: 4px; }
         .patient-kpi { margin-top: 8px; display: inline-flex; padding: 4px 9px; border-radius: 999px; font-size: 10px; font-weight: 800; background: #EEF4FF; color: #3758D5; }
@@ -502,47 +457,9 @@ export default function FamilyReportsPage() {
               <div className="reports-header">
                 <div>
                   <div className="reports-title">Patient Weekly Reports</div>
-                  <div className="reports-subtitle">View latest and past weekly reports from your actual patient records.</div>
-            {!patientId && (
-              <div className="panel-card">
-                <div className="reports-header">
-                  <div>
-                    <div className="reports-title">Patient Weekly Reports</div>
-                    <div className="reports-subtitle">Select a patient to open their reports. You will choose the week on the next screen.</div>
-                  </div>
-                </div>
-
-                <div className="patient-grid">
-                  {samplePatients.map((p) => (
-                    <button key={p.id} type="button" className="patient-btn" onClick={() => navigate(`/reports/${p.id}`)}>
-                      <div className="patient-name">{p.name}</div>
-                      <div className="patient-meta">Age: {p.age}</div>
-                      <div className="patient-meta">Admitted: {p.admissionDate}</div>
-                    </button>
-                  ))}
+                  <div className="reports-subtitle">View latest and past weekly reports from your patient records. Select a patient to open the full report.</div>
                 </div>
               </div>
-            )}
-
-            {patientId && patient && (
-              <div className="panel-card">
-                <button type="button" className="reports-back" onClick={() => navigate('/reports')}>
-                  <ChevronLeft size={18} />
-                  All patients
-                </button>
-
-                <div className="reports-header">
-                  <div className="report-detail-head" style={{ marginBottom: 0, paddingBottom: 0, border: 'none' }}>
-                    <div className="reports-title">{patient.name}</div>
-                    <div className="reports-subtitle">Age {patient.age} · Admitted {patient.admissionDate}</div>
-                  </div>
-                  <select className="week-select" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} aria-label="Report week">
-                    <option value="Week 1">Week 1</option>
-                    <option value="Week 2">Week 2</option>
-                    <option value="Week 3">Week 3</option>
-                    <option value="Week 4">Week 4</option>
-                  </select>
-                </div>
 
               {loading ? <div className="loading-msg">Loading live reports...</div> : null}
               {loadError ? <div className="error-msg">{loadError}</div> : null}
@@ -550,18 +467,18 @@ export default function FamilyReportsPage() {
                 <div className="empty-state">No assigned patients found yet for this account.</div>
               ) : (
                 <div className="patient-grid">
-                  {patients.map((patient) => {
-                    const reportCount = (weeklyReportsByPatient[String(patient.id)] || []).length;
+                  {patients.map((p) => {
+                    const reportCount = (weeklyReportsByPatient[String(p.id)] || []).length;
                     return (
                       <button
-                        key={patient.id}
+                        key={p.id}
                         type="button"
-                        className={`patient-btn ${selectedPatient && String(selectedPatient.id) === String(patient.id) ? 'active' : ''}`}
-                        onClick={() => setSelectedPatient(patient)}
+                        className={`patient-btn ${selectedPatient && String(selectedPatient.id) === String(p.id) ? 'active' : ''}`}
+                        onClick={() => setSelectedPatient(p)}
                       >
-                        <div className="patient-name">{patient.name}</div>
-                        <div className="patient-meta">Age: {patient.age}</div>
-                        <div className="patient-meta">Admitted: {patient.date || 'N/A'}</div>
+                        <div className="patient-name">{p.name}</div>
+                        <div className="patient-meta">Age: {p.age}</div>
+                        <div className="patient-meta">Admitted: {p.date || 'N/A'}</div>
                         <div className="patient-kpi">{reportCount} report{reportCount === 1 ? '' : 's'}</div>
                       </button>
                     );
@@ -569,29 +486,6 @@ export default function FamilyReportsPage() {
                 </div>
               )}
             </div>
-                <div className="report-detail-body">
-                  <div className="report-detail-head">
-                    <div className="report-detail-kicker">Care updates</div>
-                    <div className="report-detail-title">
-                      <span className="accent">{selectedWeek}</span> report
-                    </div>
-                    <div className="report-detail-meta">Weekly patient report for this period.</div>
-                  </div>
-                  <div className="report-row">
-                    <div className="report-label"><FileText size={14} />Summary</div>
-                    <div className="report-value">{weeklyReport?.summary || 'No report available for this week.'}</div>
-                  </div>
-                  <div className="report-row">
-                    <div className="report-label">Progress</div>
-                    <div className="report-value">{weeklyReport?.progress || 'N/A'}</div>
-                  </div>
-                  <div className="report-row">
-                    <div className="report-label">Nurse Notes</div>
-                    <div className="report-value">{weeklyReport?.notes || 'No notes available.'}</div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 

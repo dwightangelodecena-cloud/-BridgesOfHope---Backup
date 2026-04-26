@@ -353,8 +353,6 @@ const Profile = () => {
           flex-direction: column;
           align-items: center;
           justify-content: flex-start;
-<<<<<<< HEAD
-=======
         }
 
         .profile-content-wrap {
@@ -365,24 +363,15 @@ const Profile = () => {
           flex-direction: column;
           align-items: center;
           gap: 14px;
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
         }
 
         /* PROFILE CARD */
         .profile-card {
-<<<<<<< HEAD
-          background: white;
-          border-radius: 50px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
-          padding: 56px 45px 50px;
-          border: 1px solid #f1f5f9;
-=======
           background: linear-gradient(180deg, #FFFFFF 0%, #FBFDFF 100%);
           border-radius: 28px;
           box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
           padding: 42px 36px;
           border: 1px solid #E8EEF8;
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
           width: 100%;
           max-width: 760px;
           display: flex;
@@ -750,7 +739,6 @@ const Profile = () => {
           .mobile-only { display: flex !important; }
           .app-container { flex-direction: column; height: 100vh; overflow: hidden; }
           .mobile-top-bar { padding: 0 20px; height: 60px; background: white; border-bottom: 1px solid #F1F1F1; align-items: center; justify-content: space-between; }
-<<<<<<< HEAD
           .mobile-notifications-trigger.notifications-trigger {
             width: 34px;
             height: 34px;
@@ -764,13 +752,9 @@ const Profile = () => {
           }
           .mobile-notifications-dropdown { right: 0; left: auto; width: min(340px, calc(100vw - 40px)); }
           .scroll-content { padding: 20px 15px 90px !important; align-items: center !important; justify-content: flex-start !important; overflow-y: auto; }
-          .profile-card { max-width: 100%; padding: 28px 20px 24px 20px; }
-=======
-          .scroll-content { padding: 15px !important; padding-bottom: 90px !important; align-items: flex-start !important; overflow-y: auto; }
           .profile-content-wrap { max-width: 100%; gap: 12px; }
           .profile-card { max-width: 100%; padding: 24px 16px 20px 16px; border-radius: 18px; }
           .profile-card-header { padding: 12px; margin-bottom: 10px; }
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
           .mobile-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 70px; background: white; border-top: 1px solid #EEE; display: flex; justify-content: space-around; align-items: center; padding-bottom: env(safe-area-inset-bottom); z-index: 1000; }
         }
       `}</style>
@@ -822,7 +806,6 @@ const Profile = () => {
 
         {/* DESKTOP TOP NAV — exact copy from home.jsx */}
         <header className="top-nav">
-<<<<<<< HEAD
           <div className="top-nav-actions">
             <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
               <button
@@ -851,20 +834,11 @@ const Profile = () => {
             <button type="button" className="user-avatar-top" aria-label="Open profile" onClick={() => navigate('/profile')}>
               {userInitials}
             </button>
-=======
-          <div style={{ display: 'flex', gap: 45 }}>
-            <span className="top-nav-title">Profile</span>
-            <span className="top-nav-subtitle">Welcome back</span>
-          </div>
-          <div style={{ marginLeft: 'auto', width: 38, height: 38, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-            {profileForm.fullName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase()).join('') || 'FU'}
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
           </div>
         </header>
 
         <div className="mobile-only mobile-top-bar">
-<<<<<<< HEAD
-          <img src={logo} alt="BH" style={{ width: 50 }} />
+          <img src={logo} alt="Kalinga" style={{ width: 50 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
               <button
@@ -911,11 +885,6 @@ const Profile = () => {
             >
               {userInitials}
             </button>
-=======
-          <img src={logo} alt="Kalinga" style={{ width: 50 }} />
-          <div style={{ width: 34, height: 34, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>
-            {profileForm.fullName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase()).join('') || 'FU'}
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
           </div>
         </div>
 

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, TrendingUp } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, TrendingUp, Bell, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';

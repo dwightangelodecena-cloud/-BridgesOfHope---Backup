@@ -156,17 +156,18 @@ function App() {
           }
         />
         <Route
-<<<<<<< HEAD
           path="/reports/:patientId"
           element={
             <RoleGuard allowedRoles={['family']}>
               <FamilyReportsPage />
-=======
+            </RoleGuard>
+          }
+        />
+        <Route
           path="/patient-details"
           element={
             <RoleGuard allowedRoles={['family']}>
               <PatientDetailsPage />
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
             </RoleGuard>
           }
         />
