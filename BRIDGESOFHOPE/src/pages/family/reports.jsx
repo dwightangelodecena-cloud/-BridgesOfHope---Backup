@@ -1,38 +1,14 @@
-<<<<<<< HEAD
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, FileText, ChevronLeft, Bell, CheckCircle2 } from 'lucide-react';
+import React, { useEffect, useEffect, useMemo, useRef, useState } from 'react';
+import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, FileText, ChevronLeft, Bell, CheckCircle2, TrendingUp, Activity } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import logo from '@/assets/logo2.png';
-import { supabase } from '@/lib/supabase';
-=======
-import React, { useEffect, useMemo, useState } from 'react';
-import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, X, FileText, TrendingUp, Activity } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
+import { supabase } from '@/lib/supabase';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
-import { uiPatientFromRow } from '@/lib/dbMappers';
-import FloatingChatHead from '@/components/family/FloatingChatHead';
 
 export default function FamilyReportsPage() {
   const navigate = useNavigate();
   const { patientId } = useParams();
   const [isExpanded, setIsExpanded] = useState(false);
-<<<<<<< HEAD
-  const [selectedWeek, setSelectedWeek] = useState('Week 1');
-  const [userInitials, setUserInitials] = useState('FU');
-  const notificationsDesktopRef = useRef(null);
-  const notificationsMobileRef = useRef(null);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const notificationItems = [
-    'Submit missing laboratory result before Friday.',
-    'Family support session is scheduled on April 5, 10:00 AM.',
-    'Weekly report reviewed by your assigned counselor.',
-    'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
-  ];
-=======
   const [selectedWeek, setSelectedWeek] = useState('all');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [selectedReportId, setSelectedReportId] = useState('');
@@ -41,7 +17,6 @@ export default function FamilyReportsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [firstName, setFirstName] = useState('Family');
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
 
   const formatDate = (iso) => {
     if (!iso) return 'N/A';
@@ -210,7 +185,68 @@ export default function FamilyReportsPage() {
   }, [selectedPatientReports, selectedWeek]);
   const weeklyReport = visibleReports.find((r) => String(r.id) === String(selectedReportId)) || visibleReports[0] || null;
 
-<<<<<<< HEAD
+  useEffect(() => {
+    if (!selectedPatient) {
+      setSelectedReportId('');
+      return;
+    }
+    const next = visibleReports[0];
+    setSelectedReportId(next?.id ? String(next.id) : '');
+  }, [selectedPatient, selectedWeek, visibleReports]);
+  const [selectedWeek, setSelectedWeek] = useState('Week 1');
+  const [userInitials, setUserInitials] = useState('FU');
+  const notificationsDesktopRef = useRef(null);
+  const notificationsMobileRef = useRef(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationItems = [
+    'Submit missing laboratory result before Friday.',
+    'Family support session is scheduled on April 5, 10:00 AM.',
+    'Weekly report reviewed by your assigned counselor.',
+    'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
+  ];
+
+  const samplePatients = useMemo(
+    () => [
+      {
+        id: 'p-1',
+        name: 'Maria Santos',
+        age: 29,
+        admissionDate: '2026-03-02',
+        reports: {
+          'Week 1': { summary: 'Stable week. Better sleep pattern and appetite.', progress: '65%', notes: 'No relapse signs observed.' },
+          'Week 2': { summary: 'Participated in all counseling sessions.', progress: '72%', notes: 'Shows improved social interaction.' },
+          'Week 3': { summary: 'Continued recovery trend with good compliance.', progress: '78%', notes: 'Responding well to structured routine.' },
+          'Week 4': { summary: 'Maintained positive behavior and engagement.', progress: '83%', notes: 'Family call positively impacted motivation.' },
+        },
+      },
+      {
+        id: 'p-2',
+        name: 'Elena Cruz',
+        age: 35,
+        admissionDate: '2026-03-09',
+        reports: {
+          'Week 1': { summary: 'Mild withdrawal symptoms managed successfully.', progress: '58%', notes: 'Needs close monitoring during evenings.' },
+          'Week 2': { summary: 'Symptoms reduced; started active participation.', progress: '66%', notes: 'Improved emotional regulation.' },
+          'Week 3': { summary: 'Attended all therapeutic activities this week.', progress: '73%', notes: 'Steady progress with treatment plan.' },
+          'Week 4': { summary: 'Consistent improvement in daily routines.', progress: '79%', notes: 'More openness during individual sessions.' },
+        },
+      },
+      {
+        id: 'p-3',
+        name: 'Sofia Reyes',
+        age: 24,
+        admissionDate: '2026-03-15',
+        reports: {
+          'Week 1': { summary: 'Initial adjustment week; cooperative behavior.', progress: '61%', notes: 'Requires encouragement in group sessions.' },
+          'Week 2': { summary: 'Better adaptation to program schedule.', progress: '69%', notes: 'Shows stronger coping responses.' },
+          'Week 3': { summary: 'Improved confidence and activity attendance.', progress: '75%', notes: 'Maintains good compliance with care plan.' },
+          'Week 4': { summary: 'Positive behavioral consistency observed.', progress: '82%', notes: 'Family support remains a strong factor.' },
+        },
+      },
+    ],
+    []
+  );
+
   const patient = patientId ? samplePatients.find((p) => p.id === patientId) : null;
 
   useEffect(() => {
@@ -273,16 +309,6 @@ export default function FamilyReportsPage() {
   const handleNotificationToggle = () => setShowNotifications((v) => !v);
 
   const weeklyReport = patient ? patient.reports[selectedWeek] : null;
-=======
-  useEffect(() => {
-    if (!selectedPatient) {
-      setSelectedReportId('');
-      return;
-    }
-    const next = visibleReports[0];
-    setSelectedReportId(next?.id ? String(next.id) : '');
-  }, [selectedPatient, selectedWeek, visibleReports]);
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
 
   return (
     <div className="app-container">
@@ -312,12 +338,10 @@ export default function FamilyReportsPage() {
         .user-avatar-top { width: 40px; height: 40px; min-width: 40px; min-height: 40px; background: #F54E25; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; box-sizing: border-box; border: none; cursor: pointer; }
         .scroll-content { flex: 1; overflow-y: auto; padding: 30px 40px; background: ${FAMILY_COLORS.background}; }
         .content-wrap { width: 100%; max-width: min(1560px, 100%); margin: 0 auto; }
-        .panel-card { background: linear-gradient(180deg, #FFFFFF 0%, #FBFDFF 100%); border: 1px solid #E9EDF7; border-radius: 16px; padding: 18px; box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05); }
-        .reports-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+        .panel-card { background: #fff; border: 1px solid #E9EDF7; border-radius: 14px; padding: 16px; }
+        .reports-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
         .reports-title { color: #1B2559; font-size: 18px; font-weight: 800; line-height: 1.2; }
         .reports-subtitle { color: #64748B; font-size: 13px; font-weight: 600; margin-top: 5px; }
-        .reports-toolbar { display: flex; align-items: center; gap: 10px; }
-        .reports-count-chip { display: inline-flex; align-items: center; border-radius: 999px; border: 1px solid #DCE7FF; background: #EEF4FF; color: #3758D5; padding: 6px 10px; font-size: 11px; font-weight: 800; }
         .week-select { border: 1px solid #E2E8F0; border-radius: 10px; padding: 9px 11px; font-size: 12px; font-weight: 600; color: #1B2559; background: #fff; min-width: 116px; }
         .reports-back { display: inline-flex; align-items: center; gap: 8px; border: none; background: transparent; color: #64748B; font-size: 13px; font-weight: 700; cursor: pointer; padding: 0 0 12px; margin: 0; font-family: inherit; }
         .reports-back:hover { color: #F54E25; }
@@ -329,12 +353,9 @@ export default function FamilyReportsPage() {
         .report-detail-body { display: grid; gap: 10px; margin-top: 16px; }
         .patient-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
         .patient-btn { border: 1px solid #E9EDF7; border-radius: 14px; background: #fff; padding: 14px; text-align: left; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
-        .patient-btn:hover { border-color: #f5d0c4; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06); transform: translateY(-1px); }
-        .patient-btn.active { border-color: #F54E25; background: #FFF7F4; box-shadow: 0 10px 22px rgba(245, 78, 37, 0.14); }
+        .patient-btn:hover { border-color: #f5d0c4; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06); }
         .patient-name { font-size: 1rem; font-weight: 800; color: #1B2559; margin-bottom: 8px; }
         .patient-meta { font-size: 12px; color: #64748B; font-weight: 600; margin-bottom: 4px; }
-<<<<<<< HEAD
-=======
         .patient-kpi { margin-top: 8px; display: inline-flex; padding: 4px 9px; border-radius: 999px; font-size: 10px; font-weight: 800; background: #EEF4FF; color: #3758D5; }
         .empty-state { border: 1px dashed #D6E0F5; border-radius: 14px; background: #FBFDFF; text-align: center; padding: 24px; color: #64748B; font-size: 13px; font-weight: 700; }
         .report-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.28); backdrop-filter: blur(6px); display: flex; justify-content: center; align-items: center; z-index: 3000; padding: 16px; box-sizing: border-box; }
@@ -354,13 +375,10 @@ export default function FamilyReportsPage() {
         .history-week { color: #1B2559; font-size: 13px; font-weight: 800; }
         .history-meta { color: #64748B; font-size: 11px; font-weight: 600; margin-top: 3px; }
         .report-details-col { overflow: auto; display: grid; gap: 10px; align-content: start; }
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
         .report-row { background: #ffffff; border: 1px solid #e8eaef; border-radius: 10px; padding: 11px 12px 10px; }
         .report-label { font-size: 12px; color: #475569; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
         .report-value { color: #1B2559; font-size: 13px; font-weight: 600; line-height: 1.6; }
         .mobile-bottom-nav, .mobile-top-bar { display: none; }
-        .loading-msg { color: #64748B; font-size: 13px; font-weight: 700; padding: 4px 0 10px; }
-        .error-msg { color: #b91c1c; font-size: 13px; font-weight: 700; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 10px; padding: 10px; margin-bottom: 12px; }
         @media (max-width: 900px) {
           .patient-grid { grid-template-columns: 1fr; }
         }
@@ -372,23 +390,19 @@ export default function FamilyReportsPage() {
           .mobile-notifications-dropdown { right: 0; left: auto; width: min(340px, calc(100vw - 40px)); }
           .scroll-content { padding: 15px !important; padding-bottom: 90px !important; }
           .reports-header { flex-direction: column; align-items: stretch; }
-<<<<<<< HEAD
-=======
           .reports-toolbar { justify-content: space-between; }
           .report-modal { width: 94%; max-height: 86vh; }
           .report-header { padding: 16px 16px 14px; }
           .report-modal-body { padding: 14px 14px 16px; grid-template-columns: 1fr; }
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
           .mobile-bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; height: 70px; background: #fff; border-top: 1px solid #EEE; display: flex; justify-content: space-around; align-items: center; z-index: 1000; }
         }
       `}</style>
 
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container"><img src={logo} alt="Kalinga" className="sidebar-logo" /></div>
+        <div className="sidebar-logo-container"><img src={logo} alt="BH" className="sidebar-logo" /></div>
         <div className="sidebar-primary">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}><div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}><div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Patient Details</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}><div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}><div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}><div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div><span className="sidebar-label">Appointments</span></div>
           <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => e.stopPropagation()}><div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE" /></div><span className="sidebar-label">Reports</span></div>
         </div>
@@ -400,7 +414,6 @@ export default function FamilyReportsPage() {
 
       <main className="main-view">
         <header className="top-nav">
-<<<<<<< HEAD
           <div className="top-nav-actions">
             <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
               <button
@@ -429,16 +442,10 @@ export default function FamilyReportsPage() {
             <button type="button" className="user-avatar-top" onClick={() => navigate('/profile')} aria-label="Open profile">
               {userInitials}
             </button>
-=======
-          <div className="top-nav-left">
-            <span className="view-title">Reports</span>
-            <span className="welcome-text">Welcome Back, {firstName}</span>
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
           </div>
         </header>
 
         <div className="mobile-top-bar">
-<<<<<<< HEAD
           <img src={logo} alt="BH" style={{ width: 48 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
@@ -487,15 +494,15 @@ export default function FamilyReportsPage() {
               {userInitials}
             </button>
           </div>
-=======
-          <img src={logo} alt="Kalinga" style={{ width: 48 }} />
-          <span style={{ color: '#1B2559', fontWeight: 800 }}>Reports</span>
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
         </div>
 
         <div className="scroll-content">
           <div className="content-wrap">
-<<<<<<< HEAD
+            <div className="panel-card">
+              <div className="reports-header">
+                <div>
+                  <div className="reports-title">Patient Weekly Reports</div>
+                  <div className="reports-subtitle">View latest and past weekly reports from your actual patient records.</div>
             {!patientId && (
               <div className="panel-card">
                 <div className="reports-header">
@@ -537,47 +544,6 @@ export default function FamilyReportsPage() {
                   </select>
                 </div>
 
-                <div className="report-detail-body">
-                  <div className="report-detail-head">
-                    <div className="report-detail-kicker">Care updates</div>
-                    <div className="report-detail-title">
-                      <span className="accent">{selectedWeek}</span> report
-                    </div>
-                    <div className="report-detail-meta">Weekly patient report for this period.</div>
-                  </div>
-                  <div className="report-row">
-                    <div className="report-label"><FileText size={14} />Summary</div>
-                    <div className="report-value">{weeklyReport?.summary || 'No report available for this week.'}</div>
-                  </div>
-                  <div className="report-row">
-                    <div className="report-label">Progress</div>
-                    <div className="report-value">{weeklyReport?.progress || 'N/A'}</div>
-                  </div>
-                  <div className="report-row">
-                    <div className="report-label">Nurse Notes</div>
-                    <div className="report-value">{weeklyReport?.notes || 'No notes available.'}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-=======
-            <div className="panel-card">
-              <div className="reports-header">
-                <div>
-                  <div className="reports-title">Patient Weekly Reports</div>
-                  <div className="reports-subtitle">View latest and past weekly reports from your actual patient records.</div>
-                </div>
-                <div className="reports-toolbar">
-                  <span className="reports-count-chip">{allReports.length} total reports</span>
-                  <select className="week-select" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)}>
-                    <option value="all">All Weeks</option>
-                    {availableWeeks.map((w) => (
-                      <option key={w} value={String(w)}>Week {w}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
               {loading ? <div className="loading-msg">Loading live reports...</div> : null}
               {loadError ? <div className="error-msg">{loadError}</div> : null}
               {!loading && !patients.length ? (
@@ -603,7 +569,29 @@ export default function FamilyReportsPage() {
                 </div>
               )}
             </div>
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
+                <div className="report-detail-body">
+                  <div className="report-detail-head">
+                    <div className="report-detail-kicker">Care updates</div>
+                    <div className="report-detail-title">
+                      <span className="accent">{selectedWeek}</span> report
+                    </div>
+                    <div className="report-detail-meta">Weekly patient report for this period.</div>
+                  </div>
+                  <div className="report-row">
+                    <div className="report-label"><FileText size={14} />Summary</div>
+                    <div className="report-value">{weeklyReport?.summary || 'No report available for this week.'}</div>
+                  </div>
+                  <div className="report-row">
+                    <div className="report-label">Progress</div>
+                    <div className="report-value">{weeklyReport?.progress || 'N/A'}</div>
+                  </div>
+                  <div className="report-row">
+                    <div className="report-label">Nurse Notes</div>
+                    <div className="report-value">{weeklyReport?.notes || 'No notes available.'}</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -618,8 +606,6 @@ export default function FamilyReportsPage() {
           <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
         </nav>
       </main>
-<<<<<<< HEAD
-=======
 
       {selectedPatient && (
         <div className="report-overlay" onClick={() => setSelectedPatient(null)}>
@@ -690,7 +676,6 @@ export default function FamilyReportsPage() {
         </div>
       )}
       <FloatingChatHead />
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
     </div>
   );
 }

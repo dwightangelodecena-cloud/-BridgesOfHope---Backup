@@ -1,10 +1,5 @@
-<<<<<<< HEAD
-import React, { useEffect, useState, useRef } from 'react';
-import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, Bell, CheckCircle2 } from 'lucide-react';
-=======
 import React, { useEffect, useState } from 'react';
 import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, TrendingUp } from 'lucide-react';
->>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
