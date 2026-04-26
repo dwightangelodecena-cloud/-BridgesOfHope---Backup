@@ -1,9 +1,15 @@
+<<<<<<< HEAD
 import React, { useEffect, useState, useRef } from 'react';
 import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, Bell, CheckCircle2 } from 'lucide-react';
+=======
+import React, { useEffect, useState } from 'react';
+import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, TrendingUp } from 'lucide-react';
+>>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
 import { useNavigate } from 'react-router-dom';
-import logo from '@/assets/logo2.png';
+import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import FloatingChatHead from '@/components/family/FloatingChatHead';
 import {
   loadVisitationSettings,
   loadVisitationSettingsShared,
@@ -685,14 +691,18 @@ export default function FamilyAppointmentsPage() {
         }
       `}</style>
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container"><img src={logo} alt="BH" className="sidebar-logo" /></div>
+        <div className="sidebar-logo-container"><img src={logo} alt="Kalinga" className="sidebar-logo" /></div>
         <div className="sidebar-primary">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
             <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Dashboard</span>
           </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}>
             <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Patient Details</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
+            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Request Management</span>
           </div>
           <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => e.stopPropagation()}>
@@ -889,6 +899,7 @@ export default function FamilyAppointmentsPage() {
         </div>
         </div>
       </main>
+      <FloatingChatHead />
     </div>
   );
 }

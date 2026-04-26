@@ -15,7 +15,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logoBH from '@/assets/logo2.png';
+import logoBH from '@/assets/kalingalogo.png';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import {
@@ -149,7 +149,7 @@ export default function AdminReportsPage() {
 
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container">
-          <img src={logoBH} alt="BH" className="sidebar-logo" />
+          <img src={logoBH} alt="Kalinga" className="sidebar-logo" />
         </div>
         <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
@@ -202,7 +202,7 @@ export default function AdminReportsPage() {
       </aside>
 
       <div className="db-mobile-only db-mobile-top-bar">
-        <img src={logoBH} alt="BH" style={{ height: 32 }} />
+        <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
         <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>Reports</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>AD</div>
       </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import logo from '@/assets/logo.png';
+import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
 import { appendActivityFeed } from '@/lib/activityFeed';

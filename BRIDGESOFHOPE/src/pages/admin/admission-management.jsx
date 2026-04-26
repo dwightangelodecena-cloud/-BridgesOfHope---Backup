@@ -24,7 +24,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logoBH from '@/assets/logo2.png';
+import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { BRANCH_KEYS, BRANCH_LABEL, formatPhp } from '@/lib/servicePricing';
@@ -335,7 +335,7 @@ const AdmissionManagement = () => {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        .am-outer { width: 100vw; overflow-x: hidden; }
+        .am-outer { width: 100%; overflow-x: clip; }
         .desktop-sidebar { width: ${isExpanded ? '280px' : '110px'}; background: white; border-right: 1px solid #F1F1F1; display: flex; flex-direction: column; align-items: stretch; padding: 25px 0 0; z-index: 100; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; position: fixed; top: 0; left: 0; height: 100vh; overflow: hidden; }
         .sidebar-logo-container { display: flex; justify-content: center; width: 100%; margin-bottom: 28px; align-self: center; }
         .sidebar-logo { width: ${isExpanded ? '120px' : '70px'}; transition: width 0.3s ease; }
@@ -346,7 +346,7 @@ const AdmissionManagement = () => {
         .icon-box { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: #E9EDF7; color: #1B2559; flex-shrink: 0; }
         .icon-box.active { background: #F54E25; color: white; }
         .icon-box.inactive { background: transparent; color: #A3AED0; }
-        .am-main { flex: 1; min-height: 100vh; margin-left: ${isExpanded ? '280px' : '110px'}; transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1); padding: 40px; }
+        .am-main { flex: 0 0 auto; width: calc(100vw - ${isExpanded ? '280px' : '110px'}); min-height: 100vh; margin-left: ${isExpanded ? '280px' : '110px'}; transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1); padding: 24px; }
         .am-card { background: white; border: 1px solid #E9EDF7; border-radius: 20px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
         .db-search-input { padding: 10px 12px 10px 36px; border: 1px solid #E9EDF7; border-radius: 12px; font-size: 13px; width: 280px; outline: none; font-family: 'Inter', sans-serif; color: #1B2559; background: white; }
         .db-search-input:focus { border-color: #2563EB; }
@@ -443,7 +443,7 @@ const AdmissionManagement = () => {
 
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container">
-          <img src={logoBH} alt="BH" className="sidebar-logo" />
+          <img src={logoBH} alt="Kalinga" className="sidebar-logo" />
         </div>
         <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
@@ -496,7 +496,7 @@ const AdmissionManagement = () => {
       </aside>
 
       <div className="db-mobile-only db-mobile-top-bar">
-        <img src={logoBH} alt="BH" style={{ height: 32 }} />
+        <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
         <span style={{ fontSize: 15, fontWeight: 800, color: '#F54E25' }}>Admissions</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>AD</div>
       </div>
@@ -622,7 +622,7 @@ const AdmissionManagement = () => {
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
                     {['Patient ID', 'Patient', 'Reason / Concern', 'Assigned Staff', 'Type', 'Admission Date', 'Est. Cost', 'Status', 'Actions'].map((col, idx) => (
-                      <th className="am-th" key={col} style={{ padding: '11px 12px', borderRight: idx < 8 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                      <th className="am-th" key={col} style={{ padding: '10px 10px', borderRight: idx < 8 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>
                         {col}
                       </th>
                     ))}
@@ -647,20 +647,20 @@ const AdmissionManagement = () => {
                   {!loading &&
                     pageRows.map((r) => (
                       <tr key={r.requestId} className="am-row" style={{ borderBottom: '1px solid #F4F7FE' }}>
-                        <td style={{ padding: '12px', fontWeight: 700, color: '#1B2559', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{r.admissionDisplayId}</td>
-                        <td style={{ padding: '12px', fontWeight: 600 }}>
+                        <td style={{ padding: '9px 10px', fontWeight: 700, color: '#1B2559', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{r.admissionDisplayId}</td>
+                        <td style={{ padding: '9px 10px', fontWeight: 600 }}>
                           <div style={{ fontWeight: 700, color: '#1B2559' }}>{r.patientName}</div>
                           <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{r.patientGender || 'N/A'}</div>
                         </td>
-                        <td style={{ padding: '12px', maxWidth: 200, color: '#334155' }}>{r.reason}</td>
-                        <td style={{ padding: '12px', color: '#707EAE' }}>{r.assignedStaff}</td>
-                        <td style={{ padding: '12px' }}>{r.admissionType}</td>
-                        <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>{formatDate(r.admissionDate)}</td>
-                        <td style={{ padding: '12px', fontWeight: 700, color: '#05CD99', whiteSpace: 'nowrap' }}>{formatPhp(r.estimatedCost)}</td>
-                        <td style={{ padding: '12px' }}>
+                        <td style={{ padding: '9px 10px', maxWidth: 200, color: '#334155' }}>{r.reason}</td>
+                        <td style={{ padding: '9px 10px', color: '#707EAE' }}>{r.assignedStaff}</td>
+                        <td style={{ padding: '9px 10px' }}>{r.admissionType}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{formatDate(r.admissionDate)}</td>
+                        <td style={{ padding: '9px 10px', fontWeight: 700, color: '#05CD99', whiteSpace: 'nowrap' }}>{formatPhp(r.estimatedCost)}</td>
+                        <td style={{ padding: '9px 10px' }}>
                           <span className={`am-pill ${statusPillClass(r.status)}`}>{r.status}</span>
                         </td>
-                        <td style={{ padding: '12px' }}>
+                        <td style={{ padding: '9px 10px' }}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                             {isSupabaseConfigured() && String(r.dbStatus || '').toLowerCase() === 'pending' && (
                               <button

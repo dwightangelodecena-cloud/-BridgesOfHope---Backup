@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   Alert,
   Modal,
@@ -18,9 +17,12 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
+import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
 
 const { width } = Dimensions.get('window');
+const isCompactScreen = width <= 380;
 
 const NOTIFICATION_ITEMS = [
   'Submit missing laboratory result before Friday.',
@@ -248,7 +250,7 @@ export default function ViewDetailsPage() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerBrandTitle}>Weekly Reports</Text>
           <Text style={styles.headerWelcomeLine} numberOfLines={1}>
-            Welcome back, {displayName}
+            Welcome Back, {(displayName || 'Family User').trim().split(/\s+/)[0]}
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -422,43 +424,11 @@ export default function ViewDetailsPage() {
         ) : null}
       </ScrollView>
 
-      <View style={[styles.bottomNav, { paddingBottom: insets.bottom + 10 }]}>
-        <TabItem
-          img={require('../../assets/images/home-icon.png')}
-          label="Home"
-          active
-          onPress={() => router.navigate(TAB_ROUTES.home)}
-        />
-        <TabItem
-          img={require('../../assets/images/progress-icon.png')}
-          label="Progress"
-          onPress={() => router.navigate(TAB_ROUTES.progress)}
-        />
-        <TabItem
-          img={require('../../assets/images/messages-icon.png')}
-          label="Message"
-          onPress={() => router.navigate(TAB_ROUTES.messages)}
-        />
-        <TabItem
-          img={require('../../assets/images/profile-icon.png')}
-          label="Profile"
-          onPress={() => router.navigate(TAB_ROUTES.profile)}
-        />
-      </View>
+      <FamilyWebMobileNav active="none" />
+      <FamilyFloatingChat />
     </View>
   );
 }
-
-const TabItem = ({ img, label, active, onPress }: any) => (
-  <TouchableOpacity style={styles.tabItem} onPress={onPress}>
-    <Image
-      source={img}
-      style={[styles.tabIcon, { tintColor: active ? '#F54E25' : '#999999' }]}
-      resizeMode="contain"
-    />
-    <Text style={[styles.tabLabel, active && styles.activeTabLabel]}>{label}</Text>
-  </TouchableOpacity>
-);
 
 const styles = StyleSheet.create({
   screen: {
@@ -566,7 +536,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: isCompactScreen ? 14 : 20,
     paddingTop: 8,
     overflow: 'visible',
   },
@@ -575,7 +545,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   careUpdatesTitle: {
-    fontSize: 22,
+    fontSize: isCompactScreen ? 20 : 22,
     fontWeight: '800',
     color: '#1B2559',
   },
@@ -641,9 +611,9 @@ const styles = StyleSheet.create({
   patientRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    gap: isCompactScreen ? 10 : 12,
+    paddingVertical: isCompactScreen ? 10 : 12,
+    paddingHorizontal: isCompactScreen ? 12 : 14,
   },
   patientAvatar: {
     width: 44,
@@ -760,8 +730,8 @@ const styles = StyleSheet.create({
   },
   weekCard: {
     borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: isCompactScreen ? 12 : 14,
+    paddingVertical: isCompactScreen ? 12 : 14,
     backgroundColor: '#FFFFFF',
     width: '100%',
   },

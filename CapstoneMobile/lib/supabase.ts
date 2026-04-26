@@ -2,24 +2,28 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import Constants from "expo-constants";
 
-const supabaseUrl =
-  process.env.EXPO_PUBLIC_SUPABASE_URL ??
-  (Constants.expoConfig?.extra?.supabaseUrl as string | undefined);
-const supabaseAnonKey =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
-  (Constants.expoConfig?.extra?.supabaseAnonKey as string | undefined);
+function str(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
 
-if (!supabaseUrl?.trim() || !supabaseAnonKey?.trim()) {
+/** Same Supabase project as BRIDGESOFHOPE (web + admin): URL + anon key from Dashboard -> API. */
+const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
+const supabaseUrl =
+  str(process.env.EXPO_PUBLIC_SUPABASE_URL) || str(extra?.supabaseUrl);
+const supabaseAnonKey =
+  str(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) || str(extra?.supabaseAnonKey);
+
+if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
-    "[supabase] Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY. Put .env next to app.json (see .env.example), then restart: npx expo start -c"
+    "[supabase] Missing Supabase URL or anon key. Add CapstoneMobile/.env with EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY (same values as web VITE_* — see .env.example), or run: npm run sync-env"
   );
 }
 
 let client: SupabaseClient | null = null;
 
 function getClient(): SupabaseClient {
-  const url = supabaseUrl?.trim();
-  const key = supabaseAnonKey?.trim();
+  const url = supabaseUrl;
+  const key = supabaseAnonKey;
   if (!url || !key) {
     throw new Error(
       "Supabase is not configured. Create CapstoneMobile/.env next to app.json with EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY (Expo does not use VITE_ variable names)."
@@ -47,5 +51,5 @@ export const supabase = new Proxy({} as SupabaseClient, {
 });
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(supabaseUrl?.trim() && supabaseAnonKey?.trim());
+  return Boolean(supabaseUrl && supabaseAnonKey);
 }

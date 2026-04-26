@@ -15,6 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
+import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
@@ -105,7 +107,7 @@ export default function ServicesScreen() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerBrandTitle}>Services</Text>
           <Text style={styles.headerWelcomeLine} numberOfLines={1}>
-            Welcome back, {displayName}
+            Welcome Back, {(displayName || 'Family User').trim().split(/\s+/)[0]}
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -261,23 +263,6 @@ export default function ServicesScreen() {
               <Text style={styles.branchAmount}>₱35,000</Text>
             </View>
 
-            <View style={styles.divider} />
-
-            <View style={styles.branchRow}>
-              <View style={styles.branchInfo}>
-                <MaterialCommunityIcons
-                  name="home-city-outline"
-                  size={22}
-                  color="#111827"
-                />
-                <View style={{ marginLeft: 10 }}>
-                  <Text style={styles.branchName}>Amadeo Branch</Text>
-                  <Text style={styles.branchSub}>Provincial Rate</Text>
-                </View>
-              </View>
-              <Text style={styles.branchAmount}>₱33,000</Text>
-            </View>
-
             {/* Dropdown arrow for inclusions */}
             <TouchableOpacity
               style={styles.dropdownToggle}
@@ -356,43 +341,11 @@ export default function ServicesScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.bottomNav, { paddingBottom: insets.bottom + 10 }]}>
-        <TabItem
-          img={require('../../assets/images/home-icon.png')}
-          label="Home"
-          active
-          onPress={() => router.navigate(TAB_ROUTES.home)}
-        />
-        <TabItem
-          img={require('../../assets/images/progress-icon.png')}
-          label="Progress"
-          onPress={() => router.navigate(TAB_ROUTES.progress)}
-        />
-        <TabItem
-          img={require('../../assets/images/messages-icon.png')}
-          label="Message"
-          onPress={() => router.navigate(TAB_ROUTES.messages)}
-        />
-        <TabItem
-          img={require('../../assets/images/profile-icon.png')}
-          label="Profile"
-          onPress={() => router.navigate(TAB_ROUTES.profile)}
-        />
-      </View>
+      <FamilyWebMobileNav active="none" />
+      <FamilyFloatingChat />
     </View>
   );
 }
-
-const TabItem = ({ img, label, active, onPress }: any) => (
-  <TouchableOpacity style={styles.tabItem} onPress={onPress}>
-    <Image
-      source={img}
-      style={[styles.tabIcon, { tintColor: active ? '#F54E25' : '#999999' }]}
-      resizeMode="contain"
-    />
-    <Text style={[styles.tabLabel, active && styles.activeTabLabel]}>{label}</Text>
-  </TouchableOpacity>
-);
 
 type FeeSectionProps = {
   title: string;

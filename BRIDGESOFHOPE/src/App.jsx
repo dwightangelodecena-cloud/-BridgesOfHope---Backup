@@ -16,6 +16,7 @@ import Service from '@/pages/family/service';
 import Progress from '@/pages/family/requestmanagement';
 import FamilyAppointmentsPage from '@/pages/family/appointments';
 import FamilyReportsPage from '@/pages/family/reports';
+import PatientDetailsPage from '@/pages/family/patient-details';
 import Profile from '@/pages/family/profile';
 import ChangePass from '@/pages/auth/changepass';
 
@@ -50,6 +51,7 @@ const ROUTE_TITLES = {
   '/progress': 'Progress',
   '/appointments': 'Appointments',
   '/reports': 'Reports',
+  '/patient-details': 'Patient details',
   '/profile': 'Profile',
   '/changepass': 'Change password',
   '/nurse-dashboard': 'Nurse dashboard',
@@ -154,10 +156,17 @@ function App() {
           }
         />
         <Route
+<<<<<<< HEAD
           path="/reports/:patientId"
           element={
             <RoleGuard allowedRoles={['family']}>
               <FamilyReportsPage />
+=======
+          path="/patient-details"
+          element={
+            <RoleGuard allowedRoles={['family']}>
+              <PatientDetailsPage />
+>>>>>>> fb77b15a029aa3f3735eac8ec83bbc0f55f16a13
             </RoleGuard>
           }
         />

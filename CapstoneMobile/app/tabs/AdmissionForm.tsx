@@ -28,6 +28,7 @@ import {
 } from '../../lib/addressPersistence';
 
 const { width } = Dimensions.get('window');
+const isCompactScreen = width <= 380;
 
 const NOTIFICATION_ITEMS = [
   'Submit missing laboratory result before Friday.',
@@ -50,7 +51,10 @@ type FormData = {
   municipalityCity: string;
   street: string;
   barangay: string;
-  patientName: string;
+  patientLastName: string;
+  patientFirstName: string;
+  patientMiddleName: string;
+  patientGender: string;
   patientBirthday: string;
   reasonForAdmission: string;
   agreeToTerms: boolean;
@@ -64,7 +68,10 @@ const emptyForm: FormData = {
   municipalityCity: '',
   street: '',
   barangay: '',
-  patientName: '',
+  patientLastName: '',
+  patientFirstName: '',
+  patientMiddleName: '',
+  patientGender: '',
   patientBirthday: '',
   reasonForAdmission: '',
   agreeToTerms: false,
@@ -81,6 +88,7 @@ export default function AdmissionForm() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
+  const [showGenderModal, setShowGenderModal] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   /** iOS only: draft while modal is open so Cancel does not overwrite the field */
   const [iosDraftBirthDate, setIosDraftBirthDate] = useState(() => new Date(2000, 0, 1));
@@ -99,7 +107,9 @@ export default function AdmissionForm() {
         { key: 'municipalityCity' as const, label: 'Municipality/City' },
         { key: 'barangay' as const, label: 'Barangay' },
         { key: 'street' as const, label: 'Street' },
-        { key: 'patientName' as const, label: 'Patient Name' },
+        { key: 'patientLastName' as const, label: 'Patient Last Name' },
+        { key: 'patientFirstName' as const, label: 'Patient First Name' },
+        { key: 'patientGender' as const, label: 'Patient Gender' },
         { key: 'patientBirthday' as const, label: 'Patient Birthday' },
         { key: 'reasonForAdmission' as const, label: 'Reason for Admission' },
       ] as const,
@@ -131,7 +141,7 @@ export default function AdmissionForm() {
     barangayCode: '',
   });
   const [addressRestored, setAddressRestored] = useState(false);
-  const psgcKey = getAddressStorageKey('admission');
+  const psgcKey = getAddressStorageKey('request_management_admission');
 
   useEffect(() => {
     if (loadingProvinces) return;
@@ -205,9 +215,22 @@ export default function AdmissionForm() {
       try {
         const raw = await AsyncStorage.getItem(DRAFT_KEY);
         if (raw && mounted) {
-          const parsed = JSON.parse(raw) as Partial<FormData> & { middleInitial?: string };
-          const { middleInitial: _omitMi, ...draft } = parsed;
-          setFormData((prev) => ({ ...prev, ...draft, agreeToTerms: Boolean(parsed.agreeToTerms) }));
+          const parsed = JSON.parse(raw) as Partial<FormData> & {
+            middleInitial?: string;
+            patientName?: string;
+          };
+          const { middleInitial: _omitMi, patientName: legacyName, ...draft } = parsed;
+          const merged: Partial<FormData> = { ...draft };
+          if (
+            legacyName &&
+            typeof legacyName === 'string' &&
+            legacyName.trim() &&
+            !merged.patientFirstName?.trim() &&
+            !merged.patientLastName?.trim()
+          ) {
+            merged.patientFirstName = legacyName.trim();
+          }
+          setFormData((prev) => ({ ...prev, ...merged, agreeToTerms: Boolean(parsed.agreeToTerms) }));
         }
       } catch {
         await AsyncStorage.removeItem(DRAFT_KEY);
@@ -266,19 +289,20 @@ export default function AdmissionForm() {
 
   const validateForm = useCallback(() => {
     const next: Record<string, string> = {};
-    if (!formData.fullName.trim()) next.fullName = 'Full name is required';
-    if (!formData.email.trim()) next.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) next.email = 'Invalid email format';
-    if (!formData.phoneNumber.trim()) next.phoneNumber = 'Phone number is required';
-    if (!formData.province.trim()) next.province = 'Province is required';
-    if (!formData.municipalityCity.trim()) next.municipalityCity = 'Municipality/City is required';
-    if (!formData.street.trim()) next.street = 'Street is required';
-    else if (formData.street.trim().length < 2) next.street = 'Enter a valid street (at least 2 characters)';
-    if (!formData.barangay.trim()) next.barangay = 'Barangay is required';
-    if (!formData.patientName.trim()) next.patientName = 'Patient name is required';
-    if (!formData.patientBirthday) next.patientBirthday = 'Birthday is required';
-    if (!formData.reasonForAdmission) next.reasonForAdmission = 'Please select a reason';
-    if (!formData.agreeToTerms) next.agreeToTerms = 'You must agree to the terms';
+    if (!formData.fullName.trim()) next.fullName = 'Full name is required.';
+    if (!formData.email.trim()) next.email = 'Email is required.';
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) next.email = 'Invalid email format.';
+    if (!formData.phoneNumber.trim()) next.phoneNumber = 'Phone number is required.';
+    if (!formData.province.trim()) next.province = 'Province is required.';
+    if (!formData.municipalityCity.trim()) next.municipalityCity = 'Municipality/City is required.';
+    if (!formData.street.trim()) next.street = 'Street is required.';
+    if (!formData.barangay.trim()) next.barangay = 'Barangay is required.';
+    if (!formData.patientLastName.trim()) next.patientLastName = 'Patient last name is required.';
+    if (!formData.patientFirstName.trim()) next.patientFirstName = 'Patient first name is required.';
+    if (!formData.patientGender.trim()) next.patientGender = 'Patient gender is required.';
+    if (!formData.patientBirthday) next.patientBirthday = 'Patient birthday is required.';
+    if (!formData.reasonForAdmission) next.reasonForAdmission = 'Please select a reason.';
+    if (!formData.agreeToTerms) next.agreeToTerms = 'You must agree to the terms.';
     setErrors(next);
     return Object.keys(next).length === 0;
   }, [formData]);
@@ -330,6 +354,11 @@ export default function AdmissionForm() {
         return;
       }
 
+      const patientFull = [formData.patientFirstName, formData.patientMiddleName, formData.patientLastName]
+        .map((p) => String(p || '').trim())
+        .filter(Boolean)
+        .join(' ');
+
       const extendedRow = {
         family_id: user.id,
         guardian_full_name: formData.fullName.trim(),
@@ -339,7 +368,11 @@ export default function AdmissionForm() {
         guardian_municipality_city: formData.municipalityCity.trim(),
         guardian_street: formData.street.trim(),
         guardian_barangay: formData.barangay.trim(),
-        patient_name: formData.patientName.trim(),
+        patient_name: patientFull,
+        patient_last_name: formData.patientLastName.trim(),
+        patient_first_name: formData.patientFirstName.trim(),
+        patient_middle_name: formData.patientMiddleName.trim(),
+        patient_gender: formData.patientGender.trim(),
         patient_birth_date: formData.patientBirthday,
         reason_for_admission: formData.reasonForAdmission,
       };
@@ -355,7 +388,7 @@ export default function AdmissionForm() {
           guardian_full_name: formData.fullName.trim(),
           guardian_email: formData.email.trim(),
           guardian_phone: formData.phoneNumber.trim(),
-          patient_name: formData.patientName.trim(),
+          patient_name: patientFull,
           patient_birth_date: formData.patientBirthday,
           reason_for_admission: formData.reasonForAdmission,
         };
@@ -367,10 +400,9 @@ export default function AdmissionForm() {
         return;
       }
 
-      await appendActivityFeed(
-        `Admission request submitted for ${formData.patientName.trim()}. Pending admin review.`,
-        { familyId: user.id }
-      );
+      await appendActivityFeed(`Admission request submitted for ${patientFull}. Pending admin review.`, {
+        familyId: user.id,
+      });
       try {
         await AsyncStorage.removeItem(DRAFT_KEY);
       } catch {
@@ -452,7 +484,7 @@ export default function AdmissionForm() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerBrandTitle}>Admission</Text>
           <Text style={styles.headerWelcomeLine} numberOfLines={1}>
-            Welcome back, {displayName}
+            Welcome Back, {(displayName || 'Family User').trim().split(/\s+/)[0]}
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -487,6 +519,12 @@ export default function AdmissionForm() {
             </View>
           ) : null}
 
+          <View style={styles.admissionIntro}>
+            <Text style={styles.admissionIntroKicker}>Admission workflow</Text>
+            <Text style={styles.admissionIntroTitle}>Admission Request Form</Text>
+            <Text style={styles.admissionIntroSub}>Provide guardian and patient details for review.</Text>
+          </View>
+
           <View style={styles.card}>
             <View style={styles.cardTitleRow}>
               <Text style={styles.cardTitle}>Form Completion</Text>
@@ -513,7 +551,6 @@ export default function AdmissionForm() {
                 </View>
               );
             })}
-            <Text style={styles.checklistFooter}>Estimated review: 1-3 business days after submission.</Text>
           </View>
 
           <View style={styles.formBlock}>
@@ -646,13 +683,44 @@ export default function AdmissionForm() {
               </Text>
             </View>
             <LabeledInput
-              label="Patient Name"
-              placeholder="Patient's full name"
+              label="Patient Last Name"
+              placeholder="Patient's last name"
               icon="person-outline"
-              value={formData.patientName}
-              onChangeText={(t) => setField('patientName', t)}
-              error={errors.patientName}
+              value={formData.patientLastName}
+              onChangeText={(t) => setField('patientLastName', t)}
+              error={errors.patientLastName}
             />
+            <LabeledInput
+              label="Patient First Name"
+              placeholder="Patient's first name"
+              icon="person-outline"
+              value={formData.patientFirstName}
+              onChangeText={(t) => setField('patientFirstName', t)}
+              error={errors.patientFirstName}
+            />
+            <LabeledInput
+              label="Patient Middle Name (Optional)"
+              placeholder="Patient's middle name"
+              icon="person-outline"
+              value={formData.patientMiddleName}
+              onChangeText={(t) => setField('patientMiddleName', t)}
+            />
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Patient Gender</Text>
+              <TouchableOpacity
+                style={[styles.inputShell, errors.patientGender ? styles.inputShellError : null]}
+                onPress={() => setShowGenderModal(true)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="person-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+                <Text style={[styles.dateInputText, !formData.patientGender && styles.placeholderText]}>
+                  {formData.patientGender || 'Select Gender'}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color="#94A3B8" />
+              </TouchableOpacity>
+              {errors.patientGender ? <Text style={styles.errorSmall}>{errors.patientGender}</Text> : null}
+            </View>
 
             <View style={styles.fieldWrap}>
               <Text style={styles.fieldLabel}>Patient Birthday</Text>
@@ -670,6 +738,9 @@ export default function AdmissionForm() {
               </TouchableOpacity>
               {errors.patientBirthday ? <Text style={styles.errorSmall}>{errors.patientBirthday}</Text> : null}
             </View>
+            <Text style={styles.birthdayHint}>
+              Select a date or use the calendar control — not in the future.
+            </Text>
 
             {Platform.OS === 'android' && showDatePicker ? (
               <DateTimePicker
@@ -812,6 +883,26 @@ export default function AdmissionForm() {
         </TouchableOpacity>
       </Modal>
 
+      <Modal visible={showGenderModal} transparent animationType="fade" onRequestClose={() => setShowGenderModal(false)}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowGenderModal(false)}>
+          <View style={styles.reasonSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.reasonSheetTitle}>Select Gender</Text>
+            {(['Male', 'Female'] as const).map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                style={styles.reasonOption}
+                onPress={() => {
+                  setField('patientGender', opt);
+                  setShowGenderModal(false);
+                }}
+              >
+                <Text style={styles.reasonOptionText}>{opt}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <Modal visible={showTermsModal} transparent animationType="slide" onRequestClose={() => setShowTermsModal(false)}>
         <View style={styles.termsOverlay}>
           <View style={styles.termsCard}>
@@ -894,7 +985,7 @@ export default function AdmissionForm() {
               <Ionicons name="checkmark-circle" size={44} color="#10B981" />
             </View>
             <Text style={styles.successTitle}>Application Submitted!</Text>
-            <Text style={styles.successBody}>Your request has been sent to the admin for approval.</Text>
+            <Text style={styles.successBody}>Admission request submitted successfully.</Text>
             <TouchableOpacity
               style={styles.btnPrimary}
               onPress={() => {
@@ -1066,7 +1157,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: isCompactScreen ? 14 : 20,
     paddingTop: 16,
   },
   saveBanner: {
@@ -1149,11 +1240,33 @@ const styles = StyleSheet.create({
   checklistDone: {
     color: '#16A34A',
   },
-  checklistFooter: {
-    marginTop: 8,
-    fontSize: 12,
+  admissionIntro: {
+    marginBottom: 14,
+  },
+  admissionIntroKicker: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#16A34A',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  admissionIntroTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  admissionIntroSub: {
+    fontSize: 13,
     color: '#64748B',
     lineHeight: 18,
+  },
+  birthdayHint: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: -6,
+    marginBottom: 12,
   },
   formBlock: {
     marginTop: 4,
@@ -1222,7 +1335,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   fieldLabel: {
-    fontSize: 15,
+    fontSize: isCompactScreen ? 14 : 15,
     fontWeight: '500',
     color: '#475569',
     marginBottom: 8,
@@ -1234,8 +1347,8 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderRadius: 10,
     backgroundColor: '#FFFFFF',
-    minHeight: 52,
-    paddingHorizontal: 14,
+    minHeight: isCompactScreen ? 48 : 52,
+    paddingHorizontal: isCompactScreen ? 12 : 14,
   },
   inputShellError: {
     borderColor: '#EF4444',
@@ -1246,13 +1359,13 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: isCompactScreen ? 15 : 16,
     color: '#1E293B',
     paddingVertical: 12,
   },
   dateInputText: {
     flex: 1,
-    fontSize: 16,
+    fontSize: isCompactScreen ? 15 : 16,
     color: '#1E293B',
     paddingVertical: 12,
     textAlign: 'left',
@@ -1365,7 +1478,7 @@ const styles = StyleSheet.create({
   btnPrimary: {
     backgroundColor: '#F54E25',
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: isCompactScreen ? 14 : 16,
     alignItems: 'center',
     marginTop: 10,
   },

@@ -6,9 +6,10 @@ import { supabase } from '@/lib/supabase';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { familyDataService } from '@/services/familyDataService';
 import { FAMILY_COLORS, StatusBadge, AuditLine, LoadingState } from '@/components/family/shared/ui';
+import FloatingChatHead from '@/components/family/FloatingChatHead';
 
 // Asset import for the logo
-import logo from '@/assets/logo2.png';
+import logo from '@/assets/kalingalogo.png';
 
 const Service = () => {
   const navigate = useNavigate();
@@ -640,7 +641,7 @@ const Service = () => {
       {/* Sidebar */}
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container">
-          <img src={logo} alt="BH" className="sidebar-logo" />
+          <img src={logo} alt="Kalinga" className="sidebar-logo" />
         </div>
         <div className="sidebar-primary">
         <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
@@ -718,7 +719,7 @@ const Service = () => {
         </header>
 
         <div className="mobile-only mobile-top-bar">
-          <img src={logo} alt="BH" style={{ width: 50 }} />
+          <img src={logo} alt="Kalinga" style={{ width: 50 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
               <button
@@ -888,6 +889,7 @@ const Service = () => {
             </div>
           </div>
         </div>
+        <FloatingChatHead />
       </div>
     </div>
   );

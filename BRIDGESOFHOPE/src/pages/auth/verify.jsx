@@ -6,7 +6,7 @@
  */
 import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import logo from '@/assets/logo.png';
+import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { startGoogleOAuthWeb } from '@/lib/oauthWeb';
 

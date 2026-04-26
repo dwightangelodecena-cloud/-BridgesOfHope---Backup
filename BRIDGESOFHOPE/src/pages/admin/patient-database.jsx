@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { LayoutGrid, HeartPulse, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, LayoutTemplate, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logoBH from '@/assets/logo2.png';
+import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
@@ -1406,7 +1406,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
       {/* SIDEBAR */}
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container">
-          <img src={logoBH} alt="BH" className="sidebar-logo" />
+          <img src={logoBH} alt="Kalinga" className="sidebar-logo" />
         </div>
 
         {isNurse ? (
@@ -1499,7 +1499,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
 
       {/* MOBILE TOP BAR */}
       <div className="db-mobile-only db-mobile-top-bar" style={{ padding: '0 20px', height: 64, alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F1F1' }}>
-        <img src={logoBH} alt="BH" style={{ height: 32 }} />
+        <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
         <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>Patient Management</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>JD</div>
       </div>

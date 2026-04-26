@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { LayoutGrid, HeartPulse, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope, LayoutTemplate, User, Calendar, FileText } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import logoBH from '@/assets/logo2.png';
+import logoBH from '@/assets/kalingalogo.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { refreshAppData, APP_DATA_REFRESH } from '@/lib/appDataRefresh';
@@ -894,7 +894,7 @@ const AdminDashboard = () => {
           title={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
           style={{ cursor: 'pointer' }}
         >
-          <img src={logoBH} alt="BH" className="sidebar-logo" />
+          <img src={logoBH} alt="Kalinga" className="sidebar-logo" />
         </div>
         <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
           <div className="sidebar-nav-item">
@@ -948,7 +948,7 @@ const AdminDashboard = () => {
 
       {/* MOBILE TOP BAR */}
       <div className="db-mobile-only db-mobile-top-bar">
-        <img src={logoBH} alt="BH" style={{ height: 32 }} />
+        <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
         <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>Dashboard</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>JD</div>
       </div>
@@ -1036,16 +1036,6 @@ const AdminDashboard = () => {
                   </div>
                 </div>
 
-                <div className="metric-card" onClick={() => navigate('/admin-reports')} style={{ cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div className="metric-icon-box"><FileText size={24} /></div>
-                    <span className="metric-badge" style={{ background: '#ECFEFF', color: '#0E7490' }}>Export</span>
-                  </div>
-                  <div>
-                    <div className="metric-title" style={{ fontSize: 22, fontWeight: 800, marginTop: 8 }}>Printable reports</div>
-                    <div className="metric-subtitle">Census, occupancy, weekly compliance, PDFs</div>
-                  </div>
-                </div>
               </div>
             </section>
 

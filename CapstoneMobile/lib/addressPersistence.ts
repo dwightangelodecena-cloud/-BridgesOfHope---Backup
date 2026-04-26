@@ -2,7 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PREFIX = 'bh_psgc_address_';
 
-export function getAddressStorageKey(scope: 'signup' | 'admission') {
+/** Web `requestmanagement.jsx` uses scope `request_management_admission` for the same prefix pattern. */
+export function getAddressStorageKey(scope: 'signup' | 'admission' | 'request_management_admission') {
   return `${PREFIX}${scope}`;
 }
 
