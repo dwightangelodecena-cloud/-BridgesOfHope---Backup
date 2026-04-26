@@ -1748,10 +1748,6 @@ const HomeDashboard = () => {
 
       <div className="main-view">
         <header className="top-nav">
-          <div className="top-nav-left">
-            <span className="view-title">Dashboard</span>
-            <span className="welcome-text">Welcome back, {displayName}</span>
-          </div>
           <div className="top-nav-actions">
             <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
               <button
@@ -1830,6 +1826,12 @@ const HomeDashboard = () => {
         <div className="scroll-content" style={{ background: FAMILY_COLORS.background }}>
           <div className="content-wrap">
           <div className="dashboard-stack">
+          <div>
+            <div style={{ color: '#64748B', fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Welcome back</div>
+            <div className="recovery-text-mobile" style={{ color: '#1B2559', fontWeight: 800, fontSize: 22, lineHeight: 1.25 }}>
+              {displayName}
+            </div>
+          </div>
           <div className="panel-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h2 className="recovery-text-mobile" style={{ fontSize: '30px', fontWeight: 800, color: '#1B2559', margin: 0 }}>

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight, Calendar, ClipboardList, BarChart3 } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight, Calendar, ClipboardList, BarChart3, Bell, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAsyncData } from '@/hooks/useAsyncData';
@@ -31,6 +31,15 @@ const Profile = () => {
   });
   const [draftProfile, setDraftProfile] = useState(profileForm);
   const fileInputRef = useRef(null);
+  const notificationsDesktopRef = useRef(null);
+  const notificationsMobileRef = useRef(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationItems = [
+    'Submit missing laboratory result before Friday.',
+    'Family support session is scheduled on April 5, 10:00 AM.',
+    'Weekly report reviewed by your assigned counselor.',
+    'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
+  ];
   const {
     data: profileSnapshot,
     loading: snapshotLoading,
@@ -113,6 +122,23 @@ const Profile = () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!showNotifications) return;
+    const onDoc = (e) => {
+      const t = e.target;
+      const inDesktop = notificationsDesktopRef.current?.contains(t);
+      const inMobile = notificationsMobileRef.current?.contains(t);
+      if (!inDesktop && !inMobile) setShowNotifications(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [showNotifications]);
+
+  const handleNotificationToggle = () => setShowNotifications((v) => !v);
+
+  const userInitials =
+    profileForm.fullName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase()).join('') || 'FU';
 
   return (
     <div className="app-container">
@@ -202,22 +228,119 @@ const Profile = () => {
         }
 
         .top-nav {
-          height: 100px;
+          height: 85px;
           background: white;
           display: flex;
           align-items: center;
-          padding: 0 40px;
+          padding: 0 30px;
           border-bottom: 1px solid #F1F1F1;
+          box-sizing: border-box;
+          z-index: 300;
+        }
+
+        .top-nav-actions {
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          flex-shrink: 0;
+        }
+
+        .notifications-dropdown {
+          position: absolute;
+          top: calc(100% + 10px);
+          right: 0;
+          width: min(360px, calc(100vw - 48px));
+          background: white;
+          border: 1px solid #E9EDF7;
+          border-radius: 14px;
+          box-shadow: 0 12px 40px rgba(27, 37, 89, 0.12);
+          padding: 16px;
+          z-index: 400;
+        }
+
+        .notifications-trigger {
+          width: 40px;
+          height: 40px;
+          min-width: 40px;
+          min-height: 40px;
+          padding: 0;
+          box-sizing: border-box;
+          flex-shrink: 0;
+          border-radius: 50%;
+          border: none;
+          background: #F54E25;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: white;
+          box-shadow: 0 2px 10px rgba(245, 78, 37, 0.4);
+        }
+
+        .notifications-trigger:hover {
+          background: #e0421a;
+          box-shadow: 0 4px 14px rgba(245, 78, 37, 0.5);
+        }
+
+        .notifications-trigger:focus-visible {
+          outline: 2px solid #1B2559;
+          outline-offset: 2px;
+        }
+
+        .notifications-trigger svg {
+          display: block;
+          width: 21px;
+          height: 21px;
+          stroke: #ffffff;
+          color: #ffffff;
+          flex-shrink: 0;
+        }
+
+        .panel-title {
+          color: #1B2559;
+          font-weight: 800;
+          margin-bottom: 10px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .interactive-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          margin-bottom: 10px;
+          color: #334155;
+          font-size: 13px;
+        }
+
+        .user-avatar-top {
+          width: 40px;
+          height: 40px;
+          min-width: 40px;
+          min-height: 40px;
+          background: #F54E25;
+          color: white;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 700;
+          font-size: 13px;
+          box-sizing: border-box;
+          border: none;
+          cursor: pointer;
         }
 
         .scroll-content {
           flex: 1;
-          padding: 30px 40px;
+          padding: 28px 40px 40px;
           overflow-y: auto;
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: center;
+          justify-content: flex-start;
         }
 
         /* PROFILE CARD */
@@ -225,7 +348,7 @@ const Profile = () => {
           background: white;
           border-radius: 50px;
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
-          padding: 50px 45px;
+          padding: 56px 45px 50px;
           border: 1px solid #f1f5f9;
           width: 100%;
           max-width: 540px;
@@ -595,7 +718,19 @@ const Profile = () => {
           .mobile-only { display: flex !important; }
           .app-container { flex-direction: column; height: 100vh; overflow: hidden; }
           .mobile-top-bar { padding: 0 20px; height: 60px; background: white; border-bottom: 1px solid #F1F1F1; align-items: center; justify-content: space-between; }
-          .scroll-content { padding: 15px !important; padding-bottom: 90px !important; align-items: flex-start !important; overflow-y: auto; }
+          .mobile-notifications-trigger.notifications-trigger {
+            width: 34px;
+            height: 34px;
+            min-width: 34px;
+            min-height: 34px;
+            padding: 0;
+          }
+          .mobile-notifications-trigger.notifications-trigger svg {
+            width: 18px;
+            height: 18px;
+          }
+          .mobile-notifications-dropdown { right: 0; left: auto; width: min(340px, calc(100vw - 40px)); }
+          .scroll-content { padding: 20px 15px 90px !important; align-items: center !important; justify-content: flex-start !important; overflow-y: auto; }
           .profile-card { max-width: 100%; padding: 28px 20px 24px 20px; }
           .mobile-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 70px; background: white; border-top: 1px solid #EEE; display: flex; justify-content: space-around; align-items: center; padding-bottom: env(safe-area-inset-bottom); z-index: 1000; }
         }
@@ -643,20 +778,85 @@ const Profile = () => {
 
         {/* DESKTOP TOP NAV — exact copy from home.jsx */}
         <header className="top-nav">
-          <div style={{ display: 'flex', gap: 45 }}>
-            <span style={{ color: '#F54E25', fontWeight: 800, fontSize: 23 }}>Profile</span>
-            <span style={{ color: '#1B2559', fontWeight: 600, fontSize: 20 }}>Welcome back</span>
-          </div>
-          <div style={{ marginLeft: 'auto', width: 38, height: 38, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-            {profileForm.fullName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase()).join('') || 'FU'}
+          <div className="top-nav-actions">
+            <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                className="notifications-trigger"
+                aria-expanded={showNotifications}
+                aria-label="Notifications"
+                onClick={handleNotificationToggle}
+              >
+                <Bell size={20} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
+              </button>
+              {showNotifications && (
+                <div className="notifications-dropdown">
+                  <div className="panel-title" style={{ marginBottom: 12 }}>
+                    <Bell size={16} color="#F54E25" /> Notifications
+                  </div>
+                  {notificationItems.map((item) => (
+                    <div key={item} className="interactive-row">
+                      <CheckCircle2 size={15} color="#2B31ED" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button type="button" className="user-avatar-top" aria-label="Open profile" onClick={() => navigate('/profile')}>
+              {userInitials}
+            </button>
           </div>
         </header>
 
-        {/* MOBILE TOP BAR — exact copy from home.jsx */}
         <div className="mobile-only mobile-top-bar">
           <img src={logo} alt="BH" style={{ width: 50 }} />
-          <div style={{ width: 34, height: 34, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>
-            {profileForm.fullName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase()).join('') || 'FU'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                className="notifications-trigger mobile-notifications-trigger"
+                aria-expanded={showNotifications}
+                aria-label="Notifications"
+                onClick={handleNotificationToggle}
+              >
+                <Bell size={18} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
+              </button>
+              {showNotifications && (
+                <div className="notifications-dropdown mobile-notifications-dropdown">
+                  <div className="panel-title" style={{ marginBottom: 12 }}>
+                    <Bell size={16} color="#F54E25" /> Notifications
+                  </div>
+                  {notificationItems.map((item) => (
+                    <div key={`m-${item}`} className="interactive-row">
+                      <CheckCircle2 size={15} color="#2B31ED" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/profile')}
+              aria-label="Open profile"
+              style={{
+                width: 34,
+                height: 34,
+                background: '#F54E25',
+                color: 'white',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 700,
+                fontSize: '12px',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              {userInitials}
+            </button>
           </div>
         </div>
 

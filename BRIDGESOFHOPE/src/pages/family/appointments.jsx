@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Home, User, LogOut, Calendar, ClipboardList, BarChart3 } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Home, User, LogOut, Calendar, ClipboardList, BarChart3, Bell, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/logo2.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -23,6 +23,15 @@ export default function FamilyAppointmentsPage() {
   const [patients, setPatients] = useState([]);
   const [familyUserId, setFamilyUserId] = useState('');
   const [familyName, setFamilyName] = useState('Family User');
+  const [userInitials, setUserInitials] = useState('FU');
+  const notificationsDesktopRef = useRef(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationItems = [
+    'Submit missing laboratory result before Friday.',
+    'Family support session is scheduled on April 5, 10:00 AM.',
+    'Weekly report reviewed by your assigned counselor.',
+    'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
+  ];
   const [visitationSettings, setVisitationSettings] = useState(() => loadVisitationSettings());
   const [requests, setRequests] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -34,6 +43,14 @@ export default function FamilyAppointmentsPage() {
     preferredTime: '',
     note: '',
   });
+  const deriveInitials = (name) =>
+    String(name || '')
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || '')
+      .join('') || 'FU';
+
   const WEEKDAY_TO_INDEX = {
     sunday: 0,
     sun: 0,
@@ -61,6 +78,7 @@ export default function FamilyAppointmentsPage() {
         if (!cancelled) {
           setFamilyUserId('local-family');
           setFamilyName('Family User');
+          setUserInitials('FU');
           setPatients(localPatients);
         }
         return;
@@ -69,7 +87,17 @@ export default function FamilyAppointmentsPage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
-      const display = user.user_metadata?.full_name || user.email || 'Family User';
+      let resolvedName =
+        user.user_metadata?.full_name ||
+        [user.user_metadata?.first_name, user.user_metadata?.last_name].filter(Boolean).join(' ') ||
+        user.email ||
+        'Family User';
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (profileRow?.full_name) resolvedName = profileRow.full_name;
       const { data } = await supabase
         .from('patients')
         .select('id, full_name')
@@ -78,7 +106,8 @@ export default function FamilyAppointmentsPage() {
         .order('admitted_at', { ascending: false });
       if (!cancelled) {
         setFamilyUserId(user.id);
-        setFamilyName(display);
+        setFamilyName(resolvedName);
+        setUserInitials(deriveInitials(resolvedName));
         setPatients((data || []).map((r) => ({ id: r.id, name: r.full_name })));
       }
     };
@@ -281,6 +310,18 @@ export default function FamilyAppointmentsPage() {
     }
   }, [visitationSettings.startTime, visitationSettings.endTime]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!showNotifications) return;
+    const onDoc = (e) => {
+      const t = e.target;
+      if (!notificationsDesktopRef.current?.contains(t)) setShowNotifications(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [showNotifications]);
+
+  const handleNotificationToggle = () => setShowNotifications((v) => !v);
+
   return (
     <div className="app-container" style={{ color: '#1B2559' }}>
       <style>{`
@@ -312,18 +353,19 @@ export default function FamilyAppointmentsPage() {
           display: flex; align-items: center; width: 100%;
           padding: 0 ${isExpanded ? '35px' : '0'};
           justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 14px; margin-bottom: 25px; min-height: 56px; box-sizing: border-box; border: 2px solid transparent; border-radius: 12px;
+          gap: 20px; margin-bottom: 25px; min-height: 52px; box-sizing: border-box; border: 2px solid transparent; border-radius: 12px;
         }
         .sidebar-nav-item.sidebar-nav-active { border-color: #F54E25; }
         .sidebar-icon-wrap { padding: 12px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .sidebar-label {
           display: ${isExpanded ? 'block' : 'none'};
           font-weight: 700;
-          font-size: 16px;
+          font-size: 18px;
           line-height: 1.2;
           color: #707EAE;
+          max-width: 140px;
           white-space: normal;
-          word-break: break-word;
+          overflow-wrap: anywhere;
         }
         .sidebar-primary { width: 100%; }
         .sidebar-footer {
@@ -351,7 +393,92 @@ export default function FamilyAppointmentsPage() {
           box-sizing: border-box;
           z-index: 300;
         }
-        .view-title { font-size: 20px; font-weight: 800; color: #1B2559; }
+        .top-nav-actions {
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          flex-shrink: 0;
+        }
+        .notifications-dropdown {
+          position: absolute;
+          top: calc(100% + 10px);
+          right: 0;
+          width: min(360px, calc(100vw - 48px));
+          background: white;
+          border: 1px solid #E9EDF7;
+          border-radius: 14px;
+          box-shadow: 0 12px 40px rgba(27, 37, 89, 0.12);
+          padding: 16px;
+          z-index: 400;
+        }
+        .notifications-trigger {
+          width: 40px;
+          height: 40px;
+          min-width: 40px;
+          min-height: 40px;
+          padding: 0;
+          box-sizing: border-box;
+          flex-shrink: 0;
+          border-radius: 50%;
+          border: none;
+          background: #F54E25;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: white;
+          box-shadow: 0 2px 10px rgba(245, 78, 37, 0.4);
+        }
+        .notifications-trigger:hover {
+          background: #e0421a;
+          box-shadow: 0 4px 14px rgba(245, 78, 37, 0.5);
+        }
+        .notifications-trigger:focus-visible {
+          outline: 2px solid #1B2559;
+          outline-offset: 2px;
+        }
+        .notifications-trigger svg {
+          display: block;
+          width: 21px;
+          height: 21px;
+          stroke: #ffffff;
+          color: #ffffff;
+          flex-shrink: 0;
+        }
+        .panel-title {
+          color: #1B2559;
+          font-weight: 800;
+          margin-bottom: 10px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .interactive-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          margin-bottom: 10px;
+          color: #334155;
+          font-size: 13px;
+        }
+        .user-avatar-top {
+          width: 40px;
+          height: 40px;
+          min-width: 40px;
+          min-height: 40px;
+          background: #F54E25;
+          color: white;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 700;
+          font-size: 13px;
+          box-sizing: border-box;
+          border: none;
+          cursor: pointer;
+        }
         .scroll-content {
           flex: 1;
           overflow-y: auto;
@@ -590,7 +717,40 @@ export default function FamilyAppointmentsPage() {
       </aside>
       <main className="main-view">
         <header className="top-nav">
-          <span className="view-title">Appointment</span>
+          <div className="top-nav-actions">
+            <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                className="notifications-trigger"
+                aria-expanded={showNotifications}
+                aria-label="Notifications"
+                onClick={handleNotificationToggle}
+              >
+                <Bell size={20} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
+              </button>
+              {showNotifications && (
+                <div className="notifications-dropdown">
+                  <div className="panel-title" style={{ marginBottom: 12 }}>
+                    <Bell size={16} color="#F54E25" /> Notifications
+                  </div>
+                  {notificationItems.map((item) => (
+                    <div key={item} className="interactive-row">
+                      <CheckCircle2 size={15} color="#2B31ED" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="user-avatar-top"
+              onClick={() => navigate('/profile')}
+              aria-label="Open profile"
+            >
+              {userInitials}
+            </button>
+          </div>
         </header>
         <div className="scroll-content">
         <div className="appt-hero">

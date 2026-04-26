@@ -67,6 +67,7 @@ const ROUTE_TITLES = {
 
 function getPageTitle(pathname) {
   if (ROUTE_TITLES[pathname]) return ROUTE_TITLES[pathname];
+  if (pathname.startsWith('/reports/')) return ROUTE_TITLES['/reports'];
 
   const segment = pathname.split('/').filter(Boolean).pop();
   if (!segment) return 'Home';
@@ -146,6 +147,14 @@ function App() {
         />
         <Route
           path="/reports"
+          element={
+            <RoleGuard allowedRoles={['family']}>
+              <FamilyReportsPage />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/reports/:patientId"
           element={
             <RoleGuard allowedRoles={['family']}>
               <FamilyReportsPage />

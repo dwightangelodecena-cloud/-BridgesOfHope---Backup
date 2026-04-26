@@ -14,7 +14,6 @@ const Service = () => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false); // State for monthly fees expansion
   const [isAdmissionExpanded, setIsAdmissionExpanded] = useState(false); // New state for admission card expansion
-  const [displayName, setDisplayName] = useState('Family User');
   const [userInitials, setUserInitials] = useState('FU');
   const notificationsDesktopRef = useRef(null);
   const notificationsMobileRef = useRef(null);
@@ -51,7 +50,6 @@ const Service = () => {
         if (profileRow?.full_name) resolvedName = profileRow.full_name;
       }
       if (isMounted) {
-        setDisplayName(resolvedName);
         setUserInitials(deriveInitials(resolvedName));
       }
     };
@@ -682,10 +680,6 @@ const Service = () => {
 
       <div className="main-view">
         <header className="top-nav">
-          <div className="top-nav-left">
-            <span className="view-title">Services</span>
-            <span className="welcome-text">Welcome back, {displayName}</span>
-          </div>
           <div className="top-nav-actions">
             <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
               <button

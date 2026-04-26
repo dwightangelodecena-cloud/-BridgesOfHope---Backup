@@ -693,7 +693,6 @@ const Progress = () => {
 
       <main className="main-view">
         <header className="top-nav">
-          <div className="top-nav-left"><span className="view-title">Request Management</span></div>
           <div className="top-nav-actions">
             <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
               <button type="button" className="notifications-trigger" aria-expanded={showNotifications} aria-label="Notifications" onClick={() => setShowNotifications((v) => !v)}>
