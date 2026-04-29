@@ -10,6 +10,68 @@ const DEFAULT_SETTINGS = {
   endTime: '17:00',
 };
 
+const CANONICAL_VISITATION_STATUSES = new Set([
+  'Requested',
+  'Approved',
+  'Declined',
+  'Rescheduled',
+  'Cancelled',
+  'Completed',
+]);
+
+/**
+ * Some databases return numeric status codes; the UI expects these text labels.
+ * (e.g. family requests showing as "2" instead of "Requested".)
+ */
+export function normalizeVisitationStatus(raw) {
+  if (raw === null || raw === undefined || raw === '') return 'Requested';
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    if (raw === 2) return 'Requested';
+    if (raw === 3) return 'Approved';
+    if (raw === 4) return 'Declined';
+    if (raw === 5) return 'Rescheduled';
+    if (raw === 1) return 'Requested';
+    return 'Requested';
+  }
+  const s = String(raw).trim();
+  if (!s) return 'Requested';
+  if (CANONICAL_VISITATION_STATUSES.has(s)) return s;
+  const lo = s.toLowerCase();
+  if (lo === 'pending' || lo === 'request' || lo === 'requested') return 'Requested';
+  if (lo === 'approve' || lo === 'approved') return 'Approved';
+  if (lo === 'decline' || lo === 'declined' || lo === 'rejected') return 'Declined';
+  if (lo === 'reschedule' || lo === 'rescheduled') return 'Rescheduled';
+  if (/^\d+$/.test(s)) return normalizeVisitationStatus(Number(s));
+  return 'Requested';
+}
+
+/** Dates on which this request should appear on admin/family calendars (one slot after confirmation). */
+export function visitationCalendarDateKeys(row) {
+  const st = normalizeVisitationStatus(row?.status);
+  const conf = String(row?.confirmedDate || '').trim();
+  const pref = String(row?.preferredDate || '').trim();
+  if (st === 'Declined' || st === 'Cancelled') return [];
+  if ((st === 'Approved' || st === 'Rescheduled' || st === 'Completed') && conf) return [conf];
+  if (pref) return [pref];
+  return [];
+}
+
+/** True when a local `visit_*` draft row matches a row already stored in Supabase (same request, real id). */
+export function isVisitationLocalDraftSuperseded(localRow, fromDbRows) {
+  if (!localRow || !Array.isArray(fromDbRows)) return false;
+  if (!String(localRow.id || '').startsWith('visit_')) return false;
+  const lf = String(localRow.familyName || '');
+  const lp = String(localRow.patientName || '');
+  const ld = String(localRow.preferredDate || '');
+  const lt = String(localRow.preferredTime || '');
+  return fromDbRows.some((d) => (
+    String(d.familyName || '') === lf
+    && String(d.patientName || '') === lp
+    && String(d.preferredDate || '') === ld
+    && String(d.preferredTime || '') === lt
+  ));
+}
+
 export function loadVisitationSettings() {
   try {
     const raw = localStorage.getItem(VISITATION_SETTINGS_KEY);
@@ -145,14 +207,15 @@ export function updateVisitationRequest(id, patch) {
   return next.find((r) => String(r.id) === String(id)) || null;
 }
 
-export function upsertVisitationRequest(row) {
+export function upsertVisitationRequest(row, options = {}) {
   if (!row || !row.id) return null;
-  const rows = loadVisitationRequests();
+  const drop = new Set((options.dropLocalIds || []).map(String));
+  const rows = loadVisitationRequests().filter((r) => !drop.has(String(r.id)));
   const idx = rows.findIndex((r) => String(r.id) === String(row.id));
   if (idx >= 0) {
     rows[idx] = { ...rows[idx], ...row, updatedAt: row.updatedAt || new Date().toISOString() };
   } else {
-    rows.unshift(row);
+    rows.unshift({ ...row, updatedAt: row.updatedAt || new Date().toISOString() });
   }
   saveVisitationRequests(rows);
   return row;

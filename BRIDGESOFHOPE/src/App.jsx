@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 
 // Component Imports
 import LandingPage from '@/landingpage'; // Using @ for src/
@@ -26,7 +26,7 @@ import NurseProfile from '@/pages/nurse/nurseprofile';
 import NurseChangePass from '@/pages/nurse/nursechangepass';
 import AdminDashboard from '@/pages/admin/admin-dashboard';
 import PatientDatabasePage from './pages/nurse/patient-database';
-import AdminPatientDatabase from '@/pages/admin/patient-database';
+import { AdminPatientDatabaseGate } from '@/pages/admin/patient-database';
 import Analytics from './pages/admin/analytics';
 import UserManagement from '@/pages/admin/user-management';
 import AdmissionManagement from '@/pages/admin/admission-management';
@@ -36,6 +36,16 @@ import ContentManagement from '@/pages/admin/content-management';
 import AdminProfile from '@/pages/admin/admin-profile';
 import AdminAppointmentsPage from '@/pages/admin/admin-appointments';
 import AdminReportsPage from '@/pages/admin/admin-reports';
+import RecoveryRoadmapPage from '@/pages/admin/recovery-roadmap';
+import { CaseLoadProvider } from '@/pages/case-load/CaseLoadContext';
+import CaseLoadLayout from '@/pages/case-load/CaseLoadLayout';
+import CaseOverviewPage from '@/pages/case-load/CaseOverviewPage';
+import CaseResidentsPage from '@/pages/case-load/CaseResidentsPage';
+import CaseAppointmentsPage from '@/pages/case-load/CaseAppointmentsPage';
+import CaseIncidentsPage from '@/pages/case-load/CaseIncidentsPage';
+import CaseReportHistoryPage from '@/pages/case-load/CaseReportHistoryPage';
+import CaseResourcesPage from '@/pages/case-load/CaseResourcesPage';
+import CaseProfilePage from '@/pages/case-load/CaseProfilePage';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
 
@@ -58,6 +68,13 @@ const ROUTE_TITLES = {
   '/nurseprofile': 'Nurse profile',
   '/nursechangepass': 'Nurse change password',
   '/admin-dashboard': 'Admin dashboard',
+  '/case-dashboard': 'Case load dashboard',
+  '/case-dashboard/residents': 'Assigned residents',
+  '/case-dashboard/appointments': 'CLM appointments',
+  '/case-dashboard/incidents': 'Incident tagging',
+  '/case-dashboard/reports': 'CLM report history',
+  '/case-dashboard/resources': 'Operations guide',
+  '/case-dashboard/profile': 'CLM profile',
   '/patient-database': 'Patient database',
   '/admin-patient-database': 'Admin patient database',
   '/analytics': 'Analytics',
@@ -65,6 +82,7 @@ const ROUTE_TITLES = {
   '/admin-profile': 'Admin profile',
   '/admin-appointments': 'Admin appointments',
   '/admin-reports': 'Printable reports',
+  '/admin-recovery-roadmap': 'Recovery roadmap',
 };
 
 function getPageTitle(pathname) {
@@ -198,6 +216,25 @@ function App() {
           }
         />
         <Route
+          path="/case-dashboard"
+          element={
+            <RoleGuard allowedRoles={['case_manager']}>
+              <CaseLoadProvider>
+                <CaseLoadLayout />
+              </CaseLoadProvider>
+            </RoleGuard>
+          }
+        >
+          <Route index element={<CaseOverviewPage />} />
+          <Route path="residents" element={<CaseResidentsPage />} />
+          <Route path="appointments" element={<CaseAppointmentsPage />} />
+          <Route path="incidents" element={<CaseIncidentsPage />} />
+          <Route path="reports" element={<CaseReportHistoryPage />} />
+          <Route path="resources" element={<CaseResourcesPage />} />
+          <Route path="profile" element={<CaseProfilePage />} />
+          <Route path="*" element={<Navigate to="/case-dashboard" replace />} />
+        </Route>
+        <Route
           path="/nurseprofile"
           element={
             <RoleGuard allowedRoles={['nurse']}>
@@ -234,8 +271,8 @@ function App() {
         <Route
           path="/admin-patient-database"
           element={
-            <RoleGuard allowedRoles={['admin']}>
-              <AdminPatientDatabase />
+            <RoleGuard allowedRoles={['admin', 'case_manager']}>
+              <AdminPatientDatabaseGate />
             </RoleGuard>
           }
         />
@@ -298,7 +335,7 @@ function App() {
         <Route
           path="/admin-appointments"
           element={
-            <RoleGuard allowedRoles={['admin']}>
+            <RoleGuard allowedRoles={['admin', 'case_manager']}>
               <AdminAppointmentsPage />
             </RoleGuard>
           }
@@ -306,8 +343,16 @@ function App() {
         <Route
           path="/admin-reports"
           element={
-            <RoleGuard allowedRoles={['admin']}>
+            <RoleGuard allowedRoles={['admin', 'case_manager']}>
               <AdminReportsPage />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-recovery-roadmap"
+          element={
+            <RoleGuard allowedRoles={['admin', 'nurse', 'case_manager']}>
+              <RecoveryRoadmapPage />
             </RoleGuard>
           }
         />

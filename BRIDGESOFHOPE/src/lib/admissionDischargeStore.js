@@ -212,7 +212,7 @@ export function buildAdmissionRow(admissionRow, patientRow, override) {
     guardianEmail: admissionRow.guardian_email,
     guardianPhone: admissionRow.guardian_phone,
     patientBirthDate: admissionRow.patient_birth_date,
-    patientGender: admissionRow.patient_gender || '',
+    patientGender: admissionRow.patient_gender || patientRow?.gender || '',
     dbStatus: admissionRow.status,
     archived: Boolean(o.archived),
     rawAdmission: admissionRow,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LayoutGrid, HeartPulse, LogOut, Users, ArrowRightSquare, Stethoscope, LayoutTemplate, ClipboardList, User, Calendar, FileText } from 'lucide-react';
+import { LayoutGrid, HeartPulse, LogOut, Users, ArrowRightSquare, Stethoscope, LayoutTemplate, ClipboardList, CheckCircle2, User, Calendar, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase } from '@/lib/supabase';
@@ -224,6 +224,7 @@ const AdminProfile = () => {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}><div className="icon-box inactive"><ArrowRightSquare size={22} /></div><span className="sidebar-label">Discharge Management</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}><div className="icon-box inactive"><Users size={22} /></div><span className="sidebar-label">User Management</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}><div className="icon-box inactive"><Stethoscope size={22} /></div><span className="sidebar-label">Staff Management</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}><div className="icon-box inactive"><CheckCircle2 size={22} /></div><span className="sidebar-label">Recovery Roadmap</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}><div className="icon-box inactive"><Calendar size={22} /></div><span className="sidebar-label">Appointments</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}><div className="icon-box inactive"><FileText size={22} /></div><span className="sidebar-label">Printable reports</span></div>

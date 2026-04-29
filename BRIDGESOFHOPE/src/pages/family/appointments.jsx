@@ -9,10 +9,49 @@ import {
   loadVisitationSettings,
   loadVisitationSettingsShared,
   listVisitationRequestsByFamily,
+  listVisitationRequestsAll,
   createVisitationRequest,
   replaceVisitationRequests,
   upsertVisitationRequest,
+  normalizeVisitationStatus,
+  isVisitationLocalDraftSuperseded,
 } from '@/lib/visitationAppointments';
+
+function dedupeVisitationRequests(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const key = [
+      String(r.familyId || ''),
+      String(r.patientId || ''),
+      String(r.patientName || '').trim(),
+      String(r.preferredDate || ''),
+      String(r.preferredTime || ''),
+    ].join('|');
+    const prev = map.get(key);
+    if (!prev) {
+      map.set(key, r);
+      continue;
+    }
+    const tNew = new Date(r.updatedAt || r.createdAt || 0).getTime();
+    const tOld = new Date(prev.updatedAt || prev.createdAt || 0).getTime();
+    if (tNew >= tOld) map.set(key, r);
+  }
+  return Array.from(map.values());
+}
+
+function visitationStatusSubtext(row) {
+  const st = normalizeVisitationStatus(row.status);
+  const adminReason = String(row.adminNote || '').trim();
+  if (st === 'Declined') return 'Declined by the facility';
+  if (st === 'Approved' && row.confirmedDate) {
+    return `Confirmed: ${row.confirmedDate} ${row.confirmedTime || ''}`.trim();
+  }
+  if (st === 'Rescheduled' && row.confirmedDate) {
+    const base = `Rescheduled: ${row.confirmedDate} ${row.confirmedTime || ''}`.trim();
+    return adminReason ? `${base} · Reason: ${adminReason}` : base;
+  }
+  return 'Waiting for admin decision';
+}
 
 export default function FamilyAppointmentsPage() {
   const navigate = useNavigate();
@@ -140,7 +179,7 @@ export default function FamilyAppointmentsPage() {
             preferredDate: r.preferred_date || '',
             preferredTime: r.preferred_time || '',
             note: r.note || '',
-            status: r.status || 'Requested',
+            status: normalizeVisitationStatus(r.status),
             confirmedDate: r.confirmed_date || '',
             confirmedTime: r.confirmed_time || '',
             adminNote: r.admin_note || '',
@@ -148,14 +187,26 @@ export default function FamilyAppointmentsPage() {
             updatedAt: r.updated_at || '',
           }));
           const seen = new Set(fromDb.map((r) => String(r.id)));
-          const merged = [...fromDb, ...localRows.filter((r) => !seen.has(String(r.id)))];
+          const merged = [
+            ...fromDb,
+            ...localRows.filter(
+              (r) => !seen.has(String(r.id)) && !isVisitationLocalDraftSuperseded(r, fromDb),
+            ),
+          ];
           merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-          replaceVisitationRequests(merged);
-          setRequests(merged.filter((r) => String(r.familyId || '') === String(familyUserId || '')));
+          const normalized = merged.map((r) => ({ ...r, status: normalizeVisitationStatus(r.status) }));
+          const deduped = dedupeVisitationRequests(normalized);
+          const allCached = listVisitationRequestsAll();
+          const others = allCached.filter((r) => String(r.familyId || '') !== String(familyUserId || ''));
+          replaceVisitationRequests([...others, ...deduped]);
+          setRequests(deduped.filter((r) => String(r.familyId || '') === String(familyUserId || '')));
           return;
         }
       }
-      setRequests(localRows);
+      const localNorm = dedupeVisitationRequests(
+        localRows.map((r) => ({ ...r, status: normalizeVisitationStatus(r.status) }))
+      );
+      setRequests(localNorm);
     };
     void load();
     window.addEventListener('storage', load);
@@ -230,13 +281,13 @@ export default function FamilyAppointmentsPage() {
             preferredDate: data.preferred_date || '',
             preferredTime: data.preferred_time || '',
             note: data.note || '',
-            status: data.status || 'Requested',
+            status: normalizeVisitationStatus(data.status),
             confirmedDate: data.confirmed_date || '',
             confirmedTime: data.confirmed_time || '',
             adminNote: data.admin_note || '',
             createdAt: data.created_at || '',
             updatedAt: data.updated_at || '',
-          });
+          }, { dropLocalIds: [created.id] });
           window.dispatchEvent(new Event('storage'));
           window.dispatchEvent(new Event(APP_DATA_REFRESH));
         });
@@ -855,13 +906,22 @@ export default function FamilyAppointmentsPage() {
         <div className="appt-card">
           <h3 className="appt-card-title"><Calendar size={16} color="#F54E25" /> Appointment Status</h3>
           <div style={{ display: 'grid', gap: 8 }}>
-            {requests.map((row) => (
+            {requests.map((row) => {
+              const st = normalizeVisitationStatus(row.status);
+              const slotDate = row.confirmedDate || row.preferredDate;
+              const slotTime = row.confirmedTime || row.preferredTime;
+              return (
               <div key={row.id} style={{ border: '1px solid #EEF2FF', borderRadius: 10, padding: 10, display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                 <div>
-                  <div style={{ fontWeight: 700 }}>{row.patientName} · {row.preferredDate} {row.preferredTime}</div>
+                  <div style={{ fontWeight: 700 }}>{row.patientName} · {slotDate} {slotTime}</div>
                   <div style={{ fontSize: 12, color: '#64748B' }}>
-                    {row.confirmedDate ? `Confirmed: ${row.confirmedDate} ${row.confirmedTime || ''}` : 'Waiting for admin decision'}
+                    {visitationStatusSubtext({ ...row, status: st })}
                   </div>
+                  {st === 'Rescheduled' && String(row.adminNote || '').trim() ? (
+                    <div style={{ marginTop: 6, fontSize: 11, color: '#3730A3', fontWeight: 600 }}>
+                      Admin notice: {row.adminNote}
+                    </div>
+                  ) : null}
                 </div>
                 <div
                   style={{
@@ -870,15 +930,16 @@ export default function FamilyAppointmentsPage() {
                     borderRadius: 999,
                     padding: '4px 9px',
                     height: 'fit-content',
-                    background: row.status === 'Approved' ? '#DCFCE7' : row.status === 'Declined' ? '#FEE2E2' : row.status === 'Rescheduled' ? '#E0E7FF' : '#FEF3C7',
-                    color: row.status === 'Approved' ? '#166534' : row.status === 'Declined' ? '#991B1B' : row.status === 'Rescheduled' ? '#3730A3' : '#92400E',
-                    border: `1px solid ${row.status === 'Approved' ? '#BBF7D0' : row.status === 'Declined' ? '#FECACA' : row.status === 'Rescheduled' ? '#C7D2FE' : '#FDE68A'}`,
+                    background: st === 'Approved' ? '#DCFCE7' : st === 'Declined' ? '#FEE2E2' : st === 'Rescheduled' ? '#E0E7FF' : '#FEF3C7',
+                    color: st === 'Approved' ? '#166534' : st === 'Declined' ? '#991B1B' : st === 'Rescheduled' ? '#3730A3' : '#92400E',
+                    border: `1px solid ${st === 'Approved' ? '#BBF7D0' : st === 'Declined' ? '#FECACA' : st === 'Rescheduled' ? '#C7D2FE' : '#FDE68A'}`,
                   }}
                 >
-                  {row.status}
+                  {st}
                 </div>
               </div>
-            ))}
+            );
+            })}
             {requests.length === 0 ? <div style={{ color: '#94a3b8', fontSize: 13 }}>No requests yet.</div> : null}
           </div>
         </div>

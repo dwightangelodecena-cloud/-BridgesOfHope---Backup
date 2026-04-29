@@ -7,6 +7,7 @@ function navigateForRole(navigate, role) {
   const r = (role ?? 'family').toLowerCase();
   if (r === 'nurse') navigate('/nurse-dashboard', { replace: true });
   else if (r === 'admin') navigate('/admin-dashboard', { replace: true });
+  else if (r === 'case_manager') navigate('/case-dashboard', { replace: true });
   else navigate('/home', { replace: true });
 }
 

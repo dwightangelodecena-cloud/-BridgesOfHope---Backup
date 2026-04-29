@@ -214,6 +214,8 @@ const Login = () => {
       navigate('/nurse-dashboard');
     } else if (accountRole === 'admin') {
       navigate('/admin-dashboard');
+    } else if (accountRole === 'case_manager') {
+      navigate('/case-dashboard');
     } else {
       navigate('/home');
     }
@@ -245,7 +247,8 @@ const Login = () => {
 
         .login-container {
           min-height: 100vh;
-          width: 100vw;
+          width: 100%;
+          max-width: 100%;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -254,50 +257,57 @@ const Login = () => {
           margin: 0;
           padding: 0;
           overflow-x: hidden;
+          box-sizing: border-box;
+          /* Align with signup auth shell / card / gap */
+          --auth-shell: min(1240px, calc(100vw - 40px));
+          --auth-gap: 22px;
+          --auth-card-max: min(680px, 100%);
         }
 
         .login-content-wrapper {
-          display: flex;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, var(--auth-card-max));
+          gap: var(--auth-gap);
           align-items: center;
-          justify-content: center;
-          gap: 120px;
-          width: 90%;
-          max-width: 1400px;
+          width: 100%;
+          max-width: var(--auth-shell);
+          margin: 0 auto;
+          padding: clamp(28px, 4vh, 40px) clamp(16px, 3vw, 24px) 48px;
+          box-sizing: border-box;
         }
 
         .brand-side {
-          flex: 1;
+          min-width: 0;
           display: flex;
-          justify-content: flex-end;
+          justify-content: center;
+          align-items: center;
         }
 
         .brand-side img {
           width: 100%;
-          max-width: 550px;
+          max-width: min(360px, 34vw);
+          max-height: min(58vh, 420px);
           height: auto;
+          object-fit: contain;
         }
 
         .form-side {
-          flex: 1;
+          width: 100%;
+          min-width: 0;
           display: flex;
           justify-content: flex-start;
         }
 
         .login-card {
           background: #ffffff;
-          padding: 50px 45px;
+          padding: clamp(44px, 5vw, 52px) clamp(32px, 4vw, 48px);
           border-radius: 50px;
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
           width: 100%;
-          max-width: 480px;
+          max-width: var(--auth-card-max);
           text-align: center;
           border: 1px solid #f1f5f9;
-        }
-
-        .card-header-logo {
-          height: 90px;
-          margin-bottom: 35px;
-          object-fit: contain;
+          box-sizing: border-box;
         }
 
         .form-group {
@@ -521,7 +531,16 @@ const Login = () => {
 
         @media (max-width: 1100px) {
           .brand-side { display: none; }
-          .form-side { justify-content: center; }
+          .login-content-wrapper {
+            grid-template-columns: 1fr;
+            justify-items: center;
+            padding: 24px 16px 40px;
+          }
+          .form-side {
+            width: 100%;
+            max-width: min(680px, 100%);
+            justify-content: center;
+          }
           .login-card { 
             box-shadow: none; 
             border: none;
@@ -538,8 +557,6 @@ const Login = () => {
 
         <div className="form-side">
           <div className="login-card">
-            <img src={logo} alt="Bridges of Hope" className="card-header-logo" />
-
             {error && <div className="status-msg error-msg">{error}</div>}
             {success && <div className="status-msg success-msg">Login Successful!</div>}
 

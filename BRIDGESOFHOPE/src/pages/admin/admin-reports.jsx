@@ -5,6 +5,7 @@ import {
   LogOut,
   Users,
   ClipboardList,
+  CheckCircle2,
   ArrowRightSquare,
   Stethoscope,
   LayoutTemplate,
@@ -14,10 +15,11 @@ import {
   Download,
   RefreshCw,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import { resolveAccountRole } from '@/components/RoleGuard';
 import {
   loadAdminReportsSnapshot,
   downloadPatientCensusPdf,
@@ -25,6 +27,8 @@ import {
   downloadOccupancyPdf,
   downloadWeeklyCompliancePdf,
   downloadDeclineReasonsPdf,
+  downloadGuardianWeeklyConsolidatedPdf,
+  saveGuardianWeeklyConsolidatedDraft,
   REPORTS_BED_CAPACITY,
 } from '@/lib/adminPrintableReports';
 
@@ -59,15 +63,48 @@ const REPORT_CARDS = [
     description: 'Top grouped reasons from declined admission and discharge requests.',
     action: (snap) => downloadDeclineReasonsPdf(snap),
   },
+  {
+    id: 'guardian_consolidated',
+    title: 'Guardian weekly consolidated',
+    description: 'Latest weekly filing plus CLM, Program, and Medical context per patient.',
+    action: (snap) => downloadGuardianWeeklyConsolidatedPdf(snap),
+  },
 ];
 
 export default function AdminReportsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const forceClm = new URLSearchParams(location.search).get('mode') === 'clm';
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isClm, setIsClm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState(null);
   const [exportingId, setExportingId] = useState(null);
+  const [selectedPatientId, setSelectedPatientId] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
+  const [consolidationForm, setConsolidationForm] = useState({
+    clmReport: '',
+    programReport: '',
+    medicalReport: '',
+    interventions: '',
+    accomplishments: '',
+    nextPlan: '',
+    consolidatedSummary: '',
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!isSupabaseConfigured()) return;
+      const { data: authData } = await supabase.auth.getUser();
+      const role = await resolveAccountRole(authData?.user ?? null);
+      if (!cancelled) setIsClm(forceClm || role === 'case_manager');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [forceClm]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -95,6 +132,33 @@ export default function AdminReportsPage() {
     };
   }, [reload]);
 
+  useEffect(() => {
+    const patients = snapshot?.patients || [];
+    if (!patients.length) {
+      setSelectedPatientId('');
+      return;
+    }
+    const hasCurrent = patients.some((p) => String(p.id) === String(selectedPatientId));
+    if (!hasCurrent) {
+      setSelectedPatientId(String(patients[0].id));
+    }
+  }, [snapshot, selectedPatientId]);
+
+  useEffect(() => {
+    if (!snapshot || !selectedPatientId) return;
+    const row = snapshot.guardianConsolidatedDrafts?.[String(selectedPatientId)] || {};
+    setConsolidationForm({
+      clmReport: row.clmReport || '',
+      programReport: row.programReport || '',
+      medicalReport: row.medicalReport || '',
+      interventions: row.interventions || '',
+      accomplishments: row.accomplishments || '',
+      nextPlan: row.nextPlan || '',
+      consolidatedSummary: row.consolidatedSummary || '',
+    });
+    setSaveMessage('');
+  }, [snapshot, selectedPatientId]);
+
   const runExport = async (card) => {
     if (!snapshot) {
       await reload();
@@ -109,6 +173,15 @@ export default function AdminReportsPage() {
   };
 
   const dataSourceLabel = snapshot?.source === 'supabase' ? 'Database' : 'Local snapshot';
+
+  const selectedPatient = (snapshot?.patients || []).find((p) => String(p.id) === String(selectedPatientId)) || null;
+
+  const saveConsolidation = async () => {
+    if (!selectedPatientId) return;
+    saveGuardianWeeklyConsolidatedDraft(selectedPatientId, consolidationForm);
+    setSaveMessage('Consolidated guardian summary saved.');
+    await reload();
+  };
 
   return (
     <div className="um-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559' }}>
@@ -135,6 +208,45 @@ export default function AdminReportsPage() {
         .rp-export { border: none; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #F54E25; color: white; margin-top: auto; align-self: flex-start; }
         .rp-export:disabled { opacity: 0.65; cursor: default; }
         .rp-refresh { border: 1px solid #E9EDF7; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 700; cursor: pointer; background: white; color: #1B2559; display: inline-flex; align-items: center; gap: 8px; }
+        .rp-editor {
+          margin-top: 18px;
+          background: #fff;
+          border: 1px solid #E9EDF7;
+          border-radius: 16px;
+          padding: 18px;
+          display: grid;
+          gap: 10px;
+        }
+        .rp-editor-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .rp-input, .rp-textarea {
+          width: 100%;
+          border: 1px solid #dbe5f3;
+          border-radius: 10px;
+          padding: 9px 10px;
+          font-size: 13px;
+          font-family: 'Inter', sans-serif;
+          background: #fff;
+        }
+        .rp-textarea { min-height: 92px; resize: vertical; }
+        .rp-label { font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; display: block; }
+        .rp-save-btn {
+          border: none;
+          border-radius: 10px;
+          padding: 10px 14px;
+          font-size: 13px;
+          font-weight: 800;
+          cursor: pointer;
+          background: #0F766E;
+          color: white;
+          width: fit-content;
+        }
+        @media (max-width: 900px) {
+          .rp-editor-grid { grid-template-columns: 1fr; }
+        }
         .db-mobile-only { display: none; }
         @media (max-width: 768px) {
           .desktop-sidebar { display: none !important; }
@@ -152,34 +264,50 @@ export default function AdminReportsPage() {
           <img src={logoBH} alt="Kalinga" className="sidebar-logo" />
         </div>
         <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
-            <div className="icon-box inactive"><LayoutGrid size={22} /></div>
-            <span className="sidebar-label">Dashboard</span>
-          </div>
+          {!isClm ? (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
+              <div className="icon-box inactive"><LayoutGrid size={22} /></div>
+              <span className="sidebar-label">Dashboard</span>
+            </div>
+          ) : null}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
             <div className="icon-box inactive"><HeartPulse size={22} /></div>
-            <span className="sidebar-label">Patient Management</span>
+            <span className="sidebar-label">{isClm ? 'Patient records' : 'Patient Management'}</span>
           </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
-            <div className="icon-box inactive"><ClipboardList size={22} /></div>
-            <span className="sidebar-label">Admission Management</span>
+          {!isClm ? (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
+              <div className="icon-box inactive"><ClipboardList size={22} /></div>
+              <span className="sidebar-label">Admission Management</span>
+            </div>
+          ) : null}
+          {!isClm ? (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}>
+              <div className="icon-box inactive"><ArrowRightSquare size={22} /></div>
+              <span className="sidebar-label">Discharge Management</span>
+            </div>
+          ) : null}
+          {!isClm ? (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}>
+              <div className="icon-box inactive"><Users size={22} /></div>
+              <span className="sidebar-label">User Management</span>
+            </div>
+          ) : null}
+          {!isClm ? (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
+              <div className="icon-box inactive"><Stethoscope size={22} /></div>
+              <span className="sidebar-label">Staff Management</span>
+            </div>
+          ) : null}
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
+            <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+            <span className="sidebar-label">Recovery Roadmap</span>
           </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}>
-            <div className="icon-box inactive"><ArrowRightSquare size={22} /></div>
-            <span className="sidebar-label">Discharge Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}>
-            <div className="icon-box inactive"><Users size={22} /></div>
-            <span className="sidebar-label">User Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
-            <div className="icon-box inactive"><Stethoscope size={22} /></div>
-            <span className="sidebar-label">Staff Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
-            <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
-            <span className="sidebar-label">Content management</span>
-          </div>
+          {!isClm ? (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
+              <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
+              <span className="sidebar-label">Content management</span>
+            </div>
+          ) : null}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
             <div className="icon-box inactive"><Calendar size={22} /></div>
             <span className="sidebar-label">Appointments</span>
@@ -190,9 +318,9 @@ export default function AdminReportsPage() {
           </div>
         </nav>
         <div className="sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate(isClm ? '/case-dashboard/profile' : '/admin-profile'); }}>
             <div className="icon-box inactive"><User size={22} /></div>
-            <span className="sidebar-label">Profile & Security</span>
+            <span className="sidebar-label">{isClm ? 'Profile' : 'Profile & Security'}</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
             <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? 0 : 10, flexShrink: 0 }} />
@@ -249,33 +377,115 @@ export default function AdminReportsPage() {
             </div>
           ))}
         </div>
+
+        <div className="rp-editor">
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Weekly report consolidation for guardian (#7)</h2>
+            <p style={{ fontSize: 13, color: '#64748b', marginTop: 6, lineHeight: 1.45 }}>
+              Capture CLM, Program, and Medical source notes, then finalize guardian-facing deliberation outputs: interventions, accomplishments, and next plan.
+            </p>
+          </div>
+
+          <div style={{ maxWidth: 380 }}>
+            <label className="rp-label">Patient</label>
+            <select
+              className="rp-input"
+              value={selectedPatientId}
+              onChange={(e) => setSelectedPatientId(e.target.value)}
+            >
+              {(snapshot?.patients || []).map((p) => (
+                <option key={p.id} value={String(p.id)}>{p.name || p.full_name || p.id}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="rp-editor-grid">
+            <div>
+              <label className="rp-label">CLM source report</label>
+              <textarea className="rp-textarea" value={consolidationForm.clmReport} onChange={(e) => setConsolidationForm((prev) => ({ ...prev, clmReport: e.target.value }))} />
+            </div>
+            <div>
+              <label className="rp-label">Program source report</label>
+              <textarea className="rp-textarea" value={consolidationForm.programReport} onChange={(e) => setConsolidationForm((prev) => ({ ...prev, programReport: e.target.value }))} />
+            </div>
+            <div>
+              <label className="rp-label">Medical source report</label>
+              <textarea className="rp-textarea" value={consolidationForm.medicalReport} onChange={(e) => setConsolidationForm((prev) => ({ ...prev, medicalReport: e.target.value }))} />
+            </div>
+            <div>
+              <label className="rp-label">Interventions (guardian-facing)</label>
+              <textarea className="rp-textarea" value={consolidationForm.interventions} onChange={(e) => setConsolidationForm((prev) => ({ ...prev, interventions: e.target.value }))} />
+            </div>
+            <div>
+              <label className="rp-label">Accomplishments (guardian-facing)</label>
+              <textarea className="rp-textarea" value={consolidationForm.accomplishments} onChange={(e) => setConsolidationForm((prev) => ({ ...prev, accomplishments: e.target.value }))} />
+            </div>
+            <div>
+              <label className="rp-label">Next plan (guardian-facing)</label>
+              <textarea className="rp-textarea" value={consolidationForm.nextPlan} onChange={(e) => setConsolidationForm((prev) => ({ ...prev, nextPlan: e.target.value }))} />
+            </div>
+          </div>
+
+          <div>
+            <label className="rp-label">Final consolidated summary (optional)</label>
+            <textarea className="rp-textarea" value={consolidationForm.consolidatedSummary} onChange={(e) => setConsolidationForm((prev) => ({ ...prev, consolidatedSummary: e.target.value }))} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" className="rp-save-btn" onClick={() => void saveConsolidation()} disabled={!selectedPatient}>
+              Save consolidated report
+            </button>
+            {saveMessage ? (
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F766E' }}>{saveMessage}</span>
+            ) : null}
+          </div>
+        </div>
       </main>
 
       <div className="db-mobile-only db-mobile-bottom-nav">
-        <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <LayoutGrid size={20} color="#A3AED0" />
+        {!isClm ? (
+          <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}>
+            <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+              <LayoutGrid size={20} color="#A3AED0" />
+            </div>
+            <span>Dashboard</span>
           </div>
-          <span>Dashboard</span>
-        </div>
+        ) : null}
         <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}>
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
             <HeartPulse size={20} color="#A3AED0" />
           </div>
-          <span>Patients</span>
+          <span>{isClm ? 'Records' : 'Patients'}</span>
         </div>
+        {isClm ? (
+          <div className="mob-nav-item" onClick={() => navigate('/admin-appointments')}>
+            <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+              <Calendar size={20} color="#A3AED0" />
+            </div>
+            <span>Visits</span>
+          </div>
+        ) : null}
         <div className="mob-nav-item active">
           <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
             <FileText size={20} color="white" />
           </div>
           <span style={{ color: '#F54E25' }}>Reports</span>
         </div>
-        <div className="mob-nav-item" onClick={() => navigate('/admin-profile')}>
-          <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <User size={20} color="#A3AED0" />
+        {isClm ? (
+          <div className="mob-nav-item" onClick={() => navigate('/admin-recovery-roadmap')}>
+            <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+              <CheckCircle2 size={20} color="#A3AED0" />
+            </div>
+            <span>Roadmap</span>
           </div>
-          <span>Profile</span>
-        </div>
+        ) : (
+          <div className="mob-nav-item" onClick={() => navigate('/admin-profile')}>
+            <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+              <User size={20} color="#A3AED0" />
+            </div>
+            <span>Profile</span>
+          </div>
+        )}
       </div>
     </div>
   );

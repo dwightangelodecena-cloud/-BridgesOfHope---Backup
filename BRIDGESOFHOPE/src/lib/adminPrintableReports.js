@@ -11,6 +11,7 @@ export const REPORTS_BED_CAPACITY = 50;
 
 const ROOM_ASSIGNMENT_STORAGE_KEY = 'bh_patient_room_assignments_v1';
 const STAFF_ASSIGNMENT_STORAGE_KEY = 'bh_patient_staff_assignments_v1';
+const GUARDIAN_CONSOLIDATED_STORAGE_KEY = 'bh_guardian_weekly_consolidated_v1';
 
 function readJson(key, fallback) {
   try {
@@ -30,6 +31,46 @@ function loadRoomOverrides() {
 function loadStaffOverrides() {
   const o = readJson(STAFF_ASSIGNMENT_STORAGE_KEY, {});
   return o && typeof o === 'object' ? o : {};
+}
+
+function sanitizeConsolidatedEntry(v) {
+  const row = v && typeof v === 'object' ? v : {};
+  return {
+    clmReport: String(row.clmReport || '').trim(),
+    programReport: String(row.programReport || '').trim(),
+    medicalReport: String(row.medicalReport || '').trim(),
+    interventions: String(row.interventions || '').trim(),
+    accomplishments: String(row.accomplishments || '').trim(),
+    nextPlan: String(row.nextPlan || '').trim(),
+    consolidatedSummary: String(row.consolidatedSummary || '').trim(),
+    updatedAt: row.updatedAt || null,
+    updatedBy: String(row.updatedBy || '').trim(),
+  };
+}
+
+export function loadGuardianWeeklyConsolidatedDrafts() {
+  const raw = readJson(GUARDIAN_CONSOLIDATED_STORAGE_KEY, {});
+  if (!raw || typeof raw !== 'object') return {};
+  const out = {};
+  for (const [patientId, value] of Object.entries(raw)) {
+    out[String(patientId)] = sanitizeConsolidatedEntry(value);
+  }
+  return out;
+}
+
+export function saveGuardianWeeklyConsolidatedDraft(patientId, patch) {
+  const pid = String(patientId || '').trim();
+  if (!pid) return null;
+  const all = loadGuardianWeeklyConsolidatedDrafts();
+  const prev = sanitizeConsolidatedEntry(all[pid] || {});
+  const next = sanitizeConsolidatedEntry({
+    ...prev,
+    ...(patch && typeof patch === 'object' ? patch : {}),
+    updatedAt: new Date().toISOString(),
+  });
+  all[pid] = next;
+  localStorage.setItem(GUARDIAN_CONSOLIDATED_STORAGE_KEY, JSON.stringify(all));
+  return next;
 }
 
 function ageFromDob(dob) {
@@ -271,6 +312,7 @@ async function fetchSupabaseReportsSnapshot() {
   }
 
   const patients = (patientRows || []).map(mapPatientFromDbRow);
+  const guardianConsolidatedDrafts = loadGuardianWeeklyConsolidatedDrafts();
   return {
     source: 'supabase',
     generatedAt: new Date().toISOString(),
@@ -278,6 +320,7 @@ async function fetchSupabaseReportsSnapshot() {
     admissionRequests: admRows || [],
     dischargeRequests: disRows || [],
     weeklyReports: weeklyRows,
+    guardianConsolidatedDrafts,
   };
 }
 
@@ -361,6 +404,7 @@ function loadLocalReportsSnapshot() {
     admissionRequests: [...admissionRequests, ...approvedAdmissionSynth],
     dischargeRequests: [...dischargeRequests, ...approvedDischargeSynth],
     weeklyReports: weeklyRaw,
+    guardianConsolidatedDrafts: loadGuardianWeeklyConsolidatedDrafts(),
   };
 }
 
@@ -627,4 +671,85 @@ export function downloadDeclineReasonsPdf(snapshot) {
   });
 
   finalizePdf(doc, `decline-reasons-${reportFileDateStamp()}.pdf`);
+}
+
+/** @param {Awaited<ReturnType<loadAdminReportsSnapshot>>} snapshot */
+export function downloadGuardianWeeklyConsolidatedPdf(snapshot) {
+  const weeklyFlat = normalizeWeeklyList(snapshot.weeklyReports, snapshot.source);
+  const consolidatedByPatient = snapshot.guardianConsolidatedDrafts || {};
+  const byPatient = new Map();
+  for (const row of weeklyFlat) {
+    const id = String(row.patient_id || '').trim();
+    if (!id) continue;
+    const existing = byPatient.get(id);
+    const prevTs = existing?.submitted_at ? Date.parse(existing.submitted_at) || 0 : 0;
+    const curTs = row?.submitted_at ? Date.parse(row.submitted_at) || 0 : 0;
+    if (!existing || curTs >= prevTs) byPatient.set(id, row);
+  }
+
+  const rows = (snapshot.patients || []).map((p) => {
+    const rec = byPatient.get(String(p.id));
+    const consolidated = sanitizeConsolidatedEntry(consolidatedByPatient[String(p.id)] || {});
+    const latestWeek = rec?.week_number != null ? `Week ${rec.week_number}` : 'No weekly report yet';
+    const latestSubmitted = formatShortDateTime(rec?.submitted_at);
+    const clm = consolidated.clmReport || String(p.caseLoadManager || '').trim() || 'Not assigned';
+    const program = consolidated.programReport || String(p.programStaff || '').trim() || 'Not assigned';
+    const medical = consolidated.medicalReport || String(p.medicalStaffNote || '').trim() || 'Medical team on-board (shared)';
+    const interventions = consolidated.interventions || '—';
+    const accomplishments = consolidated.accomplishments || '—';
+    const nextPlan = consolidated.nextPlan || '—';
+    const updatedAt = formatShortDateTime(consolidated.updatedAt);
+    return [
+      p.name || '—',
+      latestWeek,
+      latestSubmitted,
+      clm,
+      program,
+      medical,
+      interventions,
+      accomplishments,
+      nextPlan,
+      updatedAt,
+    ];
+  });
+
+  rows.sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { sensitivity: 'base' }));
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+  const pageW = doc.internal.pageSize.getWidth();
+  doc.setFontSize(16);
+  doc.text('Guardian Weekly Consolidated Report', 40, 48);
+  doc.setFontSize(10);
+  doc.setTextColor(80);
+  doc.text(`Generated ${formatShortDateTime(new Date().toISOString())}`, pageW - 40, 48, { align: 'right' });
+  doc.setTextColor(0);
+  doc.setFontSize(9);
+  doc.text(
+    'Consolidated admin view from CLM, Program, and Medical source notes with guardian-facing deliberation outputs.',
+    40,
+    68,
+    { maxWidth: 720 }
+  );
+
+  autoTable(doc, {
+    startY: 84,
+    head: [['Patient', 'Latest week', 'Submitted', 'CLM report', 'Program report', 'Medical report', 'Interventions', 'Accomplishments', 'Next plan', 'Updated']],
+    body: rows.length ? rows : [['No patients in current snapshot', '—', '—', '—', '—', '—', '—', '—', '—', '—']],
+    styles: { fontSize: 8, cellPadding: 4 },
+    headStyles: { fillColor: [245, 78, 37], textColor: 255 },
+    columnStyles: {
+      0: { cellWidth: 82 },
+      1: { cellWidth: 54 },
+      2: { cellWidth: 74 },
+      3: { cellWidth: 82 },
+      4: { cellWidth: 82 },
+      5: { cellWidth: 82 },
+      6: { cellWidth: 82 },
+      7: { cellWidth: 82 },
+      8: { cellWidth: 82 },
+      9: { cellWidth: 64 },
+    },
+  });
+
+  finalizePdf(doc, `guardian-weekly-consolidated-${reportFileDateStamp()}.pdf`);
 }

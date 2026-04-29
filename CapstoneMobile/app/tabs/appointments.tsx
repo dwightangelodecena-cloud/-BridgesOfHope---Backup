@@ -23,6 +23,9 @@ import {
   listVisitationRequestsByFamily,
   createVisitationRequestLocal,
   mergeRequestsFromSupabase,
+  normalizeVisitationStatus,
+  visitationCalendarDateKeys,
+  upsertVisitationRequestAfterRemoteInsert,
   type VisitationRequestRow,
 } from '../../lib/visitationAppointmentsMobile';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
@@ -142,8 +145,7 @@ export default function AppointmentsScreen() {
   const appointmentDates = useMemo(() => {
     const s = new Set<string>();
     for (const r of requests) {
-      const d = String(r.preferredDate || '').trim();
-      if (d) s.add(d);
+      visitationCalendarDateKeys(r).forEach((d) => s.add(d));
     }
     return s;
   }, [requests]);
@@ -505,9 +507,9 @@ export default function AppointmentsScreen() {
               <View key={r.id} style={styles.reqCard}>
                 <Text style={styles.reqName}>{r.patientName}</Text>
                 <Text style={styles.reqMeta}>
-                  {r.preferredDate} · {r.preferredTime}
+                  {r.confirmedDate || r.preferredDate} · {r.confirmedTime || r.preferredTime}
                 </Text>
-                <Text style={styles.reqStatus}>{r.status}</Text>
+                <Text style={styles.reqStatus}>{normalizeVisitationStatus(r.status)}</Text>
                 {r.note ? <Text style={styles.reqNote}>{r.note}</Text> : null}
               </View>
             ))

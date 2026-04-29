@@ -188,6 +188,24 @@ const HomeDashboard = () => {
   const [pendingAdmissions, setPendingAdmissions] = useState([]);
   const [pendingDischarges, setPendingDischarges] = useState([]);
   const [nurseWeeklyReportsByPatient, setNurseWeeklyReportsByPatient] = useState({});
+  const [averageStayDays, setAverageStayDays] = useState(0);
+
+  const computeStayDays = (admittedAt, dischargedAt) => {
+    const a = new Date(admittedAt || 0).getTime();
+    if (!a || Number.isNaN(a)) return 0;
+    const d = dischargedAt ? new Date(dischargedAt).getTime() : Date.now();
+    if (!d || Number.isNaN(d)) return 0;
+    if (d < a) return 1;
+    return Math.max(1, Math.ceil((d - a) / (24 * 60 * 60 * 1000)));
+  };
+
+  const computeAverageStayDays = (list) => {
+    const stays = (list || [])
+      .map((p) => computeStayDays(p.admitted_at || p.admissionDate || p.admittedAt, p.discharged_at || p.dischargedAt))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (!stays.length) return 0;
+    return Math.round(stays.reduce((sum, n) => sum + n, 0) / stays.length);
+  };
 
   const submitVisitationRequest = async () => {
     const patientName = String(visitationForm.patientName || '').trim();
@@ -219,7 +237,9 @@ const HomeDashboard = () => {
     const loadLegacy = async () => {
       const saved = localStorage.getItem('bh_patients');
       if (!cancelled) {
-        setPatients(saved ? JSON.parse(saved) : defaultDemoPatients);
+        const parsed = saved ? JSON.parse(saved) : defaultDemoPatients;
+        setPatients(parsed);
+        setAverageStayDays(computeAverageStayDays(parsed));
       }
       if (!cancelled) {
         setPendingAdmissions(parseJsonArray(localStorage.getItem(PENDING_ADMISSIONS_KEY), []));
@@ -259,6 +279,10 @@ const HomeDashboard = () => {
         .eq('family_id', user.id)
         .is('discharged_at', null)
         .order('admitted_at', { ascending: false });
+      const { data: allFamilyRows } = await supabase
+        .from('patients')
+        .select('admitted_at, discharged_at')
+        .eq('family_id', user.id);
 
       if (cancelled) return;
       if (pErr) {
@@ -267,6 +291,7 @@ const HomeDashboard = () => {
       } else {
         setPatients((pRows || []).map((r) => uiPatientFromRow(r)).filter(Boolean));
       }
+      setAverageStayDays(computeAverageStayDays(allFamilyRows || []));
 
       const [{ data: aRows, error: aErr }, { data: dRows, error: dErr }] =
         await Promise.all([
@@ -394,6 +419,7 @@ const HomeDashboard = () => {
       color: '#16A34A',
     },
     { label: 'Reports', value: reportsReceivedCount, color: '#7C3AED' },
+    { label: 'Avg Stay', value: averageStayDays, color: '#0369A1' },
   ];
   const summaryGraphMax = Math.max(5, ...summaryGraphData.map((d) => Number(d.value) || 0));
   const averageProgress = patients.length
@@ -426,6 +452,12 @@ const HomeDashboard = () => {
       value: pendingAdmissions.length,
       note: pendingAdmissions.length ? 'Follow up with admin review' : 'No pending admissions',
       color: '#EA580C',
+    },
+    {
+      label: 'Average Days Stayed',
+      value: averageStayDays,
+      note: 'Includes active and discharged stays',
+      color: '#0369A1',
     },
   ];
   const patientTableRows = (patients || []).slice(0, 5);
@@ -2182,6 +2214,14 @@ const HomeDashboard = () => {
                   <span className="action-badge" style={{ background: '#FFF1EB', color: '#C2410C' }}>{reportsReceivedCount} received</span>
                 </div>
               </div>
+              <div className="action-card" onClick={() => navigate('/progress', { state: { tab: 'admission' } })}>
+                <div className="icon-square"><ClipboardList aria-hidden /></div>
+                <div className="action-main">
+                  <span className="action-title">Admission</span>
+                  <span className="action-subtitle">Submit new admission request forms</span>
+                  <span className="action-badge" style={{ background: '#FEF3C7', color: '#92400E' }}>{pendingAdmissions.length} pending</span>
+                </div>
+              </div>
               <div className="action-card" onClick={() => navigate('/services')}>
                 <div className="icon-square">
                   <img src={servicesIcon} alt="Services" style={{ width: 28, height: 28, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
@@ -2190,14 +2230,6 @@ const HomeDashboard = () => {
                   <span className="action-title">Services</span>
                   <span className="action-subtitle">Open billing, inclusions, and support details</span>
                   <span className="action-badge" style={{ background: '#EEF2FF', color: '#3730A3' }}>Care resources</span>
-                </div>
-              </div>
-              <div className="action-card" onClick={() => navigate('/progress', { state: { tab: 'admission' } })}>
-                <div className="icon-square"><ClipboardList aria-hidden /></div>
-                <div className="action-main">
-                  <span className="action-title">Admission</span>
-                  <span className="action-subtitle">Submit new admission request forms</span>
-                  <span className="action-badge" style={{ background: '#FEF3C7', color: '#92400E' }}>{pendingAdmissions.length} pending</span>
                 </div>
               </div>
             </div>

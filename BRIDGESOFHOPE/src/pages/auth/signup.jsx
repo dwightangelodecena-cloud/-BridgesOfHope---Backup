@@ -289,57 +289,119 @@ const SignUp = () => {
 
         .signup-container {
           min-height: 100vh;
-          width: 100vw;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          width: 100%;
+          max-width: 100%;
           background-color: #ffffff;
           font-family: 'Inter', sans-serif;
           margin: 0;
           padding: 0;
           overflow-x: hidden;
+          box-sizing: border-box;
+          position: relative;
+          --signup-header-top: 22px;
+          --signup-back-size: 42px;
+          /* Match .signup-content-wrapper width math so fixed logo sits in the left “gap” */
+          /* Same shell / card width / gap as login page */
+          --signup-shell: min(1240px, calc(100vw - 40px));
+          --signup-gap: 22px;
+          --signup-card-track: min(680px, var(--signup-shell));
+          --signup-brand-track: max(0px, calc(var(--signup-shell) - var(--signup-gap) - var(--signup-card-track)));
+        }
+
+        .signup-brand-fixed {
+          display: none;
+          position: fixed;
+          top: 50%;
+          left: calc((100vw - var(--signup-shell)) / 2 + var(--signup-brand-track) / 2);
+          transform: translate(-50%, -50%);
+          z-index: 0;
+          pointer-events: none;
+          align-items: center;
+          justify-content: center;
+          width: min(360px, 34vw, calc(var(--signup-brand-track) - 8px));
+          max-width: min(360px, 34vw);
+        }
+
+        .signup-brand-fixed img {
+          width: 100%;
+          max-width: min(360px, 34vw);
+          max-height: min(58vh, 420px);
+          height: auto;
+          object-fit: contain;
+          display: block;
+        }
+
+        @media (min-width: 901px) {
+          .signup-brand-fixed {
+            display: flex;
+          }
         }
 
         .signup-content-wrapper {
+          position: relative;
+          z-index: 1;
+          min-height: 100vh;
+          width: 100%;
+          max-width: min(1240px, 100%);
+          margin: 0 auto;
+          padding: clamp(28px, 4vh, 40px) clamp(16px, 3vw, 24px) 48px;
+          box-sizing: border-box;
           display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 120px;
-          width: 90%;
-          max-width: 1400px;
+          justify-content: flex-end;
+          align-items: flex-start;
         }
 
-        .brand-side { flex: 1; display: flex; justify-content: flex-end; }
-        .brand-side img { width: 100%; max-width: 550px; height: auto; }
-        .form-side { flex: 1; display: flex; justify-content: flex-start; }
+        .signup-form-column {
+          width: 100%;
+          min-width: 0;
+          max-width: min(680px, 100%);
+        }
 
         .signup-card {
           background: #ffffff;
-          padding: 50px 45px;
+          padding: calc(var(--signup-header-top) + var(--signup-back-size) + 18px) clamp(32px, 4vw, 48px) 46px;
           border-radius: 50px;
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
           width: 100%;
-          max-width: 480px;
+          max-width: min(680px, 100%);
           text-align: center;
           border: 1px solid #f1f5f9;
           position: relative;
+          box-sizing: border-box;
         }
 
         .back-button {
           position: absolute;
-          left: 25px;
-          top: 50px;
+          left: clamp(18px, 3.5vw, 26px);
+          top: var(--signup-header-top);
+          width: var(--signup-back-size);
+          height: var(--signup-back-size);
+          border-radius: 12px;
+          border: 1px solid #e2e8f0;
+          background: #f8fafc;
+          color: #1B2559;
           cursor: pointer;
-          color: #1e293b;
-          background: none;
-          border: none;
-          display: flex;
+          display: inline-flex;
           align-items: center;
-          transition: color 0.2s;
+          justify-content: center;
+          padding: 0;
+          margin: 0;
+          box-sizing: border-box;
+          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+          transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
         }
 
-        .back-button:hover { color: #F54E25; }
-        .card-header-logo { height: 70px; margin-bottom: 35px; object-fit: contain; }
+        .back-button:hover {
+          background: #f1f5f9;
+          border-color: #cbd5e1;
+          color: #F54E25;
+          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+        }
+
+        .back-button:focus-visible {
+          outline: 2px solid #F54E25;
+          outline-offset: 2px;
+        }
 
         .form-group { text-align: left; margin-bottom: 20px; position: relative; }
         .form-group label {
@@ -481,17 +543,22 @@ const SignUp = () => {
 
         .modal-overlay {
           position: fixed;
-          top: 0; left: 0;
-          width: 100vw; height: 100vh;
+          inset: 0;
+          width: 100%;
+          max-width: 100%;
+          height: 100%;
+          min-height: 100dvh;
           background: rgba(0, 0, 0, 0.5);
           z-index: 2000;
           backdrop-filter: blur(2px);
+          box-sizing: border-box;
+          overflow-x: hidden;
         }
 
         .modal-card {
           background: #ffffff;
-          width: 100%;
-          max-width: 850px;
+          width: calc(100% - 32px);
+          max-width: min(850px, 100%);
           max-height: 90vh;
           border-radius: 40px;
           position: absolute;
@@ -577,6 +644,15 @@ const SignUp = () => {
           transition: background 0.2s;
         }
 
+        @media (max-width: 900px) {
+          .signup-brand-fixed { display: none !important; }
+          .signup-content-wrapper {
+            justify-content: center;
+            padding: 24px 16px 40px;
+          }
+          .signup-form-column { max-width: 100%; }
+        }
+
         @media (max-width: 768px) {
           /* MODAL FIXES: Centralized and slightly bigger */
           .modal-card { 
@@ -611,23 +687,30 @@ const SignUp = () => {
           .modal-header p { font-size: 0.9rem; }
           .btn-modal-agree { padding: 18px; font-size: 1.05rem; border-radius: 15px; }
           
-          .signup-card { border: none; box-shadow: none; padding: 20px; border-radius: 0; }
-          .brand-side { display: none; }
-          .signup-content-wrapper { gap: 0; width: 100%; }
+          .signup-card { border: none; box-shadow: none; padding: 20px 16px; border-radius: 0; }
+          .signup-content-wrapper {
+            justify-content: center;
+            padding: 16px 12px 32px;
+            max-width: 100%;
+          }
         }
       `}</style>
 
-      <div className="signup-content-wrapper">
-        <div className="brand-side">
-          <img src={logo} alt="Bridges of Hope" />
-        </div>
+      <div className="signup-brand-fixed" aria-hidden="true">
+        <img src={logo} alt="" />
+      </div>
 
-        <div className="form-side">
+      <div className="signup-content-wrapper">
+        <div className="signup-form-column">
           <div className="signup-card">
-            <button type="button" className="back-button" onClick={() => navigate('/login')}>
-              <ArrowLeft size={24} />
+            <button
+              type="button"
+              className="back-button"
+              aria-label="Back to login"
+              onClick={() => navigate('/login')}
+            >
+              <ArrowLeft size={20} strokeWidth={2.25} />
             </button>
-            <img src={logo} alt="BH Logo" className="card-header-logo" />
 
             <form onSubmit={handleSubmit} noValidate>
               <div className="form-group">

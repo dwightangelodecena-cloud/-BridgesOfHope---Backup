@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle,
+  CheckCircle2,
   Archive,
   ChevronDown,
   Stethoscope,
@@ -27,6 +28,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { uiDischargeRequestFromRow } from '@/lib/dbMappers';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { BRANCH_KEYS, BRANCH_LABEL, computeTotalServiceCostPhp, formatPhp } from '@/lib/servicePricing';
 import {
@@ -59,6 +61,86 @@ const formatDate = (iso) => {
     return 'N/A';
   }
 };
+
+const toDateInput = (iso) => {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+};
+
+function loadLocalFamilyDischargeRequestMap() {
+  try {
+    const raw = localStorage.getItem('bh_pending_discharges');
+    const arr = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) return {};
+    const sorted = [...arr].sort((a, b) => ts(b.created_at || b.id) - ts(a.created_at || a.id));
+    const map = {};
+    sorted.forEach((row) => {
+      const pid = row.patient_id != null ? String(row.patient_id) : null;
+      if (!pid || map[pid] != null) return;
+      let requestTime = '';
+      if (row.created_at) {
+        try {
+          requestTime = new Date(row.created_at).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        } catch {
+          requestTime = String(row.created_at);
+        }
+      }
+      map[pid] = {
+        dischargeReasonCategory: row.reason_category || '',
+        dischargeReasonDetails: row.reason_details || '',
+        preferredDischargeDate: row.preferred_discharge_date || null,
+        pickupAuthorized: row.pickup_authorized || '',
+        followUpPhone: row.follow_up_phone || '',
+        dischargeOtherInfo: row.other_info || '',
+        requestTime,
+      };
+    });
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+function initDischargeDetailForm(r, familyDischargeUi) {
+  const staff = r.assignedStaff && r.assignedStaff !== '—' ? r.assignedStaff : '';
+  return {
+    ...r,
+    _staff: staff,
+    _branch: r.pricingDetail?.branch || 'imus',
+    _months: String(r.pricingDetail?.monthsOfCare ?? 1),
+    _incAdm: r.pricingDetail?.includeAdmissionFee !== false,
+    _incMo: r.pricingDetail?.includeMonthly !== false,
+    _admissionDate: toDateInput(r.admissionDate),
+    _dischargeDate: toDateInput(r.dischargeDate),
+    _finalStatus: r.finalStatus,
+    _patientName: r.patientName || '',
+    _pricingNotes: r.pricingNotes || '',
+    _familyDischarge: familyDischargeUi || null,
+    _familyMeetingHeld: Boolean(r.familyMeetingHeld),
+    _familyMeetingDate: toDateInput(r.familyMeetingDate),
+    _waiverAgainstAdviceSigned: Boolean(r.waiverAgainstAdviceSigned),
+    _riskExplanationNotes: r.riskExplanationNotes || '',
+    _financialHold: Boolean(r.financialHold),
+    _financialHoldReason: r.financialHoldReason || '',
+    _pickupRequired: r.pickupRequired !== false,
+    _pickupStatus: r.pickupStatus || 'Awaiting pickup',
+    _facilityHold: Boolean(r.facilityHold),
+    _facilityHoldReason: r.facilityHoldReason || '',
+    _finalDispositionDecision: r.finalDispositionDecision || '',
+  };
+}
 
 const ts = (iso) => {
   const t = new Date(iso || 0).getTime();
@@ -153,8 +235,9 @@ const DischargeManagement = () => {
   const [sortId, setSortId] = useState('dis_date');
   const [page, setPage] = useState(1);
 
-  const [viewRow, setViewRow] = useState(null);
-  const [editRow, setEditRow] = useState(null);
+  const [detailModal, setDetailModal] = useState(null);
+  /** Latest family discharge request per patient id (string), from DB or local pending queue — same fields as Request Management. */
+  const [familyDischargeByPatientId, setFamilyDischargeByPatientId] = useState({});
 
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
@@ -162,6 +245,7 @@ const DischargeManagement = () => {
   const sortDropdownRef = useRef(null);
 
   const mergeRows = useCallback((localRows, patientRows, admissionRows) => {
+    const overrides = loadWorkflowOverrides();
     const out = [...localRows];
     const seen = new Set(out.map((r) => r.patientId).filter(Boolean));
     (patientRows || []).forEach((p) => {
@@ -170,6 +254,7 @@ const DischargeManagement = () => {
       const pricingDetail = { branch: 'imus', monthsOfCare: months, includeAdmissionFee: true, includeMonthly: true };
       const totalCost = computeTotalServiceCostPhp(pricingDetail);
       const ar = findAdmissionForPatient(p, admissionRows || []);
+      const staffFromWorkflow = ar?.id && overrides[ar.id]?.assignedStaff ? overrides[ar.id].assignedStaff : null;
       const admissionDisplayId = ar
         ? computeAdmissionDisplayId(ar, p)
         : computeAdmissionDisplayId({ id: p.id, decided_at: p.admitted_at, created_at: p.created_at }, p);
@@ -179,7 +264,7 @@ const DischargeManagement = () => {
         admissionDisplayId,
         patientId: p.id,
         patientName: p.full_name || 'Patient',
-        assignedStaff: '—',
+        assignedStaff: staffFromWorkflow || '—',
         admissionDate: p.admitted_at,
         dischargeDate: p.discharged_at,
         finalStatus: 'Discharged',
@@ -199,17 +284,33 @@ const DischargeManagement = () => {
     try {
       const local = loadDischargeRecords();
       if (!isSupabaseConfigured()) {
+        setFamilyDischargeByPatientId(loadLocalFamilyDischargeRequestMap());
         const offline = enrichDischargeRowsOffline(local);
         syncAdmissionWorkflowFromRows(offline);
         setRows(offline);
         return;
       }
-      const [{ data: patients, error }, { data: admissions, error: admErr }] = await Promise.all([
-        supabase.from('patients').select('*').not('discharged_at', 'is', null),
-        supabase.from('admission_requests').select('*'),
-      ]);
+      const [{ data: patients, error }, { data: admissions, error: admErr }, { data: drqRows, error: drqErr }] =
+        await Promise.all([
+          supabase.from('patients').select('*').not('discharged_at', 'is', null),
+          supabase.from('admission_requests').select('*'),
+          supabase
+            .from('discharge_requests')
+            .select('*, patients(full_name)')
+            .order('created_at', { ascending: false }),
+        ]);
       if (error) throw error;
       if (admErr) console.warn('[discharge-management] admission_requests', admErr);
+      if (drqErr) console.warn('[discharge-management] discharge_requests', drqErr.message);
+
+      const famMap = {};
+      (drqRows || []).forEach((row) => {
+        const pid = row.patient_id != null ? String(row.patient_id) : null;
+        if (!pid || famMap[pid] != null) return;
+        const ui = uiDischargeRequestFromRow(row);
+        if (ui) famMap[pid] = ui;
+      });
+      setFamilyDischargeByPatientId({ ...loadLocalFamilyDischargeRequestMap(), ...famMap });
 
       const patientList = patients || [];
       const admissionList = admissions || [];
@@ -221,6 +322,7 @@ const DischargeManagement = () => {
     } catch (e) {
       console.error(e);
       setFormError(e.message || 'Failed to load discharge records.');
+      setFamilyDischargeByPatientId(loadLocalFamilyDischargeRequestMap());
       const fallback = enrichDischargeRowsOffline(loadDischargeRecords());
       syncAdmissionWorkflowFromRows(fallback);
       setRows(fallback);
@@ -288,32 +390,97 @@ const DischargeManagement = () => {
     void loadData();
   };
 
-  const handleSaveEdit = () => {
-    if (!editRow || editRow.source === 'history') return;
+  const handleSaveDetail = () => {
+    if (!detailModal || detailModal.source === 'history') return;
+    const months = Number(detailModal._months) || 1;
     const recalculated = computeTotalServiceCostPhp({
-      branch: editRow._branch,
-      monthsOfCare: Number(editRow._months) || 1,
-      includeAdmissionFee: editRow._incAdm,
-      includeMonthly: editRow._incMo,
+      branch: detailModal._branch,
+      monthsOfCare: months,
+      includeAdmissionFee: detailModal._incAdm,
+      includeMonthly: detailModal._incMo,
     });
-    updateDischargeRecord(editRow.id, {
-      assignedStaff: editRow._staff,
+    const admissionIso = detailModal._admissionDate
+      ? new Date(`${detailModal._admissionDate}T12:00:00`).toISOString()
+      : detailModal.admissionDate;
+    const dischargeIso = detailModal._dischargeDate
+      ? new Date(`${detailModal._dischargeDate}T12:00:00`).toISOString()
+      : null;
+    const familyMeetingDateIso = detailModal._familyMeetingDate
+      ? new Date(`${detailModal._familyMeetingDate}T12:00:00`).toISOString()
+      : null;
+
+    if (detailModal._waiverAgainstAdviceSigned && !detailModal._familyMeetingHeld) {
+      setFormError('Family meeting should be recorded before signing waiver against advice.');
+      return;
+    }
+    if (detailModal._financialHold && !String(detailModal._financialHoldReason || '').trim()) {
+      setFormError('Financial hold reason is required when hold is enabled.');
+      return;
+    }
+    if (detailModal._facilityHold && !String(detailModal._facilityHoldReason || '').trim()) {
+      setFormError('Facility hold reason is required when unresolved conditions hold is enabled.');
+      return;
+    }
+    if (detailModal._pickupRequired !== false && !String(detailModal._pickupStatus || '').trim()) {
+      setFormError('Pickup status is required when family pickup is required.');
+      return;
+    }
+    setFormError('');
+
+    updateDischargeRecord(detailModal.id, {
+      patientName: String(detailModal._patientName || '').trim() || detailModal.patientName,
+      assignedStaff: String(detailModal._staff || '').trim() || '—',
+      admissionDate: admissionIso,
+      dischargeDate: dischargeIso,
+      finalStatus: detailModal._finalStatus,
       totalCost: recalculated,
       pricingDetail: {
-        branch: editRow._branch,
-        monthsOfCare: Number(editRow._months) || 1,
-        includeAdmissionFee: editRow._incAdm,
-        includeMonthly: editRow._incMo,
+        branch: detailModal._branch,
+        monthsOfCare: months,
+        includeAdmissionFee: detailModal._incAdm,
+        includeMonthly: detailModal._incMo,
       },
+      pricingNotes: String(detailModal._pricingNotes || '').trim(),
+      familyMeetingHeld: Boolean(detailModal._familyMeetingHeld),
+      familyMeetingDate: familyMeetingDateIso,
+      waiverAgainstAdviceSigned: Boolean(detailModal._waiverAgainstAdviceSigned),
+      riskExplanationNotes: String(detailModal._riskExplanationNotes || '').trim(),
+      financialHold: Boolean(detailModal._financialHold),
+      financialHoldReason: String(detailModal._financialHoldReason || '').trim(),
+      pickupRequired: detailModal._pickupRequired !== false,
+      pickupStatus: String(detailModal._pickupStatus || '').trim() || 'Awaiting pickup',
+      facilityHold: Boolean(detailModal._facilityHold),
+      facilityHoldReason: String(detailModal._facilityHoldReason || '').trim(),
+      finalDispositionDecision: String(detailModal._finalDispositionDecision || '').trim(),
     });
-    setEditRow(null);
+    setDetailModal(null);
     persistLocal();
   };
 
   const handleFinalize = (r) => {
     if (r.source === 'history') return;
+    if (r.financialHold) {
+      setFormError('Cannot finalize discharge while financial hold is active.');
+      return;
+    }
+    if (r.facilityHold) {
+      setFormError('Cannot finalize discharge while facility hold due to unresolved conditions is active.');
+      return;
+    }
+    if (r.pickupRequired !== false && !/complete|picked up|released/i.test(String(r.pickupStatus || ''))) {
+      setFormError('Family pickup is required. Set pickup status to completed/picked up before finalizing.');
+      return;
+    }
+    if (!String(r.finalDispositionDecision || '').trim()) {
+      setFormError('Final disposition decision is required before finalizing discharge.');
+      return;
+    }
     const now = new Date().toISOString();
-    updateDischargeRecord(r.id, { dischargeDate: r.dischargeDate || now, finalStatus: 'Completed' });
+    updateDischargeRecord(r.id, {
+      dischargeDate: r.dischargeDate || now,
+      finalStatus: 'Completed',
+      finalDispositionAt: now,
+    });
     syncAdmissionWorkflowFromDischargeRow({
       ...r,
       finalStatus: 'Completed',
@@ -425,13 +592,23 @@ const DischargeManagement = () => {
         .dm-pill--warn { color: #9a3412; background: #FFF7ED; border: 1px solid #FDBA74; }
         .dm-pill--muted { color: #475569; background: #F1F5F9; border: 1px solid #E2E8F0; }
         .dm-modal-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,0.35); display: flex; align-items: center; justify-content: center; z-index: 1100; }
-        .dm-modal { width: min(92vw, 720px); max-height: 90vh; overflow-y: auto; background: white; border: 1px solid #E9EDF7; border-radius: 20px; box-shadow: 0 20px 50px rgba(15,23,42,0.25); }
+        .dm-modal { width: min(92vw, 880px); max-height: 90vh; overflow-y: auto; background: white; border: 1px solid #E9EDF7; border-radius: 20px; box-shadow: 0 20px 50px rgba(15,23,42,0.25); }
         .dm-modal-head { padding: 16px 20px; border-bottom: 1px solid #EEF2FF; display: flex; align-items: center; justify-content: space-between; }
         .dm-modal-body { padding: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+        .dm-family-request-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
         .dm-modal-field { display: flex; flex-direction: column; gap: 6px; }
         .dm-modal-label { font-size: 12px; font-weight: 700; color: #707EAE; }
         .dm-input { border: 1px solid #E9EDF7; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #1B2559; outline: none; background: white; }
         .dm-input:focus { border-color: #2563EB; }
+        .dm-modal-body select.dm-input {
+          appearance: none;
+          -webkit-appearance: none;
+          -moz-appearance: none;
+          background-image: none;
+        }
+        .dm-modal-body select.dm-input::-ms-expand {
+          display: none;
+        }
         .db-mobile-only { display: none; }
         @media print {
           .desktop-sidebar, .db-mobile-only, .dm-no-print { display: none !important; }
@@ -443,6 +620,7 @@ const DischargeManagement = () => {
           .dm-main { margin-left: 0 !important; width: 100vw !important; padding: 20px 12px 100px 12px !important; }
           .db-search-input { width: 100% !important; }
           .dm-modal-body { grid-template-columns: 1fr; }
+          .dm-family-request-grid { grid-template-columns: 1fr; }
           .db-mobile-top-bar { display: flex !important; width: 100vw; background: white; z-index: 1001; position: sticky; top: 0; padding: 0 20px; height: 64px; align-items: center; justify-content: space-between; border-bottom: 1px solid #F1F1F1; }
           .db-mobile-bottom-nav { position: fixed; bottom: 0; left: 0; width: 100vw; height: 72px; background: white; border-top: 1px solid #F1F1F1; display: flex; justify-content: space-around; align-items: center; z-index: 1000; box-shadow: 0 -4px 20px rgba(0,0,0,0.06); }
           .mob-nav-item { display: flex; flex-direction: column; align-items: center; font-size: 9px; color: #A3AED0; cursor: pointer; max-width: 20%; text-align: center; }
@@ -478,6 +656,10 @@ const DischargeManagement = () => {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
             <div className="icon-box inactive"><Stethoscope size={22} /></div>
             <span className="sidebar-label">Staff Management</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
+            <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+            <span className="sidebar-label">Recovery Roadmap</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
             <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
@@ -654,25 +836,43 @@ const DischargeManagement = () => {
                         <td style={{ padding: '9px 10px' }}>
                           <span className={`dm-pill ${statusPill(r.finalStatus)}`}>{r.finalStatus}</span>
                           {r.source === 'history' && <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 6 }}>(from patient record)</span>}
+                          {!r.source && r.financialHold ? (
+                            <span style={{ fontSize: 10, color: '#991B1B', marginLeft: 6, fontWeight: 700 }}>(financial hold)</span>
+                          ) : null}
+                          {!r.source && r.facilityHold ? (
+                            <span style={{ fontSize: 10, color: '#7C2D12', marginLeft: 6, fontWeight: 700 }}>(facility hold)</span>
+                          ) : null}
+                          {!r.source && r.pickupRequired !== false ? (
+                            <span style={{ fontSize: 10, color: '#1D4ED8', marginLeft: 6, fontWeight: 700 }}>(pickup required)</span>
+                          ) : null}
                         </td>
                         <td style={{ padding: '9px 10px', fontWeight: 700, color: '#05CD99' }}>{formatPhp(r.totalCost)}</td>
                         <td style={{ padding: '9px 10px' }}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            <button type="button" className="db-view-btn" onClick={() => setViewRow(r)}><Eye size={12} /> View</button>
+                            <button
+                              type="button"
+                              className="db-view-btn"
+                              onClick={() =>
+                                setDetailModal(
+                                  initDischargeDetailForm(
+                                    r,
+                                    r.patientId != null ? familyDischargeByPatientId[String(r.patientId)] : null
+                                  )
+                                )
+                              }
+                            >
+                              <Eye size={12} /> View
+                            </button>
                             <button
                               type="button"
                               className="db-edit-btn"
-                              disabled={r.source === 'history'}
                               onClick={() =>
-                                setEditRow({
-                                  ...r,
-                                  _staff: r.assignedStaff,
-                                  _branch: r.pricingDetail?.branch || 'imus',
-                                  _months: r.pricingDetail?.monthsOfCare ?? 1,
-                                  _incAdm: r.pricingDetail?.includeAdmissionFee !== false,
-                                  _incMo: r.pricingDetail?.includeMonthly !== false,
-                                  _cost: r.totalCost,
-                                })
+                                setDetailModal(
+                                  initDischargeDetailForm(
+                                    r,
+                                    r.patientId != null ? familyDischargeByPatientId[String(r.patientId)] : null
+                                  )
+                                )
                               }
                             >
                               <Edit2 size={12} /> Edit
@@ -724,74 +924,366 @@ const DischargeManagement = () => {
         <div className="mob-nav-item" onClick={() => navigate('/admin-staff-management')}><Stethoscope size={18} color="#A3AED0" /><span>Staff</span></div>
       </div>
 
-      {viewRow && (
-        <div className="dm-modal-backdrop" onClick={() => setViewRow(null)}>
-          <div className="dm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="dm-modal-head">
-              <div style={{ fontSize: 18, fontWeight: 800 }}>Discharge details</div>
-              <button type="button" className="db-action-btn" onClick={() => setViewRow(null)}><X size={16} /></button>
-            </div>
-            <div className="dm-modal-body">
-              <div className="dm-modal-field"><span className="dm-modal-label">Patient ID</span><div className="dm-input">{viewRow.admissionDisplayId}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Patient</span><div className="dm-input">{viewRow.patientName}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Assigned staff</span><div className="dm-input">{viewRow.assignedStaff}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Admission date</span><div className="dm-input">{formatDate(viewRow.admissionDate)}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Discharge date</span><div className="dm-input">{formatDate(viewRow.dischargeDate)}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Final status</span><div className="dm-input">{viewRow.finalStatus}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Total cost</span><div className="dm-input" style={{ fontWeight: 800, color: '#05CD99' }}>{formatPhp(viewRow.totalCost)}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Location</span><div className="dm-input">{BRANCH_LABEL[viewRow.pricingDetail?.branch] || 'Imus Branch'}</div></div>
-              <div className="dm-modal-field"><span className="dm-modal-label">Pricing basis</span><div className="dm-input">Admission fee + Imus monthly rate × months (see Services page)</div></div>
-            </div>
-          </div>
-        </div>
-      )}
+      {detailModal && (() => {
+        const historyReadOnly = detailModal.source === 'history';
+        const previewCost = computeTotalServiceCostPhp({
+          branch: detailModal._branch,
+          monthsOfCare: Number(detailModal._months) || 1,
+          includeAdmissionFee: detailModal._incAdm,
+          includeMonthly: detailModal._incMo,
+        });
+        const patch = (partial) => setDetailModal((p) => (p ? { ...p, ...partial } : p));
+        return (
+          <div className="dm-modal-backdrop" onClick={() => setDetailModal(null)}>
+            <div className="dm-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="dm-modal-head">
+                <div style={{ fontSize: 18, fontWeight: 800 }}>Discharge details</div>
+                <button type="button" className="db-action-btn" onClick={() => setDetailModal(null)}><X size={16} /></button>
+              </div>
+              {historyReadOnly && (
+                <div
+                  style={{
+                    padding: '12px 20px',
+                    background: '#fff7ed',
+                    color: '#9a3412',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    borderBottom: '1px solid #fed7aa',
+                  }}
+                >
+                  This row is built from the discharged patient record. Fields are read-only; add or edit a discharge record from Admission Management to change stored discharge data.
+                </div>
+              )}
+              <div className="dm-modal-body">
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Patient ID</span>
+                  <input className="dm-input" readOnly value={detailModal.admissionDisplayId || ''} style={{ background: '#f8fafc' }} />
+                </label>
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Patient name</span>
+                  <input
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    value={detailModal._patientName}
+                    onChange={(e) => patch({ _patientName: e.target.value })}
+                  />
+                </label>
 
-      {editRow && (
-        <div className="dm-modal-backdrop" onClick={() => setEditRow(null)}>
-          <div className="dm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="dm-modal-head">
-              <div style={{ fontSize: 18, fontWeight: 800 }}>Edit discharge</div>
-              <button type="button" className="db-action-btn" onClick={() => setEditRow(null)}><X size={16} /></button>
-            </div>
-            <div className="dm-modal-body">
-              <label className="dm-modal-field">
-                <span className="dm-modal-label">Assigned staff</span>
-                <input className="dm-input" value={editRow._staff} onChange={(e) => setEditRow((p) => ({ ...p, _staff: e.target.value }))} />
-              </label>
-              <label className="dm-modal-field">
-                <span className="dm-modal-label">Location (monthly)</span>
-                <select className="dm-input" value={editRow._branch} onChange={(e) => setEditRow((p) => ({ ...p, _branch: e.target.value }))}>
-                  {BRANCH_KEYS.map((k) => (
-                    <option key={k} value={k}>{BRANCH_LABEL[k]}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="dm-modal-field">
-                <span className="dm-modal-label">Months of care</span>
-                <input
-                  className="dm-input"
-                  type="number"
-                  min={0}
-                  value={editRow._months}
-                  onChange={(e) => setEditRow((p) => ({ ...p, _months: e.target.value }))}
-                />
-              </label>
-              <label className="dm-modal-field" style={{ gridColumn: '1 / -1', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <input type="checkbox" checked={editRow._incAdm} onChange={(e) => setEditRow((p) => ({ ...p, _incAdm: e.target.checked }))} />
-                <span className="dm-modal-label" style={{ margin: 0 }}>Include admission fee</span>
-              </label>
-              <label className="dm-modal-field" style={{ gridColumn: '1 / -1', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <input type="checkbox" checked={editRow._incMo} onChange={(e) => setEditRow((p) => ({ ...p, _incMo: e.target.checked }))} />
-                <span className="dm-modal-label" style={{ margin: 0 }}>Include monthly fees</span>
-              </label>
-            </div>
-            <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="db-action-btn" onClick={() => setEditRow(null)}>Cancel</button>
-              <button type="button" className="db-edit-btn" onClick={() => handleSaveEdit()}>Save</button>
+                <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #EEF2FF', paddingTop: 16, marginTop: 4 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: '#1B2559', marginBottom: 6 }}>Family discharge request</div>
+                  <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14, lineHeight: 1.45 }}>
+                    Same data families submit under Request Management → Discharge. Structured columns come from the database;
+                    escort, destination, follow-up clinic, medication plan, and belongings are often bundled in{' '}
+                    <strong>Other information</strong> as saved by the portal.
+                  </p>
+                  {detailModal._familyDischarge ? (
+                    <div className="dm-family-request-grid">
+                      <label className="dm-modal-field">
+                        <span className="dm-modal-label">Reason category</span>
+                        <input
+                          className="dm-input"
+                          readOnly
+                          style={{ background: '#f8fafc' }}
+                          value={detailModal._familyDischarge.dischargeReasonCategory || '—'}
+                        />
+                      </label>
+                      <label className="dm-modal-field">
+                        <span className="dm-modal-label">Preferred discharge date</span>
+                        <input
+                          className="dm-input"
+                          readOnly
+                          style={{ background: '#f8fafc' }}
+                          value={formatDate(detailModal._familyDischarge.preferredDischargeDate)}
+                        />
+                      </label>
+                      <label className="dm-modal-field">
+                        <span className="dm-modal-label">Authorized pickup</span>
+                        <input
+                          className="dm-input"
+                          readOnly
+                          style={{ background: '#f8fafc' }}
+                          value={detailModal._familyDischarge.pickupAuthorized || '—'}
+                        />
+                      </label>
+                      <label className="dm-modal-field">
+                        <span className="dm-modal-label">Follow-up phone</span>
+                        <input
+                          className="dm-input"
+                          readOnly
+                          style={{ background: '#f8fafc' }}
+                          value={detailModal._familyDischarge.followUpPhone || '—'}
+                        />
+                      </label>
+                      <label className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
+                        <span className="dm-modal-label">Reason details</span>
+                        <textarea
+                          className="dm-input"
+                          readOnly
+                          rows={3}
+                          style={{ background: '#f8fafc', resize: 'vertical' }}
+                          value={detailModal._familyDischarge.dischargeReasonDetails || ''}
+                        />
+                      </label>
+                      <label className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
+                        <span className="dm-modal-label">Other information (escort, destination, clinic, meds, belongings, notes)</span>
+                        <textarea
+                          className="dm-input"
+                          readOnly
+                          rows={5}
+                          style={{ background: '#f8fafc', resize: 'vertical', whiteSpace: 'pre-wrap' }}
+                          value={detailModal._familyDischarge.dischargeOtherInfo || ''}
+                        />
+                      </label>
+                      {detailModal._familyDischarge.requestTime ? (
+                        <div className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
+                          <span className="dm-modal-label">Submitted</span>
+                          <div className="dm-input" style={{ background: '#f8fafc' }}>{detailModal._familyDischarge.requestTime}</div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div
+                      className="dm-input"
+                      style={{
+                        background: '#f8fafc',
+                        color: '#64748b',
+                        fontSize: 13,
+                        gridColumn: '1 / -1',
+                      }}
+                    >
+                      No discharge request on file for this patient (no match on patient ID). If the family just submitted, try Refresh.
+                    </div>
+                  )}
+                </div>
+
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Assigned staff</span>
+                  <input
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    placeholder="Name or role"
+                    value={detailModal._staff}
+                    onChange={(e) => patch({ _staff: e.target.value })}
+                  />
+                </label>
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Admission date</span>
+                  <input
+                    className="dm-input"
+                    type="date"
+                    disabled={historyReadOnly}
+                    value={detailModal._admissionDate}
+                    onChange={(e) => patch({ _admissionDate: e.target.value })}
+                  />
+                </label>
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Discharge date</span>
+                  <input
+                    className="dm-input"
+                    type="date"
+                    disabled={historyReadOnly}
+                    value={detailModal._dischargeDate}
+                    onChange={(e) => patch({ _dischargeDate: e.target.value })}
+                  />
+                </label>
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Family meeting date</span>
+                  <input
+                    className="dm-input"
+                    type="date"
+                    disabled={historyReadOnly}
+                    value={detailModal._familyMeetingDate}
+                    onChange={(e) => patch({ _familyMeetingDate: e.target.value })}
+                  />
+                </label>
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Final status</span>
+                  <select
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    value={detailModal._finalStatus}
+                    onChange={(e) => patch({ _finalStatus: e.target.value })}
+                  >
+                    {DISCHARGE_FINAL_STATUSES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="checkbox"
+                    disabled={historyReadOnly}
+                    checked={detailModal._familyMeetingHeld}
+                    onChange={(e) => patch({ _familyMeetingHeld: e.target.checked })}
+                  />
+                  <span className="dm-modal-label" style={{ margin: 0 }}>Family meeting completed</span>
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="checkbox"
+                    disabled={historyReadOnly}
+                    checked={detailModal._waiverAgainstAdviceSigned}
+                    onChange={(e) => patch({ _waiverAgainstAdviceSigned: e.target.checked })}
+                  />
+                  <span className="dm-modal-label" style={{ margin: 0 }}>Waiver against program advice signed</span>
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="dm-modal-label">Risk explanation notes</span>
+                  <textarea
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    rows={3}
+                    style={{ resize: 'vertical', minHeight: 72 }}
+                    placeholder="Document risks explained to family/patient when they refuse discharge recommendation."
+                    value={detailModal._riskExplanationNotes}
+                    onChange={(e) => patch({ _riskExplanationNotes: e.target.value })}
+                  />
+                </label>
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Total cost (from pricing below)</span>
+                  <div className="dm-input" style={{ fontWeight: 800, color: '#05CD99', background: '#f8fafc' }}>{formatPhp(previewCost)}</div>
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="checkbox"
+                    disabled={historyReadOnly}
+                    checked={detailModal._financialHold}
+                    onChange={(e) => patch({ _financialHold: e.target.checked })}
+                  />
+                  <span className="dm-modal-label" style={{ margin: 0 }}>Financial hold active (cannot finalize while enabled)</span>
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="dm-modal-label">Financial hold reason</span>
+                  <textarea
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    rows={2}
+                    style={{ resize: 'vertical', minHeight: 56 }}
+                    placeholder="e.g. Remaining balance pending family/admin agreement."
+                    value={detailModal._financialHoldReason}
+                    onChange={(e) => patch({ _financialHoldReason: e.target.value })}
+                  />
+                </label>
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Pickup policy</span>
+                  <select
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    value={detailModal._pickupRequired ? 'required' : 'optional'}
+                    onChange={(e) => patch({ _pickupRequired: e.target.value === 'required' })}
+                  >
+                    <option value="required">Family pickup required</option>
+                    <option value="optional">Pickup optional / service arrangement</option>
+                  </select>
+                </label>
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Pickup status</span>
+                  <input
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    placeholder="Awaiting pickup / Scheduled / Completed"
+                    value={detailModal._pickupStatus}
+                    onChange={(e) => patch({ _pickupStatus: e.target.value })}
+                  />
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="checkbox"
+                    disabled={historyReadOnly}
+                    checked={detailModal._facilityHold}
+                    onChange={(e) => patch({ _facilityHold: e.target.checked })}
+                  />
+                  <span className="dm-modal-label" style={{ margin: 0 }}>Hold in facility due to unresolved conditions</span>
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="dm-modal-label">Unresolved conditions / facility hold reason</span>
+                  <textarea
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    rows={2}
+                    style={{ resize: 'vertical', minHeight: 56 }}
+                    placeholder="Document unresolved conditions requiring temporary facility hold before family pickup/release."
+                    value={detailModal._facilityHoldReason}
+                    onChange={(e) => patch({ _facilityHoldReason: e.target.value })}
+                  />
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="dm-modal-label">Final disposition decision (required before finalize)</span>
+                  <textarea
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    rows={2}
+                    style={{ resize: 'vertical', minHeight: 56 }}
+                    placeholder="e.g. Family pickup completed at gate 2; patient released with belongings and handoff acknowledgment."
+                    value={detailModal._finalDispositionDecision}
+                    onChange={(e) => patch({ _finalDispositionDecision: e.target.value })}
+                  />
+                </label>
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Location (monthly rate)</span>
+                  <select
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    value={detailModal._branch}
+                    onChange={(e) => patch({ _branch: e.target.value })}
+                  >
+                    {BRANCH_KEYS.map((k) => (
+                      <option key={k} value={k}>{BRANCH_LABEL[k]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="dm-modal-field">
+                  <span className="dm-modal-label">Months of care</span>
+                  <input
+                    className="dm-input"
+                    type="number"
+                    min={1}
+                    disabled={historyReadOnly}
+                    value={detailModal._months}
+                    onChange={(e) => patch({ _months: e.target.value })}
+                  />
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="checkbox"
+                    disabled={historyReadOnly}
+                    checked={detailModal._incAdm}
+                    onChange={(e) => patch({ _incAdm: e.target.checked })}
+                  />
+                  <span className="dm-modal-label" style={{ margin: 0 }}>Include admission fee</span>
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="checkbox"
+                    disabled={historyReadOnly}
+                    checked={detailModal._incMo}
+                    onChange={(e) => patch({ _incMo: e.target.checked })}
+                  />
+                  <span className="dm-modal-label" style={{ margin: 0 }}>Include monthly fees</span>
+                </label>
+                <label className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="dm-modal-label">Pricing basis &amp; notes</span>
+                  <textarea
+                    className="dm-input"
+                    disabled={historyReadOnly}
+                    rows={3}
+                    style={{ resize: 'vertical', minHeight: 72 }}
+                    placeholder="e.g. Admission fee + Imus monthly rate × months; adjustments, discounts, or internal notes."
+                    value={detailModal._pricingNotes}
+                    onChange={(e) => patch({ _pricingNotes: e.target.value })}
+                  />
+                </label>
+              </div>
+              <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" className="db-action-btn" onClick={() => setDetailModal(null)}>Close</button>
+                {!historyReadOnly && (
+                  <button type="button" className="db-edit-btn" onClick={() => handleSaveDetail()}>Save changes</button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

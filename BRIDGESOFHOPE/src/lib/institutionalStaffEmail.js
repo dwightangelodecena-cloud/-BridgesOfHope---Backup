@@ -1,6 +1,6 @@
 /**
  * Staff login addresses: lastname + first letter of first name @ role-based domain
- * (e.g. decenad@nurse.bridgesofhope.ph, decenad@staff.bridgesofhope.ph).
+ * (e.g. decenad@nurse.bridgesofhope.ph, decenad@case.bridgesofhope.ph).
  *
  * Root domain: VITE_STAFF_EMAIL_ROOT_DOMAIN (e.g. bridgesofhope.ph), or derived from
  * legacy VITE_STAFF_INSTITUTIONAL_EMAIL_DOMAIN (e.g. staff.bridgesofhope.ph → bridgesofhope.ph).
@@ -11,7 +11,7 @@ const LEGACY_INSTITUTIONAL_KEY = 'VITE_STAFF_INSTITUTIONAL_EMAIL_DOMAIN';
 const DEFAULT_ROOT_DOMAIN = 'bridgesofhope.ph';
 
 /**
- * Organization root host: bridgesofhope.ph → logins use nurse.bridgesofhope.ph / staff.bridgesofhope.ph
+ * Organization root host: bridgesofhope.ph → logins use nurse.bridgesofhope.ph / case.bridgesofhope.ph
  */
 export function getStaffEmailRootDomain() {
   const rawRoot =
@@ -30,10 +30,11 @@ export function getStaffEmailRootDomain() {
 }
 
 /**
- * Full login domain for the selected staff role (nurse | staff).
+ * Full login domain for the selected staff role (nurse | case/staff).
  */
 export function getStaffLoginDomainForRole(role) {
-  const slug = role === 'nurse' ? 'nurse' : 'staff';
+  const normalized = String(role || '').toLowerCase();
+  const slug = normalized === 'nurse' ? 'nurse' : normalized === 'staff' ? 'case' : 'case';
   return `${slug}.${getStaffEmailRootDomain()}`;
 }
 

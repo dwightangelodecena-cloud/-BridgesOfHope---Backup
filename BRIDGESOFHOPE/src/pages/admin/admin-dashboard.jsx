@@ -98,6 +98,25 @@ const AdminDashboard = () => {
     readyDischarge: 0,
     dischargedDone: 0,
   });
+  const [staffCount, setStaffCount] = useState(0);
+  const [averageStayDays, setAverageStayDays] = useState(0);
+
+  const computeStayDays = (admittedAt, dischargedAt) => {
+    const a = new Date(admittedAt || 0).getTime();
+    if (!a || Number.isNaN(a)) return 0;
+    const d = dischargedAt ? new Date(dischargedAt).getTime() : Date.now();
+    if (!d || Number.isNaN(d)) return 0;
+    if (d < a) return 1;
+    return Math.max(1, Math.ceil((d - a) / (24 * 60 * 60 * 1000)));
+  };
+
+  const computeAverageStayDays = (list) => {
+    const stays = (list || [])
+      .map((p) => computeStayDays(p.admitted_at || p.admissionDate || p.admittedAt, p.discharged_at || p.dischargedAt))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (!stays.length) return 0;
+    return Math.round(stays.reduce((sum, n) => sum + n, 0) / stays.length);
+  };
 
   const formatActTime = (iso) => {
     if (!iso) return '';
@@ -145,13 +164,20 @@ const AdminDashboard = () => {
       readyDischarge: ready,
       dischargedDone: done,
     });
+    try {
+      const raw = localStorage.getItem('bh_staff_directory');
+      const arr = raw ? JSON.parse(raw) : [];
+      setStaffCount(Array.isArray(arr) ? arr.length : 0);
+    } catch {
+      setStaffCount(0);
+    }
+    setAverageStayDays(computeAverageStayDays(Array.isArray(p) ? p : []));
   };
 
   const loadFromSupabase = async () => {
     const { data: p } = await supabase
       .from('patients')
       .select('*')
-      .is('discharged_at', null)
       .order('admitted_at', { ascending: false });
     const { data: a } = await supabase
       .from('admission_requests')
@@ -196,6 +222,38 @@ const AdminDashboard = () => {
       readyDischarge: ready,
       dischargedDone: done,
     });
+
+    const { data: rpcStaff, error: rpcStaffErr } = await supabase.rpc('bh_dashboard_staff_count');
+    if (rpcStaffErr) {
+      console.warn('[dashboard] bh_dashboard_staff_count:', rpcStaffErr.message);
+    }
+    const rpcN =
+      rpcStaff != null && rpcStaff !== ''
+        ? typeof rpcStaff === 'bigint'
+          ? Number(rpcStaff)
+          : Number(rpcStaff)
+        : NaN;
+    const useRpc = !rpcStaffErr && rpcStaff != null && !Number.isNaN(rpcN) && rpcN >= 0;
+    if (useRpc) {
+      setStaffCount(rpcN);
+    } else {
+      const { data: profileRows, error: profilesErr } = await supabase
+        .from('profiles')
+        .select('account_type, role');
+      if (profilesErr) console.warn('[dashboard] profiles count:', profilesErr.message);
+      const sc = (profileRows || []).filter((r) => {
+        const t = String(r.account_type || r.role || '').toLowerCase().trim();
+        if (!t || t === 'family') return false;
+        return (
+          t === 'admin' ||
+          t.includes('nurse') ||
+          t.includes('staff') ||
+          t.includes('clinic')
+        );
+      }).length;
+      setStaffCount(sc);
+    }
+    setAverageStayDays(computeAverageStayDays(p || []));
   };
 
   const syncData = async () => {
@@ -921,6 +979,10 @@ const AdminDashboard = () => {
             <div className="icon-box inactive"><Stethoscope size={22} /></div>
             <span className="sidebar-label">Staff Management</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
+            <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+            <span className="sidebar-label">Recovery Roadmap</span>
+          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
             <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
             <span className="sidebar-label">Content management</span>
@@ -1097,6 +1159,18 @@ const AdminDashboard = () => {
                   </div>
                 </div>
 
+                <div className="metric-card" onClick={() => navigate('/admin-staff-management')} style={{ cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><Stethoscope size={24} /></div>
+                    <span className="metric-badge" style={{ background: '#F0FDF4', color: '#15803D' }}>Total</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{staffCount}</div>
+                    <div className="metric-title">Staff</div>
+                    <div className="metric-subtitle">Admins, nurses &amp; clinic staff</div>
+                  </div>
+                </div>
+
                 <div className="metric-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div className="metric-icon-box"><Bed size={24} /></div>
@@ -1108,6 +1182,18 @@ const AdminDashboard = () => {
                     <div style={{ width: '100%', height: 6, background: '#E9EDF7', borderRadius: 99, marginTop: 8, overflow: 'hidden' }}>
                       <div style={{ width: `${occupancyPerc}%`, height: '100%', background: '#F54E25', borderRadius: 99 }} />
                     </div>
+                  </div>
+                </div>
+
+                <div className="metric-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="metric-icon-box"><Calendar size={24} /></div>
+                    <span className="metric-badge" style={{ background: '#F0F9FF', color: '#0369A1' }}>All</span>
+                  </div>
+                  <div>
+                    <div className="metric-value">{averageStayDays}</div>
+                    <div className="metric-title">Average days stayed</div>
+                    <div className="metric-subtitle">Includes active + discharged</div>
                   </div>
                 </div>
 

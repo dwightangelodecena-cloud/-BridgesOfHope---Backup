@@ -11,6 +11,7 @@ import {
   RefreshCw,
   X,
   ClipboardList,
+  CheckCircle2,
   ArrowRightSquare,
   ChevronDown,
   Stethoscope,
@@ -621,6 +622,10 @@ const UserManagement = () => {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
             <div className="icon-box inactive"><Stethoscope size={22} /></div>
             <span className="sidebar-label">Staff Management</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
+            <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+            <span className="sidebar-label">Recovery Roadmap</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
             <div className="icon-box inactive"><LayoutTemplate size={22} /></div>

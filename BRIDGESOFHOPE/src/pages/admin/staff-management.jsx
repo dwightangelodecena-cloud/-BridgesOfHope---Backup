@@ -8,6 +8,7 @@ import {
   Filter,
   Eye,
   Edit2,
+  Trash2,
   RefreshCw,
   X,
   ClipboardList,
@@ -16,6 +17,7 @@ import {
   Stethoscope,
   ArrowUpDown,
   UserPlus,
+  CheckCircle2,
   LayoutTemplate,
   Calendar,
   User,
@@ -28,20 +30,27 @@ import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { createStaffAuthUserViaEdgeFunction } from '@/lib/createStaffAuthUser';
 import { getStaffInitialPassword } from '@/lib/staffInitialPassword';
 import { sendStaffWelcomeEmailViaEdgeFunction } from '@/lib/sendStaffWelcomeEmail';
+import { deleteStaffAuthUserViaEdgeFunction } from '@/lib/deleteStaffAuthUser';
 import {
   buildStaffLoginEmail,
   getStaffLoginDomainForRole,
-  randomEmailDisambiguator,
 } from '@/lib/institutionalStaffEmail';
 
 const META_KEY = 'bh_staff_admin_meta';
 const LOCAL_STAFF_KEY = 'bh_staff_directory';
 const FIXED_BRANCH = 'Imus';
-/** New accounts from this dialog are nurses; login email uses nurse.<root>. */
-const ADD_STAFF_ACCOUNT_TYPE = 'nurse';
 const ADD_STAFF_EMPLOYMENT_TYPE = 'Full-time';
 /** Saved automatically on create; admin sets the real shift in Edit staff. */
 const ADD_STAFF_SHIFT_PLACEHOLDER = 'Unassigned';
+const ADD_STAFF_ROLE_OPTIONS = [
+  { value: 'nurse', label: 'Nurse', department: 'Nurse' },
+  { value: 'case_load_manager', label: 'Case Load Manager', department: 'Case Load Manager' },
+];
+
+const accountTypeFromAddStaffRole = (roleValue) => (roleValue === 'nurse' ? 'nurse' : 'staff');
+const domainRoleFromAddStaffRole = (roleValue) => (roleValue === 'nurse' ? 'nurse' : 'staff');
+const departmentFromAddStaffRole = (roleValue) =>
+  ADD_STAFF_ROLE_OPTIONS.find((opt) => opt.value === roleValue)?.department || 'Case Load Manager';
 
 /** Preset shifts — Edit staff uses a dropdown (no free typing). */
 const SHIFT_PRESET_OPTIONS = [
@@ -66,7 +75,7 @@ function shiftSelectOptions(currentStored) {
   return Array.from(set);
 }
 
-const ROLE_FILTER_OPTIONS = ['All Staff', 'Nurses', 'Clinic Staff'];
+const ROLE_FILTER_OPTIONS = ['All Staff', 'Nurses', 'Case Load Managers'];
 const STATUS_FILTER_OPTIONS = [
   'All statuses',
   'Active',
@@ -154,6 +163,18 @@ const updateLocalStaffRow = (id, updates) => {
   }
 };
 
+const removeLocalStaffRow = (id) => {
+  try {
+    const raw = localStorage.getItem(LOCAL_STAFF_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) return;
+    const next = arr.filter((r) => String(r.id || r.user_id) !== String(id));
+    localStorage.setItem(LOCAL_STAFF_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+};
+
 const persistMetaForId = (id, partial) => {
   const cur = loadMetaMap();
   const merged = { ...cur[id], ...partial };
@@ -162,6 +183,14 @@ const persistMetaForId = (id, partial) => {
   }
   const map = { ...cur, [id]: merged };
   saveMetaMap(map);
+};
+
+const removeMetaForId = (id) => {
+  const cur = loadMetaMap();
+  if (!Object.prototype.hasOwnProperty.call(cur, id)) return;
+  const next = { ...cur };
+  delete next[id];
+  saveMetaMap(next);
 };
 
 const buildAddressFromRow = (row) => {
@@ -201,7 +230,7 @@ const staffMatchesRoleFilter = (row, roleFilter) => {
   if (roleFilter === 'All Staff') return true;
   const acc = row.account_type || row.role || '';
   if (roleFilter === 'Nurses') return isNurseAccount(acc);
-  if (roleFilter === 'Clinic Staff') return isStaffAccount(acc) && !isNurseAccount(acc);
+  if (roleFilter === 'Case Load Managers') return isStaffAccount(acc) && !isNurseAccount(acc);
   return true;
 };
 
@@ -209,7 +238,7 @@ const mapRowToStaff = (row, idx, meta) => {
   const id = row.id || row.user_id || `stf-${idx}`;
   const m = meta[id] || {};
   const accountRaw = String(row.account_type || row.role || 'staff').trim();
-  const roleLabel = isNurseAccount(accountRaw) ? 'Nurse' : isStaffAccount(accountRaw) ? 'Clinic Staff' : accountRaw || 'Staff';
+  const roleLabel = isNurseAccount(accountRaw) ? 'Nurse' : isStaffAccount(accountRaw) ? 'Case Load Manager' : accountRaw || 'Staff';
   const presence = getPresenceStatus(row.last_active_at || row.last_login_at);
   const duty = presence === 'Active' ? 'On Duty' : 'Off Duty';
   const suspended = Boolean(m.suspended);
@@ -300,17 +329,19 @@ const StaffManagement = () => {
   const [selected, setSelected] = useState(null);
   const [editRow, setEditRow] = useState(null);
   const [statusModal, setStatusModal] = useState(null);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
   const [statusAvailDraft, setStatusAvailDraft] = useState('__default__');
   const [savingId, setSavingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
 
   const [addStaffOpen, setAddStaffOpen] = useState(false);
   const [addStaffFirstName, setAddStaffFirstName] = useState('');
   const [addStaffLastName, setAddStaffLastName] = useState('');
   const [addStaffMiddleInitial, setAddStaffMiddleInitial] = useState('');
+  const [addStaffRole, setAddStaffRole] = useState('nurse');
   const [addStaffPersonalEmail, setAddStaffPersonalEmail] = useState('');
   const [addStaffPhone, setAddStaffPhone] = useState('');
-  const [addStaffDepartment, setAddStaffDepartment] = useState('');
   const [addStaffAddress, setAddStaffAddress] = useState('');
   const [addStaffSubmitting, setAddStaffSubmitting] = useState(false);
   const [addStaffError, setAddStaffError] = useState('');
@@ -318,12 +349,12 @@ const StaffManagement = () => {
   const [staffWelcomeModal, setStaffWelcomeModal] = useState(null);
 
   const institutionalEmailPreview = useMemo(() => {
-    const domain = getStaffLoginDomainForRole(ADD_STAFF_ACCOUNT_TYPE);
+    const domain = getStaffLoginDomainForRole(domainRoleFromAddStaffRole(addStaffRole));
     const firstName = toTitleCase(addStaffFirstName);
     const lastName = toTitleCase(addStaffLastName);
     if (!String(firstName || '').trim() || !String(lastName || '').trim()) return `@${domain}`;
     return buildStaffLoginEmail({ firstName, lastName }, domain);
-  }, [addStaffFirstName, addStaffLastName]);
+  }, [addStaffFirstName, addStaffLastName, addStaffRole]);
 
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
@@ -461,9 +492,9 @@ const StaffManagement = () => {
     setAddStaffFirstName('');
     setAddStaffLastName('');
     setAddStaffMiddleInitial('');
+    setAddStaffRole('nurse');
     setAddStaffPersonalEmail('');
     setAddStaffPhone('');
-    setAddStaffDepartment('');
     setAddStaffAddress('');
     setAddStaffError('');
   };
@@ -484,9 +515,10 @@ const StaffManagement = () => {
       setAddStaffError('Personal email looks invalid.');
       return;
     }
-    const domain = getStaffLoginDomainForRole(ADD_STAFF_ACCOUNT_TYPE);
+    const accountType = accountTypeFromAddStaffRole(addStaffRole);
+    const domain = getStaffLoginDomainForRole(domainRoleFromAddStaffRole(addStaffRole));
     const phone = addStaffPhone.trim();
-    const department = addStaffDepartment.trim();
+    const department = departmentFromAddStaffRole(addStaffRole);
     const branch = FIXED_BRANCH;
     const shift = ADD_STAFF_SHIFT_PLACEHOLDER;
     const employmentType = ADD_STAFF_EMPLOYMENT_TYPE;
@@ -501,10 +533,6 @@ const StaffManagement = () => {
     }
     if (!phone) {
       setAddStaffError('Phone is required.');
-      return;
-    }
-    if (!department) {
-      setAddStaffError('Department is required.');
       return;
     }
     if (!isSupabaseConfigured()) {
@@ -523,7 +551,6 @@ const StaffManagement = () => {
     setAddStaffSubmitting(true);
     const temporaryPassword = getStaffInitialPassword();
     try {
-      const accountType = ADD_STAFF_ACCOUNT_TYPE;
       const userMetadata = {
         account_type: accountType,
         first_name: firstName,
@@ -540,29 +567,24 @@ const StaffManagement = () => {
       };
       let newId = null;
       let createdLoginEmail = '';
-      for (let attempt = 0; attempt < 15; attempt++) {
-        const suffixToken = attempt === 0 ? '' : randomEmailDisambiguator();
-        const signUpEmail = buildStaffLoginEmail({ firstName, lastName }, domain, suffixToken);
-        const createResult = await createStaffAuthUserViaEdgeFunction({
-          email: signUpEmail,
-          password: temporaryPassword,
-          user_metadata: { ...userMetadata, institutional_email: signUpEmail },
-        });
-        if (createResult.ok && createResult.userId) {
-          newId = createResult.userId;
-          createdLoginEmail = signUpEmail;
-          break;
-        }
-        if (createResult.duplicateEmail) continue;
+      const signUpEmail = buildStaffLoginEmail({ firstName, lastName }, domain);
+      const createResult = await createStaffAuthUserViaEdgeFunction({
+        email: signUpEmail,
+        password: temporaryPassword,
+        user_metadata: { ...userMetadata, institutional_email: signUpEmail },
+      });
+      if (createResult.ok && createResult.userId) {
+        newId = createResult.userId;
+        createdLoginEmail = signUpEmail;
+      } else if (createResult.duplicateEmail) {
+        setAddStaffError(
+          `Login email ${signUpEmail} already exists. Please adjust the first/last name to generate a different email.`,
+        );
+        return;
+      } else {
         setAddStaffError(
           createResult.error ||
             'Could not create the account. Deploy the create-staff-auth-user Edge Function if you have not already.',
-        );
-        return;
-      }
-      if (!newId) {
-        setAddStaffError(
-          'Could not create the account after several tries (login email collisions). Try again or contact support.',
         );
         return;
       }
@@ -640,6 +662,43 @@ const StaffManagement = () => {
     else persistMetaForId(s.id, { availability: value });
     void loadStaff();
     setStatusModal(null);
+  };
+
+  const deleteStaffAccount = async (s) => {
+    if (!s?.id) return;
+
+    setFormError('');
+    setDeletingId(s.id);
+    try {
+      if (!isSupabaseConfigured()) {
+        removeLocalStaffRow(s.id);
+        removeMetaForId(s.id);
+      } else {
+        const {
+          data: { user: currentUser },
+        } = await supabase.auth.getUser();
+        if (currentUser?.id && String(currentUser.id) === String(s.id)) {
+          setFormError('You cannot delete your own account.');
+          return;
+        }
+        const result = await deleteStaffAuthUserViaEdgeFunction({ userId: s.id });
+        if (!result.ok) {
+          setFormError(result.error || 'Could not delete staff account.');
+          return;
+        }
+        removeMetaForId(s.id);
+      }
+      if (selected?.id === s.id) setSelected(null);
+      if (editRow?.id === s.id) setEditRow(null);
+      if (statusModal?.id === s.id) setStatusModal(null);
+      if (deleteConfirmModal?.id === s.id) setDeleteConfirmModal(null);
+      refreshAppData();
+      await loadStaff();
+    } catch (err) {
+      setFormError(err?.message || 'Failed to delete staff account.');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const pillClass = (kind, val) => {
@@ -764,6 +823,10 @@ const StaffManagement = () => {
             <div className="icon-box active"><Stethoscope size={22} /></div>
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Staff Management</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
+            <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+            <span className="sidebar-label">Recovery Roadmap</span>
+          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
             <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
             <span className="sidebar-label">Content management</span>
@@ -799,7 +862,7 @@ const StaffManagement = () => {
         <div style={{ width: '100%', minWidth: 0 }}>
           <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Staff Management</h1>
           <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 22, fontWeight: 500 }}>
-            Monitor nurses and clinic staff in Imus—availability, duty status, and assignments in one place.
+            Monitor nurses and case load managers in Imus—availability, duty status, and assignments in one place.
           </p>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: -10, marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
@@ -1019,6 +1082,15 @@ const StaffManagement = () => {
                             >
                               Status
                             </button>
+                            <button
+                              type="button"
+                              className="db-action-btn"
+                              style={{ background: '#FEF2F2', color: '#991B1B' }}
+                              disabled={deletingId === s.id}
+                              onClick={() => setDeleteConfirmModal(s)}
+                            >
+                              <Trash2 size={13} /> {deletingId === s.id ? 'Deleting...' : 'Delete'}
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1109,7 +1181,7 @@ const StaffManagement = () => {
                 Creates a Supabase Auth user and a <code style={{ fontSize: 12 }}>profiles</code> row.{' '}
                 <strong>Login email</strong> format: <strong>lastname</strong> plus the{' '}
                 <strong>first letter of the first name</strong>, e.g. Decena + Dwight → <code style={{ fontSize: 12 }}>decenad</code>@{' '}
-                <code style={{ fontSize: 12 }}>nurse.bridgesofhope.ph</code> (root:{' '}
+                <code style={{ fontSize: 12 }}>nurse.bridgesofhope.ph</code> or <code style={{ fontSize: 12 }}>case.bridgesofhope.ph</code> (root:{' '}
                 <code style={{ fontSize: 12 }}>VITE_STAFF_EMAIL_ROOT_DOMAIN</code>).{' '}
                 <strong>Shift</strong> is saved as <code style={{ fontSize: 12 }}>Unassigned</code> until you set it in{' '}
                 <strong>Edit staff</strong>. <strong>Employment</strong> is full-time for all.{' '}
@@ -1159,7 +1231,7 @@ const StaffManagement = () => {
                   }}
                   title="lastname + first initial of first name @ domain"
                 >
-                  {institutionalEmailPreview || `lastnamef@${getStaffLoginDomainForRole(ADD_STAFF_ACCOUNT_TYPE)}`}
+                  {institutionalEmailPreview || `lastnamef@${getStaffLoginDomainForRole(domainRoleFromAddStaffRole(addStaffRole))}`}
                 </div>
               </label>
               <label className="um-modal-field" style={{ gridColumn: '1 / -1' }}>
@@ -1186,8 +1258,19 @@ const StaffManagement = () => {
                 />
               </label>
               <label className="um-modal-field">
-                <span className="um-modal-label">Department</span>
-                <input className="um-input" value={addStaffDepartment} onChange={(e) => setAddStaffDepartment(e.target.value)} disabled={addStaffSubmitting} />
+                <span className="um-modal-label">Role</span>
+                <select
+                  className="um-input"
+                  value={addStaffRole}
+                  onChange={(e) => setAddStaffRole(e.target.value)}
+                  disabled={addStaffSubmitting}
+                >
+                  {ADD_STAFF_ROLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="um-modal-field">
                 <span className="um-modal-label">Branch</span>
@@ -1465,6 +1548,66 @@ const StaffManagement = () => {
                 )}
                 <button type="button" className="db-action-btn" onClick={() => setStatusModal(null)}>Close</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmModal && (
+        <div className="um-modal-backdrop" onClick={() => deletingId == null && setDeleteConfirmModal(null)} role="presentation">
+          <div className="um-modal" onClick={(e) => e.stopPropagation()} style={{ width: 'min(92vw, 500px)' }}>
+            <div className="um-modal-head">
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#991B1B' }}>Delete staff account</div>
+              <button
+                type="button"
+                className="db-action-btn"
+                disabled={deletingId != null}
+                onClick={() => setDeleteConfirmModal(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="um-modal-body" style={{ gridTemplateColumns: '1fr' }}>
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 12,
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  color: '#7F1D1D',
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                }}
+              >
+                This action is permanent. It will delete this account from Supabase Auth and remove the staff profile record.
+              </div>
+              <div className="um-modal-field">
+                <span className="um-modal-label">Staff member</span>
+                <div className="um-input">{deleteConfirmModal.fullName}</div>
+              </div>
+              <div className="um-modal-field">
+                <span className="um-modal-label">Login email</span>
+                <div className="um-input" style={{ fontFamily: 'ui-monospace, monospace' }}>{deleteConfirmModal.email || '—'}</div>
+              </div>
+            </div>
+            <div style={{ padding: 20, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                className="db-action-btn"
+                disabled={deletingId != null}
+                onClick={() => setDeleteConfirmModal(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="db-edit-btn"
+                style={{ background: '#DC2626' }}
+                disabled={deletingId != null}
+                onClick={() => void deleteStaffAccount(deleteConfirmModal)}
+              >
+                {deletingId === deleteConfirmModal.id ? 'Deleting...' : 'Delete account'}
+              </button>
             </div>
           </div>
         </div>

@@ -441,6 +441,7 @@ const Progress = () => {
       const pending = JSON.parse(localStorage.getItem('bh_pending_discharges') || '[]');
       pending.push({
         id: Date.now(),
+        created_at: new Date().toISOString(),
         patient_id: selectedPatient.id,
         patient_name: selectedPatient.name,
         reason_category: dischargeForm.reasonCategory,

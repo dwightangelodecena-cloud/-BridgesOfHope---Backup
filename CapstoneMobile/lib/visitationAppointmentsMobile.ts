@@ -11,6 +11,64 @@ const DEFAULT_SETTINGS = {
   endTime: '17:00',
 };
 
+const CANONICAL_VISITATION_STATUSES = new Set([
+  'Requested',
+  'Approved',
+  'Declined',
+  'Rescheduled',
+  'Cancelled',
+  'Completed',
+]);
+
+/** Align with web `normalizeVisitationStatus` for numeric / mixed DB values. */
+export function normalizeVisitationStatus(raw: unknown): string {
+  if (raw === null || raw === undefined || raw === '') return 'Requested';
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    if (raw === 2) return 'Requested';
+    if (raw === 3) return 'Approved';
+    if (raw === 4) return 'Declined';
+    if (raw === 5) return 'Rescheduled';
+    if (raw === 1) return 'Requested';
+    return 'Requested';
+  }
+  const s = String(raw).trim();
+  if (!s) return 'Requested';
+  if (CANONICAL_VISITATION_STATUSES.has(s)) return s;
+  const lo = s.toLowerCase();
+  if (lo === 'pending' || lo === 'request' || lo === 'requested') return 'Requested';
+  if (lo === 'approve' || lo === 'approved') return 'Approved';
+  if (lo === 'decline' || lo === 'declined' || lo === 'rejected') return 'Declined';
+  if (lo === 'reschedule' || lo === 'rescheduled') return 'Rescheduled';
+  if (/^\d+$/.test(s)) return normalizeVisitationStatus(Number(s));
+  return 'Requested';
+}
+
+/** Same logic as web: calendar dots use confirmed slot once visit is approved/rescheduled. */
+export function visitationCalendarDateKeys(row: VisitationRequestRow): string[] {
+  const st = normalizeVisitationStatus(row.status);
+  const conf = String(row.confirmedDate || '').trim();
+  const pref = String(row.preferredDate || '').trim();
+  if (st === 'Declined' || st === 'Cancelled') return [];
+  if ((st === 'Approved' || st === 'Rescheduled' || st === 'Completed') && conf) return [conf];
+  if (pref) return [pref];
+  return [];
+}
+
+function isLocalDraftSuperseded(localRow: VisitationRequestRow, fromDb: VisitationRequestRow[]): boolean {
+  if (!String(localRow.id || '').startsWith('visit_')) return false;
+  const lf = String(localRow.familyName || '');
+  const lp = String(localRow.patientName || '');
+  const ld = String(localRow.preferredDate || '');
+  const lt = String(localRow.preferredTime || '');
+  return fromDb.some(
+    (d) =>
+      String(d.familyName || '') === lf &&
+      String(d.patientName || '') === lp &&
+      String(d.preferredDate || '') === ld &&
+      String(d.preferredTime || '') === lt
+  );
+}
+
 export type VisitationSettings = {
   days: string[];
   startTime: string;
@@ -27,6 +85,9 @@ export type VisitationRequestRow = {
   preferredTime: string;
   note: string;
   status: string;
+  confirmedDate?: string;
+  confirmedTime?: string;
+  adminNote?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -126,6 +187,42 @@ export async function createVisitationRequestLocal(payload: {
   return row;
 }
 
+function mapRemoteVisitationRow(r: Record<string, unknown>): VisitationRequestRow {
+  return {
+    id: String(r.id),
+    familyId: String(r.family_id || ''),
+    familyName: String(r.family_name || ''),
+    patientId: String(r.patient_id || ''),
+    patientName: String(r.patient_name || ''),
+    preferredDate: String(r.preferred_date || ''),
+    preferredTime: String(r.preferred_time || ''),
+    note: String(r.note || ''),
+    status: normalizeVisitationStatus(r.status),
+    confirmedDate: String(r.confirmed_date || ''),
+    confirmedTime: String(r.confirmed_time || ''),
+    adminNote: String(r.admin_note || ''),
+    createdAt: String(r.created_at || ''),
+    updatedAt: String(r.updated_at || ''),
+  };
+}
+
+/** Replace temporary `visit_*` row with the server id after insert; keeps a single row per request. */
+export async function upsertVisitationRequestAfterRemoteInsert(
+  dropLocalId: string,
+  remote: Record<string, unknown>
+): Promise<void> {
+  const row = mapRemoteVisitationRow(remote);
+  const all = await loadVisitationRequests();
+  const withoutDraft = all.filter((r) => String(r.id) !== String(dropLocalId));
+  const idx = withoutDraft.findIndex((r) => String(r.id) === row.id);
+  if (idx >= 0) {
+    withoutDraft[idx] = { ...withoutDraft[idx], ...row };
+  } else {
+    withoutDraft.unshift(row);
+  }
+  await saveVisitationRequests(withoutDraft);
+}
+
 export async function mergeRequestsFromSupabase(
   familyId: string,
   localRows: VisitationRequestRow[]
@@ -137,21 +234,15 @@ export async function mergeRequestsFromSupabase(
     .eq('family_id', familyId)
     .order('created_at', { ascending: false });
   if (error || !data) return localRows;
-  const fromDb: VisitationRequestRow[] = (data || []).map((r: Record<string, unknown>) => ({
-    id: String(r.id),
-    familyId: String(r.family_id || ''),
-    familyName: String(r.family_name || ''),
-    patientId: String(r.patient_id || ''),
-    patientName: String(r.patient_name || ''),
-    preferredDate: String(r.preferred_date || ''),
-    preferredTime: String(r.preferred_time || ''),
-    note: String(r.note || ''),
-    status: String(r.status || 'Requested'),
-    createdAt: String(r.created_at || ''),
-    updatedAt: String(r.updated_at || ''),
-  }));
+  const fromDb: VisitationRequestRow[] = (data || []).map((r) => mapRemoteVisitationRow(r));
   const seen = new Set(fromDb.map((r) => String(r.id)));
-  const mergedFamily = [...fromDb, ...localRows.filter((r) => !seen.has(String(r.id)))];
+  const mergedFamily = [
+    ...fromDb,
+    ...localRows.filter((r) => !seen.has(String(r.id)) && !isLocalDraftSuperseded(r, fromDb)),
+  ].map((r) => ({
+    ...r,
+    status: normalizeVisitationStatus(r.status),
+  }));
   mergedFamily.sort(
     (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   );

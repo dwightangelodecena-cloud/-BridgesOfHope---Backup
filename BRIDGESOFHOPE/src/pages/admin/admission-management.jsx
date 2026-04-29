@@ -11,6 +11,7 @@ import {
   RefreshCw,
   X,
   ClipboardList,
+  CheckCircle2,
   ArrowRightSquare,
   ArrowRightCircle,
   Trash2,
@@ -237,6 +238,7 @@ const AdmissionManagement = () => {
       finalStatus: 'Ready for Discharge',
       totalCost,
       pricingDetail: { ...r.pricingDetail },
+      pricingNotes: '',
       archived: false,
       createdAt: new Date().toISOString(),
     };
@@ -470,6 +472,10 @@ const AdmissionManagement = () => {
             <div className="icon-box inactive"><Stethoscope size={22} /></div>
             <span className="sidebar-label">Staff Management</span>
           </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
+            <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+            <span className="sidebar-label">Recovery Roadmap</span>
+          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
             <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
             <span className="sidebar-label">Content management</span>
@@ -650,7 +656,9 @@ const AdmissionManagement = () => {
                         <td style={{ padding: '9px 10px', fontWeight: 700, color: '#1B2559', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{r.admissionDisplayId}</td>
                         <td style={{ padding: '9px 10px', fontWeight: 600 }}>
                           <div style={{ fontWeight: 700, color: '#1B2559' }}>{r.patientName}</div>
-                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{r.patientGender || 'N/A'}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }} title="Gender (from admission request or patient record)">
+                            {r.patientGender?.trim() ? r.patientGender : 'Not specified'}
+                          </div>
                         </td>
                         <td style={{ padding: '9px 10px', maxWidth: 200, color: '#334155' }}>{r.reason}</td>
                         <td style={{ padding: '9px 10px', color: '#707EAE' }}>{r.assignedStaff}</td>
@@ -745,7 +753,7 @@ const AdmissionManagement = () => {
             <div className="am-modal-body">
               <div className="am-modal-field"><span className="am-modal-label">Patient ID</span><div className="am-input">{viewRow.admissionDisplayId}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Patient</span><div className="am-input">{viewRow.patientName}</div></div>
-              <div className="am-modal-field"><span className="am-modal-label">Gender</span><div className="am-input">{viewRow.patientGender || 'N/A'}</div></div>
+              <div className="am-modal-field"><span className="am-modal-label">Gender</span><div className="am-input">{viewRow.patientGender?.trim() ? viewRow.patientGender : 'Not specified'}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Status</span><div className="am-input">{viewRow.status}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Admission date</span><div className="am-input">{formatDate(viewRow.admissionDate)}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Assigned staff</span><div className="am-input">{viewRow.assignedStaff}</div></div>
