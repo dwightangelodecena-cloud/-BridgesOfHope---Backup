@@ -10,26 +10,33 @@ export default function CaseReportHistoryPage() {
       title="CLM report history"
       lede={`All weekly CLM submissions stored in this browser for your caseload (${patients.length} resident${patients.length === 1 ? '' : 's'}), newest first.`}
     >
+      <div className="cl-hero">
+        <p className="cl-hero-title">Report Archive</p>
+        <p className="cl-hero-sub">Review prior CLM submissions quickly before creating updates. This helps maintain narrative continuity across weeks.</p>
+        <div className="cl-pill-row">
+          <span className="cl-pill">{allReportsFlat.length} reports indexed</span>
+        </div>
+      </div>
       <div className="cl-card">
         {allReportsFlat.length === 0 ? (
           <div style={{ color: '#64748b', fontSize: 13 }}>No CLM reports saved yet. Submit from Assigned residents.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table className="cl-table">
               <thead>
-                <tr style={{ background: '#323D4E', color: 'white' }}>
+                <tr>
                   {['Resident', 'Week', 'Submitted', 'Summary preview'].map((h) => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 500 }}>{h}</th>
+                    <th key={h}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {allReportsFlat.map((r) => (
-                  <tr key={r.id} style={{ borderBottom: '1px solid #F1F5F9', verticalAlign: 'top' }}>
-                    <td style={{ padding: '10px 12px', fontWeight: 700 }}>{r.patientName}</td>
-                    <td style={{ padding: '10px 12px' }}>{r.weekNumber}</td>
-                    <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{new Date(r.submittedAt).toLocaleString('en-US')}</td>
-                    <td style={{ padding: '10px 12px', color: '#475569', maxWidth: 420 }}>
+                  <tr key={r.id} style={{ verticalAlign: 'top' }}>
+                    <td style={{ fontWeight: 700 }}>{r.patientName}</td>
+                    <td>{r.weekNumber}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{new Date(r.submittedAt).toLocaleString('en-US')}</td>
+                    <td style={{ color: '#475569', maxWidth: 420 }}>
                       {(r.summary || '').length > 180 ? `${(r.summary || '').slice(0, 180)}…` : (r.summary || '—')}
                     </td>
                   </tr>

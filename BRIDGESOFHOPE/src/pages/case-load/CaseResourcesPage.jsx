@@ -11,6 +11,10 @@ export default function CaseResourcesPage() {
       title="Operations guide (internal)"
       lede="Reference for how BoH runs care, visits, and reporting. This facility is private; this content is not a government reporting package."
     >
+      <div className="cl-hero">
+        <p className="cl-hero-title">Operations Knowledge Base</p>
+        <p className="cl-hero-sub">Internal standards for CLM execution, reporting, coordination, and resident support workflows.</p>
+      </div>
       <div className="cl-card">
         <div className="cl-card-title">Recovery ladder</div>
         <p className="cl-qa-p" style={{ marginBottom: 10 }}>

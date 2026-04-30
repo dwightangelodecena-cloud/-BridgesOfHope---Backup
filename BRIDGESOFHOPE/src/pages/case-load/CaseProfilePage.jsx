@@ -14,6 +14,10 @@ export default function CaseProfilePage() {
       title="Profile"
       lede="Your CLM account and shortcuts to internal tools."
     >
+      <div className="cl-hero" style={{ marginBottom: 14 }}>
+        <p className="cl-hero-title">CLM Account Center</p>
+        <p className="cl-hero-sub">Access your core workspace actions, reporting history, and policy references from one place.</p>
+      </div>
       <div className="cl-card">
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
           <div style={{

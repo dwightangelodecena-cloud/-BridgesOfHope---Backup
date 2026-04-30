@@ -20,6 +20,10 @@ export default function CaseResidentsPage() {
       title="Assigned residents & CLM weekly report"
       lede="Select a resident, then complete the weekly CLM fields for guardian consolidation (social case study, psych observation, interventions, summary)."
     >
+      <div className="cl-hero">
+        <p className="cl-hero-title">Resident Documentation Workspace</p>
+        <p className="cl-hero-sub">Keep weekly CLM narratives complete and consistent. Accurate entries here support cross-department consolidation and guardian-facing updates.</p>
+      </div>
       <div className="cl-grid cl-two-col">
         <div className="cl-card">
               <div className="cl-card-title">Assigned residents</div>

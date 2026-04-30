@@ -85,12 +85,19 @@ const RecoveryRoadmapPage = () => {
   const location = useLocation();
   const forceClm = new URLSearchParams(location.search).get('mode') === 'clm';
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isClm, setIsClm] = useState(false);
+  // Start as "unknown" to prevent admin sidebar menu flicker while resolving role.
+  // `null` means role not resolved yet.
+  const [isClm, setIsClm] = useState(() => {
+    if (forceClm) return true;
+    if (!isSupabaseConfigured()) return false;
+    return null;
+  });
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [draftByPatient, setDraftByPatient] = useState({});
   const [saveMsg, setSaveMsg] = useState('');
   const [incidentDraftByPatient, setIncidentDraftByPatient] = useState({});
+  const roleResolved = isClm !== null;
 
   useEffect(() => {
     let cancelled = false;
@@ -98,7 +105,8 @@ const RecoveryRoadmapPage = () => {
       if (!isSupabaseConfigured()) return;
       const { data: authData } = await supabase.auth.getUser();
       const role = await resolveAccountRole(authData?.user ?? null);
-      if (!cancelled) setIsClm(forceClm || role === 'case_manager');
+      if (cancelled) return;
+      setIsClm(Boolean(forceClm || role === 'case_manager'));
     })();
     return () => {
       cancelled = true;
@@ -363,19 +371,29 @@ const RecoveryRoadmapPage = () => {
       <aside className="desktop-sidebar" onClick={() => setIsExpanded((prev) => !prev)}>
         <div className="sidebar-logo-container"><img src={logoBH} alt="Kalinga" className="sidebar-logo" /></div>
         <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
-          {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}><div className="icon-box inactive"><LayoutGrid size={22} /></div><span className="sidebar-label">Dashboard</span></div> : null}
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><HeartPulse size={22} /></div><span className="sidebar-label">{isClm ? 'Patient records' : 'Patient Management'}</span></div>
-          {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}><div className="icon-box inactive"><ClipboardList size={22} /></div><span className="sidebar-label">Admission Management</span></div> : null}
-          {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}><div className="icon-box inactive"><ArrowRightSquare size={22} /></div><span className="sidebar-label">Discharge Management</span></div> : null}
-          {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}><div className="icon-box inactive"><Users size={22} /></div><span className="sidebar-label">User Management</span></div> : null}
-          {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}><div className="icon-box inactive"><Stethoscope size={22} /></div><span className="sidebar-label">Staff Management</span></div> : null}
+          {roleResolved ? (
+            <>
+              {isClm ? (
+                <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/case-dashboard'); }}><div className="icon-box inactive"><LayoutGrid size={22} /></div><span className="sidebar-label">CLM workspace</span></div>
+              ) : (
+                <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}><div className="icon-box inactive"><LayoutGrid size={22} /></div><span className="sidebar-label">Dashboard</span></div>
+              )}
+              <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><HeartPulse size={22} /></div><span className="sidebar-label">{isClm ? 'Patient records' : 'Patient Management'}</span></div>
+              {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}><div className="icon-box inactive"><ClipboardList size={22} /></div><span className="sidebar-label">Admission Management</span></div> : null}
+              {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}><div className="icon-box inactive"><ArrowRightSquare size={22} /></div><span className="sidebar-label">Discharge Management</span></div> : null}
+              {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}><div className="icon-box inactive"><Users size={22} /></div><span className="sidebar-label">User Management</span></div> : null}
+              {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}><div className="icon-box inactive"><Stethoscope size={22} /></div><span className="sidebar-label">Staff Management</span></div> : null}
+            </>
+          ) : null}
           <div className="sidebar-nav-item"><div className="icon-box active"><CheckCircle2 size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Recovery Roadmap</span></div>
-          {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div> : null}
+          {roleResolved && !isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div> : null}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}><div className="icon-box inactive"><Calendar size={22} /></div><span className="sidebar-label">Appointments</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}><div className="icon-box inactive"><FileText size={22} /></div><span className="sidebar-label">Printable reports</span></div>
         </nav>
         <div className="sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate(isClm ? '/case-dashboard/profile' : '/admin-profile'); }}><div className="icon-box inactive"><User size={22} /></div><span className="sidebar-label">{isClm ? 'Profile' : 'Profile & Security'}</span></div>
+          {roleResolved ? (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate(isClm ? '/case-dashboard/profile' : '/admin-profile'); }}><div className="icon-box inactive"><User size={22} /></div><span className="sidebar-label">{isClm ? 'Profile' : 'Profile & Security'}</span></div>
+          ) : null}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}><LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? 0 : 10, flexShrink: 0 }} /><span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span></div>
         </div>
       </aside>
