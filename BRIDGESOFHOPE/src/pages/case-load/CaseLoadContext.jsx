@@ -12,7 +12,6 @@ import {
   displayNameFromEmail,
   weekNumberNow,
   normalizeAppointmentStatus,
-  patientMatchesClm,
   loadLadderProfiles,
   saveLadderProfiles,
   mergeStaffAssignmentFields,
@@ -77,29 +76,6 @@ export function CaseLoadProvider({ children }) {
 
         const assignmentMap = readJson(STAFF_ASSIGNMENT_STORAGE_KEY, {});
         const localReports = readJson(CLM_WEEKLY_REPORTS_KEY, {});
-        const assignedPatientIdsFromOverrides = new Set(
-          Object.entries(assignmentMap || {})
-            .filter(([, v]) => patientMatchesClm(v?.caseLoadManager, meInfo))
-            .map(([pid]) => String(pid))
-        );
-
-        const mapLocalPatients = () => {
-          const localPatients = readJson('bh_patients', []);
-          return (Array.isArray(localPatients) ? localPatients : [])
-            .filter((p) => !p.discharged_at && p.status !== 'Discharged')
-            .map((p) => {
-              const staff = mergeStaffAssignmentFields(p.id, assignmentMap, p);
-              return {
-                id: String(p.id),
-                name: p.name || p.full_name || 'Patient',
-                concern: p.primary_concern || p.concern || '—',
-                admittedAt: p.admitted_at || p.admissionDate || '',
-                clinicalStatus: p.clinical_status || p.clinicalStatus || p.status || 'Admitted',
-                caseLoadManager: staff.caseLoadManager,
-                programStaff: staff.programStaff,
-              };
-            });
-        };
 
         let rows = [];
         if (isSupabaseConfigured()) {
@@ -121,18 +97,25 @@ export function CaseLoadProvider({ children }) {
               programStaff: staff.programStaff,
             };
           });
-          if (!rows.length) {
-            // Fallback for environments where CLM session sees no patient rows (RLS / sync lag).
-            rows = mapLocalPatients();
-          }
         } else {
-          rows = mapLocalPatients();
+          const localPatients = readJson('bh_patients', []);
+          rows = (Array.isArray(localPatients) ? localPatients : [])
+            .filter((p) => !p.discharged_at && p.status !== 'Discharged')
+            .map((p) => {
+              const staff = mergeStaffAssignmentFields(p.id, assignmentMap, p);
+              return {
+                id: String(p.id),
+                name: p.name || p.full_name || 'Patient',
+                concern: p.primary_concern || p.concern || '—',
+                admittedAt: p.admitted_at || p.admissionDate || '',
+                clinicalStatus: p.clinical_status || p.clinicalStatus || p.status || 'Admitted',
+                caseLoadManager: staff.caseLoadManager,
+                programStaff: staff.programStaff,
+              };
+            });
         }
 
-        const finalRows = rows.filter((p) => (
-          patientMatchesClm(p.caseLoadManager, meInfo)
-          || assignedPatientIdsFromOverrides.has(String(p.id))
-        ));
+        const finalRows = rows;
         setPatients(finalRows);
         const nameById = Object.fromEntries(finalRows.map((p) => [String(p.id), p.name]));
         const pidSet = new Set(finalRows.map((p) => String(p.id)));
@@ -201,44 +184,7 @@ export function CaseLoadProvider({ children }) {
           return finalRows[0]?.id ? String(finalRows[0].id) : '';
         });
       } catch (e) {
-        // DB read fallback: keep CLM strict by matching only this CLM's assigned patients from local cache.
-        try {
-          const assignmentMap = readJson(STAFF_ASSIGNMENT_STORAGE_KEY, {});
-          const assignedPatientIdsFromOverrides = new Set(
-            Object.entries(assignmentMap || {})
-              .filter(([, v]) => patientMatchesClm(v?.caseLoadManager, me))
-              .map(([pid]) => String(pid))
-          );
-          const localPatients = readJson('bh_patients', []);
-          const rows = (Array.isArray(localPatients) ? localPatients : [])
-            .filter((p) => !p.discharged_at && p.status !== 'Discharged')
-            .map((p) => {
-              const staff = mergeStaffAssignmentFields(p.id, assignmentMap, p);
-              return {
-                id: String(p.id),
-                name: p.name || p.full_name || 'Patient',
-                concern: p.primary_concern || p.concern || '—',
-                admittedAt: p.admitted_at || p.admissionDate || '',
-                clinicalStatus: p.clinical_status || p.clinicalStatus || p.status || 'Admitted',
-                caseLoadManager: staff.caseLoadManager,
-                programStaff: staff.programStaff,
-              };
-            });
-          const fallbackRows = rows.filter((p) => (
-            patientMatchesClm(p.caseLoadManager, me)
-            || assignedPatientIdsFromOverrides.has(String(p.id))
-          ));
-          setPatients(fallbackRows);
-          setSelectedPatientId((prev) => {
-            if (prev && fallbackRows.some((p) => String(p.id) === String(prev))) return prev;
-            return fallbackRows[0]?.id ? String(fallbackRows[0].id) : '';
-          });
-          setFormError(e?.message ? `${e.message} Using local CLM assignments.` : 'Using local CLM assignments.');
-        } catch {
-          setPatients([]);
-          setSelectedPatientId('');
-          setFormError(e?.message || 'Failed to load CLM workspace data.');
-        }
+        setFormError(e?.message || 'Failed to load CLM workspace data.');
       } finally {
         setLoading(false);
       }
@@ -320,12 +266,7 @@ export function CaseLoadProvider({ children }) {
       const label = normalizeAppointmentStatus(a);
       bucket[label] = (bucket[label] || 0) + 1;
     });
-    const preferredOrder = ['Requested', 'Pending', 'Confirmed', 'Declined', 'Rescheduled'];
-    const base = preferredOrder.map((name) => ({ name, value: bucket[name] || 0 }));
-    const extras = Object.entries(bucket)
-      .filter(([name]) => !preferredOrder.includes(name))
-      .map(([name, value]) => ({ name, value }));
-    return [...base, ...extras];
+    return Object.entries(bucket).map(([name, value]) => ({ name, value }));
   }, [appointments]);
 
   const incidentsByMonthChart = useMemo(() => {

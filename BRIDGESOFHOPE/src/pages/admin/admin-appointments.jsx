@@ -998,17 +998,9 @@ export default function AdminAppointmentsPage() {
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container"><img src={logoBH} alt="Kalinga" className="sidebar-logo" /></div>
         <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
-          {isClm ? (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/case-dashboard'); }}>
-              <div className="icon-box inactive"><LayoutGrid size={22} /></div>
-              <span className="sidebar-label">CLM workspace</span>
-            </div>
-          ) : (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
-              <div className="icon-box inactive"><LayoutGrid size={22} /></div>
-              <span className="sidebar-label">Dashboard</span>
-            </div>
-          )}
+          {!isClm ? (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}><div className="icon-box inactive"><LayoutGrid size={22} /></div><span className="sidebar-label">Dashboard</span></div>
+          ) : null}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><HeartPulse size={22} /></div><span className="sidebar-label">{isClm ? 'Patient records' : 'Patient Management'}</span></div>
           {!isClm ? (
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}><div className="icon-box inactive"><ClipboardList size={22} /></div><span className="sidebar-label">Admission Management</span></div>

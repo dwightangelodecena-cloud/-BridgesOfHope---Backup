@@ -19,10 +19,6 @@ export default function CaseIncidentsPage() {
       title="Incident tagging"
       lede="Log behavior incidents and interventions. Demotion-trigger entries adjust the resident recovery ladder position. Below shows your caseload only."
     >
-      <div className="cl-hero">
-        <p className="cl-hero-title">Behavior and Intervention Tracking</p>
-        <p className="cl-hero-sub">Record incidents with clear intervention notes to support ladder decisions, audit visibility, and care-team continuity.</p>
-      </div>
       {patients.length > 0 ? (
         <div className="cl-card">
           <label className="cl-label">Active resident for this incident</label>
