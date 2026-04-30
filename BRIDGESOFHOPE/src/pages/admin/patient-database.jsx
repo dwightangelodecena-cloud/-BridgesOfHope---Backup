@@ -13,11 +13,21 @@ const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
 const ROOM_ASSIGNMENT_STORAGE_KEY = 'bh_patient_room_assignments_v1';
 const STAFF_ASSIGNMENT_STORAGE_KEY = 'bh_patient_staff_assignments_v1';
 const PROGRESS_GOVERNANCE_STORAGE_KEY = 'bh_patient_progress_governance_v1';
+const LOCAL_STAFF_DIRECTORY_KEY = 'bh_staff_directory';
 
 /** Editable trajectory while in care. Discharged is derived from `discharged_at` (dashboard discharge approval), not set here. */
 const CLINICAL_STATUS_OPTIONS = ['Improving', 'Stable', 'Declining'];
 const RISK_LEVEL_OPTIONS = ['Low', 'Moderate', 'High', 'Highly Suicidal'];
 const BUNK_LEVEL_OPTIONS = ['Bottom', 'Middle', 'Top'];
+const INTERNAL_STAFF_ACCOUNT_TYPES = new Set([
+  'admin',
+  'nurse',
+  'staff',
+  'case_manager',
+  'case_load_manager',
+  'case manager',
+  'case load manager',
+]);
 
 const COHORT_FILTER_OPTIONS = [
   { value: 'all', label: 'All records' },
@@ -502,7 +512,8 @@ function PatientDatabaseShell({ mode = 'admin' }) {
   const statusDropdownRef = useRef(null);
   const [concernDropdownOpen, setConcernDropdownOpen] = useState(false);
   const concernDropdownRef = useRef(null);
-  const [cohortFilter, setCohortFilter] = useState('all');
+  // Default to active/in-care list. Discharged remains viewable via filter selection.
+  const [cohortFilter, setCohortFilter] = useState('in_care');
   const [concernCategoryFilter, setConcernCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('All');
   const [loading, setLoading] = useState(false);
@@ -523,13 +534,46 @@ function PatientDatabaseShell({ mode = 'admin' }) {
   const [roomSaving, setRoomSaving] = useState(false);
   const [staffForm, setStaffForm] = useState({ caseLoadManager: '', programStaff: '', medicalStaffNote: '' });
   const [staffSaving, setStaffSaving] = useState(false);
+  const [staffDirectory, setStaffDirectory] = useState({ caseLoadManagers: [], programStaff: [] });
+
+  const upsertName = (bucket, name) => {
+    const v = String(name || '').trim();
+    if (!v) return;
+    if (!bucket.some((n) => n.toLowerCase() === v.toLowerCase())) bucket.push(v);
+  };
+
+  const syncPatientsLocalCache = (uiRows) => {
+    try {
+      const rows = Array.isArray(uiRows) ? uiRows : [];
+      const compact = rows.map((p) => ({
+        id: p.id,
+        name: p.name || '',
+        full_name: p.name || '',
+        primary_concern: p.concern || '',
+        concern: p.concern || '',
+        admitted_at: p.admissionDate || p.admittedAt || '',
+        admissionDate: p.admissionDate || p.admittedAt || '',
+        clinical_status: p.clinicalStatus || p.status || 'Admitted',
+        status: p.status || p.clinicalStatus || 'Admitted',
+        case_load_manager: p.caseLoadManager || '',
+        program_staff: p.programStaff || '',
+        medical_staff_note: p.medicalStaffNote || '',
+        discharged_at: p.status === 'Discharged' ? (p.dischargedAt || new Date().toISOString()) : null,
+      }));
+      localStorage.setItem('bh_patients', JSON.stringify(compact));
+    } catch {
+      /* ignore */
+    }
+  };
 
   const loadPatients = async () => {
     setLoading(true);
     setFormError('');
     try {
       if (!isSupabaseConfigured()) {
-        setPatients(applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(mapLegacyLocalPatients()))));
+        const merged = applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(mapLegacyLocalPatients())));
+        setPatients(merged);
+        syncPatientsLocalCache(merged);
         return;
       }
 
@@ -579,27 +623,35 @@ function PatientDatabaseShell({ mode = 'admin' }) {
         return fallbackGender ? { ...ui, gender: fallbackGender } : ui;
       });
       if (fromDb.length > 0) {
-        setPatients(applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(fromDb))));
+        const merged = applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(fromDb)));
+        setPatients(merged);
+        syncPatientsLocalCache(merged);
         return;
       }
 
       const legacyMapped = mapLegacyLocalPatients();
       if (legacyMapped.length > 0) {
-        setPatients(applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(legacyMapped))));
+        const merged = applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(legacyMapped)));
+        setPatients(merged);
+        syncPatientsLocalCache(merged);
         return;
       }
 
       setPatients([]);
+      syncPatientsLocalCache([]);
     } catch (err) {
       console.error(err);
       const legacyMapped = mapLegacyLocalPatients();
       if (legacyMapped.length > 0) {
-        setPatients(applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(legacyMapped))));
+        const merged = applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(legacyMapped)));
+        setPatients(merged);
+        syncPatientsLocalCache(merged);
         setFormError(
           `${err.message || 'Failed to load from server.'} Showing locally saved patients.`
         );
       } else {
         setFormError(err.message || 'Failed to load patient records.');
+        syncPatientsLocalCache([]);
       }
     } finally {
       setLoading(false);
@@ -762,6 +814,141 @@ function PatientDatabaseShell({ mode = 'admin' }) {
     });
   }, [selectedPatient]);
 
+  useEffect(() => {
+    const isNurseAccount = (accountRaw) => String(accountRaw || '').trim().toLowerCase().includes('nurse');
+    const isStaffAccount = (accountRaw) => {
+      const account = String(accountRaw || '').trim().toLowerCase();
+      return account.includes('staff') || account === 'clinic' || account.includes('clinic') || account.includes('case');
+    };
+
+    const classifyByAccountAccess = (accountRaw, roleLabelRaw) => {
+      const roleLabel = String(roleLabelRaw || '').trim().toLowerCase();
+      const isNurse = isNurseAccount(accountRaw) || roleLabel.includes('nurse');
+      const isCaseLoad = (isStaffAccount(accountRaw) || roleLabel.includes('case load manager')) && !isNurse;
+      return { isCaseLoad, isNurse };
+    };
+
+    const fromLocalStaffDirectory = () => {
+      const clm = [];
+      const program = [];
+      try {
+        const raw = localStorage.getItem(LOCAL_STAFF_DIRECTORY_KEY);
+        const list = raw ? JSON.parse(raw) : [];
+        (Array.isArray(list) ? list : []).forEach((row) => {
+          const name = String(row?.full_name || row?.name || '').trim();
+          const account = String(
+            row?.account_type
+            || row?.roleRaw
+            || row?.role
+            || row?.raw?.account_type
+            || row?.raw?.role
+            || ''
+          );
+          const roleLabel = String(
+            row?.roleLabel
+            || row?.role_label
+            || row?.department
+            || row?.raw?.department
+            || ''
+          );
+          const { isCaseLoad, isNurse } = classifyByAccountAccess(account, roleLabel);
+          if (!name) return;
+          const normalizedAccount = String(account || '').trim().toLowerCase();
+          const isInternal = INTERNAL_STAFF_ACCOUNT_TYPES.has(normalizedAccount) || isStaffAccount(normalizedAccount) || isCaseLoad || isNurse;
+          if (!isInternal) return;
+          if (isCaseLoad) upsertName(clm, name);
+          if (isNurse) upsertName(program, name);
+        });
+      } catch {
+        /* ignore */
+      }
+      return { clm, program };
+    };
+
+    const fallbackFromPatients = () => {
+      const clm = [];
+      const program = [];
+      (patients || []).forEach((p) => {
+        upsertName(clm, p.caseLoadManager);
+        upsertName(program, p.programStaff);
+      });
+      const local = fromLocalStaffDirectory();
+      local.clm.forEach((n) => upsertName(clm, n));
+      local.program.forEach((n) => upsertName(program, n));
+      return {
+        caseLoadManagers: clm.sort((a, b) => a.localeCompare(b)),
+        programStaff: program.sort((a, b) => a.localeCompare(b)),
+      };
+    };
+
+    let cancelled = false;
+    void (async () => {
+      if (!isSupabaseConfigured()) {
+        if (!cancelled) setStaffDirectory(fallbackFromPatients());
+        return;
+      }
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*');
+      if (cancelled) return;
+      const clm = [];
+      const program = [];
+      if (!error && Array.isArray(data)) {
+        data.forEach((row) => {
+          const name = String(row?.full_name || row?.name || '').trim();
+          const role = String(row?.account_type || row?.role || '').trim();
+          const roleLabel = String(row?.department || row?.role_label || '').trim();
+          const { isCaseLoad, isNurse } = classifyByAccountAccess(role, roleLabel);
+          const roleNorm = String(role || '').toLowerCase();
+          if (!name || (!INTERNAL_STAFF_ACCOUNT_TYPES.has(roleNorm) && !isStaffAccount(roleNorm) && !isNurseAccount(roleNorm))) return;
+          if (isCaseLoad) upsertName(clm, name);
+          if (isNurse) upsertName(program, name);
+        });
+      }
+      const fallback = fallbackFromPatients();
+      fallback.caseLoadManagers.forEach((n) => upsertName(clm, n));
+      fallback.programStaff.forEach((n) => upsertName(program, n));
+      // Emergency fallback: if categorization still yields nothing but we do have profiles,
+      // expose internal names so assignment is never blocked.
+      if (clm.length === 0 && Array.isArray(data)) {
+        data.forEach((row) => {
+          const name = String(row?.full_name || row?.name || '').trim();
+          const roleNorm = String(row?.account_type || row?.role || '').toLowerCase();
+          if (name && (INTERNAL_STAFF_ACCOUNT_TYPES.has(roleNorm) || roleNorm.includes('staff') || roleNorm.includes('case'))) {
+            upsertName(clm, name);
+          }
+        });
+      }
+      if (program.length === 0 && Array.isArray(data)) {
+        data.forEach((row) => {
+          const name = String(row?.full_name || row?.name || '').trim();
+          const roleNorm = String(row?.account_type || row?.role || '').toLowerCase();
+          if (name && roleNorm.includes('nurse')) upsertName(program, name);
+        });
+      }
+      setStaffDirectory({
+        caseLoadManagers: clm.sort((a, b) => a.localeCompare(b)),
+        programStaff: program.sort((a, b) => a.localeCompare(b)),
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [patients]);
+
+  const clmOptions = useMemo(() => {
+    const list = [...(staffDirectory.caseLoadManagers || [])];
+    upsertName(list, staffForm.caseLoadManager);
+    return list.sort((a, b) => a.localeCompare(b));
+  }, [staffDirectory.caseLoadManagers, staffForm.caseLoadManager]);
+
+  const programOptions = useMemo(() => {
+    const list = [...(staffDirectory.programStaff || [])];
+    upsertName(list, staffForm.programStaff);
+    return list.sort((a, b) => a.localeCompare(b));
+  }, [staffDirectory.programStaff, staffForm.programStaff]);
+
   const saveRoomAssignment = async () => {
     if (!selectedPatient?.id || isLimited) return;
     const autoSegment = normalizedRoomSegmentFromGender(selectedPatient.gender);
@@ -879,7 +1066,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
           })
           .eq('id', selectedPatient.id);
         if (error) {
-          console.warn('[patient-db] staff assignment db update skipped:', error.message);
+          throw new Error(`Staff assignment database update failed: ${error.message}`);
         }
       }
 
@@ -887,11 +1074,15 @@ function PatientDatabaseShell({ mode = 'admin' }) {
       overrides[String(selectedPatient.id)] = payload;
       saveStaffAssignments(overrides);
 
-      setPatients((prev) => prev.map((p) => (
-        String(p.id) === String(selectedPatient.id)
-          ? { ...p, caseLoadManager, programStaff, medicalStaffNote }
-          : p
-      )));
+      setPatients((prev) => {
+        const next = prev.map((p) => (
+          String(p.id) === String(selectedPatient.id)
+            ? { ...p, caseLoadManager, programStaff, medicalStaffNote }
+            : p
+        ));
+        syncPatientsLocalCache(next);
+        return next;
+      });
       setSelectedPatient((prev) => (prev
         ? { ...prev, caseLoadManager, programStaff, medicalStaffNote }
         : prev));
@@ -1863,20 +2054,26 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                         Per-patient ownership must include Case Load Manager and Program Staff. Medical coverage remains shared across the medical team. Use the same name as the CLM staff profile (e.g. from Staff Management) so their workspace shows this patient after you save; data is stored in the database and in this browser for reports.
                       </p>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                        <input
-                          type="text"
+                        <select
                           value={staffForm.caseLoadManager}
                           onChange={(e) => setStaffForm((prev) => ({ ...prev, caseLoadManager: e.target.value }))}
-                          placeholder="Case Load Manager (required)"
-                          style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
-                        />
-                        <input
-                          type="text"
+                          style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#fff' }}
+                        >
+                          <option value="">Case Load Manager (required)</option>
+                          {clmOptions.map((name) => (
+                            <option key={`clm_${name}`} value={name}>{name}</option>
+                          ))}
+                        </select>
+                        <select
                           value={staffForm.programStaff}
                           onChange={(e) => setStaffForm((prev) => ({ ...prev, programStaff: e.target.value }))}
-                          placeholder="Program Staff (required)"
-                          style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
-                        />
+                          style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#fff' }}
+                        >
+                          <option value="">Program Staff (required)</option>
+                          {programOptions.map((name) => (
+                            <option key={`prog_${name}`} value={name}>{name}</option>
+                          ))}
+                        </select>
                       </div>
                       <input
                         type="text"

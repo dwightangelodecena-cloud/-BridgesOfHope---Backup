@@ -41,10 +41,31 @@ export function patientMatchesClm(patientClm, me) {
   if (!target) return false;
   const meFull = normalizeName(me.fullName);
   const meEmailLocal = normalizeName(displayNameFromEmail(me.email));
+  const emailNorm = normalizeName(me.email);
+
+  const tokens = (s) => String(s || '').split(' ').filter((t) => t.length >= 2);
+  const targetTokens = tokens(target);
+  const meTokens = tokens(meFull);
+  const emailLocalTokens = tokens(meEmailLocal);
+
+  const overlapCount = (a, b) => {
+    if (!a.length || !b.length) return 0;
+    const setB = new Set(b);
+    return a.filter((t) => setB.has(t)).length;
+  };
+
+  const nameOverlap = overlapCount(targetTokens, meTokens);
+  const emailOverlap = overlapCount(targetTokens, emailLocalTokens);
+
   return Boolean(
-    (meFull && target.includes(meFull))
-    || (meEmailLocal && target.includes(meEmailLocal))
-    || target === normalizeName(me.email)
+    // exact / containment checks
+    (meFull && (target.includes(meFull) || meFull.includes(target)))
+    || (meEmailLocal && (target.includes(meEmailLocal) || meEmailLocal.includes(target)))
+    || (emailNorm && (target.includes(emailNorm) || emailNorm.includes(target)))
+    || target === emailNorm
+    // token-based fallback: supports shortened names (e.g., "Dwight Decena" vs "Dwight Angelo Decena")
+    || nameOverlap >= 2
+    || emailOverlap >= 2
   );
 }
 
@@ -73,9 +94,9 @@ export function weekNumberNow() {
 export function normalizeAppointmentStatus(a) {
   const st = String(a.status ?? a.Status ?? '').trim().toLowerCase();
   if (!st || st === 'pending') return 'Pending';
-  if (st === 'requested') return 'Requested';
+  if (st === 'requested' || st === 'request') return 'Requested';
   if (st.includes('confirm') || st === 'approved' || st === 'scheduled') return 'Confirmed';
-  if (st.includes('reject') || st.includes('declin') || st === 'cancelled' || st === 'canceled') return 'Declined';
+  if (st.includes('reject') || st.includes('declin') || st === 'decline' || st === 'cancelled' || st === 'canceled') return 'Declined';
   return st ? st.charAt(0).toUpperCase() + st.slice(1) : 'Other';
 }
 

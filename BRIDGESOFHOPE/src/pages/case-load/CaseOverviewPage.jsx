@@ -12,6 +12,7 @@ import {
   Pie,
   Cell,
   Legend,
+  LabelList,
 } from 'recharts';
 import { CheckCircle2 } from 'lucide-react';
 import { useCaseLoad } from './CaseLoadContext';
@@ -33,13 +34,51 @@ export default function CaseOverviewPage() {
     reportsPerResidentChart,
     hasAnyReportsTrend,
     caseloadIncidents,
+    appointments,
   } = useCaseLoad();
+
+  const totalVisitRequests = React.useMemo(
+    () => appointmentStatusChart.reduce((sum, item) => sum + Number(item?.value || 0), 0),
+    [appointmentStatusChart]
+  );
+
+  const dominantVisitStatus = React.useMemo(() => {
+    if (!appointmentStatusChart.length) return 'No requests yet';
+    const top = [...appointmentStatusChart].sort((a, b) => Number(b.value || 0) - Number(a.value || 0))[0];
+    return `${top.name} (${top.value})`;
+  }, [appointmentStatusChart]);
+
+  const visitStatusBarData = React.useMemo(
+    () => appointmentStatusChart.map((item) => ({ status: item.name, requests: Number(item.value || 0) })),
+    [appointmentStatusChart]
+  );
+
+  const recentVisitRequests = React.useMemo(() => {
+    const source = Array.isArray(appointments) ? appointments : [];
+    return [...source]
+      .sort((a, b) => new Date(b?.createdAt || b?.created_at || b?.submitted_at || 0) - new Date(a?.createdAt || a?.created_at || a?.submitted_at || 0))
+      .slice(0, 5)
+      .map((row) => ({
+        resident: row?.patientName || row?.residentName || row?.patient_name || row?.resident_name || 'Resident',
+        status: row?.status || row?.Status || 'Pending',
+        when: row?.visitDate || row?.appointmentDate || row?.requestedDate || row?.date || row?.createdAt || '',
+      }));
+  }, [appointments]);
 
   return (
     <ClmPageShell
       title="Case Load Manager — Overview"
       lede="Snapshot of your caseload, CLM reporting cadence, visits, and incidents. Use the sidebar for detailed workflows."
     >
+        <div className="cl-hero">
+          <p className="cl-hero-title">Caseload Command Center</p>
+          <p className="cl-hero-sub">A consolidated view of resident assignments, weekly reporting health, and coordination metrics for CLM operations.</p>
+          <div className="cl-pill-row">
+            <span className="cl-pill">{patients.length} active residents</span>
+            <span className="cl-pill">{reportsThisWeek} weekly reports this week</span>
+            <span className="cl-pill">{openVisitationCount} open visit requests</span>
+          </div>
+        </div>
         <div className="cl-grid">
           <div className="cl-metric">
             <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Assigned active residents</div>
@@ -92,31 +131,68 @@ export default function CaseOverviewPage() {
 
             <div className="cl-chart-card">
               <h3 className="cl-chart-title">Visit request status</h3>
-              <p className="cl-chart-sub">Distribution of visitation requests for your caseload.</p>
+              <p className="cl-chart-sub">Status trend and latest requests for your caseload visitation queue.</p>
               {appointmentStatusChart.length === 0 ? (
                 <div className="cl-chart-empty">No visitation requests linked to your caseload yet.</div>
               ) : (
-                <div className="cl-chart-wrap">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <PieChart>
-                      <Pie
-                        data={appointmentStatusChart}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={52}
-                        outerRadius={88}
-                        paddingAngle={2}
-                      >
-                        {appointmentStatusChart.map((entry, i) => (
-                          <Cell key={entry.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #E9EDF7', fontSize: 12 }} />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                <div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
+                    <div className="cl-metric" style={{ margin: 0 }}>
+                      <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>Total requests</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, marginTop: 5 }}>{totalVisitRequests}</div>
+                    </div>
+                    <div className="cl-metric" style={{ margin: 0 }}>
+                      <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>Open requests</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, marginTop: 5 }}>{openVisitationCount}</div>
+                    </div>
+                    <div className="cl-metric" style={{ margin: 0 }}>
+                      <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>Most common status</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, marginTop: 8 }}>{dominantVisitStatus}</div>
+                    </div>
+                  </div>
+
+                  <div className="cl-chart-wrap" style={{ marginBottom: 10 }}>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={visitStatusBarData} margin={{ top: 16, right: 8, left: -8, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E9EDF7" />
+                        <XAxis dataKey="status" tick={{ fontSize: 11, fill: '#64748b' }} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} width={28} />
+                        <Bar dataKey="requests" name="Requests" radius={[6, 6, 0, 0]}>
+                          <LabelList dataKey="requests" position="top" fill="#334155" fontSize={11} />
+                          {visitStatusBarData.map((entry, i) => (
+                            <Cell key={`${entry.status}_${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={{ background: '#F8FAFC', padding: '8px 10px', fontSize: 11, fontWeight: 800, color: '#334155' }}>
+                      Recent visit requests
+                    </div>
+                    {recentVisitRequests.length === 0 ? (
+                      <div style={{ padding: '10px 12px', fontSize: 12, color: '#94A3B8' }}>No recent request entries available.</div>
+                    ) : (
+                      recentVisitRequests.map((item, idx) => (
+                        <div
+                          key={`${item.resident}_${idx}`}
+                          style={{
+                            padding: '9px 10px',
+                            borderTop: idx === 0 ? 'none' : '1px solid #EEF2F7',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            gap: 8,
+                            fontSize: 12,
+                          }}
+                        >
+                          <span style={{ color: '#0F172A', fontWeight: 700 }}>{item.resident}</span>
+                          <span style={{ color: '#475569' }}>{item.status}</span>
+                          <span style={{ color: '#94A3B8' }}>{item.when ? new Date(item.when).toLocaleDateString() : '—'}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
             </div>
