@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import {
   LayoutGrid,
   HeartPulse,
+  BookUser,
   Users,
   LogOut,
   Search,
@@ -16,7 +17,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle,
-  CheckCircle2,
   Archive,
   ChevronDown,
   Stethoscope,
@@ -638,7 +638,7 @@ const DischargeManagement = () => {
             <span className="sidebar-label">Dashboard</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
-            <div className="icon-box inactive"><HeartPulse size={22} /></div>
+            <div className="icon-box inactive"><BookUser size={22} /></div>
             <span className="sidebar-label">Patient Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
@@ -658,7 +658,7 @@ const DischargeManagement = () => {
             <span className="sidebar-label">Staff Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
-            <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+            <div className="icon-box inactive"><HeartPulse size={22} /></div>
             <span className="sidebar-label">Recovery Roadmap</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
@@ -917,7 +917,7 @@ const DischargeManagement = () => {
 
       <div className="db-mobile-only db-mobile-bottom-nav">
         <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}><LayoutGrid size={18} color="#A3AED0" /><span>Home</span></div>
-        <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}><HeartPulse size={18} color="#A3AED0" /><span>Patients</span></div>
+        <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}><BookUser size={18} color="#A3AED0" /><span>Patients</span></div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-admission-management')}><ClipboardList size={18} color="#A3AED0" /><span>Adm</span></div>
         <div className="mob-nav-item active"><ArrowRightSquare size={18} color="white" /><span style={{ color: '#F54E25' }}>Disch</span></div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-user-management')}><Users size={18} color="#A3AED0" /><span>Users</span></div>

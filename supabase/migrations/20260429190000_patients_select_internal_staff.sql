@@ -42,4 +42,3 @@ create policy "bh_patients_select_internal_staff"
   for select
   to authenticated
   using (public.bh_is_internal_staff());
-

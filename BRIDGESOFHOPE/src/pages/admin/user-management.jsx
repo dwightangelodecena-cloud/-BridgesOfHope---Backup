@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   LayoutGrid,
   HeartPulse,
+  BookUser,
   Users,
   LogOut,
   Search,
@@ -11,7 +12,6 @@ import {
   RefreshCw,
   X,
   ClipboardList,
-  CheckCircle2,
   ArrowRightSquare,
   ChevronDown,
   Stethoscope,
@@ -604,7 +604,7 @@ const UserManagement = () => {
             <span className="sidebar-label">Dashboard</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
-            <div className="icon-box inactive"><HeartPulse size={22} /></div>
+            <div className="icon-box inactive"><BookUser size={22} /></div>
             <span className="sidebar-label">Patient Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
@@ -624,7 +624,7 @@ const UserManagement = () => {
             <span className="sidebar-label">Staff Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
-            <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+            <div className="icon-box inactive"><HeartPulse size={22} /></div>
             <span className="sidebar-label">Recovery Roadmap</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
@@ -842,7 +842,7 @@ const UserManagement = () => {
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}>
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <HeartPulse size={20} color="#A3AED0" />
+            <BookUser size={20} color="#A3AED0" />
           </div>
           <span>Patient Management</span>
         </div>

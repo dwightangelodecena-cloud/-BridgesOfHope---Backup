@@ -2,10 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   LayoutGrid,
   HeartPulse,
+  BookUser,
   LogOut,
   Users,
   ClipboardList,
-  CheckCircle2,
   ArrowRightSquare,
   Stethoscope,
   LayoutTemplate,
@@ -276,7 +276,7 @@ export default function AdminReportsPage() {
             </div>
           )}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
-            <div className="icon-box inactive"><HeartPulse size={22} /></div>
+            <div className="icon-box inactive"><BookUser size={22} /></div>
             <span className="sidebar-label">{isClm ? 'Patient records' : 'Patient Management'}</span>
           </div>
           {!isClm ? (
@@ -304,7 +304,7 @@ export default function AdminReportsPage() {
             </div>
           ) : null}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
-            <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+            <div className="icon-box inactive"><HeartPulse size={22} /></div>
             <span className="sidebar-label">Recovery Roadmap</span>
           </div>
           {!isClm ? (
@@ -458,7 +458,7 @@ export default function AdminReportsPage() {
         ) : null}
         <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}>
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <HeartPulse size={20} color="#A3AED0" />
+            <BookUser size={20} color="#A3AED0" />
           </div>
           <span>{isClm ? 'Records' : 'Patients'}</span>
         </div>
@@ -479,7 +479,7 @@ export default function AdminReportsPage() {
         {isClm ? (
           <div className="mob-nav-item" onClick={() => navigate('/admin-recovery-roadmap')}>
             <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-              <CheckCircle2 size={20} color="#A3AED0" />
+              <HeartPulse size={20} color="#A3AED0" />
             </div>
             <span>Roadmap</span>
           </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   LayoutGrid,
   HeartPulse,
+  BookUser,
   ClipboardList,
   ArrowRightSquare,
   Users,
@@ -11,7 +12,6 @@ import {
   FileText,
   User,
   LogOut,
-  CheckCircle2,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
@@ -378,14 +378,14 @@ const RecoveryRoadmapPage = () => {
               ) : (
                 <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}><div className="icon-box inactive"><LayoutGrid size={22} /></div><span className="sidebar-label">Dashboard</span></div>
               )}
-              <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><HeartPulse size={22} /></div><span className="sidebar-label">{isClm ? 'Patient records' : 'Patient Management'}</span></div>
+              <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><BookUser size={22} /></div><span className="sidebar-label">{isClm ? 'Patient records' : 'Patient Management'}</span></div>
               {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}><div className="icon-box inactive"><ClipboardList size={22} /></div><span className="sidebar-label">Admission Management</span></div> : null}
               {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}><div className="icon-box inactive"><ArrowRightSquare size={22} /></div><span className="sidebar-label">Discharge Management</span></div> : null}
               {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}><div className="icon-box inactive"><Users size={22} /></div><span className="sidebar-label">User Management</span></div> : null}
               {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}><div className="icon-box inactive"><Stethoscope size={22} /></div><span className="sidebar-label">Staff Management</span></div> : null}
             </>
           ) : null}
-          <div className="sidebar-nav-item"><div className="icon-box active"><CheckCircle2 size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Recovery Roadmap</span></div>
+          <div className="sidebar-nav-item"><div className="icon-box active"><HeartPulse size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Recovery Roadmap</span></div>
           {roleResolved && !isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div> : null}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}><div className="icon-box inactive"><Calendar size={22} /></div><span className="sidebar-label">Appointments</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}><div className="icon-box inactive"><FileText size={22} /></div><span className="sidebar-label">Printable reports</span></div>

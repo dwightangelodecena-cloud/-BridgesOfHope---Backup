@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
-import { LayoutGrid, HeartPulse, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope, LayoutTemplate, User, Calendar, FileText } from 'lucide-react';
+import { LayoutGrid, HeartPulse, BookUser, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope, LayoutTemplate, User, Calendar, FileText } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -960,7 +960,7 @@ const AdminDashboard = () => {
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Dashboard</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
-            <div className="icon-box inactive"><HeartPulse size={22} /></div>
+            <div className="icon-box inactive"><BookUser size={22} /></div>
             <span className="sidebar-label">Patient Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
@@ -980,7 +980,7 @@ const AdminDashboard = () => {
             <span className="sidebar-label">Staff Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
-            <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+            <div className="icon-box inactive"><HeartPulse size={22} /></div>
             <span className="sidebar-label">Recovery Roadmap</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
@@ -1487,7 +1487,7 @@ const AdminDashboard = () => {
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}>
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-            <HeartPulse size={20} color="#A3AED0" />
+            <BookUser size={20} color="#A3AED0" />
           </div>
           <span>Patient Management</span>
         </div>

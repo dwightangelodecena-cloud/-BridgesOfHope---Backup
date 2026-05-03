@@ -52,6 +52,7 @@ export function CaseLoadProvider({ children }) {
     const load = async () => {
       setLoading(true);
       setFormError('');
+      let resolvedMe = { fullName: 'Case Load Manager', email: '' };
       try {
         let meInfo = { fullName: 'Case Load Manager', email: '' };
         if (isSupabaseConfigured()) {
@@ -73,6 +74,7 @@ export function CaseLoadProvider({ children }) {
             }
           }
         }
+        resolvedMe = meInfo;
         setMe(meInfo);
 
         const assignmentMap = readJson(STAFF_ASSIGNMENT_STORAGE_KEY, {});
@@ -206,7 +208,7 @@ export function CaseLoadProvider({ children }) {
           const assignmentMap = readJson(STAFF_ASSIGNMENT_STORAGE_KEY, {});
           const assignedPatientIdsFromOverrides = new Set(
             Object.entries(assignmentMap || {})
-              .filter(([, v]) => patientMatchesClm(v?.caseLoadManager, me))
+              .filter(([, v]) => patientMatchesClm(v?.caseLoadManager, resolvedMe))
               .map(([pid]) => String(pid))
           );
           const localPatients = readJson('bh_patients', []);
@@ -225,7 +227,7 @@ export function CaseLoadProvider({ children }) {
               };
             });
           const fallbackRows = rows.filter((p) => (
-            patientMatchesClm(p.caseLoadManager, me)
+            patientMatchesClm(p.caseLoadManager, resolvedMe)
             || assignedPatientIdsFromOverrides.has(String(p.id))
           ));
           setPatients(fallbackRows);

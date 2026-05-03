@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutGrid, HeartPulse, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, CheckCircle2, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, LayoutTemplate, Calendar } from 'lucide-react';
+import { LayoutGrid, HeartPulse, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, LayoutTemplate, Calendar } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -1701,7 +1701,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
             </div>
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
               <div className="icon-box active">
-                <HeartPulse size={22} />
+                <BookUser size={22} />
               </div>
               <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient Management</span>
             </div>
@@ -1716,7 +1716,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
             </div>
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
               <div className="icon-box active">
-                <HeartPulse size={22} />
+                <BookUser size={22} />
               </div>
               <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient records</span>
             </div>
@@ -1729,7 +1729,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
               <span className="sidebar-label">Printable reports</span>
             </div>
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
-              <div className="icon-box inactive"><CheckCircle2 size={22} /></div>
+              <div className="icon-box inactive"><HeartPulse size={22} /></div>
               <span className="sidebar-label">Recovery roadmap</span>
             </div>
           </nav>
@@ -1744,7 +1744,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
 
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
               <div className="icon-box active">
-                <HeartPulse size={22} />
+                <BookUser size={22} />
               </div>
               <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient Management</span>
             </div>
@@ -1770,7 +1770,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
             </div>
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
               <div className="icon-box inactive">
-                <CheckCircle2 size={22} />
+                <HeartPulse size={22} />
               </div>
               <span className="sidebar-label">Recovery Roadmap</span>
             </div>
@@ -2603,7 +2603,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
             </div>
             <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
               <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
-                <HeartPulse size={20} color="white" />
+                <BookUser size={20} color="white" />
               </div>
               <span style={{ color: '#F54E25' }}>Patients</span>
             </div>
@@ -2628,7 +2628,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
             </div>
             <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
               <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
-                <HeartPulse size={20} color="white" />
+                <BookUser size={20} color="white" />
               </div>
               <span style={{ color: '#F54E25' }}>Records</span>
             </div>
@@ -2659,7 +2659,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
             </div>
             <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
               <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
-                <HeartPulse size={20} color="white" />
+                <BookUser size={20} color="white" />
               </div>
               <span style={{ color: '#F54E25' }}>Patient Management</span>
             </div>
