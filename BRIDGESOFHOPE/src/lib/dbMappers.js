@@ -1,7 +1,13 @@
+import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
+
 export function uiPatientFromRow(p) {
   if (!p) return null;
   return {
     id: p.id,
+    admissionDisplayId: computeAdmissionDisplayId(
+      { id: p.id, decided_at: p.admitted_at, created_at: p.created_at },
+      { id: p.id, admitted_at: p.admitted_at }
+    ),
     name: p.full_name,
     date: p.admitted_at
       ? new Date(p.admitted_at).toLocaleDateString('en-US', {

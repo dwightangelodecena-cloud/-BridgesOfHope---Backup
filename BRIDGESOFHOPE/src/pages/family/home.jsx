@@ -12,6 +12,7 @@ import {
   uiAdmissionRequestFromRow,
   uiDischargeRequestFromRow,
 } from '@/lib/dbMappers';
+import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import {
   loadVisitationSettings,
   listVisitationRequestsByFamily,
@@ -275,7 +276,7 @@ const HomeDashboard = () => {
 
       const { data: pRows, error: pErr } = await supabase
         .from('patients')
-        .select('id, full_name, admitted_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at')
+        .select('id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at')
         .eq('family_id', user.id)
         .is('discharged_at', null)
         .order('admitted_at', { ascending: false });
@@ -2318,7 +2319,18 @@ const HomeDashboard = () => {
                             <td>
                               <div className="table-patient-wrap">
                                 <span className="table-patient-name">{p.name}</span>
-                                <span className="table-mini-text">ID: {String(p.id).slice(0, 8)}</span>
+                                <span className="table-mini-text" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                  ID:{' '}
+                                  {p.admissionDisplayId ??
+                                    computeAdmissionDisplayId(
+                                      {
+                                        id: p.id,
+                                        decided_at: p.admitted_at || p.admissionDate,
+                                        created_at: p.created_at,
+                                      },
+                                      { id: p.id, admitted_at: p.admitted_at || p.admissionDate }
+                                    )}
+                                </span>
                               </div>
                             </td>
                             <td>{p.date || 'N/A'}</td>
