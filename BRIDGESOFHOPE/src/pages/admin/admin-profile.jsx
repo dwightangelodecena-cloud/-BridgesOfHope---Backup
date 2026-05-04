@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { LayoutGrid, HeartPulse, BookUser, LogOut, Users, ArrowRightSquare, Stethoscope, LayoutTemplate, ClipboardList, User, Calendar, FileText } from 'lucide-react';
+import { LayoutGrid, HeartPulse, BookUser, LogOut, Users, ArrowRightSquare, Stethoscope, LayoutTemplate, ClipboardList, User, Calendar, FileText, KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase } from '@/lib/supabase';
 import { clearAdminApprovalPin, getAdminApprovalPin, setAdminApprovalPin, verifyAdminApprovalPin } from '@/lib/adminApprovalPin';
+import { getPasswordPolicyError, getPasswordStrengthChecks, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
+import { formatAuthError } from '@/lib/authErrors';
 
 const AdminProfile = () => {
   const navigate = useNavigate();
@@ -15,6 +17,13 @@ const AdminProfile = () => {
   const [confirmPin, setConfirmPin] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  const [accountEmail, setAccountEmail] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwErr, setPwErr] = useState('');
+  const [pwMsg, setPwMsg] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -25,6 +34,7 @@ const AdminProfile = () => {
       if (!mounted) return;
       const id = user?.id || 'global';
       setUserId(id);
+      setAccountEmail(String(user?.email || ''));
       setSavedPinExists(Boolean(getAdminApprovalPin(id)));
     })();
     return () => {
@@ -64,6 +74,58 @@ const AdminProfile = () => {
     setConfirmPin('');
     setErr('');
     setMsg('Saved PIN removed. System will fallback to env PIN if configured.');
+  };
+
+  const pwChecks = getPasswordStrengthChecks(newPassword);
+  const passwordsMatch = confirmPassword !== '' && newPassword === confirmPassword;
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPwErr('');
+    setPwMsg('');
+    if (!String(currentPassword).trim()) {
+      setPwErr('Enter your current password.');
+      return;
+    }
+    const policyErr = getPasswordPolicyError(newPassword);
+    if (policyErr) {
+      setPwErr(policyErr);
+      return;
+    }
+    if (!passwordsMatch) {
+      setPwErr('New password and confirmation do not match.');
+      return;
+    }
+    setPwSaving(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const email = user?.email;
+      if (!email) {
+        setPwErr('Could not load your account email.');
+        return;
+      }
+      const { error: signErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword,
+      });
+      if (signErr) {
+        setPwErr(formatAuthError(signErr));
+        return;
+      }
+      const { error: upErr } = await supabase.auth.updateUser({ password: newPassword });
+      if (upErr) {
+        setPwErr(formatAuthError(upErr));
+        return;
+      }
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPwMsg('Password updated successfully.');
+    } finally {
+      setPwSaving(false);
+    }
   };
 
   return (
@@ -246,7 +308,7 @@ const AdminProfile = () => {
           <div>
             <div className="ap-hero-kicker">Admin settings</div>
             <div className="ap-hero-title">Profile & Security</div>
-            <p className="ap-hero-sub">Manage your approval protection settings. Your PIN is required before critical admission and discharge decisions are finalized.</p>
+            <p className="ap-hero-sub">Manage your login password and your 2FA approval PIN. Your PIN is required before critical admission and discharge decisions are finalized.</p>
           </div>
           <div className="ap-hero-pill">
             <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>2FA status</div>
@@ -287,6 +349,105 @@ const AdminProfile = () => {
               <div className="ap-side-item">Use a PIN only admins know. Avoid repeated numbers like 0000 or 1234.</div>
               <div className="ap-side-item">Changing your PIN updates approval checks immediately.</div>
               <div className="ap-side-item">If removed, system falls back to environment PIN when configured.</div>
+            </aside>
+          </div>
+        </section>
+
+        <section className="ap-card" style={{ marginTop: 18 }}>
+          <div className="ap-grid">
+            <div className="ap-panel">
+              <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <KeyRound size={22} color="#F54E25" aria-hidden />
+                Change password
+              </h2>
+              <p style={{ fontSize: 13, color: '#64748B', marginBottom: 20 }}>
+                Update the password you use to sign in with email. You must enter your current password first.
+                {accountEmail ? (
+                  <span style={{ display: 'block', marginTop: 8, fontWeight: 600, color: '#475569' }}>
+                    Account: {accountEmail}
+                  </span>
+                ) : null}
+              </p>
+
+              <form onSubmit={handleChangePassword}>
+                <label className="ap-label">Current password</label>
+                <input
+                  className="ap-input"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                />
+                <label className="ap-label">New password</label>
+                <input
+                  className="ap-input"
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  style={{
+                    borderColor: newPassword && pwChecks.isValid ? '#10b981' : undefined,
+                  }}
+                />
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: '#64748B',
+                    marginTop: -8,
+                    marginBottom: 14,
+                    lineHeight: 1.45,
+                  }}
+                  aria-label="Password requirements"
+                >
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Requirements</div>
+                  {[
+                    ['lengthOk', `At least ${PASSWORD_MIN_LENGTH} characters`],
+                    ['upper', 'One uppercase letter'],
+                    ['lower', 'One lowercase letter'],
+                    ['number', 'One number'],
+                    ['special', 'One special character (!@#$… )'],
+                    ['noSpaces', 'No spaces'],
+                  ].map(([key, label]) => (
+                    <div key={key} style={{ color: pwChecks[key] ? '#166534' : '#94a3b8' }}>
+                      {pwChecks[key] ? '✓ ' : '○ '}
+                      {label}
+                    </div>
+                  ))}
+                </div>
+                <label className="ap-label">Confirm new password</label>
+                <input
+                  className="ap-input"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  style={{
+                    borderColor:
+                      confirmPassword === ''
+                        ? undefined
+                        : passwordsMatch
+                          ? '#10b981'
+                          : '#ef4444',
+                  }}
+                />
+                {confirmPassword !== '' && !passwordsMatch ? (
+                  <div style={{ color: '#dc2626', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
+                    Passwords do not match.
+                  </div>
+                ) : null}
+                {pwErr ? <div style={{ color: '#dc2626', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{pwErr}</div> : null}
+                {pwMsg ? <div style={{ color: '#166534', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{pwMsg}</div> : null}
+                <button type="submit" className="ap-btn ap-btn-primary" disabled={pwSaving}>
+                  {pwSaving ? 'Updating…' : 'Update password'}
+                </button>
+              </form>
+            </div>
+
+            <aside className="ap-side">
+              <div className="ap-side-title">Password tips</div>
+              <div className="ap-side-item">Use a unique password you do not reuse on other sites.</div>
+              <div className="ap-side-item">After a successful change, use the new password on your next sign-in on other devices.</div>
+              <div className="ap-side-item">If you sign in only with Google or another provider, email/password changes may not apply—use that provider&apos;s account security instead.</div>
             </aside>
           </div>
         </section>
