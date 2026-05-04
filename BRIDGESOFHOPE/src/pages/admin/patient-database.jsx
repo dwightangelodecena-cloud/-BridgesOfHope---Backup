@@ -8,6 +8,7 @@ import { resolveAccountRole } from '@/components/RoleGuard';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import { fetchWeeklyReportRecommendation } from '@/lib/weeklyReportAi';
+import BehaviorProgressBoard, { computeBehaviorBoardProgressPercent } from '@/components/admin/BehaviorProgressBoard';
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
 const ROOM_ASSIGNMENT_STORAGE_KEY = 'bh_patient_room_assignments_v1';
@@ -535,6 +536,11 @@ function PatientDatabaseShell({ mode = 'admin' }) {
   const [staffForm, setStaffForm] = useState({ caseLoadManager: '', programStaff: '', medicalStaffNote: '' });
   const [staffSaving, setStaffSaving] = useState(false);
   const [staffDirectory, setStaffDirectory] = useState({ caseLoadManagers: [], programStaff: [] });
+  const [behaviorChecklistChecked, setBehaviorChecklistChecked] = useState({});
+  const behaviorRecoveryPercent = useMemo(
+    () => computeBehaviorBoardProgressPercent(behaviorChecklistChecked),
+    [behaviorChecklistChecked]
+  );
 
   const upsertName = (bucket, name) => {
     const v = String(name || '').trim();
@@ -791,6 +797,10 @@ function PatientDatabaseShell({ mode = 'admin' }) {
     return () => {
       cancelled = true;
     };
+  }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    setBehaviorChecklistChecked({});
   }, [selectedPatient?.id]);
 
   useEffect(() => {
@@ -2210,7 +2220,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                 <div style={{ marginBottom: 24 }}>
                   <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Nursing Clinical Records</h3>
                   <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.45 }}>
-                    Review identity, primary concern, progress, and clinical trajectory. Discharge status follows the discharge workflow.
+                    Review identity, primary concern, progress, and clinical trajectory. Recovery progress matches the behavior milestone board (non-intervention tiles to 100%). Discharge status follows the discharge workflow.
                   </p>
                 </div>
                 <div className="admin-edit-split">
@@ -2222,7 +2232,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                       {[
                         ['Patient full name', selectedPatient.name],
                         ['Primary concern', selectedPatient.concern],
-                        ['Recovery progress', `${selectedPatient.progress}%`],
+                        ['Recovery progress', `${behaviorRecoveryPercent}%`],
                         ['Clinical trajectory', selectedPatient.clinicalStatus],
                       ].map(([label, value]) => (
                         <div key={label} className="admin-edit-summary-row">
@@ -2254,6 +2264,19 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            <div className="info-card" style={{ padding: '28px 32px 32px' }}>
+              <div style={{ marginBottom: 20 }}>
+                <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Recovery Ladder</h3>
+              </div>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <BehaviorProgressBoard
+                  checked={behaviorChecklistChecked}
+                  setChecked={setBehaviorChecklistChecked}
+                  patientName={selectedPatient?.name ?? ''}
+                />
               </div>
             </div>
           </div>
