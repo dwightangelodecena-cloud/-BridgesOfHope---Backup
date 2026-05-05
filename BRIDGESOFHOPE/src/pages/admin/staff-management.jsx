@@ -1113,7 +1113,7 @@ const StaffManagement = () => {
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
             <BookUser size={20} color="#A3AED0" />
           </div>
-          <span>Patients</span>
+          <span>Residents</span>
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-user-management')}>
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
@@ -1159,7 +1159,7 @@ const StaffManagement = () => {
               <div className="um-modal-field"><span className="um-modal-label">Availability</span><div className="um-input">{selected.availability}</div></div>
               <div className="um-modal-field"><span className="um-modal-label">Duty</span><div className="um-input">{selected.duty}</div></div>
               <div className="um-modal-field"><span className="um-modal-label">Approval</span><div className="um-input">{selected.approvalStatus}</div></div>
-              <div className="um-modal-field"><span className="um-modal-label">Assigned Patients (manual)</span><div className="um-input">{selected.assignedPatientsCount}</div></div>
+              <div className="um-modal-field"><span className="um-modal-label">Assigned Residents (manual)</span><div className="um-input">{selected.assignedPatientsCount}</div></div>
               <div className="um-modal-field"><span className="um-modal-label">Registered</span><div className="um-input">{safeDateText(selected.registeredAt)}</div></div>
               <div className="um-modal-field"><span className="um-modal-label">Last Active</span><div className="um-input">{safeDateTimeText(selected.lastActiveAt)}</div></div>
             </div>

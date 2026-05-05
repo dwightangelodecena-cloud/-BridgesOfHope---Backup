@@ -102,10 +102,10 @@ const Progress = () => {
     { key: 'municipalityCity', label: 'Municipality/City' },
     { key: 'barangay', label: 'Barangay' },
     { key: 'street', label: 'Street' },
-    { key: 'patientLastName', label: 'Patient Last Name' },
-    { key: 'patientFirstName', label: 'Patient First Name' },
-    { key: 'patientGender', label: 'Patient Gender' },
-    { key: 'patientBirthday', label: 'Patient Birthday' },
+    { key: 'patientLastName', label: 'Resident Last Name' },
+    { key: 'patientFirstName', label: 'Resident First Name' },
+    { key: 'patientGender', label: 'Resident Gender' },
+    { key: 'patientBirthday', label: 'Resident Birthday' },
     { key: 'reasonForAdmission', label: 'Reason for Admission' },
   ];
   const admissionCompletedFields = admissionRequiredFields.filter((field) => String(admissionForm[field.key]).trim()).length;
@@ -326,10 +326,10 @@ const Progress = () => {
     if (!admissionForm.municipalityCity.trim()) errs.municipalityCity = 'Municipality/City is required.';
     if (!admissionForm.street.trim()) errs.street = 'Street is required.';
     if (!admissionForm.barangay.trim()) errs.barangay = 'Barangay is required.';
-    if (!admissionForm.patientLastName.trim()) errs.patientLastName = 'Patient last name is required.';
-    if (!admissionForm.patientFirstName.trim()) errs.patientFirstName = 'Patient first name is required.';
-    if (!admissionForm.patientGender.trim()) errs.patientGender = 'Patient gender is required.';
-    if (!admissionForm.patientBirthday) errs.patientBirthday = 'Patient birthday is required.';
+    if (!admissionForm.patientLastName.trim()) errs.patientLastName = 'Resident last name is required.';
+    if (!admissionForm.patientFirstName.trim()) errs.patientFirstName = 'Resident first name is required.';
+    if (!admissionForm.patientGender.trim()) errs.patientGender = 'Resident gender is required.';
+    if (!admissionForm.patientBirthday) errs.patientBirthday = 'Resident birthday is required.';
     if (!admissionForm.reasonForAdmission) errs.reasonForAdmission = 'Please select a reason.';
     if (!admissionForm.agreeToTerms) errs.agreeToTerms = 'You must agree to the terms.';
     setAdmissionErrors(errs);
@@ -1004,17 +1004,17 @@ const Progress = () => {
 
                     <div className="field">
                       <label>Patient Last Name *</label>
-                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientLastName" placeholder="Patient's last name" value={admissionForm.patientLastName} onChange={handleAdmissionChange} /></div>
+                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientLastName" placeholder="Resident's last name" value={admissionForm.patientLastName} onChange={handleAdmissionChange} /></div>
                       {admissionErrors.patientLastName && <div className="error">{admissionErrors.patientLastName}</div>}
                     </div>
                     <div className="field">
                       <label>Patient First Name *</label>
-                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientFirstName" placeholder="Patient's first name" value={admissionForm.patientFirstName} onChange={handleAdmissionChange} /></div>
+                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientFirstName" placeholder="Resident's first name" value={admissionForm.patientFirstName} onChange={handleAdmissionChange} /></div>
                       {admissionErrors.patientFirstName && <div className="error">{admissionErrors.patientFirstName}</div>}
                     </div>
                     <div className="field">
                       <label>Patient Middle Name (Optional)</label>
-                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientMiddleName" placeholder="Patient's middle name" value={admissionForm.patientMiddleName} onChange={handleAdmissionChange} /></div>
+                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientMiddleName" placeholder="Resident's middle name" value={admissionForm.patientMiddleName} onChange={handleAdmissionChange} /></div>
                       {admissionErrors.patientMiddleName && <div className="error">{admissionErrors.patientMiddleName}</div>}
                     </div>
                     <div className="field">
@@ -1109,7 +1109,7 @@ const Progress = () => {
                     </div>
                     <div className="insight-card">
                       <div className="insight-label">Request state</div>
-                      <div className="insight-value">{selectedPatientId ? 'Draft Ready' : 'Select Patient'}</div>
+                      <div className="insight-value">{selectedPatientId ? 'Draft Ready' : 'Select Resident'}</div>
                     </div>
                   </div>
                   <div className="form-grid">

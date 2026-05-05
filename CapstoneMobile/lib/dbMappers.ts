@@ -40,7 +40,7 @@ export function uiDischargeRequestFromRow(r: DischargeRequestRow | null | undefi
   const pname =
     (typeof patient === 'object' && patient && patient.full_name) ||
     (r.patient_name as string) ||
-    'Patient';
+    'Resident';
   const createdAt = r.created_at as string | undefined;
   return {
     dischargeRequestId: r.id,

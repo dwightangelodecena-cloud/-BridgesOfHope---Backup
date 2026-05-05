@@ -26,7 +26,7 @@ const MOBILE_LINKS = [
 
 /** Same routes admin uses for patient data, visits, PDF packs, and recovery ladder. */
 const ADMIN_BRIDGE_LINKS = [
-  { to: '/admin-patient-database', label: 'Patient records' },
+  { to: '/admin-patient-database', label: 'Resident records' },
   { to: '/admin-appointments', label: 'Visit scheduling' },
   { to: '/admin-reports', label: 'Printable reports' },
   { to: '/admin-recovery-roadmap', label: 'Recovery roadmap' },

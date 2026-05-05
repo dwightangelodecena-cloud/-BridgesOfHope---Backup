@@ -196,7 +196,7 @@ const RecoveryRoadmapPage = () => {
             );
             return {
               patientId: p.id,
-              patientName: p.name || p.full_name || 'Patient',
+              patientName: p.name || p.full_name || 'Resident',
               checkedTiles: tiles,
               baseProgress,
               currentPosition: Number.isFinite(Number(pf.currentPosition))
@@ -273,7 +273,7 @@ const RecoveryRoadmapPage = () => {
           );
           return {
             patientId: p.id,
-            patientName: p.full_name || 'Patient',
+            patientName: p.full_name || 'Resident',
             checkedTiles,
             baseProgress,
             currentPosition: Number.isFinite(Number(pf.currentPosition))
@@ -378,17 +378,17 @@ const RecoveryRoadmapPage = () => {
               ) : (
                 <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}><div className="icon-box inactive"><LayoutGrid size={22} /></div><span className="sidebar-label">Dashboard</span></div>
               )}
-              <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><BookUser size={22} /></div><span className="sidebar-label">{isClm ? 'Patient records' : 'Patient Management'}</span></div>
+              <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><BookUser size={22} /></div><span className="sidebar-label">{isClm ? 'Resident records' : 'Resident Management'}</span></div>
               {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}><div className="icon-box inactive"><ClipboardList size={22} /></div><span className="sidebar-label">Admission Management</span></div> : null}
               {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}><div className="icon-box inactive"><ArrowRightSquare size={22} /></div><span className="sidebar-label">Discharge Management</span></div> : null}
               {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}><div className="icon-box inactive"><Users size={22} /></div><span className="sidebar-label">User Management</span></div> : null}
               {!isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}><div className="icon-box inactive"><Stethoscope size={22} /></div><span className="sidebar-label">Staff Management</span></div> : null}
             </>
           ) : null}
-          <div className="sidebar-nav-item"><div className="icon-box active"><HeartPulse size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Recovery Roadmap</span></div>
-          {roleResolved && !isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div> : null}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}><div className="icon-box inactive"><Calendar size={22} /></div><span className="sidebar-label">Appointments</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}><div className="icon-box inactive"><FileText size={22} /></div><span className="sidebar-label">Printable reports</span></div>
+          <div className="sidebar-nav-item"><div className="icon-box active"><HeartPulse size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Recovery Roadmap</span></div>
+          {roleResolved && !isClm ? <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div> : null}
         </nav>
         <div className="sidebar-footer">
           {roleResolved ? (
@@ -406,7 +406,7 @@ const RecoveryRoadmapPage = () => {
 
         <div className="rr-card" style={{ marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>Patients tracked: {rows.length}</div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>Residents tracked: {rows.length}</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#16A34A' }}>Checked tiles total: {completedTilesCount}</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#0369A1' }}>Overall completion: {overallCompletionRate}%</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#7C3AED' }}>Avg final progress: {overallFinalProgress}%</div>
@@ -475,7 +475,7 @@ const RecoveryRoadmapPage = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, textAlign: 'left' }}>
               <thead>
                 <tr style={{ background: '#323D4E', color: 'white' }}>
-                  {['Patient', 'Checked Tiles', 'Ladder position', `Base (${PROGRESS_PER_TILE}%/tile)`, 'Manual override', 'Final progress', 'Behavior / intervention', 'Governance link', 'Last Checked'].map((h, i) => (
+                  {['Resident', 'Checked Tiles', 'Ladder position', `Base (${PROGRESS_PER_TILE}%/tile)`, 'Manual override', 'Final progress', 'Behavior / intervention', 'Governance link', 'Last Checked'].map((h, i) => (
                     <th key={h} style={{ padding: '12px 14px', borderRight: i < 8 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>{h}</th>
                   ))}
                 </tr>

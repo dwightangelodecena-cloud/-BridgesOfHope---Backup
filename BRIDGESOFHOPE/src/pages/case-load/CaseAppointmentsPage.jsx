@@ -43,7 +43,7 @@ export default function CaseAppointmentsPage() {
                   const scheduled = `${a.confirmed_date || a.confirmedDate || '—'} ${a.confirmed_time || a.confirmedTime || ''}`.trim();
                   return (
                     <tr key={String(a.id)}>
-                      <td style={{ fontWeight: 700 }}>{a.patient_name || a.patientName || 'Patient'}</td>
+                      <td style={{ fontWeight: 700 }}>{a.patient_name || a.patientName || 'Resident'}</td>
                       <td>{a.family_name || a.familyName || 'Family'}</td>
                       <td>{a.status || 'Requested'}</td>
                       <td>{requested}</td>

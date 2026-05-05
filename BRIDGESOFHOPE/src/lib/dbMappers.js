@@ -59,7 +59,7 @@ export function uiDischargeRequestFromRow(r) {
   if (!r) return null;
   const patient = r.patients;
   const pname =
-    (typeof patient === 'object' && patient && patient.full_name) || 'Patient';
+    (typeof patient === 'object' && patient && patient.full_name) || 'Resident';
   return {
     dischargeRequestId: r.id,
     patientId: r.patient_id,

@@ -17,7 +17,9 @@ import {
   loadVisitationSettings,
   listVisitationRequestsByFamily,
   createVisitationRequest,
+  normalizeVisitationStatus,
 } from '@/lib/visitationAppointments';
+import { loadFamilyNotifications, saveFamilyNotifications } from '@/lib/familyNotifications';
 import {
   FAMILY_COLORS,
 } from '@/components/family/shared/ui';
@@ -37,6 +39,7 @@ const HomeDashboard = () => {
   const [visitationSettings, setVisitationSettings] = useState(() => loadVisitationSettings());
   const [familyVisitationRequests, setFamilyVisitationRequests] = useState([]);
   const [visitationSaving, setVisitationSaving] = useState(false);
+  const [hiddenRequestKeys, setHiddenRequestKeys] = useState([]);
   const [visitationForm, setVisitationForm] = useState({
     patientId: '',
     patientName: '',
@@ -156,12 +159,7 @@ const HomeDashboard = () => {
   const notificationsDesktopRef = useRef(null);
   const notificationsMobileRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const notificationItems = [
-    'Submit missing laboratory result before Friday.',
-    'Family support session is scheduled on April 5, 10:00 AM.',
-    'Weekly report reviewed by your assigned counselor.',
-    'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
-  ];
+  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
   const [activityFeed, setActivityFeed] = useState([]);
   const [supabaseReadError, setSupabaseReadError] = useState(null);
 
@@ -278,7 +276,6 @@ const HomeDashboard = () => {
         .from('patients')
         .select('id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at')
         .eq('family_id', user.id)
-        .is('discharged_at', null)
         .order('admitted_at', { ascending: false });
       const { data: allFamilyRows } = await supabase
         .from('patients')
@@ -403,13 +400,17 @@ const HomeDashboard = () => {
       .split(/\s+/)
       .filter(Boolean)[0] || 'Family';
 
-  const totalPendingRequests = pendingAdmissions.length + pendingDischarges.length;
+  const pendingAppointmentRequests = (familyVisitationRequests || []).filter((row) => {
+    const status = normalizeVisitationStatus(row?.status);
+    return status === 'Requested';
+  });
+  const totalPendingRequests = pendingAdmissions.length + pendingDischarges.length + pendingAppointmentRequests.length;
   const reportsReceivedCount = Object.values(nurseWeeklyReportsByPatient || {}).reduce(
     (count, patientWeeks) => count + Object.keys(patientWeeks || {}).length,
     0
   );
   const summaryGraphData = [
-    { label: 'Patients', value: patients.length, color: '#F54E25' },
+    { label: 'Residents', value: patients.length, color: '#F54E25' },
     { label: 'Admissions', value: pendingAdmissions.length, color: '#EA580C' },
     { label: 'Discharges', value: pendingDischarges.length, color: '#2B31ED' },
     {
@@ -461,7 +462,7 @@ const HomeDashboard = () => {
       color: '#0369A1',
     },
   ];
-  const patientTableRows = (patients || []).slice(0, 5);
+  const patientTableRows = patients || [];
   const resolveRequestPatientName = (row) => {
     const directName = row?.patientName || row?.patient_name || row?.patient || '';
     if (directName && String(directName).trim() && String(directName).trim().toLowerCase() !== 'patient') {
@@ -471,19 +472,28 @@ const HomeDashboard = () => {
     return match?.name || 'Unknown';
   };
   const requestTableRows = [
-    ...pendingAdmissions.map((row) => ({
+    ...pendingAdmissions.map((row, idx) => ({
+      key: `admission-${row?.requestId || row?.id || idx}`,
       type: 'Admission',
       name: resolveRequestPatientName(row),
       status: row?.status || 'Pending',
       date: row?.createdAt || row?.created_at || '',
     })),
-    ...pendingDischarges.map((row) => ({
+    ...pendingDischarges.map((row, idx) => ({
+      key: `discharge-${row?.dischargeRequestId || row?.requestId || row?.id || idx}`,
       type: 'Discharge',
       name: resolveRequestPatientName(row),
       status: row?.status || 'Pending',
       date: row?.createdAt || row?.created_at || '',
     })),
-  ].slice(0, 6);
+    ...familyVisitationRequests.map((row, idx) => ({
+      key: `appointment-${row?.id || idx}`,
+      type: 'Appointment',
+      name: resolveRequestPatientName(row),
+      status: normalizeVisitationStatus(row?.status),
+      date: row?.createdAt || row?.preferredDate || '',
+    })),
+  ].filter((row) => !hiddenRequestKeys.includes(String(row.key)));
   const patientReportCount = (patientId) => Object.keys(nurseWeeklyReportsByPatient[String(patientId)] || {}).length;
   const patientStatus = (progress) => {
     const p = Number(progress) || 0;
@@ -507,6 +517,10 @@ const HomeDashboard = () => {
   const handleNotificationToggle = () => {
     setShowNotifications((v) => !v);
   };
+
+  useEffect(() => {
+    saveFamilyNotifications(notificationItems);
+  }, [notificationItems]);
 
   return (
     <div className="app-container">
@@ -1031,6 +1045,17 @@ const HomeDashboard = () => {
           color: #334155;
           font-size: 13px;
         }
+        .notif-row-text { flex: 1; }
+        .notif-remove-btn {
+          border: none;
+          background: transparent;
+          color: #94A3B8;
+          cursor: pointer;
+          font-size: 15px;
+          line-height: 1;
+          padding: 0 2px;
+        }
+        .notif-remove-btn:hover { color: #EF4444; }
 
         .reminder-btn {
           width: 100%;
@@ -1246,6 +1271,14 @@ const HomeDashboard = () => {
         .table-scroll {
           overflow-x: auto;
         }
+        .table-scroll-patients {
+          max-height: 360px;
+          overflow-y: auto;
+        }
+        .table-scroll-requests {
+          max-height: 430px;
+          overflow-y: auto;
+        }
         .dashboard-table {
           width: 100%;
           border-collapse: collapse;
@@ -1318,6 +1351,29 @@ const HomeDashboard = () => {
           text-transform: capitalize;
           background: #FEF3C7;
           color: #92400E;
+        }
+        .table-remove-btn {
+          border: none;
+          background: transparent;
+          color: #94A3B8;
+          border-radius: 6px;
+          padding: 0 2px;
+          font-size: 16px;
+          line-height: 1;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .table-remove-btn:hover {
+          color: #EF4444;
+          background: transparent;
+        }
+        .request-status-cell {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .request-status-cell .table-remove-btn {
+          margin-left: auto;
         }
 
         .chat-window {
@@ -2065,7 +2121,7 @@ const HomeDashboard = () => {
             <div className="sidebar-icon-wrap">
               <ClipboardList size={22} color="#707EAE" />
             </div>
-            <span className="sidebar-label">Patient Details</span>
+            <span className="sidebar-label">Resident Details</span>
           </div>
 
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
@@ -2122,10 +2178,18 @@ const HomeDashboard = () => {
                   <div className="panel-title" style={{ marginBottom: 12 }}>
                     <Bell size={16} color="#F54E25" /> Notifications
                   </div>
-                  {notificationItems.map((item) => (
-                    <div key={item} className="interactive-row">
+                  {notificationItems.map((item, idx) => (
+                    <div key={`${item}-${idx}`} className="interactive-row">
                       <CheckCircle2 size={15} color="#2B31ED" />
-                      <span>{item}</span>
+                      <span className="notif-row-text">{item}</span>
+                      <button
+                        type="button"
+                        className="notif-remove-btn"
+                        aria-label="Remove notification"
+                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -2161,10 +2225,18 @@ const HomeDashboard = () => {
                   <div className="panel-title" style={{ marginBottom: 12 }}>
                     <Bell size={16} color="#F54E25" /> Notifications
                   </div>
-                  {notificationItems.map((item) => (
-                    <div key={item} className="interactive-row">
+                  {notificationItems.map((item, idx) => (
+                    <div key={`${item}-${idx}`} className="interactive-row">
                       <CheckCircle2 size={15} color="#2B31ED" />
-                      <span>{item}</span>
+                      <span className="notif-row-text">{item}</span>
+                      <button
+                        type="button"
+                        className="notif-remove-btn"
+                        aria-label="Remove notification"
+                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -2296,14 +2368,14 @@ const HomeDashboard = () => {
               <div className="tables-grid">
                 <div className="table-card">
                   <div className="table-head">
-                    <div className="panel-title" style={{ marginBottom: 0 }}><User size={16} color="#F54E25" /> Patient Snapshot</div>
+                    <div className="panel-title" style={{ marginBottom: 0 }}><User size={16} color="#F54E25" /> Resident Snapshot</div>
                     <span style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>{patients.length} total</span>
                   </div>
-                  <div className="table-scroll">
+                  <div className={`table-scroll ${patientTableRows.length > 5 ? 'table-scroll-patients' : ''}`}>
                     <table className="dashboard-table">
                       <thead>
                         <tr>
-                          <th>Patient</th>
+                          <th>Resident</th>
                           <th>Admission</th>
                           <th>Progress</th>
                           <th>Status</th>
@@ -2363,21 +2435,31 @@ const HomeDashboard = () => {
                     <div className="panel-title" style={{ marginBottom: 0 }}><ClipboardList size={16} color="#F54E25" /> Request Tracker</div>
                     <span style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>{totalPendingRequests} pending</span>
                   </div>
-                  <div className="table-scroll">
+                  <div className={`table-scroll ${requestTableRows.length > 7 ? 'table-scroll-requests' : ''}`}>
                     <table className="dashboard-table">
                       <thead>
                         <tr>
                           <th>Type</th>
-                          <th>Patient</th>
+                          <th>Resident</th>
                           <th>Status</th>
                         </tr>
                       </thead>
                       <tbody>
                         {requestTableRows.length ? requestTableRows.map((r, idx) => (
-                          <tr key={`${r.type}-${r.name}-${idx}`}>
+                          <tr key={r.key || `${r.type}-${r.name}-${idx}`}>
                             <td>{r.type}</td>
                             <td>{r.name}</td>
-                            <td><span className="table-status-pill">{String(r.status || 'pending').toLowerCase()}</span></td>
+                            <td className="request-status-cell">
+                              <span className="table-status-pill">{String(r.status || 'pending').toLowerCase()}</span>
+                              <button
+                                type="button"
+                                className="table-remove-btn"
+                                aria-label="Remove from request tracker"
+                                onClick={() => setHiddenRequestKeys((prev) => [...prev, String(r.key)])}
+                              >
+                                ×
+                              </button>
+                            </td>
                           </tr>
                         )) : (
                           <tr>
@@ -2404,7 +2486,7 @@ const HomeDashboard = () => {
               </div>
               <div className="dashboard-overview-grid">
                 <div className="overview-item">
-                  <div className="overview-label">Active Patients</div>
+                  <div className="overview-label">Active Residents</div>
                   <div className="overview-value">{patients.length}</div>
                   <div className="overview-subtext">Currently under care</div>
                 </div>

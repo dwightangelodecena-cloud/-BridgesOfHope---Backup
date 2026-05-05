@@ -428,7 +428,7 @@ const AdminDashboard = () => {
       type: 'discharge',
       requestId: req.dischargeRequestId || req.id,
       patientId: req.patientId || req.id,
-      patientName: req.name || 'Patient',
+      patientName: req.name || 'Resident',
       note: trimmed,
       createdAt: new Date().toISOString(),
     };
@@ -481,8 +481,8 @@ const AdminDashboard = () => {
         const updatedPending = pendingAdmissions.filter((p) => p.id !== req.id);
         setPendingAdmissions(updatedPending);
         localStorage.setItem('bh_pending_admissions', JSON.stringify(updatedPending));
-        await addActivity('New Patient is added', `${req.name} - ${req.reason}`, 'users');
-        await appendActivityFeed(`Admission approved: ${req.name || 'Patient'} is now admitted. Note: ${note}`, { familyId: req.family_id });
+        await addActivity('New Resident is added', `${req.name} - ${req.reason}`, 'users');
+        await appendActivityFeed(`Admission approved: ${req.name || 'Resident'} is now admitted. Note: ${note}`, { familyId: req.family_id });
         window.dispatchEvent(new Event('storage'));
         setModalView(updatedPending.length > 0 ? 'admissions' : null);
       } else if (type === 'discharge') {
@@ -492,8 +492,8 @@ const AdminDashboard = () => {
         const updatedPending = pendingDischarges.filter((p) => p.id !== req.id);
         setPendingDischarges(updatedPending);
         localStorage.setItem('bh_pending_discharges', JSON.stringify(updatedPending));
-        await addActivity('Patient discharged successfully', `${req.name} - Treatment completed`, 'check');
-        await appendActivityFeed(`Discharge approved: ${req.name || 'Patient'} has been discharged. Note: ${note}`, { familyId: req.family_id });
+        await addActivity('Resident discharged successfully', `${req.name} - Treatment completed`, 'check');
+        await appendActivityFeed(`Discharge approved: ${req.name || 'Resident'} has been discharged. Note: ${note}`, { familyId: req.family_id });
         window.dispatchEvent(new Event('storage'));
         setModalView(updatedPending.length > 0 ? 'discharges' : null);
       }
@@ -523,12 +523,12 @@ const AdminDashboard = () => {
         return { ok: false, error: adm.errorMessage };
       }
       await addActivity(
-        'New Patient is added',
+        'New Resident is added',
         `${req.name || req.patient_name} - ${req.reason || req.reason_for_admission}`,
         'users'
       );
       await appendActivityFeed(
-        `Admission approved: ${req.name || req.patient_name || 'Patient'} is now admitted. Note: ${note}`,
+        `Admission approved: ${req.name || req.patient_name || 'Resident'} is now admitted. Note: ${note}`,
         { familyId: req.family_id }
       );
     } else if (type === 'discharge') {
@@ -569,11 +569,11 @@ const AdminDashboard = () => {
         return {
           ok: false,
           error:
-            'Patient record was not updated (wrong id or missing permission). Confirm the discharge request matches an active patient.',
+            'Resident record was not updated (wrong id or missing permission). Confirm the discharge request matches an active resident.',
         };
       }
-      await addActivity('Patient discharged successfully', `${req.name} - Treatment completed`, 'check');
-      await appendActivityFeed(`Discharge approved: ${req.name || 'Patient'} has been discharged. Note: ${note}`, { familyId: req.family_id });
+      await addActivity('Resident discharged successfully', `${req.name} - Treatment completed`, 'check');
+      await appendActivityFeed(`Discharge approved: ${req.name || 'Resident'} has been discharged. Note: ${note}`, { familyId: req.family_id });
     }
 
     refreshAppData();

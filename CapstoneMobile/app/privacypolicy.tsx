@@ -9,7 +9,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SECTIONS = [
   {
     title: "1. Acceptance of Terms",
-    body: "By accessing or using the Clinic Admission and Patient Management System, you agree to be bound by these Terms and Conditions. If you do not agree with any part of these terms, you may not use the System.",
+    body: "By accessing or using the Clinic Admission and Resident Management System, you agree to be bound by these Terms and Conditions. If you do not agree with any part of these terms, you may not use the System.",
   },
   {
     title: "2. Purpose of the System",
@@ -79,7 +79,7 @@ export default function PrivacyPolicyScreen() {
 
           <Text style={styles.title}>TERMS AND CONDITION OF USE</Text>
           <Text style={styles.subtitle}>
-            Clinic Admission and Patient Management System
+            Clinic Admission and Resident Management System
           </Text>
 
           <ScrollView

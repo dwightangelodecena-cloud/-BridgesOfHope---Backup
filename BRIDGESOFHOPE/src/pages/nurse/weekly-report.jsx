@@ -143,7 +143,7 @@ const WeeklyReport = () => {
 
     const nurseName = nurseNameInputRef.current?.value?.trim() || '';
     const reportDateField = nurseReportDateInputRef.current?.value?.trim() || '';
-    const pname = (reportBasics.patientName || 'Patient').trim();
+    const pname = (reportBasics.patientName || 'Resident').trim();
     const submittedAt = new Date().toISOString();
 
     if (!isSupabaseConfigured()) {
@@ -883,7 +883,7 @@ const WeeklyReport = () => {
                       >
                         <div className="wr-patient-avatar">{patientInitials(p.name)}</div>
                         <div className="wr-patient-info-text">
-                          <div className="wr-patient-name">{p.name || 'Patient'}</div>
+                          <div className="wr-patient-name">{p.name || 'Resident'}</div>
                           <div className="wr-patient-meta">
                             Admitted {p.date || '—'}
                             {p.reason ? ` · ${p.reason}` : ''}
@@ -949,12 +949,12 @@ const WeeklyReport = () => {
               </div>
             </div>
 
-            {/* Patient Information */}
+            {/* Resident Information */}
             <div className="form-section">
-              <div className="section-title">Patient Information</div>
+              <div className="section-title">Resident Information</div>
               <div className="section-fields">
                 <div className="form-field">
-                  <label className="form-label">Patient Name:</label>
+                  <label className="form-label">Resident Name:</label>
                   <input
                     type="text"
                     className="form-underline-input"

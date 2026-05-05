@@ -7,6 +7,7 @@ import { useAsyncData } from '@/hooks/useAsyncData';
 import { familyDataService } from '@/services/familyDataService';
 import { FAMILY_COLORS, StatusBadge, AuditLine, LoadingState } from '@/components/family/shared/ui';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
+import { loadFamilyNotifications, saveFamilyNotifications } from '@/lib/familyNotifications';
 
 // Asset import for the logo
 import logo from '@/assets/kalingalogo.png';
@@ -19,11 +20,7 @@ const Service = () => {
   const notificationsDesktopRef = useRef(null);
   const notificationsMobileRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const notificationItems = [
-    'Submit missing laboratory result before Friday.',
-    'Family support session is scheduled on April 5, 10:00 AM.',
-    'Weekly report reviewed by your assigned counselor.',
-  ];
+  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
   const { data: billingSnapshot, loading: billingLoading } = useAsyncData(async () => familyDataService.getBillingSnapshot(), []);
 
   useEffect(() => {
@@ -69,6 +66,10 @@ const Service = () => {
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [showNotifications]);
+
+  useEffect(() => {
+    saveFamilyNotifications(notificationItems);
+  }, [notificationItems]);
 
   return (
     <div className="service-container">
@@ -574,6 +575,17 @@ const Service = () => {
           color: #334155;
           font-size: 13px;
         }
+        .notif-row-text { flex: 1; }
+        .notif-remove-btn {
+          border: none;
+          background: transparent;
+          color: #94A3B8;
+          cursor: pointer;
+          font-size: 15px;
+          line-height: 1;
+          padding: 0 2px;
+        }
+        .notif-remove-btn:hover { color: #EF4444; }
 
         .panel-title {
           color: #1B2559;
@@ -697,10 +709,20 @@ const Service = () => {
                   <div className="panel-title" style={{ marginBottom: 12 }}>
                     <Bell size={16} color="#F54E25" /> Notifications
                   </div>
-                  {notificationItems.map((item) => (
-                    <div key={item} className="interactive-row">
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
+                  ) : notificationItems.map((item, idx) => (
+                    <div key={`${item}-${idx}`} className="interactive-row">
                       <CheckCircle2 size={15} color="#2B31ED" />
-                      <span>{item}</span>
+                      <span className="notif-row-text">{item}</span>
+                      <button
+                        type="button"
+                        className="notif-remove-btn"
+                        aria-label="Remove notification"
+                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -736,10 +758,20 @@ const Service = () => {
                   <div className="panel-title" style={{ marginBottom: 12 }}>
                     <Bell size={16} color="#F54E25" /> Notifications
                   </div>
-                  {notificationItems.map((item) => (
-                    <div key={item} className="interactive-row">
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
+                  ) : notificationItems.map((item, idx) => (
+                    <div key={`m-${item}-${idx}`} className="interactive-row">
                       <CheckCircle2 size={15} color="#2B31ED" />
-                      <span>{item}</span>
+                      <span className="notif-row-text">{item}</span>
+                      <button
+                        type="button"
+                        className="notif-remove-btn"
+                        aria-label="Remove notification"
+                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>

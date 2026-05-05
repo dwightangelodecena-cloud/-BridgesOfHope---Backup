@@ -6,6 +6,7 @@ import { useAsyncData } from '@/hooks/useAsyncData';
 import { familyDataService } from '@/services/familyDataService';
 import { FAMILY_COLORS, StatusBadge, AuditLine, LoadingState, ErrorState } from '@/components/family/shared/ui';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
+import { loadFamilyNotifications, saveFamilyNotifications } from '@/lib/familyNotifications';
 
 import logo from '@/assets/kalingalogo.png';
 
@@ -35,12 +36,7 @@ const Profile = () => {
   const notificationsDesktopRef = useRef(null);
   const notificationsMobileRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const notificationItems = [
-    'Submit missing laboratory result before Friday.',
-    'Family support session is scheduled on April 5, 10:00 AM.',
-    'Weekly report reviewed by your assigned counselor.',
-    'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
-  ];
+  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
   const {
     data: profileSnapshot,
     loading: snapshotLoading,
@@ -137,6 +133,10 @@ const Profile = () => {
   }, [showNotifications]);
 
   const handleNotificationToggle = () => setShowNotifications((v) => !v);
+
+  useEffect(() => {
+    saveFamilyNotifications(notificationItems);
+  }, [notificationItems]);
 
   const userInitials =
     profileForm.fullName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase()).join('') || 'FU';
@@ -315,6 +315,17 @@ const Profile = () => {
           color: #334155;
           font-size: 13px;
         }
+        .notif-row-text { flex: 1; }
+        .notif-remove-btn {
+          border: none;
+          background: transparent;
+          color: #94A3B8;
+          cursor: pointer;
+          font-size: 15px;
+          line-height: 1;
+          padding: 0 2px;
+        }
+        .notif-remove-btn:hover { color: #EF4444; }
 
         .user-avatar-top {
           width: 40px;
@@ -822,10 +833,20 @@ const Profile = () => {
                   <div className="panel-title" style={{ marginBottom: 12 }}>
                     <Bell size={16} color="#F54E25" /> Notifications
                   </div>
-                  {notificationItems.map((item) => (
-                    <div key={item} className="interactive-row">
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
+                  ) : notificationItems.map((item, idx) => (
+                    <div key={`${item}-${idx}`} className="interactive-row">
                       <CheckCircle2 size={15} color="#2B31ED" />
-                      <span>{item}</span>
+                      <span className="notif-row-text">{item}</span>
+                      <button
+                        type="button"
+                        className="notif-remove-btn"
+                        aria-label="Remove notification"
+                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -855,10 +876,20 @@ const Profile = () => {
                   <div className="panel-title" style={{ marginBottom: 12 }}>
                     <Bell size={16} color="#F54E25" /> Notifications
                   </div>
-                  {notificationItems.map((item) => (
-                    <div key={`m-${item}`} className="interactive-row">
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
+                  ) : notificationItems.map((item, idx) => (
+                    <div key={`m-${item}-${idx}`} className="interactive-row">
                       <CheckCircle2 size={15} color="#2B31ED" />
-                      <span>{item}</span>
+                      <span className="notif-row-text">{item}</span>
+                      <button
+                        type="button"
+                        className="notif-remove-btn"
+                        aria-label="Remove notification"
+                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>

@@ -27,6 +27,10 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
+import {
+  loadFamilyNotificationsMobile,
+  saveFamilyNotificationsMobile,
+} from '../../lib/familyNotificationsMobile';
 
 const { width } = Dimensions.get('window');
 
@@ -41,12 +45,6 @@ const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 100;
 
 /** Breathing room below last bubble (input sits outside the list in flex layout). */
 const CHAT_LIST_FOOTER_GAP_PX = 12;
-
-const NOTIFICATION_ITEMS = [
-  'Submit missing laboratory result before Friday.',
-  'Family support session is scheduled on April 5, 10:00 AM.',
-  'Weekly report reviewed by your assigned counselor.',
-];
 
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -177,6 +175,7 @@ export default function MessageScreen() {
   const [showArchivedOnly, setShowArchivedOnly] = useState(false);
   const [deletedByThread, setDeletedByThread] = useState<Record<string, boolean>>({});
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
   const [displayName, setDisplayName] = useState('Family User');
   const [userInitials, setUserInitials] = useState('FU');
   const [patients, setPatients] = useState<UIPatient[]>([]);
@@ -226,6 +225,10 @@ export default function MessageScreen() {
       subHide.remove();
     };
   }, []);
+
+  useEffect(() => {
+    saveFamilyNotificationsMobile(notificationItems);
+  }, [notificationItems]);
 
   const loadPatients = useCallback(async () => {
     if (!isSupabaseConfigured()) {
@@ -333,7 +336,7 @@ export default function MessageScreen() {
       const last = tmsgs[tmsgs.length - 1];
       const sub = last
         ? `${last.text.slice(0, 36)}${last.text.length > 36 ? '…' : ''} · ${formatRelativeShort(nowTick, last.createdAtMs)}`
-        : `Patient · Admitted ${p.date || '—'}`;
+        : `Resident · Admitted ${p.date || '—'}`;
       return {
         id: String(p.id),
         kind: 'patient' as const,
@@ -909,10 +912,19 @@ export default function MessageScreen() {
               <Ionicons name="notifications" size={16} color="#F54E25" />
               <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
             </View>
-            {NOTIFICATION_ITEMS.map((notif) => (
-              <View key={notif} style={styles.notificationsDropdownRow}>
+            {notificationItems.length === 0 ? (
+              <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
+            ) : notificationItems.map((notif, idx) => (
+              <View key={`${notif}-${idx}`} style={styles.notificationsDropdownRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
                 <Text style={styles.notificationsDropdownText}>{notif}</Text>
+                <TouchableOpacity
+                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove notification"
+                >
+                  <Text style={styles.notificationDismiss}>×</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -1112,7 +1124,7 @@ export default function MessageScreen() {
                   {activeThreadTitle}
                 </Text>
                 <Text style={styles.chatHeaderSubtitle} numberOfLines={1}>
-                  {activeThreadId === SUPPORT_THREAD_ID ? 'Care team' : 'Patient conversation'}
+                  {activeThreadId === SUPPORT_THREAD_ID ? 'Care team' : 'Resident conversation'}
                 </Text>
               </View>
             </View>
@@ -1296,6 +1308,7 @@ const styles = StyleSheet.create({
     color: '#334155',
     lineHeight: 18,
   },
+  notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   inboxOverflowMenu: {
     position: 'absolute',
     width: 220,

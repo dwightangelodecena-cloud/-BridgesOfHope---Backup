@@ -16,6 +16,7 @@ import {
   normalizeVisitationStatus,
   isVisitationLocalDraftSuperseded,
 } from '@/lib/visitationAppointments';
+import { loadFamilyNotifications, saveFamilyNotifications } from '@/lib/familyNotifications';
 
 function dedupeVisitationRequests(rows) {
   const map = new Map();
@@ -66,12 +67,7 @@ export default function FamilyAppointmentsPage() {
   const [userInitials, setUserInitials] = useState('FU');
   const notificationsDesktopRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const notificationItems = [
-    'Submit missing laboratory result before Friday.',
-    'Family support session is scheduled on April 5, 10:00 AM.',
-    'Weekly report reviewed by your assigned counselor.',
-    'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
-  ];
+  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
   const [visitationSettings, setVisitationSettings] = useState(() => loadVisitationSettings());
   const [requests, setRequests] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -372,6 +368,10 @@ export default function FamilyAppointmentsPage() {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [showNotifications]);
 
+  useEffect(() => {
+    saveFamilyNotifications(notificationItems);
+  }, [notificationItems]);
+
   const handleNotificationToggle = () => setShowNotifications((v) => !v);
 
   return (
@@ -514,6 +514,17 @@ export default function FamilyAppointmentsPage() {
           color: #334155;
           font-size: 13px;
         }
+        .notif-row-text { flex: 1; }
+        .notif-remove-btn {
+          border: none;
+          background: transparent;
+          color: #94A3B8;
+          cursor: pointer;
+          font-size: 15px;
+          line-height: 1;
+          padding: 0 2px;
+        }
+        .notif-remove-btn:hover { color: #EF4444; }
         .user-avatar-top {
           width: 40px;
           height: 40px;
@@ -789,10 +800,20 @@ export default function FamilyAppointmentsPage() {
                   <div className="panel-title" style={{ marginBottom: 12 }}>
                     <Bell size={16} color="#F54E25" /> Notifications
                   </div>
-                  {notificationItems.map((item) => (
-                    <div key={item} className="interactive-row">
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
+                  ) : notificationItems.map((item, idx) => (
+                    <div key={`${item}-${idx}`} className="interactive-row">
                       <CheckCircle2 size={15} color="#2B31ED" />
-                      <span>{item}</span>
+                      <span className="notif-row-text">{item}</span>
+                      <button
+                        type="button"
+                        className="notif-remove-btn"
+                        aria-label="Remove notification"
+                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>

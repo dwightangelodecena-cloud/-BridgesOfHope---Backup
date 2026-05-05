@@ -18,6 +18,10 @@ import { uiPatientFromRow, type PatientRow } from '../../lib/patientMappers';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
+import {
+  loadFamilyNotificationsMobile,
+  saveFamilyNotificationsMobile,
+} from '../../lib/familyNotificationsMobile';
 
 type PatientCard = {
   id: string;
@@ -28,12 +32,6 @@ type PatientCard = {
 };
 
 type ReportRow = Record<string, unknown>;
-
-const NOTIFICATION_ITEMS = [
-  'Submit missing laboratory result before Friday.',
-  'Family support session is scheduled on April 5, 10:00 AM.',
-  'Weekly report reviewed by your assigned counselor.',
-];
 
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -64,6 +62,7 @@ export default function ReportsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
   const [userInitials, setUserInitials] = useState('FU');
   const [firstName, setFirstName] = useState('Family');
   const [selectedWeek, setSelectedWeek] = useState<string>('all');
@@ -135,7 +134,7 @@ export default function ReportsScreen() {
           const mapped = uiPatientFromRow(row as unknown as PatientRow);
           return {
             id: String(mapped?.id || row.id),
-            name: mapped?.name || String(row.full_name || 'Patient'),
+            name: mapped?.name || String(row.full_name || 'Resident'),
             date: mapped?.date || formatDate(row.admitted_at as string),
             progress: mapped?.progress ?? 0,
             age: calculateAge(row.date_of_birth as string),
@@ -180,6 +179,10 @@ export default function ReportsScreen() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    saveFamilyNotificationsMobile(notificationItems);
+  }, [notificationItems]);
 
   useEffect(() => {
     let mounted = true;
@@ -265,10 +268,19 @@ export default function ReportsScreen() {
               <Ionicons name="notifications" size={16} color="#F54E25" />
               <Text style={styles.notifTitle}>Notifications</Text>
             </View>
-            {NOTIFICATION_ITEMS.map((t) => (
-              <View key={t} style={styles.notifRow}>
+            {notificationItems.length === 0 ? (
+              <Text style={[styles.notifText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
+            ) : notificationItems.map((t, idx) => (
+              <View key={`${t}-${idx}`} style={styles.notifRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
                 <Text style={styles.notifText}>{t}</Text>
+                <TouchableOpacity
+                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove notification"
+                >
+                  <Text style={styles.notifDismiss}>×</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -461,6 +473,7 @@ const styles = StyleSheet.create({
   notifTitle: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
   notifRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   notifText: { flex: 1, fontSize: 13, color: '#334155' },
+  notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 16, paddingTop: 12 },
   welcome: { fontSize: 14, fontWeight: '600', color: '#1B2559', marginBottom: 12 },
   panel: {

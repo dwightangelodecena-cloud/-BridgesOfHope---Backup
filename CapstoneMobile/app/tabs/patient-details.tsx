@@ -18,12 +18,10 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
-
-const NOTIFICATION_ITEMS = [
-  'Submit missing laboratory result before Friday.',
-  'Family support session is scheduled on April 5, 10:00 AM.',
-  'Weekly report reviewed by your assigned counselor.',
-];
+import {
+  loadFamilyNotificationsMobile,
+  saveFamilyNotificationsMobile,
+} from '../../lib/familyNotificationsMobile';
 
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -34,6 +32,7 @@ export default function PatientDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
   const [userInitials, setUserInitials] = useState('FU');
   const [displayName, setDisplayName] = useState('Family User');
   const [patients, setPatients] = useState<UIPatient[]>([]);
@@ -114,6 +113,10 @@ export default function PatientDetailsScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    saveFamilyNotificationsMobile(notificationItems);
+  }, [notificationItems]);
+
   const first = (displayName || 'Family User').trim().split(/\s+/)[0];
 
   return (
@@ -126,10 +129,19 @@ export default function PatientDetailsScreen() {
               <Ionicons name="notifications" size={16} color="#F54E25" />
               <Text style={styles.notifTitle}>Notifications</Text>
             </View>
-            {NOTIFICATION_ITEMS.map((t) => (
-              <View key={t} style={styles.notifRow}>
+            {notificationItems.length === 0 ? (
+              <Text style={[styles.notifText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
+            ) : notificationItems.map((t, idx) => (
+              <View key={`${t}-${idx}`} style={styles.notifRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
                 <Text style={styles.notifText}>{t}</Text>
+                <TouchableOpacity
+                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove notification"
+                >
+                  <Text style={styles.notifDismiss}>×</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -141,7 +153,7 @@ export default function PatientDetailsScreen() {
           <Ionicons name="chevron-back" size={24} color="#1B2559" />
         </TouchableOpacity>
         <Text style={styles.topTitle} numberOfLines={1}>
-          Patient Details
+          Resident Details
         </Text>
         <View style={styles.topRight}>
           <TouchableOpacity style={styles.circleBtn} onPress={() => setShowNotifications((v) => !v)}>
@@ -155,7 +167,7 @@ export default function PatientDetailsScreen() {
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
         <Text style={styles.welcome}>Welcome Back, {first}</Text>
-        <Text style={styles.sub}>Patients currently linked to your family account.</Text>
+        <Text style={styles.sub}>Residents currently linked to your family account.</Text>
 
         {loading ? (
           <View style={styles.loading}>
@@ -294,6 +306,7 @@ const styles = StyleSheet.create({
   notifTitle: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
   notifRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   notifText: { flex: 1, fontSize: 13, color: '#334155' },
+  notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 18, paddingTop: 14 },
   welcome: { fontSize: 20, fontWeight: '800', color: '#1B2559' },
   sub: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 6, marginBottom: 12 },
