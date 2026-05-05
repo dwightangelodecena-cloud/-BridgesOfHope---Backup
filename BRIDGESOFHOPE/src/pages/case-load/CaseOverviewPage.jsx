@@ -23,7 +23,6 @@ export default function CaseOverviewPage() {
   const navigate = useNavigate();
   const {
     patients,
-    me,
     reportsThisWeek,
     openVisitationCount,
     incidentsForCaseload,
@@ -95,11 +94,6 @@ export default function CaseOverviewPage() {
           <div className="cl-metric">
             <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Tagged incidents (caseload)</div>
             <div style={{ fontSize: 24, fontWeight: 900, marginTop: 6 }}>{incidentsForCaseload}</div>
-          </div>
-          <div className="cl-metric">
-            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Signed in as CLM</div>
-            <div style={{ fontSize: 15, fontWeight: 800, marginTop: 8 }}>{me.fullName}</div>
-            <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>{me.email || 'Local mode'}</div>
           </div>
         </div>
 
