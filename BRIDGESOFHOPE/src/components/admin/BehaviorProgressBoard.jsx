@@ -99,20 +99,15 @@ export function computeBehaviorBoardProgressPercent(checked) {
   return Math.min(100, Math.round(sum * 100) / 100);
 }
 
-const LADDERS = [
-  { from: 8, to: 26 },
-  { from: 16, to: 18 },
-  { from: 34, to: 35 },
-];
-
+/** Intervention demotion slides — click tile when the patient piece is on `from` to demote to `to`. */
 const SNAKES = [
   { from: 49, to: 39 },
-  { from: 47, to: 31 },
   { from: 45, to: 28 },
-  { from: 43, to: 19 },
-  { from: 41, to: 9 },
-  { from: 38, to: 20 },
-  { from: 15, to: 14 },
+  { from: 43, to: 27 },
+  { from: 31, to: 19 },
+  { from: 23, to: 9 },
+  { from: 19, to: 15 },
+  { from: 33, to: 17 },
 ];
 
 /** Top → bottom display rows; path starts at 1 (bottom-left area) and ends at Completion. */
@@ -177,7 +172,7 @@ function tierForSquare(n) {
   return 'head';
 }
 
-export const renderBehaviorChecklistLabel = (text) => {
+export const renderBehaviorChecklistLabel = (text, interventionStatus = 'pending') => {
   const isIntervention = text.endsWith(INTERVENTION_SUFFIX);
   const display = isIntervention ? text.slice(0, -INTERVENTION_SUFFIX.length) : text;
 
@@ -195,9 +190,25 @@ export const renderBehaviorChecklistLabel = (text) => {
           fontWeight: 700,
           letterSpacing: '0.06em',
           textTransform: 'uppercase',
-          color: '#475569',
-          background: '#F1F5F9',
-          border: '1px solid #CBD5E1',
+          color:
+            interventionStatus === 'current'
+              ? '#854D0E'
+              : interventionStatus === 'passed'
+                ? '#166534'
+                : '#991B1B',
+          background:
+            interventionStatus === 'current'
+              ? '#FEF9C3'
+              : interventionStatus === 'passed'
+                ? '#ECFDF3'
+                : '#FEF2F2',
+          border: `1px solid ${
+            interventionStatus === 'current'
+              ? '#FDE047'
+              : interventionStatus === 'passed'
+                ? '#86EFAC'
+                : '#FCA5A5'
+          }`,
           padding: '3px 7px',
           borderRadius: 4,
           lineHeight: 1.2,
@@ -215,6 +226,8 @@ export const renderBehaviorChecklistLabel = (text) => {
  * @param {(updater: (prev: Record<number|string, boolean>) => Record<number|string, boolean>) => void} props.setChecked
  * @param {string} props.patientName
  * @param {boolean} [props.embedded] — hide header/name when nested in clinical layout
+ * @param {number} [props.boardPosition] — ladder slot (1–50) when controlled by parent; not shown on the board
+ * @param {(n: number) => void} [props.onBoardPositionChange] — called after intervention demotion moves the ladder position
  */
 const COMPLETION_MODAL_BODY =
   'All checkable milestones will be checked except Reintegration. Intervention tiles have no checkbox. Recovery progress will show 100%.';
@@ -222,12 +235,57 @@ const COMPLETION_MODAL_BODY =
 const UNCHECK_COMPLETION_MODAL_BODY =
   'This will remove completion and uncheck every milestone on the board (including Reintegration). Recovery progress will return to 0%.';
 
-export default function BehaviorProgressBoard({ checked, setChecked, patientName, embedded = false }) {
+const INTERVENTION_DEMOTION_MODAL_BODY =
+  'Intervention triggered. The patient will move back to a previous stage.';
+
+export default function BehaviorProgressBoard({
+  checked,
+  setChecked,
+  patientName,
+  embedded = false,
+  boardPosition: boardPositionProp,
+  onBoardPositionChange,
+}) {
   /** null | 'complete' — mark all | 'clear' — uncheck all */
   const [completionModalMode, setCompletionModalMode] = useState(null);
+  /** Pending intervention demotion after user confirms */
+  const [pendingInterventionDemotion, setPendingInterventionDemotion] = useState(null);
+  /** Second-step confirmation for intervention demotion */
+  const [interventionSecondConfirm, setInterventionSecondConfirm] = useState(false);
+
+  const [internalBoardPosition, setInternalBoardPosition] = useState(1);
+  const isBoardPositionControlled =
+    boardPositionProp != null && typeof onBoardPositionChange === 'function';
+  const currentBoardPosition = isBoardPositionControlled
+    ? Math.max(1, Math.min(50, Number(boardPositionProp) || 1))
+    : internalBoardPosition;
+
+  const setBoardPosition = (next) => {
+    const v = Math.max(1, Math.min(50, Number(next) || 1));
+    if (isBoardPositionControlled) onBoardPositionChange(v);
+    else setInternalBoardPosition(v);
+  };
 
   const toggle = (key) => {
     setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const applyStageProgress = (stageNumber) => {
+    const normalizedStage = Math.max(1, Math.min(50, Number(stageNumber) || 1));
+    setChecked((prev) => {
+      const next = { ...prev };
+      for (let i = 0; i < BEHAVIOR_CHECKLIST_ITEMS.length; i++) {
+        if (!isInterventionLabel(BEHAVIOR_CHECKLIST_ITEMS[i])) {
+          next[i] = i + 1 <= normalizedStage;
+        } else {
+          next[i] = false;
+        }
+      }
+      next.completion = false;
+      next.reintegration = false;
+      return next;
+    });
+    setBoardPosition(normalizedStage);
   };
 
   const applyCompletionConfirmed = () => {
@@ -268,13 +326,32 @@ export default function BehaviorProgressBoard({ checked, setChecked, patientName
   };
 
   useEffect(() => {
-    if (!completionModalMode) return;
+    if (!completionModalMode && !pendingInterventionDemotion) return;
     const onKey = (ev) => {
-      if (ev.key === 'Escape') setCompletionModalMode(null);
+      if (ev.key === 'Escape') {
+        setCompletionModalMode(null);
+        setPendingInterventionDemotion(null);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [completionModalMode]);
+  }, [completionModalMode, pendingInterventionDemotion]);
+
+  const confirmInterventionDemotion = () => {
+    if (!pendingInterventionDemotion) return;
+    if (!interventionSecondConfirm) {
+      setInterventionSecondConfirm(true);
+      return;
+    }
+    applyStageProgress(pendingInterventionDemotion.to);
+    setInterventionSecondConfirm(false);
+    setPendingInterventionDemotion(null);
+  };
+
+  const closeInterventionDemotionModal = () => {
+    setInterventionSecondConfirm(false);
+    setPendingInterventionDemotion(null);
+  };
 
   const handleCompletionChange = (e) => {
     const wantChecked = e.target.checked;
@@ -423,14 +500,37 @@ export default function BehaviorProgressBoard({ checked, setChecked, patientName
                 const isInterventionTile = isInterventionLabel(label);
                 const tierKey = isInterventionTile ? 'intervention' : tierForSquare(n);
                 const t = TIERS[tierKey];
-                const ladder = LADDERS.find((l) => l.from === n);
                 const snake = SNAKES.find((s) => s.from === n);
                 const idx = n - 1;
                 const tileWeightPct = PERCENT_WEIGHT_BY_INDEX[idx];
+                const interventionStatus =
+                  isInterventionTile && currentBoardPosition === n
+                    ? 'current'
+                    : isInterventionTile && currentBoardPosition > n
+                      ? 'passed'
+                      : 'pending';
+                const openDemotionModal = () => {
+                  if (!snake) return;
+                  setInterventionSecondConfirm(false);
+                  setPendingInterventionDemotion({ from: snake.from, to: snake.to });
+                };
 
                 return (
                   <div
                     key={`${ri}-${ci}-${n}`}
+                    onClick={(e) => {
+                      const el = e.target;
+                      if (el instanceof Element && el.closest('input[type="checkbox"]')) return;
+                      if (el instanceof Element && el.closest('[data-intervention-demotion]')) return;
+
+                      if (snake && isInterventionTile) {
+                        openDemotionModal();
+                        return;
+                      }
+                      if (!isInterventionTile) {
+                        applyStageProgress(n);
+                      }
+                    }}
                     style={{
                       position: 'relative',
                       minHeight: 96,
@@ -443,62 +543,82 @@ export default function BehaviorProgressBoard({ checked, setChecked, patientName
                       flexDirection: 'column',
                       gap: 6,
                       boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+                      cursor: !isInterventionTile || snake ? 'pointer' : undefined,
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 4 }}>
-                      {isInterventionTile ? (
-                        <span
-                          style={{ width: 14, height: 14, flexShrink: 0 }}
-                          aria-hidden
-                          title="Observation only — no checklist"
-                        />
-                      ) : (
-                        <input
-                          type="checkbox"
-                          checked={!!checked[idx]}
-                          onChange={() => toggle(idx)}
-                          aria-label={`Square ${n}`}
-                          style={{ width: 14, height: 14, accentColor: t.border, cursor: 'pointer', flexShrink: 0 }}
-                        />
-                      )}
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                        {ladder ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        justifyContent: 'space-between',
+                        gap: 6,
+                        width: '100%',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, minWidth: 0 }}>
+                        {isInterventionTile ? (
                           <span
-                            title={`Ladder to square ${ladder.to}`}
-                            style={{
-                              fontSize: 8,
-                              fontWeight: 700,
-                              color: '#475569',
-                              background: TILE_FILL,
-                              padding: '2px 5px',
-                              borderRadius: 4,
-                              border: `1px solid ${t.border}`,
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            L {ladder.to}
-                          </span>
-                        ) : null}
-                        {snake ? (
-                          <span
-                            title={`Snake to square ${snake.to}`}
-                            style={{
-                              fontSize: 8,
-                              fontWeight: 700,
-                              color: '#475569',
-                              background: TILE_FILL,
-                              padding: '2px 5px',
-                              borderRadius: 4,
-                              border: `1px solid ${TIERS.empty.border}`,
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            S {snake.to}
-                          </span>
-                        ) : null}
+                            style={{ width: 14, height: 14, flexShrink: 0 }}
+                            aria-hidden
+                            title="Observation only — no checklist"
+                          />
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={!!checked[idx]}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => applyStageProgress(n)}
+                            aria-label={`Square ${n}`}
+                            style={{ width: 14, height: 14, accentColor: t.border, cursor: 'pointer', flexShrink: 0 }}
+                          />
+                        )}
                       </div>
+                      {snake && !isInterventionTile ? (
+                        <button
+                          type="button"
+                          data-intervention-demotion
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDemotionModal();
+                          }}
+                          style={{
+                            flexShrink: 0,
+                            fontSize: 8,
+                            fontWeight: 700,
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            color:
+                              interventionStatus === 'current'
+                                ? '#854D0E'
+                                : interventionStatus === 'passed'
+                                  ? '#166534'
+                                  : '#991B1B',
+                            background:
+                              interventionStatus === 'current'
+                                ? '#FEF9C3'
+                                : interventionStatus === 'passed'
+                                  ? '#ECFDF3'
+                                  : '#FEF2F2',
+                            border: `1px solid ${
+                              interventionStatus === 'current'
+                                ? '#FDE047'
+                                : interventionStatus === 'passed'
+                                  ? '#86EFAC'
+                                  : '#FCA5A5'
+                            }`,
+                            borderRadius: 4,
+                            padding: '3px 6px',
+                            cursor: 'pointer',
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          Intervention
+                        </button>
+                      ) : null}
                     </div>
-                    <div style={{ flex: 1, minHeight: 0, lineHeight: 1.3, overflow: 'hidden' }}>{renderBehaviorChecklistLabel(label)}</div>
+                    <div style={{ flex: 1, minHeight: 0, lineHeight: 1.3, overflow: 'hidden' }}>
+                      {renderBehaviorChecklistLabel(label, interventionStatus)}
+                    </div>
                     <div
                       style={{
                         position: 'absolute',
@@ -565,26 +685,90 @@ export default function BehaviorProgressBoard({ checked, setChecked, patientName
             </div>
           );
         })}
-        <span style={{ color: '#94A3B8', fontWeight: 500 }}>· L / S tags show ladder and snake targets</span>
       </div>
 
-      {!embedded ? (
-        <div
-          style={{
-            marginTop: 14,
-            padding: '12px 16px',
-            borderRadius: 10,
-            border: '1px solid #E2E8F0',
-            background: TILE_FILL,
-            maxWidth: 420,
-          }}
-        >
-          <p style={{ fontSize: 9, fontWeight: 600, color: '#94A3B8', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Name
-          </p>
-          <p style={{ fontSize: 15, fontWeight: 600, color: '#0F172A', margin: 0 }}>{patientName || '—'}</p>
-        </div>
-      ) : null}
+      {pendingInterventionDemotion
+        ? createPortal(
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="intervention-demotion-modal-title"
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 10051,
+                background: 'rgba(15, 23, 42, 0.45)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 20,
+              }}
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) closeInterventionDemotionModal();
+              }}
+            >
+              <div
+                style={{
+                  background: TILE_FILL,
+                  borderRadius: 14,
+                  border: '1px solid #E2E8F0',
+                  boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25)',
+                  maxWidth: 420,
+                  width: '100%',
+                  padding: '24px 24px 20px',
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <h2
+                  id="intervention-demotion-modal-title"
+                  style={{ margin: '0 0 10px', fontSize: 17, fontWeight: 800, color: '#1B2559' }}
+                >
+                  {interventionSecondConfirm ? 'Confirm Demotion' : 'Intervention'}
+                </h2>
+                <p style={{ margin: '0 0 22px', fontSize: 13, color: '#64748B', lineHeight: 1.55 }}>
+                  {interventionSecondConfirm
+                    ? `Do you really want to demote this resident to stage ${pendingInterventionDemotion.to}?`
+                    : INTERVENTION_DEMOTION_MODAL_BODY}
+                </p>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={closeInterventionDemotionModal}
+                    style={{
+                      padding: '10px 18px',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: '#475569',
+                      background: '#F1F5F9',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: 10,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmInterventionDemotion}
+                    style={{
+                      padding: '10px 22px',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: '#fff',
+                      background: TIERS.intervention.border,
+                      border: 'none',
+                      borderRadius: 10,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {interventionSecondConfirm ? 'Confirm' : 'OK'}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
       {completionModalMode
         ? createPortal(

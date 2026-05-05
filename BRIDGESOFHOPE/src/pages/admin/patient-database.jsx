@@ -9,6 +9,7 @@ import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import { fetchWeeklyReportRecommendation } from '@/lib/weeklyReportAi';
 import BehaviorProgressBoard, { computeBehaviorBoardProgressPercent } from '@/components/admin/BehaviorProgressBoard';
+import { loadLadderProfiles, saveLadderProfiles } from '@/pages/case-load/clmUtils';
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
 const ROOM_ASSIGNMENT_STORAGE_KEY = 'bh_patient_room_assignments_v1';
@@ -537,10 +538,25 @@ function PatientDatabaseShell({ mode = 'admin' }) {
   const [staffSaving, setStaffSaving] = useState(false);
   const [staffDirectory, setStaffDirectory] = useState({ caseLoadManagers: [], programStaff: [] });
   const [behaviorChecklistChecked, setBehaviorChecklistChecked] = useState({});
+  const [recoveryLadderPosition, setRecoveryLadderPosition] = useState(1);
   const behaviorRecoveryPercent = useMemo(
     () => computeBehaviorBoardProgressPercent(behaviorChecklistChecked),
     [behaviorChecklistChecked]
   );
+
+  const handleRecoveryLadderPositionChange = useCallback((next) => {
+    const n = Math.max(1, Math.min(50, Number(next) || 1));
+    setRecoveryLadderPosition(n);
+    if (!selectedPatient?.id) return;
+    const id = String(selectedPatient.id);
+    const profiles = loadLadderProfiles();
+    profiles[id] = {
+      ...(profiles[id] || {}),
+      currentPosition: n,
+      updatedAt: new Date().toISOString(),
+    };
+    saveLadderProfiles(profiles);
+  }, [selectedPatient?.id]);
 
   const upsertName = (bucket, name) => {
     const v = String(name || '').trim();
@@ -801,6 +817,17 @@ function PatientDatabaseShell({ mode = 'admin' }) {
 
   useEffect(() => {
     setBehaviorChecklistChecked({});
+  }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    if (!selectedPatient?.id) {
+      setRecoveryLadderPosition(1);
+      return;
+    }
+    const profiles = loadLadderProfiles();
+    const p = profiles[String(selectedPatient.id)];
+    const pos = Math.max(1, Math.min(50, Number(p?.currentPosition) || 1));
+    setRecoveryLadderPosition(pos);
   }, [selectedPatient?.id]);
 
   useEffect(() => {
@@ -2276,6 +2303,8 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                   checked={behaviorChecklistChecked}
                   setChecked={setBehaviorChecklistChecked}
                   patientName={selectedPatient?.name ?? ''}
+                  boardPosition={recoveryLadderPosition}
+                  onBoardPositionChange={handleRecoveryLadderPositionChange}
                 />
               </div>
             </div>
