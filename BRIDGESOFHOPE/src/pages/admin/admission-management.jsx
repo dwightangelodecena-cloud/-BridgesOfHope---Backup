@@ -265,7 +265,7 @@ const AdmissionManagement = () => {
         return false;
       }
       await appendActivityFeed(
-        `Admission approved: ${r.patientName || 'Patient'} is now admitted.`,
+        `Admission approved: ${r.patientName || 'Resident'} is now admitted.`,
         { familyId: r.familyId }
       );
       pushActivity(`Admission ${r.admissionDisplayId}: approved (database)`);
@@ -627,7 +627,7 @@ const AdmissionManagement = () => {
               <table className="am-data-table">
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['Patient ID', 'Patient', 'Reason / Concern', 'Assigned Staff', 'Type', 'Admission Date', 'Est. Cost', 'Status', 'Actions'].map((col, idx) => (
+                    {['Resident ID', 'Resident', 'Reason / Concern', 'Assigned Staff', 'Type', 'Admission Date', 'Est. Cost', 'Status', 'Actions'].map((col, idx) => (
                       <th className="am-th" key={col} style={{ padding: '10px 10px', borderRight: idx < 8 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>
                         {col}
                       </th>
@@ -736,7 +736,7 @@ const AdmissionManagement = () => {
 
       <div className="db-mobile-only db-mobile-bottom-nav">
         <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}><LayoutGrid size={18} color="#A3AED0" /><span>Home</span></div>
-        <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}><BookUser size={18} color="#A3AED0" /><span>Patients</span></div>
+        <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}><BookUser size={18} color="#A3AED0" /><span>Residents</span></div>
         <div className="mob-nav-item active"><ClipboardList size={18} color="white" /><span style={{ color: '#F54E25' }}>Adm</span></div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-discharge-management')}><ArrowRightSquare size={18} color="#A3AED0" /><span>Disch</span></div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-user-management')}><Users size={18} color="#A3AED0" /><span>Users</span></div>
@@ -751,8 +751,8 @@ const AdmissionManagement = () => {
               <button type="button" className="db-action-btn" onClick={() => setViewRow(null)}><X size={16} /></button>
             </div>
             <div className="am-modal-body">
-              <div className="am-modal-field"><span className="am-modal-label">Patient ID</span><div className="am-input">{viewRow.admissionDisplayId}</div></div>
-              <div className="am-modal-field"><span className="am-modal-label">Patient</span><div className="am-input">{viewRow.patientName}</div></div>
+              <div className="am-modal-field"><span className="am-modal-label">Resident ID</span><div className="am-input">{viewRow.admissionDisplayId}</div></div>
+              <div className="am-modal-field"><span className="am-modal-label">Resident</span><div className="am-input">{viewRow.patientName}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Gender</span><div className="am-input">{viewRow.patientGender?.trim() ? viewRow.patientGender : 'Not specified'}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Status</span><div className="am-input">{viewRow.status}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Admission date</span><div className="am-input">{formatDate(viewRow.admissionDate)}</div></div>

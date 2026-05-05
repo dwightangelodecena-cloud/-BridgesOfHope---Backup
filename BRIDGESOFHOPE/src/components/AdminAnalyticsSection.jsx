@@ -105,7 +105,7 @@ function ageBucket(age) {
 
 function normalizeRawPatient(p, idx) {
     const concern = p.concern || p.reason || p.primary_concern || '';
-    const name = p.name || p.patient_name || p.full_name || `Patient ${idx + 1}`;
+    const name = p.name || p.patient_name || p.full_name || `Resident ${idx + 1}`;
     const gender = String(p.gender || '').trim() || 'N/A';
     let age = p.age;
     if (typeof age === 'string' && age !== 'N/A') age = parseInt(age, 10);
@@ -2393,7 +2393,7 @@ export default function AdminAnalyticsSection() {
                                 </div>
                                 <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, lineHeight: 1.45 }}>
                                     {selectedProgramPatients.length > 0
-                                        ? `Patients: ${selectedProgramPatients.slice(0, 8).map((p) => p.name).join(', ')}${selectedProgramPatients.length > 8 ? ', ...' : ''}`
+                                        ? `Residents: ${selectedProgramPatients.slice(0, 8).map((p) => p.name).join(', ')}${selectedProgramPatients.length > 8 ? ', ...' : ''}`
                                         : 'No patients under this concern for the current filters.'}
                                 </div>
                             </div>

@@ -139,7 +139,7 @@ const normalizeBunkLevel = (raw) => {
 };
 
 const validateBedPlacementPolicy = ({ genderSegment, riskLevel, bunkLevel }) => {
-  if (!genderSegment) return 'Patient gender is required before saving room assignment.';
+  if (!genderSegment) return 'Resident gender is required before saving room assignment.';
   const normalizedRisk = normalizeRiskLevel(riskLevel);
   const normalizedBunk = normalizeBunkLevel(bunkLevel);
   if (normalizedRisk === 'Highly Suicidal' && normalizedBunk === 'Top') {
@@ -326,7 +326,7 @@ const toUiPatient = (row) => {
       { id: row.id, decided_at: row.admitted_at, created_at: row.created_at },
       { id: row.id, admitted_at: row.admitted_at }
     ),
-    name: row.full_name || 'Unknown Patient',
+    name: row.full_name || 'Unknown Resident',
     age: calculateAge(row.date_of_birth),
     gender: row.gender || 'N/A',
     concern: row.primary_concern || 'N/A',
@@ -364,7 +364,7 @@ const clinicalStatusLabel = (patient) => {
 
 /** One row per menu option; admission uses two entries (no duplicate “Admission Date” row). */
 const SORT_MENU_ITEMS = [
-  { id: 'patient_name', label: 'Patient Name (A to Z)', sortKey: 'Patient Name', direction: 'asc' },
+  { id: 'patient_name', label: 'Resident Name (A to Z)', sortKey: 'Resident Name', direction: 'asc' },
   {
     id: 'admission_closest',
     label: 'Admission dates closest to now',
@@ -390,7 +390,7 @@ const sortPatients = (rows, sortKey, direction) => {
       const da = new Date(a.admissionDate || 0).getTime();
       const db = new Date(b.admissionDate || 0).getTime();
       r = da - db;
-    } else if (sortKey === 'Patient Name') {
+    } else if (sortKey === 'Resident Name') {
       r = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     } else if (sortKey === 'Status') {
       const oa = STATUS_ORDER[a.status] ?? 99;
@@ -466,7 +466,7 @@ const mapLegacyLocalPatients = () => {
         { id, decided_at: admissionDate, created_at: admissionDate },
         { id, admitted_at: admissionDate }
       ),
-      name: p.name || 'Unknown Patient',
+      name: p.name || 'Unknown Resident',
       age: p.age ?? 'N/A',
       gender: p.gender || 'N/A',
       concern: p.concern || p.reason || 'N/A',
@@ -990,7 +990,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
     if (!selectedPatient?.id || isLimited) return;
     const autoSegment = normalizedRoomSegmentFromGender(selectedPatient.gender);
     if (!autoSegment) {
-      setFormError('Patient gender is required before saving room assignment.');
+      setFormError('Resident gender is required before saving room assignment.');
       return;
     }
     if (!roomForm.roomCode.trim()) {
@@ -1246,7 +1246,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
       setAiLoading(true);
 
       const patientSummary = [
-        `Patient: ${selectedPatient.name}`,
+        `Resident: ${selectedPatient.name}`,
         `Age: ${selectedPatient.age}`,
         `Primary concern: ${selectedPatient.concern}`,
         `Clinical status: ${selectedPatient.clinicalStatus || selectedPatient.status}`,
@@ -1859,7 +1859,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
       {/* MOBILE TOP BAR */}
       <div className="db-mobile-only db-mobile-top-bar" style={{ padding: '0 20px', height: 64, alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F1F1' }}>
         <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
-        <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>{isClm ? 'Patient records' : 'Patient Management'}</span>
+        <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>{isClm ? 'Resident records' : 'Resident Management'}</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>JD</div>
       </div>
 
@@ -1869,7 +1869,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
         <div style={{ marginBottom: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1B2559', marginBottom: 4 }}>
-              {isClm ? 'Patient records' : 'Patient Management'}
+              {isClm ? 'Resident records' : 'Resident Management'}
             </h1>
             <p
               onClick={() => selectedPatient && setSelectedPatient(null)}
@@ -1880,7 +1880,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                 cursor: selectedPatient ? 'pointer' : 'default',
               }}
             >
-              {selectedPatient ? 'Patient Information' : 'Patient Management'}
+              {selectedPatient ? 'Resident Information' : 'Resident Management'}
             </p>
           </div>
           {selectedPatient && (
@@ -1911,7 +1911,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                       <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Patient Name</p>
                       <p style={{ fontSize: 20, fontWeight: 800, color: '#1B2559' }}>{selectedPatient.name}</p>
                       <p style={{ color: '#64748b', fontSize: 12, fontWeight: 600, marginTop: 6 }}>
-                        Patient ID: <span style={{ color: '#1B2559', fontVariantNumeric: 'tabular-nums' }}>{selectedPatient.admissionDisplayId || '—'}</span>
+                        Resident ID: <span style={{ color: '#1B2559', fontVariantNumeric: 'tabular-nums' }}>{selectedPatient.admissionDisplayId || '—'}</span>
                       </p>
                     </div>
                     <div style={{ textAlign: 'left', minWidth: '80px' }}>
@@ -2257,7 +2257,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                     </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                       {[
-                        ['Patient full name', selectedPatient.name],
+                        ['Resident full name', selectedPatient.name],
                         ['Primary concern', selectedPatient.concern],
                         ['Recovery progress', `${behaviorRecoveryPercent}%`],
                         ['Clinical trajectory', selectedPatient.clinicalStatus],
@@ -2547,7 +2547,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
               <table style={{ width: '100%', textAlign: 'left', fontSize: 13, borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['Patient ID', 'Full Name', 'Primary Concern', 'Clinical status', 'Admission Date', 'Assigned Team', 'Days Stayed', 'Progress (%)', 'Actions'].map((col, i) => (
+                    {['Resident ID', 'Full Name', 'Primary Concern', 'Clinical status', 'Admission Date', 'Assigned Team', 'Days Stayed', 'Progress (%)', 'Actions'].map((col, i) => (
                       <th key={col} style={{
                         padding: '12px 20px',
                         fontWeight: 500,
@@ -2657,7 +2657,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
               <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
                 <BookUser size={20} color="white" />
               </div>
-              <span style={{ color: '#F54E25' }}>Patients</span>
+              <span style={{ color: '#F54E25' }}>Residents</span>
             </div>
             <div className="mob-nav-item" onClick={() => navigate('/nurseprofile')}>
               <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>

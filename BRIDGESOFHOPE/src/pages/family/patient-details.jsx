@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Home, TrendingUp, User, LogOut, Calendar, BarChart3, ClipboardList, FileText, X, CheckCircle2 } from 'lucide-react';
+import { Home, User, LogOut, Calendar, BarChart3, ClipboardList, FileText, X, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -104,7 +104,7 @@ const PatientDetailsPage = () => {
         if (admissionsError || !(admissions || []).length) return [];
         return admissions.map((a) => ({
           id: `admission-${a.id}`,
-          name: a.patient_name || 'Approved Patient',
+          name: a.patient_name || 'Approved Resident',
           date: formatDate(a.decided_at || a.created_at),
           progress: 0,
           reason: a.reason_for_admission || '',
@@ -119,8 +119,8 @@ const PatientDetailsPage = () => {
           if (approvedFallback.length) {
             setPatients(approvedFallback);
           } else {
-            const saved = localStorage.getItem('bh_patients');
-            setPatients(saved ? JSON.parse(saved) : []);
+            // In Supabase mode, never fall back to shared local cache to avoid cross-family leakage.
+            setPatients([]);
           }
           setPatientDetailsById({});
           setWeeklyReportsByPatient({});
@@ -133,8 +133,8 @@ const PatientDetailsPage = () => {
             if (approvedFallback.length) {
               setPatients(approvedFallback);
             } else {
-              const saved = localStorage.getItem('bh_patients');
-              setPatients(saved ? JSON.parse(saved) : []);
+              // In Supabase mode, never fall back to shared local cache to avoid cross-family leakage.
+              setPatients([]);
             }
           }
           const details = {};
@@ -202,10 +202,10 @@ const PatientDetailsPage = () => {
       status: patientStatusTone(value).label,
       summary:
         value >= 70
-          ? 'Patient shows consistent recovery and strong response to the care plan.'
+          ? 'Resident shows consistent recovery and strong response to the care plan.'
           : value >= 40
-            ? 'Patient shows moderate progress and benefits from continued monitoring.'
-            : 'Patient requires closer follow-up and additional recovery support.',
+            ? 'Resident shows moderate progress and benefits from continued monitoring.'
+            : 'Resident requires closer follow-up and additional recovery support.',
       goals: [
         'Maintain appointment attendance and family check-ins.',
         'Complete weekly counseling and progress documentation.',
@@ -686,7 +686,7 @@ const PatientDetailsPage = () => {
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
             <div className="sidebar-icon-wrap">
-              <TrendingUp size={22} color="#707EAE" />
+              <ClipboardList size={22} color="#707EAE" />
             </div>
             <span className="sidebar-label">Request Management</span>
           </div>
@@ -730,10 +730,10 @@ const PatientDetailsPage = () => {
         <div className="scroll-content">
           <div className="content-wrap">
             <div className="section-header">
-              <h2 className="section-title">Assigned Patients</h2>
+              <h2 className="section-title">Assigned Residents</h2>
               <div className="section-subtitle">View current admissions and monitor progress in one place.</div>
               <div className="details-hint">
-                <FileText size={14} /> Click any patient to view summary and review
+                <FileText size={14} /> Click any resident to view summary and review
               </div>
             </div>
 
@@ -755,7 +755,7 @@ const PatientDetailsPage = () => {
 
             <div className="patient-table-card">
               <div className="patient-table-head">
-                <div className="detail-title" style={{ marginBottom: 0 }}><BarChart3 size={15} color="#F54E25" /> Patient Directory Table</div>
+                <div className="detail-title" style={{ marginBottom: 0 }}><BarChart3 size={15} color="#F54E25" /> Resident Directory Table</div>
                 <span style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>{patients.length} entries</span>
               </div>
               <div className="patient-table-scroll">
@@ -772,7 +772,7 @@ const PatientDetailsPage = () => {
                   </colgroup>
                   <thead>
                     <tr>
-                      <th>Patient</th>
+                      <th>Resident</th>
                       <th>Admission Date</th>
                       <th className="num-col">Progress</th>
                       <th className="status-col">Status</th>
@@ -795,7 +795,7 @@ const PatientDetailsPage = () => {
                         <td>{(weeklyReportsByPatient[String(p.id)] || []).length ? 'Available' : 'Waiting'}</td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={8} style={{ color: '#94A3B8' }}>No patients yet.</td></tr>
+                      <tr><td colSpan={8} style={{ color: '#94A3B8' }}>No residents yet.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -804,7 +804,7 @@ const PatientDetailsPage = () => {
 
             {patients.length === 0 ? (
               <div className="empty-state">
-                No active patients yet. Once admissions are approved, patient details will appear here.
+                No active residents yet. Once admissions are approved, resident details will appear here.
               </div>
             ) : (
               patients.map((p, i) => (

@@ -7,6 +7,7 @@ import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { uiPatientFromRow } from '@/lib/dbMappers';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
+import { loadFamilyNotifications, saveFamilyNotifications } from '@/lib/familyNotifications';
 
 export default function FamilyReportsPage() {
   const navigate = useNavigate();
@@ -24,12 +25,7 @@ export default function FamilyReportsPage() {
   const notificationsDesktopRef = useRef(null);
   const notificationsMobileRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const notificationItems = [
-    'Submit missing laboratory result before Friday.',
-    'Family support session is scheduled on April 5, 10:00 AM.',
-    'Weekly report reviewed by your assigned counselor.',
-    'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
-  ];
+  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
 
   const formatDate = (iso) => {
     if (!iso) return 'N/A';
@@ -83,7 +79,6 @@ export default function FamilyReportsPage() {
           .from('patients')
           .select('id, full_name, admitted_at, progress_percent, clinical_status, family_id, discharged_at, date_of_birth')
           .eq('family_id', user.id)
-          .is('discharged_at', null)
           .order('admitted_at', { ascending: false });
 
         if (patientErr) throw patientErr;
@@ -114,7 +109,7 @@ export default function FamilyReportsPage() {
           const mapped = uiPatientFromRow(row);
           return {
             id: mapped?.id || row.id,
-            name: mapped?.name || row.full_name || 'Patient',
+            name: mapped?.name || row.full_name || 'Resident',
             date: mapped?.date || formatDate(row.admitted_at),
             progress: mapped?.progress ?? 0,
             age: calculateAge(row.date_of_birth),
@@ -262,6 +257,10 @@ export default function FamilyReportsPage() {
 
   const handleNotificationToggle = () => setShowNotifications((v) => !v);
 
+  useEffect(() => {
+    saveFamilyNotifications(notificationItems);
+  }, [notificationItems]);
+
   return (
     <div className="app-container">
       <style>{`
@@ -287,6 +286,17 @@ export default function FamilyReportsPage() {
         .notifications-trigger svg { display: block; width: 21px; height: 21px; stroke: #fff; color: #fff; flex-shrink: 0; }
         .panel-title { color: #1B2559; font-weight: 800; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
         .interactive-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; color: #334155; font-size: 13px; }
+        .notif-row-text { flex: 1; }
+        .notif-remove-btn {
+          border: none;
+          background: transparent;
+          color: #94A3B8;
+          cursor: pointer;
+          font-size: 15px;
+          line-height: 1;
+          padding: 0 2px;
+        }
+        .notif-remove-btn:hover { color: #EF4444; }
         .user-avatar-top { width: 40px; height: 40px; min-width: 40px; min-height: 40px; background: #F54E25; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; box-sizing: border-box; border: none; cursor: pointer; }
         .scroll-content { flex: 1; overflow-y: auto; padding: 30px 40px; background: ${FAMILY_COLORS.background}; }
         .content-wrap { width: 100%; max-width: min(1560px, 100%); margin: 0 auto; }
@@ -357,7 +367,8 @@ export default function FamilyReportsPage() {
         <div className="sidebar-logo-container"><img src={logo} alt="BH" className="sidebar-logo" /></div>
         <div className="sidebar-primary">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}><div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}><div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}><div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Patient Details</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}><div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}><div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div><span className="sidebar-label">Appointments</span></div>
           <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => e.stopPropagation()}><div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE" /></div><span className="sidebar-label">Reports</span></div>
         </div>
@@ -385,10 +396,20 @@ export default function FamilyReportsPage() {
                   <div className="panel-title" style={{ marginBottom: 12 }}>
                     <Bell size={16} color="#F54E25" /> Notifications
                   </div>
-                  {notificationItems.map((item) => (
-                    <div key={item} className="interactive-row">
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
+                  ) : notificationItems.map((item, idx) => (
+                    <div key={`${item}-${idx}`} className="interactive-row">
                       <CheckCircle2 size={15} color="#2B31ED" />
-                      <span>{item}</span>
+                      <span className="notif-row-text">{item}</span>
+                      <button
+                        type="button"
+                        className="notif-remove-btn"
+                        aria-label="Remove notification"
+                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -418,10 +439,20 @@ export default function FamilyReportsPage() {
                   <div className="panel-title" style={{ marginBottom: 12 }}>
                     <Bell size={16} color="#F54E25" /> Notifications
                   </div>
-                  {notificationItems.map((item) => (
-                    <div key={`m-${item}`} className="interactive-row">
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
+                  ) : notificationItems.map((item, idx) => (
+                    <div key={`m-${item}-${idx}`} className="interactive-row">
                       <CheckCircle2 size={15} color="#2B31ED" />
-                      <span>{item}</span>
+                      <span className="notif-row-text">{item}</span>
+                      <button
+                        type="button"
+                        className="notif-remove-btn"
+                        aria-label="Remove notification"
+                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -491,7 +522,7 @@ export default function FamilyReportsPage() {
 
         <nav className="mobile-bottom-nav">
           <Home size={24} color="#A3AED0" onClick={() => navigate('/home')} />
-          <ClipboardList size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
+          <TrendingUp size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
           <Calendar size={24} color="#A3AED0" onClick={() => navigate('/appointments')} />
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} onClick={() => navigate('/reports')}>
             <BarChart3 size={24} color="#F54E25" />

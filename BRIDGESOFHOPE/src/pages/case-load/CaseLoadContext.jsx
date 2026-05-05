@@ -93,7 +93,7 @@ export function CaseLoadProvider({ children }) {
               const staff = mergeStaffAssignmentFields(p.id, assignmentMap, p);
               return {
                 id: String(p.id),
-                name: p.name || p.full_name || 'Patient',
+                name: p.name || p.full_name || 'Resident',
                 concern: p.primary_concern || p.concern || '—',
                 admittedAt: p.admitted_at || p.admissionDate || '',
                 clinicalStatus: p.clinical_status || p.clinicalStatus || p.status || 'Admitted',
@@ -115,7 +115,7 @@ export function CaseLoadProvider({ children }) {
             const staff = mergeStaffAssignmentFields(r.id, assignmentMap, r);
             return {
               id: String(r.id),
-              name: r.full_name || 'Patient',
+              name: r.full_name || 'Resident',
               concern: r.primary_concern || '—',
               admittedAt: r.admitted_at || '',
               clinicalStatus: r.clinical_status || 'Admitted',
@@ -218,7 +218,7 @@ export function CaseLoadProvider({ children }) {
               const staff = mergeStaffAssignmentFields(p.id, assignmentMap, p);
               return {
                 id: String(p.id),
-                name: p.name || p.full_name || 'Patient',
+                name: p.name || p.full_name || 'Resident',
                 concern: p.primary_concern || p.concern || '—',
                 admittedAt: p.admitted_at || p.admissionDate || '',
                 clinicalStatus: p.clinical_status || p.clinicalStatus || p.status || 'Admitted',

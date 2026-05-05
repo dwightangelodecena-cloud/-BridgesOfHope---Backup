@@ -26,15 +26,13 @@ import {
   loadAddressDraft,
   saveAddressDraft,
 } from '../../lib/addressPersistence';
+import {
+  loadFamilyNotificationsMobile,
+  saveFamilyNotificationsMobile,
+} from '../../lib/familyNotificationsMobile';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
-
-const NOTIFICATION_ITEMS = [
-  'Submit missing laboratory result before Friday.',
-  'Family support session is scheduled on April 5, 10:00 AM.',
-  'Weekly report reviewed by your assigned counselor.',
-];
 
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -94,6 +92,7 @@ export default function AdmissionForm() {
   const [iosDraftBirthDate, setIosDraftBirthDate] = useState(() => new Date(2000, 0, 1));
   const [submitting, setSubmitting] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
   const [displayName, setDisplayName] = useState('Family User');
   const [userInitials, setUserInitials] = useState('FU');
 
@@ -107,10 +106,10 @@ export default function AdmissionForm() {
         { key: 'municipalityCity' as const, label: 'Municipality/City' },
         { key: 'barangay' as const, label: 'Barangay' },
         { key: 'street' as const, label: 'Street' },
-        { key: 'patientLastName' as const, label: 'Patient Last Name' },
-        { key: 'patientFirstName' as const, label: 'Patient First Name' },
-        { key: 'patientGender' as const, label: 'Patient Gender' },
-        { key: 'patientBirthday' as const, label: 'Patient Birthday' },
+        { key: 'patientLastName' as const, label: 'Resident Last Name' },
+        { key: 'patientFirstName' as const, label: 'Resident First Name' },
+        { key: 'patientGender' as const, label: 'Resident Gender' },
+        { key: 'patientBirthday' as const, label: 'Resident Birthday' },
         { key: 'reasonForAdmission' as const, label: 'Reason for Admission' },
       ] as const,
     []
@@ -242,6 +241,10 @@ export default function AdmissionForm() {
   }, []);
 
   useEffect(() => {
+    saveFamilyNotificationsMobile(notificationItems);
+  }, [notificationItems]);
+
+  useEffect(() => {
     let mounted = true;
     const loadUser = async () => {
       if (!isSupabaseConfigured()) return;
@@ -297,10 +300,10 @@ export default function AdmissionForm() {
     if (!formData.municipalityCity.trim()) next.municipalityCity = 'Municipality/City is required.';
     if (!formData.street.trim()) next.street = 'Street is required.';
     if (!formData.barangay.trim()) next.barangay = 'Barangay is required.';
-    if (!formData.patientLastName.trim()) next.patientLastName = 'Patient last name is required.';
-    if (!formData.patientFirstName.trim()) next.patientFirstName = 'Patient first name is required.';
-    if (!formData.patientGender.trim()) next.patientGender = 'Patient gender is required.';
-    if (!formData.patientBirthday) next.patientBirthday = 'Patient birthday is required.';
+    if (!formData.patientLastName.trim()) next.patientLastName = 'Resident last name is required.';
+    if (!formData.patientFirstName.trim()) next.patientFirstName = 'Resident first name is required.';
+    if (!formData.patientGender.trim()) next.patientGender = 'Resident gender is required.';
+    if (!formData.patientBirthday) next.patientBirthday = 'Resident birthday is required.';
     if (!formData.reasonForAdmission) next.reasonForAdmission = 'Please select a reason.';
     if (!formData.agreeToTerms) next.agreeToTerms = 'You must agree to the terms.';
     setErrors(next);
@@ -467,10 +470,19 @@ export default function AdmissionForm() {
               <Ionicons name="notifications" size={16} color="#F54E25" />
               <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
             </View>
-            {NOTIFICATION_ITEMS.map((item) => (
-              <View key={item} style={styles.notificationsDropdownRow}>
+            {notificationItems.length === 0 ? (
+              <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
+            ) : notificationItems.map((item, idx) => (
+              <View key={`${item}-${idx}`} style={styles.notificationsDropdownRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
                 <Text style={styles.notificationsDropdownText}>{item}</Text>
+                <TouchableOpacity
+                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove notification"
+                >
+                  <Text style={styles.notificationDismiss}>×</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -683,31 +695,31 @@ export default function AdmissionForm() {
               </Text>
             </View>
             <LabeledInput
-              label="Patient Last Name"
-              placeholder="Patient's last name"
+              label="Resident Last Name"
+              placeholder="Resident's last name"
               icon="person-outline"
               value={formData.patientLastName}
               onChangeText={(t) => setField('patientLastName', t)}
               error={errors.patientLastName}
             />
             <LabeledInput
-              label="Patient First Name"
-              placeholder="Patient's first name"
+              label="Resident First Name"
+              placeholder="Resident's first name"
               icon="person-outline"
               value={formData.patientFirstName}
               onChangeText={(t) => setField('patientFirstName', t)}
               error={errors.patientFirstName}
             />
             <LabeledInput
-              label="Patient Middle Name (Optional)"
-              placeholder="Patient's middle name"
+              label="Resident Middle Name (Optional)"
+              placeholder="Resident's middle name"
               icon="person-outline"
               value={formData.patientMiddleName}
               onChangeText={(t) => setField('patientMiddleName', t)}
             />
 
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Patient Gender</Text>
+              <Text style={styles.fieldLabel}>Resident Gender</Text>
               <TouchableOpacity
                 style={[styles.inputShell, errors.patientGender ? styles.inputShellError : null]}
                 onPress={() => setShowGenderModal(true)}
@@ -723,7 +735,7 @@ export default function AdmissionForm() {
             </View>
 
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Patient Birthday</Text>
+              <Text style={styles.fieldLabel}>Resident Birthday</Text>
               <TouchableOpacity
                 style={[styles.inputShell, errors.patientBirthday ? styles.inputShellError : null]}
                 onPress={openBirthdayPicker}
@@ -911,7 +923,7 @@ export default function AdmissionForm() {
             </TouchableOpacity>
             <ScrollView style={styles.termsScroll} contentContainerStyle={styles.termsScrollContent}>
               <Text style={styles.termsH1}>TERMS AND CONDITIONS</Text>
-              <Text style={styles.termsSub}>Clinic Admission and Patient Management System</Text>
+              <Text style={styles.termsSub}>Clinic Admission and Resident Management System</Text>
               <TermsSection
                 title="1. Acceptance of Terms"
                 body="By accessing, registering, or using this application and web system (“the System”), you acknowledge that you have read, understood, and agreed to be bound by these Terms and Conditions. If you do not agree, you must discontinue use of the System immediately."
@@ -946,7 +958,7 @@ export default function AdmissionForm() {
               />
               <TermsSection
                 title="9. Record Access and Confidentiality"
-                body="Patient records are confidential and may only be accessed by authorized staff and the registered patient or guardian."
+                body="Resident records are confidential and may only be accessed by authorized staff and the registered resident or guardian."
               />
               <TermsSection
                 title="10. Limitation of Liability"
@@ -1156,6 +1168,7 @@ const styles = StyleSheet.create({
     color: '#334155',
     lineHeight: 18,
   },
+  notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scrollContent: {
     paddingHorizontal: isCompactScreen ? 14 : 20,
     paddingTop: 16,

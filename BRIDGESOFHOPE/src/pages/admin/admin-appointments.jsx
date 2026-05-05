@@ -44,7 +44,7 @@ export default function AdminAppointmentsPage() {
   const RESCHEDULE_REASON_OPTIONS = [
     'Staff and facility schedule conflict',
     'Facility event or emergency adjustment',
-    'Patient not available at requested time',
+    'Resident not available at requested time',
     'Family requested a different schedule',
     'Holiday/closure schedule change',
     'Other reason',
@@ -1009,7 +1009,7 @@ export default function AdminAppointmentsPage() {
               <span className="sidebar-label">Dashboard</span>
             </div>
           )}
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><BookUser size={22} /></div><span className="sidebar-label">{isClm ? 'Patient records' : 'Patient Management'}</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><BookUser size={22} /></div><span className="sidebar-label">{isClm ? 'Resident records' : 'Resident Management'}</span></div>
           {!isClm ? (
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}><div className="icon-box inactive"><ClipboardList size={22} /></div><span className="sidebar-label">Admission Management</span></div>
           ) : null}
@@ -1022,12 +1022,12 @@ export default function AdminAppointmentsPage() {
           {!isClm ? (
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}><div className="icon-box inactive"><Stethoscope size={22} /></div><span className="sidebar-label">Staff Management</span></div>
           ) : null}
+          <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}><div className="icon-box active"><Calendar size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Appointments</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}><div className="icon-box inactive"><FileText size={22} /></div><span className="sidebar-label">Printable reports</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}><div className="icon-box inactive"><HeartPulse size={22} /></div><span className="sidebar-label">Recovery Roadmap</span></div>
           {!isClm ? (
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div>
           ) : null}
-          <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}><div className="icon-box active"><Calendar size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Appointments</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}><div className="icon-box inactive"><FileText size={22} /></div><span className="sidebar-label">Printable reports</span></div>
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate(isClm ? '/case-dashboard/profile' : '/admin-profile'); }}>
@@ -1180,7 +1180,7 @@ export default function AdminAppointmentsPage() {
               return (
               <div key={row.id} className="admin-queue-card">
                 <div>
-                  <div style={{ fontWeight: 700 }}>{row.familyName || 'Family'} · {row.patientName || 'Patient'}</div>
+                  <div style={{ fontWeight: 700 }}>{row.familyName || 'Family'} · {row.patientName || 'Resident'}</div>
                   <div style={{ fontSize: 12, color: '#64748B' }}>
                     Scheduled:
                     {' '}
@@ -1233,7 +1233,7 @@ export default function AdminAppointmentsPage() {
               <div>
                 <div className="ap-day-modal-title">Reschedule appointment</div>
                 <div className="ap-day-modal-sub">
-                  {rescheduleModal.row.patientName || 'Patient'} · {rescheduleModal.row.familyName || 'Family'}
+                  {rescheduleModal.row.patientName || 'Resident'} · {rescheduleModal.row.familyName || 'Family'}
                 </div>
               </div>
               <button
@@ -1399,7 +1399,7 @@ export default function AdminAppointmentsPage() {
                 const canDayModalAct = st !== 'Declined';
                 return (
                   <div key={row.id} className="ap-day-modal-card">
-                    <div className="ap-day-modal-patient">{row.patientName || 'Patient'}</div>
+                    <div className="ap-day-modal-patient">{row.patientName || 'Resident'}</div>
                     <div className="ap-day-modal-meta">
                       {row.familyName ? (
                         <>

@@ -20,15 +20,13 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
+import {
+  loadFamilyNotificationsMobile,
+  saveFamilyNotificationsMobile,
+} from '../../lib/familyNotificationsMobile';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
-
-const NOTIFICATION_ITEMS = [
-  'Submit missing laboratory result before Friday.',
-  'Family support session is scheduled on April 5, 10:00 AM.',
-  'Weekly report reviewed by your assigned counselor.',
-];
 
 const WEEK_NUMBERS = [1, 2, 3, 4, 5, 6, 7] as const;
 
@@ -83,6 +81,7 @@ export default function ViewDetailsPage() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
   const [displayName, setDisplayName] = useState('Family User');
   const [userInitials, setUserInitials] = useState('FU');
   const [loading, setLoading] = useState(true);
@@ -199,6 +198,10 @@ export default function ViewDetailsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    saveFamilyNotificationsMobile(notificationItems);
+  }, [notificationItems]);
+
   const closeAndGoHome = () => {
     setExpandedPatientId(null);
     router.navigate(TAB_ROUTES.home);
@@ -236,10 +239,19 @@ export default function ViewDetailsPage() {
               <Ionicons name="notifications" size={16} color="#F54E25" />
               <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
             </View>
-            {NOTIFICATION_ITEMS.map((item) => (
-              <View key={item} style={styles.notificationsDropdownRow}>
+            {notificationItems.length === 0 ? (
+              <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
+            ) : notificationItems.map((item, idx) => (
+              <View key={`${item}-${idx}`} style={styles.notificationsDropdownRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
                 <Text style={styles.notificationsDropdownText}>{item}</Text>
+                <TouchableOpacity
+                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove notification"
+                >
+                  <Text style={styles.notificationDismiss}>×</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -531,6 +543,7 @@ const styles = StyleSheet.create({
     color: '#334155',
     lineHeight: 18,
   },
+  notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   bodyScroll: {
     flex: 1,
     backgroundColor: '#FFFFFF',

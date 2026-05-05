@@ -22,12 +22,10 @@ import {
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
-
-const NOTIFICATION_ITEMS = [
-  'Submit missing laboratory result before Friday.',
-  'Family support session is scheduled on April 5, 10:00 AM.',
-  'Weekly report reviewed by your assigned counselor.',
-];
+import {
+  loadFamilyNotificationsMobile,
+  saveFamilyNotificationsMobile,
+} from '../../lib/familyNotificationsMobile';
 
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -38,6 +36,7 @@ export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
   const [displayName, setDisplayName] = useState('Family User');
   const [userInitials, setUserInitials] = useState('FU');
   const [pendingAdmissions, setPendingAdmissions] = useState(0);
@@ -119,6 +118,10 @@ export default function ProgressScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    saveFamilyNotificationsMobile(notificationItems);
+  }, [notificationItems]);
+
   const first = (displayName || 'Family User').trim().split(/\s+/)[0];
 
   return (
@@ -136,10 +139,19 @@ export default function ProgressScreen() {
               <Ionicons name="notifications" size={16} color="#F54E25" />
               <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
             </View>
-            {NOTIFICATION_ITEMS.map((item) => (
-              <View key={item} style={styles.notificationsDropdownRow}>
+            {notificationItems.length === 0 ? (
+              <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
+            ) : notificationItems.map((item, idx) => (
+              <View key={`${item}-${idx}`} style={styles.notificationsDropdownRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
                 <Text style={styles.notificationsDropdownText}>{item}</Text>
+                <TouchableOpacity
+                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove notification"
+                >
+                  <Text style={styles.notificationDismiss}>×</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -289,6 +301,7 @@ const styles = StyleSheet.create({
   notificationsDropdownTitle: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
   notificationsDropdownRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   notificationsDropdownText: { flex: 1, fontSize: 13, color: '#334155', lineHeight: 18 },
+  notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scrollContent: { paddingHorizontal: 18, paddingTop: 16 },
   welcomeLine: { fontSize: 22, fontWeight: '800', color: '#1B2559' },
   sub: { fontSize: 14, color: '#64748B', fontWeight: '600', marginTop: 8, lineHeight: 20 },

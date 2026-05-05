@@ -28,15 +28,13 @@ import {
   upsertVisitationRequestAfterRemoteInsert,
   type VisitationRequestRow,
 } from '../../lib/visitationAppointmentsMobile';
+import {
+  loadFamilyNotificationsMobile,
+  saveFamilyNotificationsMobile,
+} from '../../lib/familyNotificationsMobile';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
-
-const NOTIFICATION_ITEMS = [
-  'Submit missing laboratory result before Friday.',
-  'Family support session is scheduled on April 5, 10:00 AM.',
-  'Weekly report reviewed by your assigned counselor.',
-];
 
 const WEEKDAY_TO_INDEX: Record<string, number> = {
   sunday: 0,
@@ -95,6 +93,7 @@ export default function AppointmentsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
   const [userInitials, setUserInitials] = useState('FU');
   const [firstName, setFirstName] = useState('Family');
   const [familyUserId, setFamilyUserId] = useState('');
@@ -325,6 +324,10 @@ export default function AppointmentsScreen() {
     }
   };
 
+  useEffect(() => {
+    saveFamilyNotificationsMobile(notificationItems);
+  }, [notificationItems]);
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: '#F8F9FD' }]}>
       <Modal visible={showNotifications} transparent animationType="fade" onRequestClose={() => setShowNotifications(false)}>
@@ -335,10 +338,19 @@ export default function AppointmentsScreen() {
               <Ionicons name="notifications" size={16} color="#F54E25" />
               <Text style={styles.notifTitle}>Notifications</Text>
             </View>
-            {NOTIFICATION_ITEMS.map((t) => (
-              <View key={t} style={styles.notifRow}>
+            {notificationItems.length === 0 ? (
+              <Text style={[styles.notifText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
+            ) : notificationItems.map((t, idx) => (
+              <View key={`${t}-${idx}`} style={styles.notifRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
                 <Text style={styles.notifText}>{t}</Text>
+                <TouchableOpacity
+                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove notification"
+                >
+                  <Text style={styles.notifDismiss}>×</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -368,7 +380,7 @@ export default function AppointmentsScreen() {
           </Text>
 
           <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Request a visit</Text>
-          <Text style={styles.label}>Patient</Text>
+          <Text style={styles.label}>Resident</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsRow}>
             {patients.map((p) => (
               <TouchableOpacity
@@ -562,6 +574,7 @@ const styles = StyleSheet.create({
   notifTitle: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
   notifRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   notifText: { flex: 1, fontSize: 13, color: '#334155' },
+  notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 16, paddingTop: 12 },
   welcome: { fontSize: 14, fontWeight: '600', color: '#1B2559', marginBottom: 12 },
   panel: {

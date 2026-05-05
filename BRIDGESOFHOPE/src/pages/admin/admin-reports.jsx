@@ -35,7 +35,7 @@ import {
 const REPORT_CARDS = [
   {
     id: 'census',
-    title: 'Patient Census',
+    title: 'Resident Census',
     description: 'Active and discharged patients, room/bed, and assigned staff.',
     action: (snap) => downloadPatientCensusPdf(snap),
   },
@@ -277,7 +277,7 @@ export default function AdminReportsPage() {
           )}
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
             <div className="icon-box inactive"><BookUser size={22} /></div>
-            <span className="sidebar-label">{isClm ? 'Patient records' : 'Patient Management'}</span>
+            <span className="sidebar-label">{isClm ? 'Resident records' : 'Resident Management'}</span>
           </div>
           {!isClm ? (
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
@@ -303,6 +303,14 @@ export default function AdminReportsPage() {
               <span className="sidebar-label">Staff Management</span>
             </div>
           ) : null}
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
+            <div className="icon-box inactive"><Calendar size={22} /></div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
+            <div className="icon-box active"><FileText size={22} /></div>
+            <span className="sidebar-label" style={{ color: '#F54E25' }}>Printable reports</span>
+          </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
             <div className="icon-box inactive"><HeartPulse size={22} /></div>
             <span className="sidebar-label">Recovery Roadmap</span>
@@ -313,14 +321,6 @@ export default function AdminReportsPage() {
               <span className="sidebar-label">Content management</span>
             </div>
           ) : null}
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
-            <div className="icon-box inactive"><Calendar size={22} /></div>
-            <span className="sidebar-label">Appointments</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
-            <div className="icon-box active"><FileText size={22} /></div>
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Printable reports</span>
-          </div>
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate(isClm ? '/case-dashboard/profile' : '/admin-profile'); }}>
@@ -392,7 +392,7 @@ export default function AdminReportsPage() {
           </div>
 
           <div style={{ maxWidth: 380 }}>
-            <label className="rp-label">Patient</label>
+            <label className="rp-label">Resident</label>
             <select
               className="rp-input"
               value={selectedPatientId}
@@ -460,7 +460,7 @@ export default function AdminReportsPage() {
           <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
             <BookUser size={20} color="#A3AED0" />
           </div>
-          <span>{isClm ? 'Records' : 'Patients'}</span>
+          <span>{isClm ? 'Records' : 'Residents'}</span>
         </div>
         {isClm ? (
           <div className="mob-nav-item" onClick={() => navigate('/admin-appointments')}>

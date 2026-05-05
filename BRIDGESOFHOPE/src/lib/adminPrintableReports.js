@@ -100,7 +100,7 @@ function mapPatientFromDbRow(row) {
 }
 
 function normalizeLocalPatient(p, idx) {
-  const name = p.name || p.patient_name || p.full_name || `Patient ${idx + 1}`;
+  const name = p.name || p.patient_name || p.full_name || `Resident ${idx + 1}`;
   const discharged_at = p.discharged_at || null;
   const status = p.status || (discharged_at ? 'Discharged' : p.clinicalStatus || 'Admitted');
   return {
@@ -454,13 +454,13 @@ export function downloadPatientCensusPdf(snapshot) {
   });
   rows.sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { sensitivity: 'base' }));
 
-  const doc = newPdfDoc('Patient Census Report');
+  const doc = newPdfDoc('Resident Census Report');
   doc.setFontSize(9);
   doc.text('Active and discharged patients with room/bed assignment and assigned staff (as recorded).', 40, 68);
 
   autoTable(doc, {
     startY: 80,
-    head: [['Patient', 'Cohort', 'Room / bed', 'Assigned staff', 'Admitted', 'Discharged']],
+    head: [['Resident', 'Cohort', 'Room / bed', 'Assigned staff', 'Admitted', 'Discharged']],
     body: rows,
     styles: { fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [245, 78, 37], textColor: 255 },
@@ -518,7 +518,7 @@ export function downloadAdmissionDischargeDecisionsPdf(snapshot) {
 
   autoTable(doc, {
     startY: 80,
-    head: [['Type', 'Patient', 'Status', 'Decided / updated', 'Reason / notes']],
+    head: [['Type', 'Resident', 'Status', 'Decided / updated', 'Reason / notes']],
     body,
     styles: { fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [245, 78, 37], textColor: 255 },
@@ -615,7 +615,7 @@ export function downloadWeeklyCompliancePdf(snapshot) {
 
   autoTable(doc, {
     startY: afterY + 8,
-    head: [['Patient', 'Submitted this week', 'Latest submission in week', 'Rows this week']],
+    head: [['Resident', 'Submitted this week', 'Latest submission in week', 'Rows this week']],
     body: detailRows,
     styles: { fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [245, 78, 37], textColor: 255 },
@@ -733,7 +733,7 @@ export function downloadGuardianWeeklyConsolidatedPdf(snapshot) {
 
   autoTable(doc, {
     startY: 84,
-    head: [['Patient', 'Latest week', 'Submitted', 'CLM report', 'Program report', 'Medical report', 'Interventions', 'Accomplishments', 'Next plan', 'Updated']],
+    head: [['Resident', 'Latest week', 'Submitted', 'CLM report', 'Program report', 'Medical report', 'Interventions', 'Accomplishments', 'Next plan', 'Updated']],
     body: rows.length ? rows : [['No patients in current snapshot', '—', '—', '—', '—', '—', '—', '—', '—', '—']],
     styles: { fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [245, 78, 37], textColor: 255 },

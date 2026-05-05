@@ -261,7 +261,7 @@ export const DEFAULT_SITE_CONTENT = {
     body:
       'Bridges of Hope provides professional, private, and compassionate treatment for people struggling with addiction—through world-class facilities and a dedicated clinical team that truly cares.',
     stats: [
-      { strong: '2,000+', label: 'Patients treated' },
+      { strong: '2,000+', label: 'Residents treated' },
       { strong: '15+', label: 'Years experience' },
       { strong: '95%', label: 'Completion rate' },
     ],

@@ -25,17 +25,14 @@ import { fetchActivityFeedForCurrentUser } from '../../lib/activityFeed';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
+import {
+  loadFamilyNotificationsMobile,
+  saveFamilyNotificationsMobile,
+} from '../../lib/familyNotificationsMobile';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
 const BG = '#F8F9FD';
-
-const NOTIFICATION_ITEMS = [
-  'Submit missing laboratory result before Friday.',
-  'Family support session is scheduled on April 5, 10:00 AM.',
-  'Weekly report reviewed by your assigned counselor.',
-  'Community Update: Join the monthly Family Wellness Talk on April 9 to learn practical family recovery support strategies.',
-];
 
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -56,6 +53,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
   const [userInitials, setUserInitials] = useState('FU');
   const [displayName, setDisplayName] = useState('Family User');
   const [patients, setPatients] = useState<UIPatient[]>([]);
@@ -211,13 +209,17 @@ export default function HomeScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    saveFamilyNotificationsMobile(notificationItems);
+  }, [notificationItems]);
+
   const reportsReceivedCount = Object.values(nurseWeeklyByPatient || {}).reduce(
     (count, patientWeeks) => count + Object.keys(patientWeeks || {}).length,
     0
   );
   const totalPendingRequests = pendingAdmissions.length + pendingDischarges.length;
   const summaryGraphData = [
-    { label: 'Patients', value: patients.length, color: '#F54E25' },
+    { label: 'Residents', value: patients.length, color: '#F54E25' },
     { label: 'Admissions', value: pendingAdmissions.length, color: '#EA580C' },
     { label: 'Discharges', value: pendingDischarges.length, color: '#2B31ED' },
     {
@@ -266,7 +268,7 @@ export default function HomeScreen() {
   ];
   const highestMetric = summaryGraphData.reduce(
     (max, item) => ((Number(item.value) || 0) > (Number(max.value) || 0) ? item : max),
-    summaryGraphData[0] || { label: 'Patients', value: 0, color: '#F54E25' }
+    summaryGraphData[0] || { label: 'Residents', value: 0, color: '#F54E25' }
   );
 
   const resolveRequestPatientName = (row: PendingAdmission | PendingDischarge) => {
@@ -315,10 +317,19 @@ export default function HomeScreen() {
               <Ionicons name="notifications" size={16} color="#F54E25" />
               <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
             </View>
-            {NOTIFICATION_ITEMS.map((item) => (
-              <View key={item} style={styles.notificationsDropdownRow}>
+            {notificationItems.length === 0 ? (
+              <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
+            ) : notificationItems.map((item, idx) => (
+              <View key={`${item}-${idx}`} style={styles.notificationsDropdownRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
                 <Text style={styles.notificationsDropdownText}>{item}</Text>
+                <TouchableOpacity
+                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove notification"
+                >
+                  <Text style={styles.notificationDismiss}>×</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -476,7 +487,7 @@ export default function HomeScreen() {
           <View style={styles.tableHead}>
             <View style={styles.tableHeadLeft}>
               <Ionicons name="person" size={16} color="#F54E25" />
-              <Text style={styles.panelTitleInline}>Patient Snapshot</Text>
+              <Text style={styles.panelTitleInline}>Resident Snapshot</Text>
             </View>
             <Text style={styles.tableMeta}>{patients.length} total</Text>
           </View>
@@ -546,7 +557,7 @@ export default function HomeScreen() {
           </View>
           <View style={styles.highlightsGrid}>
             <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Active Patients</Text>
+              <Text style={styles.overviewLabel}>Active Residents</Text>
               <Text style={styles.overviewValue}>{patients.length}</Text>
               <Text style={styles.overviewSub}>Currently under care</Text>
             </View>
@@ -697,6 +708,7 @@ const styles = StyleSheet.create({
   notificationsDropdownTitle: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
   notificationsDropdownRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   notificationsDropdownText: { flex: 1, fontSize: 13, color: '#334155', lineHeight: 18 },
+  notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scrollContent: { paddingHorizontal: isCompactScreen ? 14 : 18, paddingTop: 12 },
   panelCard: {
     backgroundColor: '#FFFFFF',

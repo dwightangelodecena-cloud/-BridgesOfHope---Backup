@@ -44,7 +44,7 @@ import {
 const FILTER_OPTIONS = ['All Discharges', ...DISCHARGE_FINAL_STATUSES];
 
 const SORT_OPTIONS = [
-  { id: 'name', label: 'Patient Name', field: 'name', dir: 'asc' },
+  { id: 'name', label: 'Resident Name', field: 'name', dir: 'asc' },
   { id: 'adm_date', label: 'Admission Date', field: 'adm', dir: 'desc' },
   { id: 'dis_date', label: 'Discharge Date', field: 'dis', dir: 'desc' },
   { id: 'status', label: 'Final Status', field: 'status', dir: 'asc' },
@@ -263,7 +263,7 @@ const DischargeManagement = () => {
         admissionRequestId: ar?.id ?? null,
         admissionDisplayId,
         patientId: p.id,
-        patientName: p.full_name || 'Patient',
+        patientName: p.full_name || 'Resident',
         assignedStaff: staffFromWorkflow || '—',
         admissionDate: p.admitted_at,
         dischargeDate: p.discharged_at,
@@ -815,7 +815,7 @@ const DischargeManagement = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['Patient ID', 'Patient', 'Staff', 'Admission Date', 'Discharge Date', 'Final Status', 'Total Cost', 'Actions'].map((col, idx) => (
+                    {['Resident ID', 'Resident', 'Staff', 'Admission Date', 'Discharge Date', 'Final Status', 'Total Cost', 'Actions'].map((col, idx) => (
                       <th className="dm-th" key={col} style={{ padding: '10px 10px', borderRight: idx < 7 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>{col}</th>
                     ))}
                   </tr>
@@ -917,7 +917,7 @@ const DischargeManagement = () => {
 
       <div className="db-mobile-only db-mobile-bottom-nav">
         <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}><LayoutGrid size={18} color="#A3AED0" /><span>Home</span></div>
-        <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}><BookUser size={18} color="#A3AED0" /><span>Patients</span></div>
+        <div className="mob-nav-item" onClick={() => navigate('/admin-patient-database')}><BookUser size={18} color="#A3AED0" /><span>Residents</span></div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-admission-management')}><ClipboardList size={18} color="#A3AED0" /><span>Adm</span></div>
         <div className="mob-nav-item active"><ArrowRightSquare size={18} color="white" /><span style={{ color: '#F54E25' }}>Disch</span></div>
         <div className="mob-nav-item" onClick={() => navigate('/admin-user-management')}><Users size={18} color="#A3AED0" /><span>Users</span></div>
