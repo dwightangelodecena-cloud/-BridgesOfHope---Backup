@@ -523,7 +523,7 @@ function ContentManagement() {
             <div className="icon-box inactive"><HeartPulse size={22} /></div>
             <span className="sidebar-label">Recovery Roadmap</span>
           </div>
-          <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
+          <div className="sidebar-nav-item">
             <div className="icon-box active"><LayoutTemplate size={22} /></div>
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Content management</span>
           </div>

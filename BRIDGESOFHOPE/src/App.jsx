@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 
 // Component Imports
 import LandingPage from '@/landingpage'; // Using @ for src/
@@ -37,15 +37,6 @@ import AdminProfile from '@/pages/admin/admin-profile';
 import AdminAppointmentsPage from '@/pages/admin/admin-appointments';
 import AdminReportsPage from '@/pages/admin/admin-reports';
 import RecoveryRoadmapPage from '@/pages/admin/recovery-roadmap';
-import { CaseLoadProvider } from '@/pages/case-load/CaseLoadContext';
-import CaseLoadLayout from '@/pages/case-load/CaseLoadLayout';
-import CaseOverviewPage from '@/pages/case-load/CaseOverviewPage';
-import CaseResidentsPage from '@/pages/case-load/CaseResidentsPage';
-import CaseAppointmentsPage from '@/pages/case-load/CaseAppointmentsPage';
-import CaseIncidentsPage from '@/pages/case-load/CaseIncidentsPage';
-import CaseReportHistoryPage from '@/pages/case-load/CaseReportHistoryPage';
-import CaseResourcesPage from '@/pages/case-load/CaseResourcesPage';
-import CaseProfilePage from '@/pages/case-load/CaseProfilePage';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
 
@@ -68,13 +59,6 @@ const ROUTE_TITLES = {
   '/nurseprofile': 'Nurse profile',
   '/nursechangepass': 'Nurse change password',
   '/admin-dashboard': 'Admin dashboard',
-  '/case-dashboard': 'Case load dashboard',
-  '/case-dashboard/residents': 'Assigned residents',
-  '/case-dashboard/appointments': 'CLM appointments',
-  '/case-dashboard/incidents': 'Incident tagging',
-  '/case-dashboard/reports': 'CLM report history',
-  '/case-dashboard/resources': 'Operations guide',
-  '/case-dashboard/profile': 'CLM profile',
   '/patient-database': 'Resident database',
   '/admin-patient-database': 'Admin patient database',
   '/analytics': 'Analytics',
@@ -216,25 +200,6 @@ function App() {
           }
         />
         <Route
-          path="/case-dashboard"
-          element={
-            <RoleGuard allowedRoles={['case_manager']}>
-              <CaseLoadProvider>
-                <CaseLoadLayout />
-              </CaseLoadProvider>
-            </RoleGuard>
-          }
-        >
-          <Route index element={<CaseOverviewPage />} />
-          <Route path="residents" element={<CaseResidentsPage />} />
-          <Route path="appointments" element={<CaseAppointmentsPage />} />
-          <Route path="incidents" element={<CaseIncidentsPage />} />
-          <Route path="reports" element={<CaseReportHistoryPage />} />
-          <Route path="resources" element={<CaseResourcesPage />} />
-          <Route path="profile" element={<CaseProfilePage />} />
-          <Route path="*" element={<Navigate to="/case-dashboard" replace />} />
-        </Route>
-        <Route
           path="/nurseprofile"
           element={
             <RoleGuard allowedRoles={['nurse']}>
@@ -271,7 +236,7 @@ function App() {
         <Route
           path="/admin-patient-database"
           element={
-            <RoleGuard allowedRoles={['admin', 'case_manager']}>
+            <RoleGuard allowedRoles={['admin', 'staff']}>
               <AdminPatientDatabaseGate />
             </RoleGuard>
           }
@@ -335,7 +300,7 @@ function App() {
         <Route
           path="/admin-appointments"
           element={
-            <RoleGuard allowedRoles={['admin', 'case_manager']}>
+            <RoleGuard allowedRoles={['admin', 'staff']}>
               <AdminAppointmentsPage />
             </RoleGuard>
           }
@@ -343,7 +308,7 @@ function App() {
         <Route
           path="/admin-reports"
           element={
-            <RoleGuard allowedRoles={['admin', 'case_manager']}>
+            <RoleGuard allowedRoles={['admin', 'staff']}>
               <AdminReportsPage />
             </RoleGuard>
           }
@@ -351,7 +316,7 @@ function App() {
         <Route
           path="/admin-recovery-roadmap"
           element={
-            <RoleGuard allowedRoles={['admin', 'nurse', 'case_manager']}>
+            <RoleGuard allowedRoles={['admin', 'nurse', 'staff']}>
               <RecoveryRoadmapPage />
             </RoleGuard>
           }

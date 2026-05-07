@@ -248,7 +248,9 @@ const AdminDashboard = () => {
           t === 'admin' ||
           t.includes('nurse') ||
           t.includes('staff') ||
-          t.includes('clinic')
+          t.includes('clinic') ||
+          t === 'case_manager' ||
+          t.includes('case_load')
         );
       }).length;
       setStaffCount(sc);

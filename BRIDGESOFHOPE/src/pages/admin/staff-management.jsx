@@ -44,13 +44,13 @@ const ADD_STAFF_EMPLOYMENT_TYPE = 'Full-time';
 const ADD_STAFF_SHIFT_PLACEHOLDER = 'Unassigned';
 const ADD_STAFF_ROLE_OPTIONS = [
   { value: 'nurse', label: 'Nurse', department: 'Nurse' },
-  { value: 'case_load_manager', label: 'Case Load Manager', department: 'Case Load Manager' },
+  { value: 'staff', label: 'Program', department: 'Program' },
 ];
 
 const accountTypeFromAddStaffRole = (roleValue) => (roleValue === 'nurse' ? 'nurse' : 'staff');
-const domainRoleFromAddStaffRole = (roleValue) => (roleValue === 'nurse' ? 'nurse' : 'staff');
+const domainRoleFromAddStaffRole = (roleValue) => (roleValue === 'nurse' ? 'nurse' : 'program');
 const departmentFromAddStaffRole = (roleValue) =>
-  ADD_STAFF_ROLE_OPTIONS.find((opt) => opt.value === roleValue)?.department || 'Case Load Manager';
+  ADD_STAFF_ROLE_OPTIONS.find((opt) => opt.value === roleValue)?.department || 'Program';
 
 /** Preset shifts — Edit staff uses a dropdown (no free typing). */
 const SHIFT_PRESET_OPTIONS = [
@@ -75,7 +75,7 @@ function shiftSelectOptions(currentStored) {
   return Array.from(set);
 }
 
-const ROLE_FILTER_OPTIONS = ['All Staff', 'Nurses', 'Case Load Managers'];
+const ROLE_FILTER_OPTIONS = ['All Staff', 'Nurses', 'Program'];
 const STATUS_FILTER_OPTIONS = [
   'All statuses',
   'Active',
@@ -210,7 +210,13 @@ const isNurseAccount = (account) => {
 
 const isStaffAccount = (account) => {
   const a = String(account || '').toLowerCase();
-  return a.includes('staff') || a === 'clinic' || a.includes('clinic');
+  return (
+    a.includes('staff')
+    || a === 'clinic'
+    || a.includes('clinic')
+    || a === 'case_manager'
+    || a.includes('case_load')
+  );
 };
 
 const toTitleCase = (value) =>
@@ -230,7 +236,7 @@ const staffMatchesRoleFilter = (row, roleFilter) => {
   if (roleFilter === 'All Staff') return true;
   const acc = row.account_type || row.role || '';
   if (roleFilter === 'Nurses') return isNurseAccount(acc);
-  if (roleFilter === 'Case Load Managers') return isStaffAccount(acc) && !isNurseAccount(acc);
+  if (roleFilter === 'Program') return isStaffAccount(acc) && !isNurseAccount(acc);
   return true;
 };
 
@@ -238,7 +244,7 @@ const mapRowToStaff = (row, idx, meta) => {
   const id = row.id || row.user_id || `stf-${idx}`;
   const m = meta[id] || {};
   const accountRaw = String(row.account_type || row.role || 'staff').trim();
-  const roleLabel = isNurseAccount(accountRaw) ? 'Nurse' : isStaffAccount(accountRaw) ? 'Case Load Manager' : accountRaw || 'Staff';
+  const roleLabel = isNurseAccount(accountRaw) ? 'Nurse' : isStaffAccount(accountRaw) ? 'Program' : accountRaw || 'Staff';
   const presence = getPresenceStatus(row.last_active_at || row.last_login_at);
   const duty = presence === 'Active' ? 'On Duty' : 'Off Duty';
   const suspended = Boolean(m.suspended);
@@ -1181,7 +1187,7 @@ const StaffManagement = () => {
                 Creates a Supabase Auth user and a <code style={{ fontSize: 12 }}>profiles</code> row.{' '}
                 <strong>Login email</strong> format: <strong>lastname</strong> plus the{' '}
                 <strong>first letter of the first name</strong>, e.g. Decena + Dwight → <code style={{ fontSize: 12 }}>decenad</code>@{' '}
-                <code style={{ fontSize: 12 }}>nurse.bridgesofhope.ph</code> or <code style={{ fontSize: 12 }}>case.bridgesofhope.ph</code> (root:{' '}
+                <code style={{ fontSize: 12 }}>nurse.bridgesofhope.ph</code> or <code style={{ fontSize: 12 }}>program.bridgesofhope.ph</code> (root:{' '}
                 <code style={{ fontSize: 12 }}>VITE_STAFF_EMAIL_ROOT_DOMAIN</code>).{' '}
                 <strong>Shift</strong> is saved as <code style={{ fontSize: 12 }}>Unassigned</code> until you set it in{' '}
                 <strong>Edit staff</strong>. <strong>Employment</strong> is full-time for all.{' '}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { LayoutGrid, HeartPulse, BookUser, ClipboardList, ArrowRightSquare, Users, Stethoscope, LayoutTemplate, User, LogOut, Calendar, FileText } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 
 /** Inline SVG so the X is always visible (avoids Lucide + global `button` / `currentColor` quirks). */
@@ -37,7 +37,6 @@ import {
 } from '@/lib/visitationAppointments';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { resolveAccountRole } from '@/components/RoleGuard';
 
 export default function AdminAppointmentsPage() {
   const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -50,8 +49,6 @@ export default function AdminAppointmentsPage() {
     'Other reason',
   ];
   const navigate = useNavigate();
-  const location = useLocation();
-  const forceClm = new URLSearchParams(location.search).get('mode') === 'clm';
   const [isExpanded, setIsExpanded] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
@@ -77,20 +74,6 @@ export default function AdminAppointmentsPage() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  const [isClm, setIsClm] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      if (!isSupabaseConfigured()) return;
-      const { data: authData } = await supabase.auth.getUser();
-      const role = await resolveAccountRole(authData?.user ?? null);
-      if (!cancelled) setIsClm(forceClm || role === 'case_manager');
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [forceClm]);
 
   useEffect(() => {
     const load = async () => {
@@ -998,41 +981,24 @@ export default function AdminAppointmentsPage() {
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container"><img src={logoBH} alt="Kalinga" className="sidebar-logo" /></div>
         <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
-          {isClm ? (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/case-dashboard'); }}>
-              <div className="icon-box inactive"><LayoutGrid size={22} /></div>
-              <span className="sidebar-label">CLM workspace</span>
-            </div>
-          ) : (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
-              <div className="icon-box inactive"><LayoutGrid size={22} /></div>
-              <span className="sidebar-label">Dashboard</span>
-            </div>
-          )}
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><BookUser size={22} /></div><span className="sidebar-label">{isClm ? 'Resident records' : 'Resident Management'}</span></div>
-          {!isClm ? (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}><div className="icon-box inactive"><ClipboardList size={22} /></div><span className="sidebar-label">Admission Management</span></div>
-          ) : null}
-          {!isClm ? (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}><div className="icon-box inactive"><ArrowRightSquare size={22} /></div><span className="sidebar-label">Discharge Management</span></div>
-          ) : null}
-          {!isClm ? (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}><div className="icon-box inactive"><Users size={22} /></div><span className="sidebar-label">User Management</span></div>
-          ) : null}
-          {!isClm ? (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}><div className="icon-box inactive"><Stethoscope size={22} /></div><span className="sidebar-label">Staff Management</span></div>
-          ) : null}
-          <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}><div className="icon-box active"><Calendar size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Appointments</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}><div className="icon-box inactive"><FileText size={22} /></div><span className="sidebar-label">Printable reports</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
+            <div className="icon-box inactive"><LayoutGrid size={22} /></div>
+            <span className="sidebar-label">Dashboard</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><BookUser size={22} /></div><span className="sidebar-label">Patient Management</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}><div className="icon-box inactive"><ClipboardList size={22} /></div><span className="sidebar-label">Admission Management</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}><div className="icon-box inactive"><ArrowRightSquare size={22} /></div><span className="sidebar-label">Discharge Management</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}><div className="icon-box inactive"><Users size={22} /></div><span className="sidebar-label">User Management</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}><div className="icon-box inactive"><Stethoscope size={22} /></div><span className="sidebar-label">Staff Management</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}><div className="icon-box inactive"><HeartPulse size={22} /></div><span className="sidebar-label">Recovery Roadmap</span></div>
-          {!isClm ? (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div>
-          ) : null}
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div>
+          <div className="sidebar-nav-item"><div className="icon-box active"><Calendar size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Appointments</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}><div className="icon-box inactive"><FileText size={22} /></div><span className="sidebar-label">Printable reports</span></div>
         </nav>
         <div className="sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate(isClm ? '/case-dashboard/profile' : '/admin-profile'); }}>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
             <div className="icon-box inactive"><User size={22} /></div>
-            <span className="sidebar-label">{isClm ? 'Profile' : 'Profile & Security'}</span>
+            <span className="sidebar-label">Profile & Security</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
             <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? '0' : '10px', flexShrink: 0 }} />

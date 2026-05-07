@@ -10,8 +10,8 @@ export function getAccountTypeFromUser(user) {
   if (!user) return null;
   const raw = user.user_metadata?.account_type ?? user.app_metadata?.account_type ?? 'family';
   const r = String(raw).trim().toLowerCase();
-  if (r === 'nurse' || r === 'admin' || r === 'family') return r;
-  if (r === 'staff' || r === 'case_load_manager' || r === 'case manager') return 'case_manager';
+  if (r === 'nurse' || r === 'admin' || r === 'family' || r === 'staff') return r;
+  if (r === 'case_load_manager' || r === 'case manager' || r === 'case_manager') return 'staff';
   return 'family';
 }
 
@@ -29,8 +29,8 @@ export async function resolveAccountRole(user) {
       .maybeSingle();
     if (!error && data?.account_type != null && String(data.account_type).trim() !== '') {
       const r = String(data.account_type).trim().toLowerCase();
-      if (r === 'nurse' || r === 'admin' || r === 'family') return r;
-      if (r === 'staff' || r === 'case_load_manager' || r === 'case manager') return 'case_manager';
+      if (r === 'nurse' || r === 'admin' || r === 'family' || r === 'staff') return r;
+      if (r === 'case_load_manager' || r === 'case manager' || r === 'case_manager') return 'staff';
     }
   } catch {
     // fall through
@@ -41,14 +41,14 @@ export async function resolveAccountRole(user) {
 function homeForRole(role) {
   if (role === 'admin') return '/admin-dashboard';
   if (role === 'nurse') return '/nurse-dashboard';
-  if (role === 'case_manager') return '/case-dashboard';
+  if (role === 'staff') return '/admin-patient-database';
   return '/home';
 }
 
 /**
  * @param {object} props
  * @param {React.ReactNode} props.children
- * @param {('family'|'nurse'|'admin'|'case_manager')[]} props.allowedRoles
+ * @param {('family'|'nurse'|'admin'|'staff')[]} props.allowedRoles
  */
 export function RoleGuard({ children, allowedRoles }) {
   const location = useLocation();

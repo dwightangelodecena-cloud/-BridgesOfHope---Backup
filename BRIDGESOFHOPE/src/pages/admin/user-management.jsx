@@ -104,6 +104,14 @@ const buildAddressFromRow = (row) => {
   return composed || 'N/A';
 };
 
+const normalizeUserRoleLabel = (raw) => {
+  const r = String(raw || '').trim();
+  if (!r) return 'Customer';
+  const lower = r.toLowerCase();
+  if (lower === 'case_manager' || lower === 'case_load_manager' || lower === 'case load manager') return 'staff';
+  return r;
+};
+
 const toUiUser = (row, idx = 0) => {
   const uid = row.id || row.user_id || row.uid || `USR-${String(idx + 1).padStart(4, '0')}`;
   const fullName = row.full_name || row.name || row.display_name || 'Unknown User';
@@ -119,7 +127,7 @@ const toUiUser = (row, idx = 0) => {
     row.created_at ||
     null;
   const status = getPresenceStatus(lastActiveAt);
-  const role = row.role || row.account_type || 'Customer';
+  const role = normalizeUserRoleLabel(row.role || row.account_type || 'Customer');
   const source = row.source || 'web';
   const archivedSet = getArchivedIdSet();
   const isArchived = archivedSet.has(String(uid));

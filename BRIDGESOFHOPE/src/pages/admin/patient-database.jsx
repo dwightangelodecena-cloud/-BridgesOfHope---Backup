@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LayoutGrid, HeartPulse, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, LayoutTemplate, Calendar } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveAccountRole } from '@/components/RoleGuard';
@@ -9,7 +9,7 @@ import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import { fetchWeeklyReportRecommendation } from '@/lib/weeklyReportAi';
 import BehaviorProgressBoard, { computeBehaviorBoardProgressPercent } from '@/components/admin/BehaviorProgressBoard';
-import { loadLadderProfiles, saveLadderProfiles } from '@/pages/case-load/clmUtils';
+import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
 const ROOM_ASSIGNMENT_STORAGE_KEY = 'bh_patient_room_assignments_v1';
@@ -495,11 +495,10 @@ const mapLegacyLocalPatients = () => {
   });
 };
 
-function PatientDatabaseShell({ mode = 'admin' }) {
+function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   const isNurse = mode === 'nurse';
-  const isClm = mode === 'clm';
-  const isLimited = isNurse || isClm;
-  const isAdminMode = mode === 'admin';
+  const isLimited = isNurse || staffLimited;
+  const isAdminMode = mode === 'admin' && !staffLimited;
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -1135,7 +1134,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
   const resolveUpdaterLabel = async () => {
     if (!isSupabaseConfigured()) {
       if (mode === 'nurse') return 'Nurse (local)';
-      if (mode === 'clm') return 'CLM (local)';
+      if (staffLimited) return 'Staff (local)';
       return 'Admin (local)';
     }
     try {
@@ -1147,7 +1146,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
     } catch {
       /* ignore */
     }
-    if (mode === 'clm') return 'CLM';
+    if (staffLimited) return 'Staff';
     return mode === 'nurse' ? 'Nurse' : 'Admin';
   };
 
@@ -1694,6 +1693,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
           .mob-nav-item { display: flex; flex-direction: column; align-items: center; font-size: 10px; color: #A3AED0; }
           .mob-nav-item.active { color: #F54E25; }
           .view-top-row { flex-direction: column !important; gap: 16px !important; }
+          .view-admin-actions-row { grid-template-columns: 1fr !important; gap: 16px !important; }
           .view-bottom-row { display: flex !important; flex-direction: column !important; gap: 16px !important; }
           .view-vitals-row { flex-wrap: wrap !important; gap: 12px !important; }
           .view-vitals-row > div { min-width: 45% !important; margin-bottom: 8px !important; }
@@ -1743,19 +1743,13 @@ function PatientDatabaseShell({ mode = 'admin' }) {
               <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient Management</span>
             </div>
           </nav>
-        ) : isClm ? (
-          <nav className="sidebar-nav-scroll" aria-label="Case load navigation">
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/case-dashboard'); }}>
-              <div className="icon-box inactive">
-                <LayoutGrid size={22} />
-              </div>
-              <span className="sidebar-label">CLM workspace</span>
-            </div>
+        ) : staffLimited ? (
+          <nav className="sidebar-nav-scroll" aria-label="Staff navigation">
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
               <div className="icon-box active">
                 <BookUser size={22} />
               </div>
-              <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient records</span>
+              <span className="sidebar-label" style={{ color: '#F54E25' }}>Resident records</span>
             </div>
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
               <div className="icon-box inactive"><Calendar size={22} /></div>
@@ -1834,12 +1828,12 @@ function PatientDatabaseShell({ mode = 'admin' }) {
               </div>
               <span className="sidebar-label">Profile</span>
             </div>
-          ) : isClm ? (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/case-dashboard/profile'); }}>
+          ) : staffLimited ? (
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
               <div className="icon-box inactive">
                 <User size={22} />
               </div>
-              <span className="sidebar-label">Profile</span>
+              <span className="sidebar-label">Profile & Security</span>
             </div>
           ) : (
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
@@ -1859,7 +1853,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
       {/* MOBILE TOP BAR */}
       <div className="db-mobile-only db-mobile-top-bar" style={{ padding: '0 20px', height: 64, alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F1F1' }}>
         <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
-        <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>{isClm ? 'Resident records' : 'Resident Management'}</span>
+        <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>{staffLimited ? 'Resident records' : 'Resident Management'}</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>JD</div>
       </div>
 
@@ -1869,7 +1863,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
         <div style={{ marginBottom: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1B2559', marginBottom: 4 }}>
-              {isClm ? 'Resident records' : 'Resident Management'}
+              {staffLimited ? 'Resident records' : 'Resident Management'}
             </h1>
             <p
               onClick={() => selectedPatient && setSelectedPatient(null)}
@@ -1896,7 +1890,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
         {selectedPatient ? (
           /* VIEW MODE */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div className="view-top-row" style={{ display: 'flex', gap: 18, flexDirection: 'row', alignItems: 'stretch' }}>
+            <div className="view-top-row" style={{ display: 'flex', gap: 18, flexDirection: 'row', alignItems: 'flex-start' }}>
 
               {/* Card 1: Basic Info */}
               <div className="info-card" style={{ flex: '1.05', display: 'flex', gap: 20, padding: '22px', minHeight: 280 }}>
@@ -1999,139 +1993,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                   <div style={{ width: '100%', height: 16, background: '#E9EDF7', borderRadius: 99, overflow: 'hidden' }}>
                     <div style={{ width: `${selectedPatient.progress}%`, height: '100%', background: getProgressColor(selectedPatient), borderRadius: 99 }} />
                   </div>
-                  {isAdminMode && selectedPatient.status !== 'Discharged' ? (
-                    <div style={{ marginTop: 12, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: 10 }}>
-                      <p style={{ color: '#334155', fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
-                        Progress governance (temporary rule)
-                      </p>
-                      <p style={{ color: '#64748b', fontSize: 11, marginBottom: 8, lineHeight: 1.45 }}>
-                        Progress % = submitted weekly reports / 7 * 100. Status bucket: 0-33 Declining, 34-66 Stable, 67-100 Improving.
-                      </p>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                        <div style={{ fontSize: 11, color: '#475569', fontWeight: 700 }}>
-                          Last update: {selectedPatient.progressUpdatedBy ? `${selectedPatient.progressUpdatedBy} · ${formatDate(selectedPatient.progressUpdatedAt)}` : 'No governance update yet'}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={applyProgressGovernance}
-                          style={{ background: '#1D4ED8', color: 'white', border: 'none', borderRadius: 8, padding: '7px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          Apply governance update
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
-                {isAdminMode && selectedPatient.status !== 'Discharged' ? (
-                  <div style={{ marginTop: 16, borderTop: '1px solid #F4F7FE', paddingTop: 14 }}>
-                    <p style={{ color: '#64748b', fontSize: 12, fontWeight: 700, marginBottom: 10 }}>Room assignment (gender-segregated)</p>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                      <input
-                        type="text"
-                        value={roomForm.roomCode}
-                        onChange={(e) => setRoomForm((prev) => ({ ...prev, roomCode: e.target.value }))}
-                        placeholder="Room code (e.g., Room 203)"
-                        style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
-                      />
-                      <input
-                        type="text"
-                        value={normalizedRoomSegmentFromGender(selectedPatient.gender) || roomForm.roomGenderSegment || 'N/A'}
-                        readOnly
-                        placeholder="Room gender segment"
-                        style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#F8FAFC', color: '#475569', fontWeight: 700 }}
-                      />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                      <select
-                        value={roomForm.riskLevel}
-                        onChange={(e) => setRoomForm((prev) => ({ ...prev, riskLevel: e.target.value }))}
-                        style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
-                      >
-                        {RISK_LEVEL_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={roomForm.bunkLevel}
-                        onChange={(e) => setRoomForm((prev) => ({ ...prev, bunkLevel: e.target.value }))}
-                        style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
-                      >
-                        {BUNK_LEVEL_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>{opt} bunk</option>
-                        ))}
-                      </select>
-                    </div>
-                    {normalizeRiskLevel(roomForm.riskLevel) === 'Highly Suicidal' && normalizeBunkLevel(roomForm.bunkLevel) === 'Top' ? (
-                      <p style={{ color: '#B91C1C', fontSize: 11, fontWeight: 700, marginBottom: 8 }}>
-                        Policy warning: Highly suicidal patients cannot use top bunk.
-                      </p>
-                    ) : null}
-                    <textarea
-                      value={roomForm.roomPlacementNote}
-                      onChange={(e) => setRoomForm((prev) => ({ ...prev, roomPlacementNote: e.target.value }))}
-                      placeholder="Condition-based placement note (required in policy)."
-                      rows={2}
-                      style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, resize: 'vertical' }}
-                    />
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                      <button
-                        type="button"
-                        onClick={saveRoomAssignment}
-                        disabled={roomSaving}
-                        style={{ background: '#F54E25', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: roomSaving ? 'not-allowed' : 'pointer' }}
-                      >
-                        {roomSaving ? 'Saving...' : 'Save assignment'}
-                      </button>
-                    </div>
-                    <div style={{ marginTop: 14, borderTop: '1px dashed #E2E8F0', paddingTop: 12 }}>
-                      <p style={{ color: '#64748b', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                        Staff assignment model (required)
-                      </p>
-                      <p style={{ color: '#94A3B8', fontSize: 11, marginBottom: 10, lineHeight: 1.45 }}>
-                        Per-patient ownership must include Case Load Manager and Program Staff. Medical coverage remains shared across the medical team. Use the same name as the CLM staff profile (e.g. from Staff Management) so their workspace shows this patient after you save; data is stored in the database and in this browser for reports.
-                      </p>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                        <select
-                          value={staffForm.caseLoadManager}
-                          onChange={(e) => setStaffForm((prev) => ({ ...prev, caseLoadManager: e.target.value }))}
-                          style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#fff' }}
-                        >
-                          <option value="">Case Load Manager (required)</option>
-                          {clmOptions.map((name) => (
-                            <option key={`clm_${name}`} value={name}>{name}</option>
-                          ))}
-                        </select>
-                        <select
-                          value={staffForm.programStaff}
-                          onChange={(e) => setStaffForm((prev) => ({ ...prev, programStaff: e.target.value }))}
-                          style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#fff' }}
-                        >
-                          <option value="">Program Staff (required)</option>
-                          {programOptions.map((name) => (
-                            <option key={`prog_${name}`} value={name}>{name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <input
-                        type="text"
-                        value={staffForm.medicalStaffNote}
-                        onChange={(e) => setStaffForm((prev) => ({ ...prev, medicalStaffNote: e.target.value }))}
-                        placeholder="Medical coverage note (optional, shared pool)"
-                        style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
-                      />
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                        <button
-                          type="button"
-                          onClick={saveStaffAssignment}
-                          disabled={staffSaving}
-                          style={{ background: '#0F766E', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: staffSaving ? 'not-allowed' : 'pointer' }}
-                        >
-                          {staffSaving ? 'Saving...' : 'Save staff model'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
               </div>
 
               {/* Card 3: Vitals grid — labels only; nurses will populate values later */}
@@ -2185,6 +2047,141 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                 })()}
               </div>
             </div>
+
+            {isAdminMode && selectedPatient.status !== 'Discharged' ? (
+              <div className="view-admin-actions-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 18, alignItems: 'stretch' }}>
+                <div className="info-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', minHeight: 250 }}>
+                  <p style={{ color: '#334155', fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                    Progress governance (temporary rule)
+                  </p>
+                  <p style={{ color: '#64748b', fontSize: 11, marginBottom: 8, lineHeight: 1.45 }}>
+                    Progress % = submitted weekly reports / 7 * 100. Status bucket: 0-33 Declining, 34-66 Stable, 67-100 Improving.
+                  </p>
+                  <div style={{ fontSize: 11, color: '#475569', fontWeight: 700, marginBottom: 8 }}>
+                    Last update: {selectedPatient.progressUpdatedBy ? `${selectedPatient.progressUpdatedBy} · ${formatDate(selectedPatient.progressUpdatedAt)}` : 'No governance update yet'}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
+                    <button
+                      type="button"
+                      onClick={applyProgressGovernance}
+                      style={{ background: '#1D4ED8', color: 'white', border: 'none', borderRadius: 8, padding: '7px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Apply governance update
+                    </button>
+                  </div>
+                </div>
+
+                <div className="info-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', minHeight: 250 }}>
+                  <p style={{ color: '#64748b', fontSize: 12, fontWeight: 700, marginBottom: 10 }}>Room assignment (gender-segregated)</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                    <input
+                      type="text"
+                      value={roomForm.roomCode}
+                      onChange={(e) => setRoomForm((prev) => ({ ...prev, roomCode: e.target.value }))}
+                      placeholder="Room code (e.g., Room 203)"
+                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
+                    />
+                    <input
+                      type="text"
+                      value={normalizedRoomSegmentFromGender(selectedPatient.gender) || roomForm.roomGenderSegment || 'N/A'}
+                      readOnly
+                      placeholder="Room gender segment"
+                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#F8FAFC', color: '#475569', fontWeight: 700 }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                    <select
+                      value={roomForm.riskLevel}
+                      onChange={(e) => setRoomForm((prev) => ({ ...prev, riskLevel: e.target.value }))}
+                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
+                    >
+                      {RISK_LEVEL_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={roomForm.bunkLevel}
+                      onChange={(e) => setRoomForm((prev) => ({ ...prev, bunkLevel: e.target.value }))}
+                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
+                    >
+                      {BUNK_LEVEL_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt} bunk</option>
+                      ))}
+                    </select>
+                  </div>
+                  {normalizeRiskLevel(roomForm.riskLevel) === 'Highly Suicidal' && normalizeBunkLevel(roomForm.bunkLevel) === 'Top' ? (
+                    <p style={{ color: '#B91C1C', fontSize: 11, fontWeight: 700, marginBottom: 8 }}>
+                      Policy warning: Highly suicidal residents cannot use top bunk.
+                    </p>
+                  ) : null}
+                  <textarea
+                    value={roomForm.roomPlacementNote}
+                    onChange={(e) => setRoomForm((prev) => ({ ...prev, roomPlacementNote: e.target.value }))}
+                    placeholder="Condition-based placement note (required in policy)."
+                    rows={2}
+                    style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, resize: 'vertical' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto', paddingTop: 8 }}>
+                    <button
+                      type="button"
+                      onClick={saveRoomAssignment}
+                      disabled={roomSaving}
+                      style={{ background: '#F54E25', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: roomSaving ? 'not-allowed' : 'pointer' }}
+                    >
+                      {roomSaving ? 'Saving...' : 'Save assignment'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="info-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', minHeight: 250 }}>
+                  <p style={{ color: '#64748b', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                    Staff assignment model (required)
+                  </p>
+                  <p style={{ color: '#94A3B8', fontSize: 11, marginBottom: 10, lineHeight: 1.45 }}>
+                    Per-resident ownership must include Case Load Manager and Program Staff. Medical coverage remains shared across the medical team.
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                    <select
+                      value={staffForm.caseLoadManager}
+                      onChange={(e) => setStaffForm((prev) => ({ ...prev, caseLoadManager: e.target.value }))}
+                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#fff' }}
+                    >
+                      <option value="">Case Load Manager (required)</option>
+                      {clmOptions.map((name) => (
+                        <option key={`clm_${name}`} value={name}>{name}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={staffForm.programStaff}
+                      onChange={(e) => setStaffForm((prev) => ({ ...prev, programStaff: e.target.value }))}
+                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#fff' }}
+                    >
+                      <option value="">Program Staff (required)</option>
+                      {programOptions.map((name) => (
+                        <option key={`prog_${name}`} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <input
+                    type="text"
+                    value={staffForm.medicalStaffNote}
+                    onChange={(e) => setStaffForm((prev) => ({ ...prev, medicalStaffNote: e.target.value }))}
+                    placeholder="Medical coverage note (optional, shared pool)"
+                    style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto', paddingTop: 8 }}>
+                    <button
+                      type="button"
+                      onClick={saveStaffAssignment}
+                      disabled={staffSaving}
+                      style={{ background: '#0F766E', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: staffSaving ? 'not-allowed' : 'pointer' }}
+                    >
+                      {staffSaving ? 'Saving...' : 'Save staff model'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {/* Weekly Progress — nurse-filed reports; AI insights via sparkle control */}
             <div className="info-card" style={{ padding: '32px' }}>
@@ -2591,7 +2588,7 @@ function PatientDatabaseShell({ mode = 'admin' }) {
                       <td style={{ padding: '16px 20px', color: '#1B2559', fontVariantNumeric: 'tabular-nums' }}>{formatDate(patient.admissionDate)}</td>
                       <td style={{ padding: '16px 20px', color: '#475569', minWidth: 210 }}>
                         <div style={{ fontSize: 11, fontWeight: 800, color: '#1B2559' }}>
-                          CLM: {patient.caseLoadManager?.trim() ? patient.caseLoadManager : 'Unassigned'}
+                          Case load manager: {patient.caseLoadManager?.trim() ? patient.caseLoadManager : 'Unassigned'}
                         </div>
                         <div style={{ fontSize: 11, marginTop: 3 }}>
                           Program: {patient.programStaff?.trim() ? patient.programStaff : 'Unassigned'}
@@ -2670,14 +2667,8 @@ function PatientDatabaseShell({ mode = 'admin' }) {
               <span style={{ color: '#F54E25' }}>Logout</span>
             </div>
           </>
-        ) : isClm ? (
+        ) : staffLimited ? (
           <>
-            <div className="mob-nav-item" onClick={() => navigate('/case-dashboard')}>
-              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-                <LayoutGrid size={20} color="#A3AED0" />
-              </div>
-              <span>CLM</span>
-            </div>
             <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
               <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
                 <BookUser size={20} color="white" />
@@ -2690,7 +2681,13 @@ function PatientDatabaseShell({ mode = 'admin' }) {
               </div>
               <span>Visits</span>
             </div>
-            <div className="mob-nav-item" onClick={() => navigate('/case-dashboard/profile')}>
+            <div className="mob-nav-item" onClick={() => navigate('/admin-reports')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <FileText size={20} color="#A3AED0" />
+              </div>
+              <span>Reports</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/admin-profile')}>
               <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
                 <User size={20} color="#A3AED0" />
               </div>
@@ -2839,30 +2836,24 @@ export function NursePatientDatabase() {
 }
 
 export function AdminPatientDatabaseGate() {
-  const location = useLocation();
-  const [shellMode, setShellMode] = useState(null);
-  const forceClm = new URLSearchParams(location.search).get('mode') === 'clm';
+  const [staffLimited, setStaffLimited] = useState(null);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      if (forceClm) {
-        if (!cancelled) setShellMode('clm');
-        return;
-      }
       if (!isSupabaseConfigured()) {
-        if (!cancelled) setShellMode('admin');
+        if (!cancelled) setStaffLimited(false);
         return;
       }
       const { data: authData } = await supabase.auth.getUser();
       const role = await resolveAccountRole(authData?.user ?? null);
       if (cancelled) return;
-      setShellMode(role === 'case_manager' ? 'clm' : 'admin');
+      setStaffLimited(role === 'staff');
     })();
     return () => {
       cancelled = true;
     };
-  }, [forceClm]);
-  if (shellMode === null) {
+  }, []);
+  if (staffLimited === null) {
     return (
       <div
         style={{
@@ -2878,5 +2869,5 @@ export function AdminPatientDatabaseGate() {
       </div>
     );
   }
-  return <PatientDatabaseShell mode={shellMode} />;
+  return <PatientDatabaseShell mode="admin" staffLimited={staffLimited} />;
 }

@@ -214,8 +214,8 @@ const Login = () => {
       navigate('/nurse-dashboard');
     } else if (accountRole === 'admin') {
       navigate('/admin-dashboard');
-    } else if (accountRole === 'case_manager') {
-      navigate('/case-dashboard');
+    } else if (accountRole === 'staff') {
+      navigate('/admin-patient-database');
     } else {
       navigate('/home');
     }
