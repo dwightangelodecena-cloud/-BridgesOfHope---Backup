@@ -44,10 +44,10 @@ const ADD_STAFF_EMPLOYMENT_TYPE = 'Full-time';
 const ADD_STAFF_SHIFT_PLACEHOLDER = 'Unassigned';
 const ADD_STAFF_ROLE_OPTIONS = [
   { value: 'nurse', label: 'Nurse', department: 'Nurse' },
-  { value: 'staff', label: 'Program', department: 'Program' },
+  { value: 'program', label: 'Program', department: 'Program' },
 ];
 
-const accountTypeFromAddStaffRole = (roleValue) => (roleValue === 'nurse' ? 'nurse' : 'staff');
+const accountTypeFromAddStaffRole = (roleValue) => (roleValue === 'nurse' ? 'nurse' : 'program');
 const domainRoleFromAddStaffRole = (roleValue) => (roleValue === 'nurse' ? 'nurse' : 'program');
 const departmentFromAddStaffRole = (roleValue) =>
   ADD_STAFF_ROLE_OPTIONS.find((opt) => opt.value === roleValue)?.department || 'Program';
@@ -211,7 +211,8 @@ const isNurseAccount = (account) => {
 const isStaffAccount = (account) => {
   const a = String(account || '').toLowerCase();
   return (
-    a.includes('staff')
+    a.includes('program')
+    || a.includes('staff')
     || a === 'clinic'
     || a.includes('clinic')
     || a === 'case_manager'

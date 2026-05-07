@@ -37,6 +37,7 @@ import AdminProfile from '@/pages/admin/admin-profile';
 import AdminAppointmentsPage from '@/pages/admin/admin-appointments';
 import AdminReportsPage from '@/pages/admin/admin-reports';
 import RecoveryRoadmapPage from '@/pages/admin/recovery-roadmap';
+import ProgramPage from '@/pages/program/program';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
 
@@ -58,6 +59,7 @@ const ROUTE_TITLES = {
   '/nurse-dashboard': 'Nurse dashboard',
   '/nurseprofile': 'Nurse profile',
   '/nursechangepass': 'Nurse change password',
+  '/program': 'Program',
   '/admin-dashboard': 'Admin dashboard',
   '/patient-database': 'Resident database',
   '/admin-patient-database': 'Admin patient database',
@@ -225,6 +227,14 @@ function App() {
         />
 
         {/* Admin Routes */}
+        <Route
+          path="/program"
+          element={
+            <RoleGuard allowedRoles={['program']}>
+              <ProgramPage />
+            </RoleGuard>
+          }
+        />
         <Route
           path="/admin-dashboard"
           element={
