@@ -3110,6 +3110,11 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                   <div className="info-card" style={{ padding: '28px 32px 32px' }}>
                     <div style={{ marginBottom: 20 }}>
                       <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Recovery Ladder</h3>
+                      {mode === 'admin' ? (
+                        <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, marginBottom: 0 }}>
+                          View only here. Nurses and program staff update ladder progress from their resident workspaces.
+                        </p>
+                      ) : null}
                     </div>
                     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                       <BehaviorProgressBoard
@@ -3119,35 +3124,38 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                         boardPosition={recoveryLadderPosition}
                         onBoardPositionChange={handleRecoveryLadderPositionChange}
                         persistenceId={selectedPatient?.id ?? null}
+                        readOnly={mode === 'admin'}
                       />
                     </div>
-                    <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
-                      <button
-                        type="button"
-                        onClick={() => void saveRecoveryLadderProgress()}
-                        disabled={recoveryLadderSaveState.loading || !selectedPatient}
-                        style={{
-                          background: recoveryLadderSaveState.loading ? '#CBD5E1' : '#F54E25',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: 8,
-                          padding: '10px 18px',
-                          fontSize: 13,
-                          fontWeight: 700,
-                          cursor: recoveryLadderSaveState.loading || !selectedPatient ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        {recoveryLadderSaveState.loading ? 'Saving…' : 'Save recovery ladder progress'}
-                      </button>
-                      {recoveryLadderSaveState.error ? (
-                        <p style={{ margin: 0, fontSize: 12, color: '#B91C1C', fontWeight: 600 }}>{recoveryLadderSaveState.error}</p>
-                      ) : null}
-                      {recoveryLadderSaveState.ok ? (
-                        <p style={{ margin: 0, fontSize: 12, color: '#166534', fontWeight: 600 }}>
-                          Saved. {selectedPatientLadderProgressPct}% stored for this resident.
-                        </p>
-                      ) : null}
-                    </div>
+                    {mode === 'admin' ? null : (
+                      <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+                        <button
+                          type="button"
+                          onClick={() => void saveRecoveryLadderProgress()}
+                          disabled={recoveryLadderSaveState.loading || !selectedPatient}
+                          style={{
+                            background: recoveryLadderSaveState.loading ? '#CBD5E1' : '#F54E25',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: 8,
+                            padding: '10px 18px',
+                            fontSize: 13,
+                            fontWeight: 700,
+                            cursor: recoveryLadderSaveState.loading || !selectedPatient ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {recoveryLadderSaveState.loading ? 'Saving…' : 'Save recovery ladder progress'}
+                        </button>
+                        {recoveryLadderSaveState.error ? (
+                          <p style={{ margin: 0, fontSize: 12, color: '#B91C1C', fontWeight: 600 }}>{recoveryLadderSaveState.error}</p>
+                        ) : null}
+                        {recoveryLadderSaveState.ok ? (
+                          <p style={{ margin: 0, fontSize: 12, color: '#166534', fontWeight: 600 }}>
+                            Saved. {selectedPatientLadderProgressPct}% stored for this resident.
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </>
