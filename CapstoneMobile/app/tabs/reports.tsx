@@ -8,6 +8,7 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +33,8 @@ type PatientCard = {
 };
 
 type ReportRow = Record<string, unknown>;
+
+const REPORT_MODAL_MAX_H = Dimensions.get('window').height * 0.92;
 
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -361,7 +364,10 @@ export default function ReportsScreen() {
 
       <Modal visible={!!selectedPatient} transparent animationType="fade" onRequestClose={() => setSelectedPatient(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setSelectedPatient(null)}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={[styles.modalCard, { maxHeight: REPORT_MODAL_MAX_H }]}
+            onPress={(e) => e.stopPropagation()}
+          >
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.kicker}>Care updates</Text>
@@ -375,7 +381,12 @@ export default function ReportsScreen() {
                 <Ionicons name="close" size={22} color="#94A3B8" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalBody} nestedScrollEnabled>
+            <ScrollView
+              style={styles.modalBody}
+              contentContainerStyle={styles.modalBodyContent}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+            >
               <Text style={styles.historyTitle}>Past reports</Text>
               {!visibleReports.length ? (
                 <Text style={styles.muted}>No reports available for this filter.</Text>
@@ -419,6 +430,14 @@ export default function ReportsScreen() {
                   {String(
                     weeklyReport?.recommendations || weeklyReport?.plan_next_week || 'No recommendations recorded.'
                   )}
+                </Text>
+                <Text style={styles.lbl}>Current medications</Text>
+                <Text style={styles.val}>
+                  {String(weeklyReport?.current_medications || 'None listed.')}
+                </Text>
+                <Text style={styles.lbl}>Medication intervention</Text>
+                <Text style={styles.val}>
+                  {String(weeklyReport?.medication_intervention || 'None listed.')}
                 </Text>
                 <Text style={styles.lbl}>Submitted</Text>
                 <Text style={styles.val}>{formatDate(String(weeklyReport?.submitted_at || weeklyReport?.created_at))}</Text>
@@ -543,7 +562,9 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalCard: {
-    maxHeight: '88%',
+    width: '100%',
+    flexGrow: 1,
+    flexShrink: 1,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     borderWidth: 1,
@@ -564,7 +585,8 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', marginTop: 4 },
   modalTitleAccent: { color: '#F54E25', fontWeight: '700' },
   modalDesc: { fontSize: 13, color: '#64748b', marginTop: 8, lineHeight: 20 },
-  modalBody: { padding: 14, backgroundColor: '#f9f9fb', maxHeight: 420 },
+  modalBody: { flexGrow: 1, flexShrink: 1, backgroundColor: '#f9f9fb' },
+  modalBodyContent: { padding: 14, paddingBottom: 28 },
   historyTitle: { fontSize: 11, fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: 8 },
   historyBtn: {
     borderWidth: 1,

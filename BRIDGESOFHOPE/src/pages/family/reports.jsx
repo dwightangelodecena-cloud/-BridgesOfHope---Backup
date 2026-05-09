@@ -278,6 +278,8 @@ export default function FamilyReportsPage() {
         .sidebar-footer .sidebar-nav-item + .sidebar-nav-item { margin-top: 14px; }
         .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .top-nav { height: 85px; background: #fff; display: flex; align-items: center; padding: 0 30px; border-bottom: 1px solid #F1F1F1; box-sizing: border-box; z-index: 300; }
+        .top-nav-left { display: flex; align-items: center; }
+        .view-title { color: #F54E25; font-weight: 800; font-size: 18px; letter-spacing: -0.01em; }
         .top-nav-actions { margin-left: auto; display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
         .notifications-dropdown { position: absolute; top: calc(100% + 10px); right: 0; width: min(360px, calc(100vw - 48px)); background: #fff; border: 1px solid #E9EDF7; border-radius: 14px; box-shadow: 0 12px 40px rgba(27, 37, 89, 0.12); padding: 16px; z-index: 400; }
         .notifications-trigger { width: 40px; height: 40px; min-width: 40px; min-height: 40px; padding: 0; box-sizing: border-box; flex-shrink: 0; border-radius: 50%; border: none; background: #F54E25; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; box-shadow: 0 2px 10px rgba(245, 78, 37, 0.4); }
@@ -380,6 +382,9 @@ export default function FamilyReportsPage() {
 
       <main className="main-view">
         <header className="top-nav">
+          <div className="top-nav-left">
+            <span className="view-title">Weekly Reports</span>
+          </div>
           <div className="top-nav-actions">
             <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
               <button

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, LogOut, FileText, ChevronDown, LayoutGrid } from 'lucide-react';
+import { User, LogOut, FileText, ChevronDown, LayoutGrid, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -14,6 +14,28 @@ const INITIAL_BASICS = {
   primaryConcern: '',
 };
 
+const INITIAL_VITALS = {
+  weight: '',
+  height: '',
+  bmi: '',
+  bp: '',
+  pr: '',
+  rr: '',
+  spo2: '',
+  temperature: '',
+};
+
+const INITIAL_REPORT_DETAILS = {
+  currentMedications: '',
+  interventionMedication: '',
+  dietaryRestrictions: '',
+  foodAllergies: '',
+  interventionNutrition: '',
+  ongoingMedicalConcern: '',
+  upcomingProcedureDescription: '',
+  upcomingProcedureDate: '',
+};
+
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
 
 const patientInitials = (name) => {
@@ -26,6 +48,53 @@ const patientInitials = (name) => {
     .join('');
 };
 
+const asText = (v) => (v == null ? '' : String(v));
+
+const deriveVitalsFromPatient = (patient) => {
+  const weight = asText(patient.current_weight ?? patient.weight_kg ?? patient.weight);
+  const height = asText(patient.height_cm ?? patient.height);
+  const bmiFromDb = asText(patient.bmi);
+  const bp = asText(patient.bp ?? patient.blood_pressure);
+  const pr = asText(patient.pr ?? patient.pulse_rate);
+  const rr = asText(patient.rr ?? patient.respiratory_rate);
+  const spo2 = asText(patient.spo2 ?? patient.oxygen_saturation);
+  const temperature = asText(patient.temperature_f ?? patient.temperature ?? patient.temp_f);
+
+  let computedBmi = bmiFromDb;
+  const w = Number(weight);
+  const hCm = Number(height);
+  if (!computedBmi && Number.isFinite(w) && Number.isFinite(hCm) && hCm > 0) {
+    const m = hCm / 100;
+    const bmiNum = w / (m * m);
+    if (Number.isFinite(bmiNum)) computedBmi = bmiNum.toFixed(1);
+  }
+
+  return { weight, height, bmi: computedBmi, bp, pr, rr, spo2, temperature };
+};
+
+const computeBmiFromWeightHeight = (weightRaw, heightRaw) => {
+  const w = Number(weightRaw);
+  const hCm = Number(heightRaw);
+  if (!Number.isFinite(w) || !Number.isFinite(hCm) || hCm <= 0) return '';
+  const hM = hCm / 100;
+  const bmi = w / (hM * hM);
+  return Number.isFinite(bmi) ? bmi.toFixed(1) : '';
+};
+
+const deriveAge = (row) => {
+  const directAge = Number(row?.age);
+  if (Number.isFinite(directAge) && directAge > 0) return String(Math.floor(directAge));
+  const dob = row?.date_of_birth;
+  if (!dob) return '';
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
+  return age >= 0 ? String(age) : '';
+};
+
 const WeeklyReport = () => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -35,9 +104,47 @@ const WeeklyReport = () => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [expandedPatientId, setExpandedPatientId] = useState(null);
   const [activeReportPatientId, setActiveReportPatientId] = useState(null);
+  const [vitals, setVitals] = useState(INITIAL_VITALS);
+  const [reportDetails, setReportDetails] = useState(INITIAL_REPORT_DETAILS);
+  const [submitError, setSubmitError] = useState('');
+  const [nurseIdentityNames, setNurseIdentityNames] = useState([]);
+  const [nurseSignatureName, setNurseSignatureName] = useState('');
+  const [nurseSignatureDate, setNurseSignatureDate] = useState(() => new Date().toLocaleDateString('en-US'));
   const pickerRef = useRef(null);
-  const nurseNameInputRef = useRef(null);
-  const nurseReportDateInputRef = useRef(null);
+
+  useEffect(() => {
+    const loadIdentity = async () => {
+      if (!isSupabaseConfigured()) {
+        setNurseIdentityNames([]);
+        return;
+      }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setNurseIdentityNames([]);
+        return;
+      }
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .maybeSingle();
+      const emailLocal = String(user.email || '').split('@')[0].replace(/[._-]+/g, ' ').trim();
+      const names = Array.from(
+        new Set(
+          [profile?.full_name, user.user_metadata?.full_name, user.user_metadata?.name, emailLocal]
+            .map((x) => String(x || '').trim().toLowerCase())
+            .filter(Boolean)
+        )
+      );
+      setNurseIdentityNames(names);
+      const displayName =
+        String(profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || emailLocal || '').trim();
+      if (displayName) setNurseSignatureName(displayName);
+    };
+    void loadIdentity();
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -52,7 +159,7 @@ const WeeklyReport = () => {
       }
       const { data, error } = await supabase
         .from('patients')
-        .select('id, full_name, admitted_at, primary_concern, discharged_at')
+        .select('*')
         .is('discharged_at', null)
         .order('admitted_at', { ascending: false });
       if (error) {
@@ -60,8 +167,12 @@ const WeeklyReport = () => {
         setAdmittedPatients([]);
         return;
       }
+      const scopedRows = (data || []).filter((r) => {
+        if (nurseIdentityNames.length === 0) return false;
+        return nurseIdentityNames.includes(String(r.program_staff || '').trim().toLowerCase());
+      });
       setAdmittedPatients(
-        (data || []).map((r) => ({
+        scopedRows.map((r) => ({
           id: r.id,
           name: r.full_name,
           date: r.admitted_at
@@ -72,6 +183,9 @@ const WeeklyReport = () => {
               })
             : '',
           reason: r.primary_concern || '',
+          age: deriveAge(r),
+          dateOfBirth: r.date_of_birth || null,
+          raw: r,
         }))
       );
     };
@@ -82,7 +196,7 @@ const WeeklyReport = () => {
       window.removeEventListener('storage', load);
       window.removeEventListener(APP_DATA_REFRESH, load);
     };
-  }, []);
+  }, [nurseIdentityNames]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -101,16 +215,70 @@ const WeeklyReport = () => {
   };
 
   const applyPatientAndWeek = (patient, weekNum) => {
+    setSubmitError('');
     setActiveReportPatientId(patient.id);
     setReportBasics((prev) => ({
       ...prev,
       weekLabel: `Week ${weekNum}`,
       admissionDate: patient.date || '',
       patientName: patient.name || '',
+      age: patient.age || prev.age || '',
       primaryConcern: patient.reason || patient.primaryConcern || '',
+    }));
+    setVitals(deriveVitalsFromPatient(patient.raw || {}));
+    setNurseSignatureDate(new Date().toLocaleDateString('en-US'));
+    setReportDetails((prev) => ({
+      ...prev,
+      upcomingProcedureDate: prev.upcomingProcedureDate || new Date().toLocaleDateString('en-US'),
     }));
     setPickerOpen(false);
     setExpandedPatientId(null);
+  };
+
+  const handleVitalsFieldChange = (field, value) => {
+    setVitals((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'weight' || field === 'height') {
+        next.bmi = computeBmiFromWeightHeight(next.weight, next.height);
+      }
+      return next;
+    });
+  };
+
+  const mirrorWeeklyReportToLocal = (patientId, weekNum, entry) => {
+    try {
+      const raw = localStorage.getItem(WEEKLY_REPORTS_STORAGE_KEY);
+      const all = raw ? JSON.parse(raw) : {};
+      const key = String(patientId);
+      all[key] = { ...(all[key] || {}), [String(weekNum)]: entry };
+      localStorage.setItem(WEEKLY_REPORTS_STORAGE_KEY, JSON.stringify(all));
+    } catch {
+      /* ignore */
+    }
+  };
+  const mirrorPatientVitalsToLocal = (patientId, nextVitals) => {
+    try {
+      const raw = localStorage.getItem('bh_patients');
+      const all = raw ? JSON.parse(raw) : [];
+      const updated = (Array.isArray(all) ? all : []).map((p) => {
+        if (String(p?.id) !== String(patientId)) return p;
+        return {
+          ...p,
+          current_weight: nextVitals.weight || null,
+          weight_kg: nextVitals.weight || null,
+          height_cm: nextVitals.height || null,
+          bmi: nextVitals.bmi || null,
+          bp: nextVitals.bp || null,
+          pr: nextVitals.pr || null,
+          rr: nextVitals.rr || null,
+          spo2: nextVitals.spo2 || null,
+          temperature_f: nextVitals.temperature || null,
+        };
+      });
+      localStorage.setItem('bh_patients', JSON.stringify(updated));
+    } catch {
+      /* ignore */
+    }
   };
 
   const persistWeeklyReport = useCallback(async () => {
@@ -137,29 +305,66 @@ const WeeklyReport = () => {
 
     if (patientId == null || !weekNum) {
       setShowConfirm(false);
-      navigate('/home');
+      setSubmitError('Select resident and week first before submitting.');
       return;
     }
 
-    const nurseName = nurseNameInputRef.current?.value?.trim() || '';
-    const reportDateField = nurseReportDateInputRef.current?.value?.trim() || '';
+    const nurseName = nurseSignatureName.trim();
+    const reportDateField = nurseSignatureDate.trim();
     const pname = (reportBasics.patientName || 'Resident').trim();
     const submittedAt = new Date().toISOString();
+    const progressFromPatient = (() => {
+      const p = admittedPatients.find((x) => String(x.id) === String(patientId));
+      const raw = Number(p?.raw?.progress_percent ?? p?.raw?.progress);
+      return Number.isFinite(raw) ? raw : null;
+    })();
+    const summaryText = [
+      reportDetails.currentMedications && `Current medications: ${reportDetails.currentMedications}`,
+      reportDetails.interventionMedication && `Medication intervention: ${reportDetails.interventionMedication}`,
+      reportDetails.ongoingMedicalConcern && `Ongoing medical concern: ${reportDetails.ongoingMedicalConcern}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const recommendationText = [
+      reportDetails.interventionNutrition && `Nutrition intervention: ${reportDetails.interventionNutrition}`,
+      reportDetails.upcomingProcedureDescription && `Upcoming procedure: ${reportDetails.upcomingProcedureDescription}`,
+      reportDetails.upcomingProcedureDate && `Scheduled date: ${reportDetails.upcomingProcedureDate}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const noteText = [
+      reportDetails.dietaryRestrictions && `Dietary restrictions: ${reportDetails.dietaryRestrictions}`,
+      reportDetails.foodAllergies && `Food allergies: ${reportDetails.foodAllergies}`,
+      reportDetails.ongoingMedicalConcern && `Clinical notes: ${reportDetails.ongoingMedicalConcern}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const localEntry = {
+      submittedAt,
+      patientName: reportBasics.patientName,
+      nurseName,
+      reportDate: reportDateField,
+      summary: summaryText,
+      nurseNote: noteText,
+      behaviorObservation: reportDetails.ongoingMedicalConcern,
+      recommendations: recommendationText,
+      progressPercent: progressFromPatient,
+      vitalsWeight: vitals.weight,
+      vitalsHeight: vitals.height,
+      vitalsBmi: vitals.bmi,
+      vitalsBp: vitals.bp,
+      vitalsPr: vitals.pr,
+      vitalsRr: vitals.rr,
+      vitalsSpo2: vitals.spo2,
+      vitalsTemperature: vitals.temperature,
+    };
 
     if (!isSupabaseConfigured()) {
       try {
-        const raw = localStorage.getItem(WEEKLY_REPORTS_STORAGE_KEY);
-        const all = raw ? JSON.parse(raw) : {};
-        const key = String(patientId);
-        const entry = {
-          submittedAt,
-          patientName: reportBasics.patientName,
-          nurseName,
-          reportDate: reportDateField,
-        };
-        all[key] = { ...(all[key] || {}), [weekNum]: entry };
-        localStorage.setItem(WEEKLY_REPORTS_STORAGE_KEY, JSON.stringify(all));
+        mirrorWeeklyReportToLocal(patientId, weekNum, localEntry);
+        mirrorPatientVitalsToLocal(patientId, vitals);
         window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new Event(APP_DATA_REFRESH));
         await appendActivityFeed(
           `Weekly care report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`
         );
@@ -176,31 +381,89 @@ const WeeklyReport = () => {
     } = await supabase.auth.getUser();
     const { data: patientRow } = await supabase.from('patients').select('family_id').eq('id', patientId).maybeSingle();
 
-    const { error } = await supabase.from('weekly_reports').upsert(
-      {
-        patient_id: patientId,
-        week_number: parseInt(weekNum, 10),
-        nurse_name: nurseName || null,
-        report_date: reportDateField || null,
-        created_by: user?.id ?? null,
-        submitted_at: submittedAt,
-      },
-      { onConflict: 'patient_id,week_number' }
-    );
+    const basePayload = {
+      patient_id: patientId,
+      week_number: parseInt(weekNum, 10),
+      nurse_name: nurseName || null,
+      report_date: reportDateField || null,
+      created_by: user?.id ?? null,
+      submitted_at: submittedAt,
+    };
+    const enrichedPayload = {
+      ...basePayload,
+      summary: summaryText || null,
+      nurse_note: noteText || null,
+      behavior_observation: reportDetails.ongoingMedicalConcern || null,
+      recommendations: recommendationText || null,
+      notes: noteText || null,
+      progress_percent: progressFromPatient,
+      current_medications: reportDetails.currentMedications || null,
+      medication_intervention: reportDetails.interventionMedication || null,
+      dietary_restrictions: reportDetails.dietaryRestrictions || null,
+      food_allergies: reportDetails.foodAllergies || null,
+      nutrition_intervention: reportDetails.interventionNutrition || null,
+      ongoing_medical_concern: reportDetails.ongoingMedicalConcern || null,
+      upcoming_procedure_description: reportDetails.upcomingProcedureDescription || null,
+      upcoming_procedure_date: reportDetails.upcomingProcedureDate || null,
+      vitals_weight: vitals.weight || null,
+      vitals_height: vitals.height || null,
+      vitals_bmi: vitals.bmi || null,
+      vitals_bp: vitals.bp || null,
+      vitals_pr: vitals.pr || null,
+      vitals_rr: vitals.rr || null,
+      vitals_spo2: vitals.spo2 || null,
+      vitals_temperature: vitals.temperature || null,
+    };
+    let { error } = await supabase.from('weekly_reports').upsert(enrichedPayload, { onConflict: 'patient_id,week_number' });
+    if (error && /column .* does not exist/i.test(String(error.message || ''))) {
+      ({ error } = await supabase.from('weekly_reports').upsert(basePayload, { onConflict: 'patient_id,week_number' }));
+    }
 
     if (error) {
       console.warn('[weekly_reports upsert]', error.message);
+      setSubmitError(`Failed to save weekly report: ${error.message}`);
+      setShowConfirm(false);
+      return;
     } else {
+      // Always mirror weekly report vitals locally so admin view can render latest values
+      // even if some database columns are not yet available.
+      mirrorWeeklyReportToLocal(patientId, weekNum, localEntry);
+
+      const patientVitalsPayload = {
+        current_weight: vitals.weight || null,
+        weight_kg: vitals.weight || null,
+        height_cm: vitals.height || null,
+        bmi: vitals.bmi || null,
+        bp: vitals.bp || null,
+        pr: vitals.pr || null,
+        rr: vitals.rr || null,
+        spo2: vitals.spo2 || null,
+        temperature_f: vitals.temperature || null,
+        medical_staff_note: nurseName || null,
+      };
+      // Keep patient master vitals in sync with the latest nurse weekly filing.
+      const { error: patientVitalsError } = await supabase
+        .from('patients')
+        .update(patientVitalsPayload)
+        .eq('id', patientId);
+      if (patientVitalsError) {
+        console.warn('[patients vitals update]', patientVitalsError.message);
+        // Non-blocking: weekly report was saved already; keep flow moving.
+        setSubmitError(`Weekly report saved, but patient vitals update failed: ${patientVitalsError.message}`);
+      }
+      mirrorPatientVitalsToLocal(patientId, vitals);
       window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event(APP_DATA_REFRESH));
       await appendActivityFeed(
         `Weekly care report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`,
         { familyId: patientRow?.family_id ?? null }
       );
     }
 
+    setSubmitError('');
     setShowConfirm(false);
     navigate('/home');
-  }, [activeReportPatientId, admittedPatients, reportBasics.patientName, reportBasics.weekLabel, navigate]);
+  }, [activeReportPatientId, admittedPatients, reportBasics.patientName, reportBasics.weekLabel, navigate, reportDetails, vitals]);
 
   return (
     <div className="wr-container">
@@ -211,11 +474,12 @@ const WeeklyReport = () => {
 
         .wr-container {
           display: flex;
-          width: 99vw;
+          width: 100%;
           min-height: 100vh;
           background: #F8F9FD;
           font-family: 'Inter', -apple-system, sans-serif;
           color: #1B2559;
+          overflow-x: hidden;
         }
 
         /* ---- SIDEBAR (exact home.jsx) ---- */
@@ -225,8 +489,8 @@ const WeeklyReport = () => {
           border-right: 1px solid #F1F1F1;
           display: flex;
           flex-direction: column;
-          align-items: center;
-          padding: 25px 0;
+          align-items: stretch;
+          padding: 25px 0 0;
           z-index: 100;
           transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           cursor: pointer;
@@ -234,13 +498,33 @@ const WeeklyReport = () => {
           top: 0;
           left: 0;
           height: 100vh;
+          overflow: hidden;
+          box-sizing: border-box;
         }
 
         .sidebar-logo-container {
           display: flex;
           justify-content: center;
           width: 100%;
-          margin-bottom: 40px;
+          margin-bottom: 28px;
+          align-self: center;
+        }
+
+        .wr-sidebar-nav {
+          width: 100%;
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        .wr-sidebar-footer {
+          flex-shrink: 0;
+          width: 100%;
+          padding: 16px 0 20px;
+          margin-top: auto;
+          border-top: 1px solid #f1f5f9;
         }
 
         .sidebar-logo {
@@ -252,19 +536,22 @@ const WeeklyReport = () => {
           display: flex;
           align-items: center;
           width: 100%;
-          padding: 0 ${isExpanded ? '35px' : '0'};
+          padding: 0 ${isExpanded ? '28px' : '0'};
           justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 20px;
-          margin-bottom: 25px;
+          gap: 14px;
+          margin-bottom: 6px;
+          min-height: 48px;
           box-sizing: border-box;
         }
 
         .sidebar-label {
           display: ${isExpanded ? 'block' : 'none'};
-          font-weight: 700;
-          font-size: 18px;
-          color: #707EAE;
-          white-space: nowrap;
+          font-weight: 600;
+          font-size: 15px;
+          color: #A3AED0;
+          line-height: 1.25;
+          white-space: normal;
+          max-width: 210px;
         }
 
         /* ---- MAIN ---- */
@@ -272,50 +559,95 @@ const WeeklyReport = () => {
           flex: 1;
           margin-left: ${isExpanded ? '280px' : '110px'};
           transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          padding: 40px;
+          padding: 28px 34px 36px;
           overflow-y: auto;
           min-height: 100vh;
+          background: linear-gradient(180deg, #F8FAFF 0%, #EEF3FF 100%);
         }
 
         /* ---- HEADER ---- */
         .wr-header {
           display: flex;
           justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 40px;
+          align-items: center;
+          margin-bottom: 24px;
           position: relative;
+          background: linear-gradient(135deg,#1E293B 0%,#1D2D50 60%,#312e81 100%);
+          border-radius: 20px;
+          padding: 22px 24px;
+          box-shadow: 0 12px 34px rgba(15,23,42,0.16);
+          overflow: visible;
+        }
+
+        .wr-header::before {
+          content: '';
+          position: absolute;
+          top: -30px;
+          right: -20px;
+          width: 130px;
+          height: 130px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.06);
+          pointer-events: none;
+        }
+
+        .wr-header::after {
+          content: '';
+          position: absolute;
+          bottom: -24px;
+          right: 80px;
+          width: 84px;
+          height: 84px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.05);
+          pointer-events: none;
         }
 
         .wr-header h1 {
           font-size: 24px;
-          font-weight: 800;
-          color: #1B2559;
+          font-weight: 900;
+          color: #FFFFFF;
           margin-bottom: 4px;
+          letter-spacing: -0.02em;
+          position: relative;
+          z-index: 1;
         }
 
         .wr-header p {
           font-size: 13px;
           font-weight: 600;
-          color: #A3AED0;
+          color: rgba(255,255,255,0.68);
+          position: relative;
+          z-index: 1;
         }
 
         .wr-header-btn {
           display: flex;
           align-items: center;
           gap: 8px;
-          background: white;
-          border: 1px solid #E9EDF7;
+          background: rgba(255,255,255,0.1);
+          border: 1px solid rgba(255,255,255,0.2);
           border-radius: 12px;
           padding: 10px 16px;
           font-size: 13px;
           font-weight: 700;
-          color: #1B2559;
+          color: #FFFFFF;
           cursor: pointer;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+          box-shadow: 0 6px 16px rgba(15,23,42,0.18);
+          backdrop-filter: blur(6px);
           font-family: 'Inter', sans-serif;
+          position: relative;
+          z-index: 1;
+          transition: background 0.2s, border-color 0.2s, transform 0.2s;
         }
 
-        .wr-picker-wrap { position: relative; align-self: flex-start; }
+        .wr-header-btn:hover {
+          background: rgba(255,255,255,0.16);
+          border-color: rgba(255,255,255,0.34);
+          transform: translateY(-1px);
+        }
+
+        .wr-picker-wrap { position: relative; align-self: flex-start; z-index: 650; }
 
         .wr-patient-picker {
           position: absolute;
@@ -328,7 +660,7 @@ const WeeklyReport = () => {
           border: 1px solid #E9EDF7;
           border-radius: 16px;
           box-shadow: 0 20px 50px rgba(15, 23, 42, 0.14);
-          z-index: 500;
+          z-index: 900;
           padding: 8px;
           color-scheme: light;
         }
@@ -473,30 +805,32 @@ const WeeklyReport = () => {
 
         /* ---- FORM PAPER ---- */
         .wr-paper {
-          max-width: 900px;
+          width: 100%;
+          max-width: 1320px;
           margin: 0 auto;
-          background: white;
-          border-radius: 30px;
+          background: linear-gradient(180deg, #FFFFFF 0%, #FCFDFF 100%);
+          border-radius: 24px;
           border: 1px solid #E9EDF7;
-          padding: 48px;
-          box-shadow: 0 2px 12px rgba(0,0,0,0.03);
+          padding: 28px;
+          box-shadow: 0 18px 40px rgba(15,23,42,0.08);
         }
 
         .wr-paper-title {
           font-size: 20px;
           font-weight: 900;
           color: #1B2559;
-          margin-bottom: 40px;
-          padding-bottom: 16px;
+          margin-bottom: 24px;
+          padding-bottom: 14px;
           border-bottom: 1px solid #F4F7FE;
+          letter-spacing: -0.01em;
         }
 
         /* ---- FORM ELEMENTS ---- */
         .form-grid-2 {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 48px;
-          margin-bottom: 40px;
+          gap: 20px;
+          margin-bottom: 22px;
         }
 
         .form-field { display: flex; flex-direction: column; }
@@ -511,22 +845,35 @@ const WeeklyReport = () => {
         }
 
         .form-underline-input {
-          background: transparent;
-          border: none;
-          border-bottom: 2px solid #1B2559;
+          background: #FCFDFF;
+          border: 1px solid #E5ECFF;
+          border-radius: 10px;
           outline: none;
-          padding: 6px 0;
+          padding: 10px 12px;
           font-size: 14px;
           font-weight: 600;
           color: #1B2559;
           font-family: 'Inter', sans-serif;
           width: 100%;
+          transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
         }
 
         .form-underline-input::placeholder { color: #A3AED0; font-weight: 400; }
+        .form-underline-input:focus {
+          border-color: #8EA2FF;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+          background: #FFFFFF;
+        }
 
         /* ---- SECTION ---- */
-        .form-section { margin-bottom: 40px; }
+        .form-section {
+          margin-bottom: 18px;
+          padding: 18px 18px 16px;
+          border: 1px solid #E9EDF7;
+          border-radius: 16px;
+          background: linear-gradient(180deg, #FFFFFF 0%, #FBFCFF 100%);
+          box-shadow: 0 6px 18px rgba(15,23,42,0.03);
+        }
 
         .section-title {
           font-size: 13px;
@@ -534,7 +881,7 @@ const WeeklyReport = () => {
           text-transform: uppercase;
           letter-spacing: 0.02em;
           color: #1B2559;
-          margin-bottom: 20px;
+          margin-bottom: 14px;
           display: flex;
           align-items: center;
           gap: 10px;
@@ -545,41 +892,45 @@ const WeeklyReport = () => {
           display: inline-block;
           width: 3px;
           height: 14px;
-          background: #1B2559;
+          background: linear-gradient(180deg, #4F46E5 0%, #312E81 100%);
           border-radius: 2px;
         }
 
         /* ---- TEXTAREA ---- */
         .form-textarea {
           width: 100%;
-          border: 1px solid #E9EDF7;
+          border: 1px solid #E5ECFF;
           border-radius: 12px;
           padding: 15px;
-          height: 120px;
-          background: white;
+          height: 124px;
+          background: #FCFDFF;
           outline: none;
           font-size: 13px;
           font-family: 'Inter', sans-serif;
           color: #1B2559;
           resize: none;
-          transition: border-color 0.2s;
+          transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
         }
 
-        .form-textarea:focus { border-color: #F54E25; }
+        .form-textarea:focus {
+          border-color: #8EA2FF;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+          background: #FFFFFF;
+        }
         .form-textarea::placeholder { color: #A3AED0; }
 
         /* ---- SECTION FIELDS ---- */
-        .section-fields { display: flex; flex-direction: column; gap: 32px; }
+        .section-fields { display: flex; flex-direction: column; gap: 20px; }
 
         /* ---- SUBMIT ---- */
         .submit-row {
           display: flex;
           justify-content: flex-end;
-          padding-top: 40px;
+          padding-top: 18px;
         }
 
         .btn-submit {
-          background: #F54E25;
+          background: linear-gradient(135deg,#F54E25,#D946EF);
           color: white;
           border: none;
           padding: 14px 48px;
@@ -587,12 +938,12 @@ const WeeklyReport = () => {
           font-size: 14px;
           font-weight: 800;
           cursor: pointer;
-          box-shadow: 0 10px 20px rgba(245,78,37,0.2);
+          box-shadow: 0 10px 24px rgba(217, 70, 239, 0.26);
           transition: all 0.2s ease;
           font-family: 'Inter', sans-serif;
         }
 
-        .btn-submit:hover { background: #d43d1a; transform: translateY(-1px); }
+        .btn-submit:hover { filter: brightness(1.02); transform: translateY(-1px); }
         .btn-submit:active { transform: scale(0.98); }
 
         /* ---- CONFIRM DIALOG ---- */
@@ -636,7 +987,7 @@ const WeeklyReport = () => {
         .confirm-btn-cancel:hover { background: #F4F7FE; }
 
         .confirm-btn-ok {
-          background: #F54E25;
+          background: linear-gradient(135deg,#F54E25,#D946EF);
           border: none;
           border-radius: 10px;
           padding: 10px 20px;
@@ -648,7 +999,7 @@ const WeeklyReport = () => {
           transition: background 0.15s;
         }
 
-        .confirm-btn-ok:hover { background: #d43d1a; }
+        .confirm-btn-ok:hover { filter: brightness(1.02); }
 
         .wr-header-btn { margin-right: 40px; }
 
@@ -698,8 +1049,11 @@ const WeeklyReport = () => {
           /* Header */
           .wr-header {
             flex-direction: column;
+            align-items: flex-start;
             gap: 6px;
             margin-bottom: 24px;
+            padding: 16px 16px;
+            border-radius: 16px;
           }
 
           .wr-header h1 { font-size: 20px; }
@@ -792,27 +1146,30 @@ const WeeklyReport = () => {
         }
       `}</style>
 
-      {/* DESKTOP SIDEBAR — matches image: logo, FileText active, LayoutGrid, LogOut */}
+      {/* DESKTOP SIDEBAR */}
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container">
           <img src={logo} alt="Kalinga" className="sidebar-logo" />
         </div>
 
+        <div className="wr-sidebar-nav">
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}>
+          <LayoutGrid size={22} color="#707EAE" />
+          <span className="sidebar-label">Dashboard</span>
+        </div>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}>
+          <Users size={22} color="#707EAE" />
+          <span className="sidebar-label">Residents</span>
+        </div>
         <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
           <div style={{ background: '#F54E25', color: 'white', padding: 12, borderRadius: 12, display: 'flex' }}>
             <FileText size={22} />
           </div>
-          <span className="sidebar-label" style={{ color: '#F54E25' }}>Report</span>
+          <span className="sidebar-label" style={{ color: '#F54E25' }}>Weekly Report</span>
+        </div>
         </div>
 
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}>
-          <div style={{ background: '#F4F7FE', padding: 12, borderRadius: 12, display: 'flex' }}>
-            <LayoutGrid size={22} color="#707EAE" />
-          </div>
-          <span className="sidebar-label">Dashboard</span>
-        </div>
-
-        <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '20px' }}>
+        <div className="wr-sidebar-footer">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
             <User size={22} color="#707EAE" />
             <span className="sidebar-label">Profile</span>
@@ -827,7 +1184,7 @@ const WeeklyReport = () => {
       {/* MOBILE TOP BAR */}
       <div className="mobile-only mobile-top-bar">
         <img src={logo} alt="Kalinga" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
-        <span className="mobile-top-bar-title">Weekly Report</span>
+          <span className="mobile-top-bar-title">Weekly Report</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>JD</div>
       </div>
 
@@ -849,8 +1206,8 @@ const WeeklyReport = () => {
                 setPickerOpen((v) => !v);
               }}
             >
-              <FileText size={18} color="#F54E25" />
-              Weekly Report
+              <FileText size={18} color="#FFFFFF" />
+              Select resident and week
               <ChevronDown size={16} style={{ transform: pickerOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.2s' }} />
             </button>
             <button
@@ -991,44 +1348,90 @@ const WeeklyReport = () => {
               <textarea
                 className="form-textarea"
                 placeholder="List all current medications with dosages and frequency..."
+                value={reportDetails.currentMedications}
+                onChange={(e) => setReportDetails((prev) => ({ ...prev, currentMedications: e.target.value }))}
               />
             </div>
 
             {/* BMI / Weight / Vital Signs */}
-            <div className="form-section">
-              <div className="section-title">BMI / Weight / Vital Signs</div>
+            <div className="form-section" style={{ background: 'linear-gradient(180deg, #F8FAFF 0%, #F4F7FF 100%)' }}>
+              <div className="section-title" style={{ marginBottom: 8 }}>BMI / Weight / Vital Signs</div>
+              <p style={{ marginBottom: 16, color: '#64748B', fontSize: 12, lineHeight: 1.4 }}>
+                Auto-filled from the selected resident profile and latest encoded values.
+              </p>
               <div className="form-grid-2" style={{ rowGap: '32px' }}>
                 <div className="form-field">
                   <label className="form-label">Weight (kg):</label>
-                  <input type="text" className="form-underline-input" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    value={vitals.weight}
+                    onChange={(e) => handleVitalsFieldChange('weight', e.target.value)}
+                  />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Height (cm):</label>
-                  <input type="text" className="form-underline-input" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    value={vitals.height}
+                    onChange={(e) => handleVitalsFieldChange('height', e.target.value)}
+                  />
                 </div>
                 <div className="form-field">
                   <label className="form-label">BMI:</label>
-                  <input type="text" className="form-underline-input" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    value={vitals.bmi}
+                    onChange={(e) => setVitals((prev) => ({ ...prev, bmi: e.target.value }))}
+                  />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Blood Pressure:</label>
-                  <input type="text" className="form-underline-input" placeholder="120/80" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    value={vitals.bp}
+                    onChange={(e) => setVitals((prev) => ({ ...prev, bp: e.target.value }))}
+                    placeholder="120/80"
+                  />
                 </div>
                 <div className="form-field">
                   <label className="form-label">PR:</label>
-                  <input type="text" className="form-underline-input" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    value={vitals.pr}
+                    onChange={(e) => setVitals((prev) => ({ ...prev, pr: e.target.value }))}
+                  />
                 </div>
                 <div className="form-field">
                   <label className="form-label">RR:</label>
-                  <input type="text" className="form-underline-input" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    value={vitals.rr}
+                    onChange={(e) => setVitals((prev) => ({ ...prev, rr: e.target.value }))}
+                  />
                 </div>
                 <div className="form-field">
                   <label className="form-label">SPO2:</label>
-                  <input type="text" className="form-underline-input" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    value={vitals.spo2}
+                    onChange={(e) => setVitals((prev) => ({ ...prev, spo2: e.target.value }))}
+                  />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Temperature (°F):</label>
-                  <input type="text" className="form-underline-input" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    value={vitals.temperature}
+                    onChange={(e) => setVitals((prev) => ({ ...prev, temperature: e.target.value }))}
+                  />
                 </div>
               </div>
             </div>
@@ -1039,6 +1442,8 @@ const WeeklyReport = () => {
               <textarea
                 className="form-textarea"
                 placeholder="Describe any medication changes, adjustments, or interventions made this week..."
+                value={reportDetails.interventionMedication}
+                onChange={(e) => setReportDetails((prev) => ({ ...prev, interventionMedication: e.target.value }))}
               />
             </div>
 
@@ -1051,11 +1456,19 @@ const WeeklyReport = () => {
                   <textarea
                     className="form-textarea"
                     placeholder="List any dietary restrictions, special diets, or nutritional requirements..."
+                    value={reportDetails.dietaryRestrictions}
+                    onChange={(e) => setReportDetails((prev) => ({ ...prev, dietaryRestrictions: e.target.value }))}
                   />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Food Allergies:</label>
-                  <input type="text" className="form-underline-input" placeholder="List any known food allergies" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    placeholder="List any known food allergies"
+                    value={reportDetails.foodAllergies}
+                    onChange={(e) => setReportDetails((prev) => ({ ...prev, foodAllergies: e.target.value }))}
+                  />
                 </div>
               </div>
             </div>
@@ -1066,6 +1479,8 @@ const WeeklyReport = () => {
               <textarea
                 className="form-textarea"
                 placeholder="Document any nutritional interventions, meal plan adjustments, or consultations with dietitian..."
+                value={reportDetails.interventionNutrition}
+                onChange={(e) => setReportDetails((prev) => ({ ...prev, interventionNutrition: e.target.value }))}
               />
             </div>
 
@@ -1075,6 +1490,8 @@ const WeeklyReport = () => {
               <textarea
                 className="form-textarea"
                 placeholder="Detail any ongoing medical issues, chronic conditions, or health concerns requiring continuous monitoring..."
+                value={reportDetails.ongoingMedicalConcern}
+                onChange={(e) => setReportDetails((prev) => ({ ...prev, ongoingMedicalConcern: e.target.value }))}
               />
             </div>
 
@@ -1087,11 +1504,18 @@ const WeeklyReport = () => {
                   <textarea
                     className="form-textarea"
                     placeholder="Describe any scheduled medical procedures, tests, or appointments..."
+                    value={reportDetails.upcomingProcedureDescription}
+                    onChange={(e) => setReportDetails((prev) => ({ ...prev, upcomingProcedureDescription: e.target.value }))}
                   />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Scheduled Date:</label>
-                  <input type="text" className="form-underline-input" />
+                  <input
+                    type="text"
+                    className="form-underline-input"
+                    value={reportDetails.upcomingProcedureDate}
+                    onChange={(e) => setReportDetails((prev) => ({ ...prev, upcomingProcedureDate: e.target.value }))}
+                  />
                 </div>
               </div>
             </div>
@@ -1100,16 +1524,43 @@ const WeeklyReport = () => {
             <div className="form-grid-2" style={{ marginBottom: 0 }}>
               <div className="form-field">
                 <label className="form-label">Nurse's Name:</label>
-                <input ref={nurseNameInputRef} type="text" className="form-underline-input" />
+                <input
+                  type="text"
+                  className="form-underline-input"
+                  value={nurseSignatureName}
+                  onChange={(e) => setNurseSignatureName(e.target.value)}
+                />
               </div>
               <div className="form-field">
                 <label className="form-label">Date:</label>
-                <input ref={nurseReportDateInputRef} type="text" className="form-underline-input" />
+                <input
+                  type="text"
+                  className="form-underline-input"
+                  value={nurseSignatureDate}
+                  onChange={(e) => setNurseSignatureDate(e.target.value)}
+                />
               </div>
             </div>
 
             {/* Submit */}
             <div className="submit-row">
+              {submitError ? (
+                <div
+                  style={{
+                    marginRight: 12,
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    border: '1px solid #FECACA',
+                    background: '#FEF2F2',
+                    color: '#991B1B',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    maxWidth: 420,
+                  }}
+                >
+                  {submitError}
+                </div>
+              ) : null}
               {showConfirm ? (
                 <div className="confirm-bar">
                   <span className="confirm-text">Ready to submit the Report?</span>
@@ -1125,19 +1576,25 @@ const WeeklyReport = () => {
         </div>
       </main>
 
-      {/* MOBILE BOTTOM NAV — mirrors desktop sidebar */}
+      {/* MOBILE BOTTOM NAV */}
       <div className="mobile-only mobile-bottom-nav">
-        <div className="mob-nav-item active">
-          <div style={{ background: '#F54E25', color: 'white', padding: 10, borderRadius: 10, display: 'flex' }}>
-            <FileText size={20} />
-          </div>
-          <span>Report</span>
-        </div>
-        <div className="mob-nav-item" onClick={() => navigate('/patient-database')}>
+        <div className="mob-nav-item" onClick={() => navigate('/nurse-dashboard')}>
           <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
             <LayoutGrid size={20} color="#707EAE" />
           </div>
           <span>Dashboard</span>
+        </div>
+        <div className="mob-nav-item" onClick={() => navigate('/patient-database')}>
+          <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
+            <Users size={20} color="#707EAE" />
+          </div>
+          <span>Residents</span>
+        </div>
+        <div className="mob-nav-item active">
+          <div style={{ background: '#F54E25', color: 'white', padding: 10, borderRadius: 10, display: 'flex' }}>
+            <FileText size={20} />
+          </div>
+          <span>Weekly</span>
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/nurseprofile')}>
           <User size={22} />

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { FileText, LayoutGrid, User, LogOut, Pencil, X, ChevronRight } from 'lucide-react';
+import { LayoutGrid, User, LogOut, Pencil, X, ChevronRight, Users, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import logo from '@/assets/kalingalogo.png';
@@ -29,7 +29,7 @@ const NurseProfile = () => {
       <style>{`
         .app-container {
           display: flex;
-          width: 100vw;
+          width: 100%;
           height: 100vh;
           background: #F8F9FD;
           font-family: 'Inter', -apple-system, sans-serif;
@@ -44,43 +44,68 @@ const NurseProfile = () => {
           border-right: 1px solid #F1F1F1;
           display: flex;
           flex-direction: column;
-          align-items: center;
-          padding: 25px 0;
+          align-items: stretch;
+          padding: 25px 0 0;
           z-index: 100;
           transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           cursor: pointer;
-          flex-shrink: 0;
+          position: fixed;
+          top: 0;
+          left: 0;
+          height: 100vh;
+          overflow: hidden;
+          box-sizing: border-box;
         }
 
         .sidebar-logo-container {
           display: flex;
           justify-content: center;
           width: 100%;
-          margin-bottom: 40px;
+          margin-bottom: 28px;
+          align-self: center;
         }
 
         .sidebar-logo {
           width: ${isExpanded ? '120px' : '70px'};
           transition: width 0.3s ease;
         }
+        .profile-sidebar-nav {
+          width: 100%;
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        .profile-sidebar-footer {
+          flex-shrink: 0;
+          width: 100%;
+          padding: 16px 0 20px;
+          margin-top: auto;
+          border-top: 1px solid #f1f5f9;
+        }
 
         .sidebar-nav-item {
           display: flex;
           align-items: center;
           width: 100%;
-          padding: 0 ${isExpanded ? '35px' : '0'};
+          padding: 0 ${isExpanded ? '28px' : '0'};
           justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 20px;
-          margin-bottom: 25px;
+          gap: 14px;
+          margin-bottom: 6px;
+          min-height: 48px;
           box-sizing: border-box;
         }
 
         .sidebar-label {
           display: ${isExpanded ? 'block' : 'none'};
-          font-weight: 700;
-          font-size: 18px;
-          color: #707EAE;
-          white-space: nowrap;
+          font-weight: 600;
+          font-size: 15px;
+          color: #A3AED0;
+          line-height: 1.25;
+          white-space: normal;
+          max-width: 210px;
         }
 
         /* MAIN */
@@ -89,6 +114,8 @@ const NurseProfile = () => {
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          margin-left: ${isExpanded ? '280px' : '110px'};
+          transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .top-nav {
@@ -395,6 +422,7 @@ const NurseProfile = () => {
           .desktop-sidebar, .top-nav, .desktop-only { display: none !important; }
           .mobile-only { display: flex !important; }
           .app-container { flex-direction: column; height: 100vh; overflow: hidden; }
+          .main-view { margin-left: 0 !important; transition: none !important; }
           .mobile-top-bar {
             position: sticky;
             top: 0;
@@ -451,21 +479,23 @@ const NurseProfile = () => {
           <img src={logo} alt="Kalinga" className="sidebar-logo" />
         </div>
 
+        <div className="profile-sidebar-nav">
         <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}>
-          <div style={{ background: '#F4F7FE', padding: 12, borderRadius: 12, display: 'flex' }}>
-            <FileText size={22} color="#707EAE" />
-          </div>
-          <span className="sidebar-label">Report</span>
-        </div>
-
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}>
-          <div style={{ background: '#F4F7FE', padding: 12, borderRadius: 12, display: 'flex' }}>
-            <LayoutGrid size={22} color="#707EAE" />
-          </div>
+          <LayoutGrid size={22} color="#707EAE" />
           <span className="sidebar-label">Dashboard</span>
         </div>
 
-        <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '20px' }}>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}>
+          <Users size={22} color="#707EAE" />
+          <span className="sidebar-label">Residents</span>
+        </div>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-weekly-report'); }}>
+          <FileText size={22} color="#707EAE" />
+          <span className="sidebar-label">Weekly Report</span>
+        </div>
+        </div>
+
+        <div className="profile-sidebar-footer">
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
             <User size={22} color="#F54E25" />
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Profile</span>
@@ -597,15 +627,21 @@ const NurseProfile = () => {
         <div className="mobile-only mobile-bottom-nav">
           <div className="mob-nav-item" onClick={() => navigate('/nurse-dashboard')}>
             <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
-              <FileText size={20} color="#707EAE" />
-            </div>
-            <span>Report</span>
-          </div>
-          <div className="mob-nav-item" onClick={() => navigate('/patient-database')}>
-            <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
               <LayoutGrid size={20} color="#707EAE" />
             </div>
             <span>Dashboard</span>
+          </div>
+          <div className="mob-nav-item" onClick={() => navigate('/patient-database')}>
+            <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
+              <Users size={20} color="#707EAE" />
+            </div>
+            <span>Residents</span>
+          </div>
+          <div className="mob-nav-item" onClick={() => navigate('/nurse-weekly-report')}>
+            <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
+              <FileText size={20} color="#707EAE" />
+            </div>
+            <span>Weekly</span>
           </div>
           <div className="mob-nav-item active" onClick={() => navigate('/nurseprofile')}>
             <User size={22} color="#F54E25" />

@@ -445,6 +445,16 @@ export default function FamilyAppointmentsPage() {
           box-sizing: border-box;
           z-index: 300;
         }
+        .top-nav-left {
+          display: flex;
+          align-items: center;
+        }
+        .view-title {
+          color: #F54E25;
+          font-weight: 800;
+          font-size: 18px;
+          letter-spacing: -0.01em;
+        }
         .top-nav-actions {
           margin-left: auto;
           display: flex;
@@ -784,6 +794,9 @@ export default function FamilyAppointmentsPage() {
       </aside>
       <main className="main-view">
         <header className="top-nav">
+          <div className="top-nav-left">
+            <span className="view-title">Appointment</span>
+          </div>
           <div className="top-nav-actions">
             <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
               <button

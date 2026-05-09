@@ -351,6 +351,14 @@ const toUiPatient = (row) => {
     medicalStaffNote: row.medical_staff_note || '',
     progressUpdatedBy: row.progress_updated_by || row.status_updated_by || '',
     progressUpdatedAt: row.progress_updated_at || row.status_updated_at || '',
+    currentWeight: row.current_weight ?? row.weight_kg ?? row.weight ?? '',
+    heightCm: row.height_cm ?? row.height ?? '',
+    bp: row.bp ?? row.blood_pressure ?? '',
+    pr: row.pr ?? row.pulse_rate ?? '',
+    rr: row.rr ?? row.respiratory_rate ?? '',
+    spo2: row.spo2 ?? row.oxygen_saturation ?? '',
+    temperatureF: row.temperature_f ?? row.temperature ?? row.temp_f ?? '',
+    bmi: row.bmi ?? '',
   };
 };
 
@@ -408,44 +416,120 @@ const sortPatients = (rows, sortKey, direction) => {
   return cp;
 };
 
-/** Right column in patient detail — reserved for nurse-entered records. */
-function NursingRecordsPlaceholder() {
+/** Right column in patient detail — nurse-entered weekly clinical records. */
+function NursingRecordsPanel({ latestRow, latestVitals, weeklyReportsByWeek }) {
+  const weekHistory = Object.values(weeklyReportsByWeek || {})
+    .filter(Boolean)
+    .sort((a, b) => {
+      const aw = Number(a.week_number) || 0;
+      const bw = Number(b.week_number) || 0;
+      return bw - aw;
+    })
+    .slice(0, 7);
+  if (!latestRow) {
+    return (
+      <div
+        style={{
+          border: '1px dashed #CBD5E1',
+          borderRadius: 16,
+          background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)',
+          padding: 28,
+          minHeight: 300,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          gap: 14,
+        }}
+      >
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 14,
+            background: 'white',
+            border: '1px solid #E9EDF7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(27, 37, 89, 0.06)',
+          }}
+        >
+          <ClipboardList size={26} color="#94a3b8" strokeWidth={1.75} aria-hidden />
+        </div>
+        <div>
+          <p style={{ fontWeight: 800, color: '#475569', fontSize: 15, margin: 0 }}>Nursing &amp; clinical records</p>
+          <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55, margin: '8px 0 0', maxWidth: 300 }}>
+            No nurse weekly record has been filed yet for this resident.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  const info = [
+    ['Latest filed week', `Week ${latestRow.week_number || '—'}`],
+    ['Nurse', latestRow.nurse_name || '—'],
+    ['Report date', latestRow.report_date || '—'],
+    ['Submitted at', latestRow.submitted_at ? formatDate(latestRow.submitted_at) : '—'],
+  ];
+  const notes = [
+    ['Current medications', latestRow.current_medications || '—'],
+    ['Medication intervention', latestRow.medication_intervention || '—'],
+    ['Nurse notes', latestRow.nurse_note || latestRow.notes || '—'],
+    ['Behavior / mood', latestRow.behavior_observation || '—'],
+    ['Recommendations', latestRow.recommendations || '—'],
+  ];
   return (
     <div
       style={{
-        border: '1px dashed #CBD5E1',
+        border: '1px solid #E5ECFA',
         borderRadius: 16,
-        background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)',
-        padding: 28,
+        background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFF 100%)',
+        padding: 18,
         minHeight: 300,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        textAlign: 'center',
-        gap: 14,
+        display: 'grid',
+        gap: 12,
       }}
     >
-      <div
-        style={{
-          width: 52,
-          height: 52,
-          borderRadius: 14,
-          background: 'white',
-          border: '1px solid #E9EDF7',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 2px 8px rgba(27, 37, 89, 0.06)',
-        }}
-      >
-        <ClipboardList size={26} color="#94a3b8" strokeWidth={1.75} aria-hidden />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#1B2559' }}>Nursing &amp; clinical records</p>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 999, padding: '4px 9px' }}>
+          {weekHistory.length} filing{weekHistory.length === 1 ? '' : 's'}
+        </span>
       </div>
-      <div>
-        <p style={{ fontWeight: 800, color: '#475569', fontSize: 15, margin: 0 }}>Nursing &amp; clinical records</p>
-        <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55, margin: '8px 0 0', maxWidth: 280 }}>
-          Shift notes, vitals history, medications, and assessments will be managed here once nursing workflows are connected.
-        </p>
+      <div style={{ display: 'grid', gap: 6 }}>
+        {info.map(([label, value]) => (
+          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, borderBottom: '1px solid #F1F5F9', paddingBottom: 6 }}>
+            <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 700 }}>{label}</span>
+            <span style={{ fontSize: 12, color: '#1B2559', fontWeight: 700, textAlign: 'right' }}>{value}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {[
+          ['Weight', latestVitals.weight],
+          ['Height', latestVitals.height],
+          ['BP', latestVitals.bp],
+          ['PR', latestVitals.pr],
+          ['RR', latestVitals.rr],
+          ['Temp', latestVitals.temperature],
+          ['BMI', latestVitals.bmi],
+          ['SPO2', latestVitals.spo2],
+        ].map(([label, value]) => (
+          <div key={label} style={{ border: '1px solid #E9EDF7', borderRadius: 10, padding: '8px 10px', background: '#fff' }}>
+            <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{label}</div>
+            <div style={{ fontSize: 12, color: '#1B2559', fontWeight: 800 }}>{String(value || '').trim() || '—'}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gap: 7 }}>
+        {notes.map(([label, value]) => (
+          <div key={label} style={{ border: '1px solid #E9EDF7', borderRadius: 10, padding: '8px 10px', background: '#fff' }}>
+            <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 12, color: '#334155', fontWeight: 600, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{value}</div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -491,11 +575,27 @@ const mapLegacyLocalPatients = () => {
       medicalStaffNote: p.medical_staff_note || p.medicalStaffNote || '',
       progressUpdatedBy: p.progress_updated_by || p.status_updated_by || p.progressUpdatedBy || '',
       progressUpdatedAt: p.progress_updated_at || p.status_updated_at || p.progressUpdatedAt || '',
+      currentWeight: p.current_weight ?? p.weight_kg ?? p.currentWeight ?? p.weight ?? '',
+      heightCm: p.height_cm ?? p.heightCm ?? p.height ?? '',
+      bp: p.bp ?? p.blood_pressure ?? '',
+      pr: p.pr ?? p.pulse_rate ?? '',
+      rr: p.rr ?? p.respiratory_rate ?? '',
+      spo2: p.spo2 ?? p.oxygen_saturation ?? '',
+      temperatureF: p.temperature_f ?? p.temperatureF ?? p.temperature ?? p.temp_f ?? '',
+      bmi: p.bmi ?? '',
     };
   });
 };
 
 function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
+  const firstNonEmpty = (...values) => {
+    for (const v of values) {
+      if (v == null) continue;
+      const s = typeof v === 'string' ? v.trim() : String(v).trim();
+      if (s !== '') return v;
+    }
+    return '';
+  };
   const isNurse = mode === 'nurse';
   const isLimited = isNurse || staffLimited;
   const isAdminMode = mode === 'admin' && !staffLimited;
@@ -520,6 +620,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
   const [weeklyReportsByWeek, setWeeklyReportsByWeek] = useState({});
+  const [selectedWeeklyVitalsWeek, setSelectedWeeklyVitalsWeek] = useState(null);
+  const [weeklyReportModalOpen, setWeeklyReportModalOpen] = useState(false);
+  const [weeklyReportModalWeek, setWeeklyReportModalWeek] = useState(null);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiWeekNumber, setAiWeekNumber] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -536,6 +639,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   const [staffForm, setStaffForm] = useState({ caseLoadManager: '', programStaff: '', medicalStaffNote: '' });
   const [staffSaving, setStaffSaving] = useState(false);
   const [staffDirectory, setStaffDirectory] = useState({ caseLoadManagers: [], programStaff: [] });
+  const [nurseIdentityNames, setNurseIdentityNames] = useState([]);
   const [behaviorChecklistChecked, setBehaviorChecklistChecked] = useState({});
   const [recoveryLadderPosition, setRecoveryLadderPosition] = useState(1);
   const behaviorRecoveryPercent = useMemo(
@@ -556,6 +660,40 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     };
     saveLadderProfiles(profiles);
   }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!isNurse || !isSupabaseConfigured()) {
+        if (!cancelled) setNurseIdentityNames([]);
+        return;
+      }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        if (!cancelled) setNurseIdentityNames([]);
+        return;
+      }
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .maybeSingle();
+      const emailLocal = String(user.email || '').split('@')[0].replace(/[._-]+/g, ' ').trim();
+      const names = Array.from(
+        new Set(
+          [profile?.full_name, user.user_metadata?.full_name, user.user_metadata?.name, emailLocal]
+            .map((x) => String(x || '').trim().toLowerCase())
+            .filter(Boolean)
+        )
+      );
+      if (!cancelled) setNurseIdentityNames(names);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isNurse]);
 
   const upsertName = (bucket, name) => {
     const v = String(name || '').trim();
@@ -705,7 +843,10 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const bySearch = patients.filter((p) => {
+    const scopedPatients = !isNurse
+      ? patients
+      : patients.filter((p) => nurseIdentityNames.includes(String(p.programStaff || '').trim().toLowerCase()));
+    const bySearch = scopedPatients.filter((p) => {
       if (!q) return true;
       return (
         String(p.admissionDisplayId || '').toLowerCase().includes(q) ||
@@ -726,7 +867,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     const byStatus = byConcern.filter((p) => statusFilter === 'All' || p.status === statusFilter);
     const sel = SORT_MENU_ITEMS.find((i) => i.id === sortSelectionId) ?? SORT_MENU_ITEMS[1];
     return sortPatients(byStatus, sel.sortKey, sel.direction);
-  }, [patients, search, sortSelectionId, cohortFilter, concernCategoryFilter, statusFilter]);
+  }, [patients, isNurse, nurseIdentityNames, search, sortSelectionId, cohortFilter, concernCategoryFilter, statusFilter]);
 
   const missingStaffAssignments = useMemo(() => {
     const inCare = (patients || []).filter((p) => String(p.status || '').toLowerCase() !== 'discharged');
@@ -776,35 +917,85 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     (async () => {
       const map = {};
       if (isSupabaseConfigured() && isSupabasePatientId(pidStr)) {
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('weekly_reports')
-          .select('week_number, nurse_name, report_date, submitted_at')
+          .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent, current_medications, medication_intervention, created_at, vitals_weight, vitals_height, vitals_bmi, vitals_bp, vitals_pr, vitals_rr, vitals_spo2, vitals_temperature')
           .eq('patient_id', pid);
+        if (error && /column .* does not exist/i.test(String(error.message || ''))) {
+          ({ data, error } = await supabase
+            .from('weekly_reports')
+            .select('week_number, nurse_name, report_date, submitted_at, created_at')
+            .eq('patient_id', pid));
+        }
         if (!error && data) {
           for (const row of data) {
             map[row.week_number] = row;
           }
         }
-      } else {
-        try {
-          const raw = localStorage.getItem(WEEKLY_REPORTS_STORAGE_KEY);
-          const all = raw ? JSON.parse(raw) : {};
-          const byWeek = all[pidStr] || {};
-          for (const w of Object.keys(byWeek)) {
-            const n = parseInt(w, 10);
-            const e = byWeek[w];
-            if (!Number.isNaN(n) && e && typeof e === 'object') {
+      }
+
+      // Always merge local nurse weekly cache as fallback, even in Supabase mode.
+      try {
+        const raw = localStorage.getItem(WEEKLY_REPORTS_STORAGE_KEY);
+        const all = raw ? JSON.parse(raw) : {};
+        const byWeek = all[pidStr] || {};
+        for (const w of Object.keys(byWeek)) {
+          const n = parseInt(w, 10);
+          const e = byWeek[w];
+          if (!Number.isNaN(n) && e && typeof e === 'object') {
+            const localRow = {
+              week_number: n,
+              nurse_name: e.nurseName ?? e.nurse_name,
+              report_date: e.reportDate ?? e.report_date,
+              submitted_at: e.submittedAt ?? e.submitted_at,
+              summary: e.summary ?? e.report_summary ?? '',
+              nurse_note: e.nurseNote ?? e.nurse_note ?? e.notes ?? '',
+              notes: e.notes ?? '',
+              behavior_observation: e.behaviorObservation ?? e.behavior_observation ?? '',
+              recommendations: e.recommendations ?? e.plan_next_week ?? '',
+              current_medications: e.currentMedications ?? e.current_medications ?? '',
+              medication_intervention: e.medicationIntervention ?? e.medication_intervention ?? '',
+              progress_percent: e.progressPercent ?? e.progress_percent ?? null,
+              vitals_weight: e.vitalsWeight ?? e.vitals_weight ?? null,
+              vitals_height: e.vitalsHeight ?? e.vitals_height ?? null,
+              vitals_bmi: e.vitalsBmi ?? e.vitals_bmi ?? null,
+              vitals_bp: e.vitalsBp ?? e.vitals_bp ?? null,
+              vitals_pr: e.vitalsPr ?? e.vitals_pr ?? null,
+              vitals_rr: e.vitalsRr ?? e.vitals_rr ?? null,
+              vitals_spo2: e.vitalsSpo2 ?? e.vitals_spo2 ?? null,
+              vitals_temperature: e.vitalsTemperature ?? e.vitals_temperature ?? null,
+              created_at: e.createdAt ?? e.created_at ?? null,
+            };
+            if (map[n]) {
               map[n] = {
-                week_number: n,
-                nurse_name: e.nurseName ?? e.nurse_name,
-                report_date: e.reportDate ?? e.report_date,
-                submitted_at: e.submittedAt ?? e.submitted_at,
+                ...map[n],
+                nurse_name: firstNonEmpty(map[n].nurse_name, localRow.nurse_name),
+                report_date: firstNonEmpty(map[n].report_date, localRow.report_date),
+                submitted_at: firstNonEmpty(map[n].submitted_at, localRow.submitted_at),
+                summary: firstNonEmpty(map[n].summary, localRow.summary),
+                nurse_note: firstNonEmpty(map[n].nurse_note, localRow.nurse_note),
+                notes: firstNonEmpty(map[n].notes, localRow.notes),
+                behavior_observation: firstNonEmpty(map[n].behavior_observation, localRow.behavior_observation),
+                recommendations: firstNonEmpty(map[n].recommendations, localRow.recommendations),
+                current_medications: firstNonEmpty(map[n].current_medications, localRow.current_medications),
+                medication_intervention: firstNonEmpty(map[n].medication_intervention, localRow.medication_intervention),
+                progress_percent: firstNonEmpty(map[n].progress_percent, localRow.progress_percent),
+                vitals_weight: firstNonEmpty(map[n].vitals_weight, localRow.vitals_weight),
+                vitals_height: firstNonEmpty(map[n].vitals_height, localRow.vitals_height),
+                vitals_bmi: firstNonEmpty(map[n].vitals_bmi, localRow.vitals_bmi),
+                vitals_bp: firstNonEmpty(map[n].vitals_bp, localRow.vitals_bp),
+                vitals_pr: firstNonEmpty(map[n].vitals_pr, localRow.vitals_pr),
+                vitals_rr: firstNonEmpty(map[n].vitals_rr, localRow.vitals_rr),
+                vitals_spo2: firstNonEmpty(map[n].vitals_spo2, localRow.vitals_spo2),
+                vitals_temperature: firstNonEmpty(map[n].vitals_temperature, localRow.vitals_temperature),
               };
+            } else {
+              map[n] = localRow;
             }
           }
-        } catch {
-          /* ignore */
         }
+      } catch {
+        /* ignore */
       }
       if (!cancelled) setWeeklyReportsByWeek(map);
     })();
@@ -1079,7 +1270,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     const programStaff = String(staffForm.programStaff || '').trim();
     const medicalStaffNote = String(staffForm.medicalStaffNote || '').trim();
     if (!caseLoadManager || !programStaff) {
-      setFormError('Case Load Manager and Program Staff are required.');
+      setFormError('Program and Nurse are required.');
       return;
     }
     setFormError('');
@@ -1276,6 +1467,127 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     },
     [selectedPatient, weeklyReportsByWeek]
   );
+
+  const openWeeklyReportModal = useCallback((weekNum) => {
+    setSelectedWeeklyVitalsWeek(weekNum);
+    setWeeklyReportModalWeek(weekNum);
+    setWeeklyReportModalOpen(true);
+  }, []);
+  const weeklyReportModalRow = weeklyReportModalWeek != null ? weeklyReportsByWeek[weeklyReportModalWeek] : null;
+  const latestWeeklyReport = useMemo(() => {
+    const rows = Object.values(weeklyReportsByWeek || {}).filter(Boolean);
+    if (!rows.length) return null;
+    return rows.sort((a, b) => {
+      const at = new Date(a.submitted_at || a.created_at || 0).getTime();
+      const bt = new Date(b.submitted_at || b.created_at || 0).getTime();
+      if (at !== bt) return bt - at;
+      return (Number(b.week_number) || 0) - (Number(a.week_number) || 0);
+    })[0];
+  }, [weeklyReportsByWeek]);
+  const latestAssignedNurse = String(
+    selectedPatient?.programStaff
+    || selectedPatient?.assignedNurse
+    || latestWeeklyReport?.nurse_name
+    || ''
+  ).trim();
+  const latestWeeklyRows = useMemo(() => {
+    const rows = Object.values(weeklyReportsByWeek || {}).filter(Boolean);
+    return rows.sort((a, b) => {
+      const at = new Date(a.submitted_at || a.created_at || 0).getTime();
+      const bt = new Date(b.submitted_at || b.created_at || 0).getTime();
+      if (at !== bt) return bt - at;
+      return (Number(b.week_number) || 0) - (Number(a.week_number) || 0);
+    });
+  }, [weeklyReportsByWeek]);
+  const effectiveVitalsRow = useMemo(() => {
+    if (selectedWeeklyVitalsWeek != null && weeklyReportsByWeek[selectedWeeklyVitalsWeek]) {
+      return weeklyReportsByWeek[selectedWeeklyVitalsWeek];
+    }
+    return latestWeeklyRows[0] || null;
+  }, [selectedWeeklyVitalsWeek, weeklyReportsByWeek, latestWeeklyRows]);
+  const localWeeklyVitals = useMemo(() => {
+    if (!selectedPatient?.id) return null;
+    try {
+      const raw = localStorage.getItem(WEEKLY_REPORTS_STORAGE_KEY);
+      const all = raw ? JSON.parse(raw) : {};
+      const byWeek = all[String(selectedPatient.id)] || {};
+      if (selectedWeeklyVitalsWeek != null && byWeek[String(selectedWeeklyVitalsWeek)]) {
+        return byWeek[String(selectedWeeklyVitalsWeek)];
+      }
+      const entries = Object.entries(byWeek)
+        .map(([w, row]) => ({ week: Number(w), row }))
+        .filter((x) => Number.isFinite(x.week) && x.row && typeof x.row === 'object')
+        .sort((a, b) => b.week - a.week);
+      return entries[0]?.row || null;
+    } catch {
+      return null;
+    }
+  }, [selectedPatient?.id, selectedWeeklyVitalsWeek]);
+  const latestVitals = useMemo(() => ({
+    weight: firstNonEmpty(
+      effectiveVitalsRow?.vitals_weight,
+      localWeeklyVitals?.vitalsWeight,
+      localWeeklyVitals?.vitals_weight,
+      selectedPatient?.currentWeight,
+      selectedPatient?.current_weight,
+      selectedPatient?.weight_kg,
+      selectedPatient?.weight
+    ),
+    height: firstNonEmpty(
+      effectiveVitalsRow?.vitals_height,
+      localWeeklyVitals?.vitalsHeight,
+      localWeeklyVitals?.vitals_height,
+      selectedPatient?.heightCm,
+      selectedPatient?.height_cm,
+      selectedPatient?.height
+    ),
+    bp: firstNonEmpty(
+      effectiveVitalsRow?.vitals_bp,
+      localWeeklyVitals?.vitalsBp,
+      localWeeklyVitals?.vitals_bp,
+      selectedPatient?.bp,
+      selectedPatient?.blood_pressure
+    ),
+    pr: firstNonEmpty(
+      effectiveVitalsRow?.vitals_pr,
+      localWeeklyVitals?.vitalsPr,
+      localWeeklyVitals?.vitals_pr,
+      selectedPatient?.pr,
+      selectedPatient?.pulse_rate
+    ),
+    rr: firstNonEmpty(
+      effectiveVitalsRow?.vitals_rr,
+      localWeeklyVitals?.vitalsRr,
+      localWeeklyVitals?.vitals_rr,
+      selectedPatient?.rr,
+      selectedPatient?.respiratory_rate
+    ),
+    temperature: firstNonEmpty(
+      effectiveVitalsRow?.vitals_temperature,
+      localWeeklyVitals?.vitalsTemperature,
+      localWeeklyVitals?.vitals_temperature,
+      selectedPatient?.temperatureF,
+      selectedPatient?.temperature_f,
+      selectedPatient?.temperature
+    ),
+    bmi: firstNonEmpty(
+      effectiveVitalsRow?.vitals_bmi,
+      localWeeklyVitals?.vitalsBmi,
+      localWeeklyVitals?.vitals_bmi,
+      selectedPatient?.bmi
+    ),
+    spo2: firstNonEmpty(
+      effectiveVitalsRow?.vitals_spo2,
+      localWeeklyVitals?.vitalsSpo2,
+      localWeeklyVitals?.vitals_spo2,
+      selectedPatient?.spo2,
+      selectedPatient?.oxygen_saturation
+    ),
+  }), [effectiveVitalsRow, localWeeklyVitals, selectedPatient]);
+  const formatVitalValue = (value) => {
+    const text = String(value ?? '').trim();
+    return text || '—';
+  };
 
   return (
     <div className="db-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', -apple-system, sans-serif", color: '#1B2559' }}>
@@ -1607,9 +1919,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           border-radius: 20px;
           border: 1px solid #E9EDF7;
           box-shadow: 0 24px 48px rgba(27, 37, 89, 0.12);
-          max-width: 560px;
+          max-width: 980px;
           width: 100%;
-          max-height: min(85vh, 640px);
+          max-height: min(90vh, 820px);
           display: flex;
           flex-direction: column;
           font-family: 'Inter', sans-serif;
@@ -1672,6 +1984,26 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           color: #94a3b8;
           line-height: 1.4;
         }
+        .report-row {
+          background: #ffffff;
+          border: 1px solid #e8eaef;
+          border-radius: 10px;
+          padding: 10px 12px;
+        }
+        .report-label {
+          font-size: 12px;
+          color: #475569;
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+        .report-value {
+          color: #1B2559;
+          font-size: 13px;
+          font-weight: 600;
+          line-height: 1.55;
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+        }
 
         @keyframes admin-ai-spin {
           to { transform: rotate(360deg); }
@@ -1731,16 +2063,18 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         {isNurse ? (
           <nav className="sidebar-nav-scroll" aria-label="Nurse navigation">
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}>
-              <div className="icon-box inactive">
-                <FileText size={22} />
-              </div>
-              <span className="sidebar-label">Report</span>
+              <LayoutGrid size={22} color="#707EAE" />
+              <span className="sidebar-label">Dashboard</span>
             </div>
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
-              <div className="icon-box active">
-                <BookUser size={22} />
+              <div style={{ background: '#F54E25', color: '#fff', borderRadius: 12, padding: 10, display: 'flex' }}>
+                <Users size={22} color="white" />
               </div>
-              <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient Management</span>
+              <span className="sidebar-label" style={{ color: '#F54E25' }}>Residents</span>
+            </div>
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-weekly-report'); }}>
+              <FileText size={22} color="#707EAE" />
+              <span className="sidebar-label">Weekly Report</span>
             </div>
           </nav>
         ) : staffLimited ? (
@@ -1823,9 +2157,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         <div className="sidebar-footer">
           {isNurse ? (
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
-              <div className="icon-box inactive">
-                <User size={22} />
-              </div>
+              <User size={22} color="#707EAE" />
               <span className="sidebar-label">Profile</span>
             </div>
           ) : staffLimited ? (
@@ -1939,7 +2271,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                   const nurseNames = Object.values(weeklyReportsByWeek)
                     .map((r) => (r?.nurse_name && String(r.nurse_name).trim()) || '')
                     .filter(Boolean);
-                  const assignedNurseDisplay = nurseNames[0] || '—';
+                  const assignedNurseDisplay = latestAssignedNurse || nurseNames[0] || '—';
                   return (
                     <div style={{ borderBottom: '1px solid #F4F7FE', paddingBottom: 16, marginBottom: 16 }}>
                       <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
@@ -1978,7 +2310,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                         <div style={{ flex: 1, minWidth: 0, paddingLeft: 14, borderLeft: '1px solid #F4F7FE' }}>
                           <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Assigned Nurse</p>
                           <p style={{ fontSize: 16, fontWeight: 800, color: '#0F172A', lineHeight: 1.3 }}>
-                            {assignedNurseDisplay === '—' ? '—' : `Nurse ${assignedNurseDisplay}`}
+                            {assignedNurseDisplay === '—' ? '—' : assignedNurseDisplay}
                           </p>
                         </div>
                       </div>
@@ -1999,8 +2331,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               {/* Card 3: Vitals grid — labels only; nurses will populate values later */}
               <div className="info-card" style={{ flex: '1.35', padding: '22px', display: 'flex', flexDirection: 'column', minHeight: 280 }}>
                 {(() => {
-                  const blank = '—';
-                  const cell = (label) => (
+                  const cell = (label, value) => (
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p
                         style={{
@@ -2014,16 +2345,16 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                       >
                         {label}
                       </p>
-                      <p style={{ fontSize: 16, fontWeight: 800, color: '#94a3b8' }}>{blank}</p>
+                      <p style={{ fontSize: 16, fontWeight: 800, color: String(value || '').trim() ? '#1B2559' : '#94a3b8' }}>{formatVitalValue(value)}</p>
                     </div>
                   );
                   return (
                     <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-                        {cell('Current Weight')}
-                        {cell('Height')}
-                        {cell('BP')}
-                        {cell('PR')}
+                        {cell('Current Weight', latestVitals.weight)}
+                        {cell('Height', latestVitals.height)}
+                        {cell('BP', latestVitals.bp)}
+                        {cell('PR', latestVitals.pr)}
                       </div>
                       <div
                         className="view-vitals-row"
@@ -2037,10 +2368,10 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                           alignItems: 'flex-start',
                         }}
                       >
-                        {cell('RR')}
-                        {cell('T')}
-                        {cell('BMI')}
-                        {cell('SPO2')}
+                        {cell('RR', latestVitals.rr)}
+                        {cell('Temperature (°F)', latestVitals.temperature)}
+                        {cell('BMI', latestVitals.bmi)}
+                        {cell('SPO2', latestVitals.spo2)}
                       </div>
                     </>
                   );
@@ -2138,7 +2469,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                     Staff assignment model (required)
                   </p>
                   <p style={{ color: '#94A3B8', fontSize: 11, marginBottom: 10, lineHeight: 1.45 }}>
-                    Per-resident ownership must include Case Load Manager and Program Staff. Medical coverage remains shared across the medical team.
+                    Per-resident ownership must include Program and Nurse. Medical coverage remains shared across the medical team.
                   </p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                     <select
@@ -2146,7 +2477,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                       onChange={(e) => setStaffForm((prev) => ({ ...prev, caseLoadManager: e.target.value }))}
                       style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#fff' }}
                     >
-                      <option value="">Case Load Manager (required)</option>
+                      <option value="">Program (required)</option>
                       {clmOptions.map((name) => (
                         <option key={`clm_${name}`} value={name}>{name}</option>
                       ))}
@@ -2156,7 +2487,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                       onChange={(e) => setStaffForm((prev) => ({ ...prev, programStaff: e.target.value }))}
                       style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#fff' }}
                     >
-                      <option value="">Program Staff (required)</option>
+                      <option value="">Nurse (required)</option>
                       {programOptions.map((name) => (
                         <option key={`prog_${name}`} value={name}>{name}</option>
                       ))}
@@ -2198,17 +2529,34 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                     <div
                       key={w}
                       className="week-card admin-week-card"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        setSelectedWeeklyVitalsWeek(w);
+                        openWeeklyReportModal(w);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedWeeklyVitalsWeek(w);
+                          openWeeklyReportModal(w);
+                        }
+                      }}
                       style={{
                         flex: '1 1 120px',
                         minWidth: 100,
                         maxWidth: 160,
                         padding: '24px 10px',
+                        cursor: 'pointer',
                       }}
                     >
                       <button
                         type="button"
                         className="admin-week-ai-btn"
-                        onClick={() => openWeeklyAiModal(w)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openWeeklyAiModal(w);
+                        }}
                         aria-label={`AI recommendations for week ${w}`}
                         title="AI recommendations"
                       >
@@ -2269,7 +2617,11 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                       <strong style={{ color: '#475569' }}>Discharged status</strong> is set when a discharge request is approved on the dashboard—not from this screen.
                     </p>
                   </div>
-                  <NursingRecordsPlaceholder />
+                  <NursingRecordsPanel
+                    latestRow={latestWeeklyReport}
+                    latestVitals={latestVitals}
+                    weeklyReportsByWeek={weeklyReportsByWeek}
+                  />
                 </div>
               </div>
 
@@ -2291,20 +2643,22 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               </div>
             </div>
 
-            <div className="info-card" style={{ padding: '28px 32px 32px' }}>
-              <div style={{ marginBottom: 20 }}>
-                <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Recovery Ladder</h3>
+            {!isNurse ? (
+              <div className="info-card" style={{ padding: '28px 32px 32px' }}>
+                <div style={{ marginBottom: 20 }}>
+                  <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Recovery Ladder</h3>
+                </div>
+                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                  <BehaviorProgressBoard
+                    checked={behaviorChecklistChecked}
+                    setChecked={setBehaviorChecklistChecked}
+                    patientName={selectedPatient?.name ?? ''}
+                    boardPosition={recoveryLadderPosition}
+                    onBoardPositionChange={handleRecoveryLadderPositionChange}
+                  />
+                </div>
               </div>
-              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <BehaviorProgressBoard
-                  checked={behaviorChecklistChecked}
-                  setChecked={setBehaviorChecklistChecked}
-                  patientName={selectedPatient?.name ?? ''}
-                  boardPosition={recoveryLadderPosition}
-                  onBoardPositionChange={handleRecoveryLadderPositionChange}
-                />
-              </div>
-            </div>
+            ) : null}
           </div>
         ) : (
           /* TABLE VIEW */
@@ -2531,7 +2885,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                   fontWeight: 700,
                 }}
               >
-                Admin alert: {missingStaffAssignments.missingCount} of {missingStaffAssignments.totalInCare} in-care patients are missing Case Load Manager or Program Staff.
+                Admin alert: {missingStaffAssignments.missingCount} of {missingStaffAssignments.totalInCare} in-care patients are missing Program or Nurse.
                 {missingStaffAssignments.names.length ? ` Sample: ${missingStaffAssignments.names.join(', ')}` : ''}
               </div>
             ) : null}
@@ -2588,10 +2942,10 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                       <td style={{ padding: '16px 20px', color: '#1B2559', fontVariantNumeric: 'tabular-nums' }}>{formatDate(patient.admissionDate)}</td>
                       <td style={{ padding: '16px 20px', color: '#475569', minWidth: 210 }}>
                         <div style={{ fontSize: 11, fontWeight: 800, color: '#1B2559' }}>
-                          Case load manager: {patient.caseLoadManager?.trim() ? patient.caseLoadManager : 'Unassigned'}
+                          Program: {patient.caseLoadManager?.trim() ? patient.caseLoadManager : 'Unassigned'}
                         </div>
                         <div style={{ fontSize: 11, marginTop: 3 }}>
-                          Program: {patient.programStaff?.trim() ? patient.programStaff : 'Unassigned'}
+                          Nurse: {patient.programStaff?.trim() ? patient.programStaff : 'Unassigned'}
                         </div>
                         <div style={{ fontSize: 10, marginTop: 4, color: '#64748b' }}>
                           Medical: Shared pool ({patient.medicalStaffNote?.trim() || 'all medical staff on board'})
@@ -2646,15 +3000,21 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           <>
             <div className="mob-nav-item" onClick={() => navigate('/nurse-dashboard')}>
               <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-                <FileText size={20} color="#A3AED0" />
+                <LayoutGrid size={20} color="#A3AED0" />
               </div>
-              <span>Report</span>
+              <span>Dashboard</span>
             </div>
             <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
               <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
-                <BookUser size={20} color="white" />
+                <Users size={20} color="white" />
               </div>
               <span style={{ color: '#F54E25' }}>Residents</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/nurse-weekly-report')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <FileText size={20} color="#A3AED0" />
+              </div>
+              <span>Weekly</span>
             </div>
             <div className="mob-nav-item" onClick={() => navigate('/nurseprofile')}>
               <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
@@ -2731,6 +3091,83 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           </>
         )}
       </div>
+
+      {weeklyReportModalOpen &&
+        createPortal(
+          <div
+            className="admin-ai-modal-backdrop"
+            role="presentation"
+            onClick={() => setWeeklyReportModalOpen(false)}
+          >
+            <div
+              className="admin-ai-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="admin-weekly-report-modal-title"
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: 980 }}
+            >
+              <div className="admin-ai-modal-header">
+                <div>
+                  <h2 id="admin-weekly-report-modal-title" style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>
+                    Nurse weekly report{weeklyReportModalWeek != null ? ` · Week ${weeklyReportModalWeek}` : ''}
+                  </h2>
+                  <p style={{ fontSize: 12, color: '#64748b', margin: '6px 0 0' }}>
+                    {selectedPatient?.name || 'Resident'}
+                  </p>
+                  <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 700, color: '#475569', background: '#F4F7FE', border: '1px solid #E5ECFA', borderRadius: 999, padding: '5px 10px' }}>
+                    {weeklyReportModalRow ? 'Filed report' : 'No report filed'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setWeeklyReportModalOpen(false)}
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: '#64748b', borderRadius: 8 }}
+                  aria-label="Close"
+                >
+                  <X size={22} />
+                </button>
+              </div>
+              <div className="admin-ai-modal-body">
+                {!weeklyReportModalRow ? (
+                  <div style={{ color: '#94a3b8' }}>No nurse report filed for this week yet.</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div className="report-row">
+                      <div className="report-label">Nurse</div>
+                      <div className="report-value">{weeklyReportModalRow.nurse_name || '—'}</div>
+                    </div>
+                    <div className="report-row">
+                      <div className="report-label">Report Date</div>
+                      <div className="report-value">{weeklyReportModalRow.report_date || '—'}</div>
+                    </div>
+                    <div className="report-row">
+                      <div className="report-label">Submitted</div>
+                      <div className="report-value">{weeklyReportModalRow.submitted_at ? formatDate(weeklyReportModalRow.submitted_at) : '—'}</div>
+                    </div>
+                    <div className="report-row">
+                      <div className="report-label">Summary</div>
+                      <div className="report-value">{weeklyReportModalRow.summary || weeklyReportModalRow.report_summary || 'No summary provided.'}</div>
+                    </div>
+                    <div className="report-row">
+                      <div className="report-label">Nurse Notes</div>
+                      <div className="report-value">{weeklyReportModalRow.nurse_note || weeklyReportModalRow.notes || 'No notes provided.'}</div>
+                    </div>
+                    <div className="report-row">
+                      <div className="report-label">Behavior / Mood</div>
+                      <div className="report-value">{weeklyReportModalRow.behavior_observation || weeklyReportModalRow.mood_assessment || 'No behavior notes provided.'}</div>
+                    </div>
+                    <div className="report-row">
+                      <div className="report-label">Recommendations</div>
+                      <div className="report-value">{weeklyReportModalRow.recommendations || weeklyReportModalRow.plan_next_week || 'No recommendations provided.'}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {aiModalOpen &&
         createPortal(

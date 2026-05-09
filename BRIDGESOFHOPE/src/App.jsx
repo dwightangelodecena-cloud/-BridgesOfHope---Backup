@@ -21,7 +21,8 @@ import Profile from '@/pages/family/profile';
 import ChangePass from '@/pages/auth/changepass';
 
 // Nurse & Admin Pages
-import NurseDashboard from '@/pages/nurse/weekly-report';
+import NurseDashboard from '@/pages/nurse/nurse-dashboard';
+import NurseWeeklyReport from '@/pages/nurse/weekly-report';
 import NurseProfile from '@/pages/nurse/nurseprofile';
 import NurseChangePass from '@/pages/nurse/nursechangepass';
 import AdminDashboard from '@/pages/admin/admin-dashboard';
@@ -57,6 +58,7 @@ const ROUTE_TITLES = {
   '/profile': 'Profile',
   '/changepass': 'Change password',
   '/nurse-dashboard': 'Nurse dashboard',
+  '/nurse-weekly-report': 'Nurse weekly report',
   '/nurseprofile': 'Nurse profile',
   '/nursechangepass': 'Nurse change password',
   '/program': 'Program',
@@ -198,6 +200,14 @@ function App() {
           element={
             <RoleGuard allowedRoles={['nurse']}>
               <NurseDashboard />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/nurse-weekly-report"
+          element={
+            <RoleGuard allowedRoles={['nurse']}>
+              <NurseWeeklyReport />
             </RoleGuard>
           }
         />

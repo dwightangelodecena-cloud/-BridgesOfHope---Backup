@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Home, User, LogOut, Calendar, BarChart3, ClipboardList, FileText, X, CheckCircle2 } from 'lucide-react';
+import { Home, User, LogOut, Calendar, BarChart3, ClipboardList, FileText, X, CheckCircle2, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { uiPatientFromRow } from '@/lib/dbMappers';
+import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
 
@@ -17,11 +18,6 @@ const PatientDetailsPage = () => {
   const [patientImages, setPatientImages] = useState({});
   const [selectedPatient, setSelectedPatient] = useState(null);
   const fileInputRefs = useRef([]);
-  const firstName =
-    String(displayName || 'Family User')
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)[0] || 'Family';
 
   useEffect(() => {
     let mounted = true;
@@ -69,6 +65,9 @@ const PatientDetailsPage = () => {
       }
 
       const fetchPatientsRows = async () => {
+        // Keep this query aligned with family/home.jsx to avoid schema drift breakage.
+        const safeSelect =
+          'id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at';
         const runQuery = (selectClause, scopeFamily = true) => {
           let q = supabase
             .from('patients')
@@ -79,18 +78,7 @@ const PatientDetailsPage = () => {
           return q;
         };
 
-        const extendedFamily = await runQuery(
-          'id, full_name, admitted_at, progress_percent, clinical_status, family_id, discharged_at, date_of_birth, gender, primary_concern, room_code, room_gender_segment, case_load_manager, program_staff, medical_staff_note, progress_updated_at',
-          true
-        );
-        if (!extendedFamily.error && (extendedFamily.data || []).length > 0) return extendedFamily;
-
-        const minimalFamily = await runQuery(
-          'id, full_name, admitted_at, progress_percent, clinical_status, family_id, discharged_at, primary_concern, room_code',
-          true
-        );
-        if (!minimalFamily.error && (minimalFamily.data || []).length > 0) return minimalFamily;
-        return minimalFamily;
+        return runQuery(safeSelect, true);
       };
 
       const { data: rows, error } = await fetchPatientsRows();
@@ -102,15 +90,56 @@ const PatientDetailsPage = () => {
           .eq('status', 'approved')
           .order('decided_at', { ascending: false });
         if (admissionsError || !(admissions || []).length) return [];
-        return admissions.map((a) => ({
-          id: `admission-${a.id}`,
-          name: a.patient_name || 'Approved Resident',
-          date: formatDate(a.decided_at || a.created_at),
-          progress: 0,
-          reason: a.reason_for_admission || '',
-          status: 'Recovering',
-          dateOfBirth: a.patient_birth_date || '',
-        }));
+        const names = [...new Set((admissions || []).map((a) => (a.patient_name || '').trim()).filter(Boolean))];
+        const detailsByName = {};
+        if (names.length) {
+          const { data: matchedRows } = await supabase
+            .from('patients')
+            .select(
+              'id, full_name, admitted_at, progress_percent, clinical_status, family_id, discharged_at, date_of_birth, gender, primary_concern, room_code, room_gender_segment, case_load_manager, program_staff, medical_staff_note, progress_updated_at, current_weight, weight_kg, height_cm, bmi, bp, pr, rr, spo2, temperature_f, blood_pressure, pulse_rate, respiratory_rate, oxygen_saturation, temperature'
+            )
+            .is('discharged_at', null)
+            .in('full_name', names)
+            .order('admitted_at', { ascending: false });
+          (matchedRows || []).forEach((row) => {
+            const key = String(row.full_name || '').trim().toLowerCase();
+            if (key && !detailsByName[key]) detailsByName[key] = row;
+          });
+        }
+        return admissions.map((a) => {
+          const name = a.patient_name || 'Approved Resident';
+          const matched = detailsByName[String(name).trim().toLowerCase()] || null;
+          return {
+            id: matched?.id || `admission-${a.id}`,
+            name,
+            date: formatDate(a.decided_at || a.created_at),
+            progress: Number(matched?.progress_percent) || 0,
+            reason: a.reason_for_admission || '',
+            status: matched?.clinical_status || 'Recovering',
+            dateOfBirth: matched?.date_of_birth || a.patient_birth_date || '',
+            roomCode: matched?.room_code || '',
+          };
+        });
+      };
+      const fetchPatientsFromApprovedAdmissions = async () => {
+        const safeSelect =
+          'id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at';
+        const { data: admissions, error: admissionsError } = await supabase
+          .from('admission_requests')
+          .select('patient_name')
+          .eq('family_id', user.id)
+          .eq('status', 'approved');
+        if (admissionsError || !(admissions || []).length) return [];
+        const names = [...new Set((admissions || []).map((a) => (a.patient_name || '').trim()).filter(Boolean))];
+        if (!names.length) return [];
+        const { data: matchedRows, error: queryError } = await supabase
+          .from('patients')
+          .select(safeSelect)
+          .is('discharged_at', null)
+          .in('full_name', names)
+          .order('admitted_at', { ascending: false });
+        if (queryError) return [];
+        return matchedRows || [];
       };
 
       if (!cancelled) {
@@ -118,49 +147,207 @@ const PatientDetailsPage = () => {
           const approvedFallback = await mapApprovedAdmissionsToPatients();
           if (approvedFallback.length) {
             setPatients(approvedFallback);
+            const fallbackIds = approvedFallback
+              .map((p) => p.id)
+              .filter((id) => id && !String(id).startsWith('admission-'));
+            if (fallbackIds.length) {
+              const { data: reportRows } = await supabase
+                .from('weekly_reports')
+                .select('*')
+                .in('patient_id', fallbackIds)
+                .order('week_number', { ascending: true });
+              const byPatient = {};
+              (reportRows || []).forEach((row) => {
+                const key = String(row.patient_id);
+                if (!byPatient[key]) byPatient[key] = [];
+                byPatient[key].push(row);
+              });
+              setWeeklyReportsByPatient(byPatient);
+            } else {
+              setWeeklyReportsByPatient({});
+            }
           } else {
             // In Supabase mode, never fall back to shared local cache to avoid cross-family leakage.
             setPatients([]);
+            setWeeklyReportsByPatient({});
           }
           setPatientDetailsById({});
-          setWeeklyReportsByPatient({});
         } else {
           const mappedPatients = (rows || []).map((r) => uiPatientFromRow(r)).filter(Boolean);
           if (mappedPatients.length > 0) {
             setPatients(mappedPatients);
           } else {
-            const approvedFallback = await mapApprovedAdmissionsToPatients();
-            if (approvedFallback.length) {
-              setPatients(approvedFallback);
+            const resolvedFromApproved = await fetchPatientsFromApprovedAdmissions();
+            if (resolvedFromApproved.length) {
+              const resolvedMapped = resolvedFromApproved.map((r) => uiPatientFromRow(r)).filter(Boolean);
+              setPatients(resolvedMapped);
+              const resolvedDetails = {};
+              for (const row of resolvedFromApproved) resolvedDetails[String(row.id)] = row;
+              setPatientDetailsById(resolvedDetails);
             } else {
-              // In Supabase mode, never fall back to shared local cache to avoid cross-family leakage.
-              setPatients([]);
+              const approvedFallback = await mapApprovedAdmissionsToPatients();
+              if (approvedFallback.length) {
+                setPatients(approvedFallback);
+              } else {
+                // In Supabase mode, never fall back to shared local cache to avoid cross-family leakage.
+                setPatients([]);
+              }
             }
           }
           const details = {};
           for (const row of rows || []) details[String(row.id)] = row;
-          setPatientDetailsById(details);
-          const ids = (rows || []).map((r) => r.id).filter(Boolean);
+          const activeRows = (rows && rows.length) ? rows : await fetchPatientsFromApprovedAdmissions();
+          const ids = (activeRows || []).map((r) => r.id).filter(Boolean);
+          // Load full patient detail using '*' to avoid column-name mismatches.
+          if (ids.length) {
+            const { data: detailRows } = await supabase
+              .from('patients')
+              .select('*')
+              .in('id', ids);
+            if ((detailRows || []).length) {
+              const fullDetails = {};
+              for (const row of detailRows) fullDetails[String(row.id)] = row;
+              setPatientDetailsById(fullDetails);
+            } else if (Object.keys(details).length) {
+              setPatientDetailsById(details);
+            }
+          } else if (Object.keys(details).length) {
+            setPatientDetailsById(details);
+          }
           if (!ids.length) {
             setWeeklyReportsByPatient({});
             return;
           }
-          const { data: reportRows, error: reportError } = await supabase
+          let reportRows = null;
+          let reportError = null;
+          const directReports = await supabase
             .from('weekly_reports')
             .select('*')
             .in('patient_id', ids)
             .order('week_number', { ascending: true });
-          if (reportError || !reportRows) {
-            setWeeklyReportsByPatient({});
-          } else {
-            const byPatient = {};
+          reportRows = directReports.data || null;
+          reportError = directReports.error || null;
+          // Fallback to security-definer RPC for family-owned reports.
+          if (reportError || !(reportRows || []).length) {
+            const rpcReports = await supabase.rpc('bh_family_weekly_reports');
+            if (!rpcReports.error && rpcReports.data) {
+              const idSet = new Set(ids.map((x) => String(x)));
+              reportRows = (rpcReports.data || []).filter((row) => idSet.has(String(row.patient_id)));
+              reportError = null;
+            }
+          }
+          const byPatient = {};
+          if (!reportError && reportRows) {
             for (const row of reportRows) {
               const key = String(row.patient_id);
               if (!byPatient[key]) byPatient[key] = [];
               byPatient[key].push(row);
             }
-            setWeeklyReportsByPatient(byPatient);
           }
+          // Merge local weekly nurse cache as fallback for recently saved updates.
+          try {
+            const raw = localStorage.getItem('bh_nurse_weekly_reports');
+            const localAll = raw ? JSON.parse(raw) : {};
+            const makeLocalReport = (pid, weekNum, entry) => ({
+              id: `local-${pid}-${weekNum}`,
+              patient_id: pid,
+              week_number: Number(weekNum),
+              submitted_at: entry.submittedAt ?? null,
+              nurse_name: entry.nurseName ?? entry.nurse_name ?? '',
+              report_date: entry.reportDate ?? entry.report_date ?? '',
+              summary: entry.summary ?? entry.report_summary ?? '',
+              nurse_note: entry.nurseNote ?? entry.nurse_note ?? entry.notes ?? '',
+              notes: entry.notes ?? '',
+              behavior_observation: entry.behaviorObservation ?? entry.behavior_observation ?? '',
+              recommendations: entry.recommendations ?? entry.plan_next_week ?? '',
+              vitals_weight: entry.vitalsWeight ?? entry.vitals_weight ?? '',
+              vitals_height: entry.vitalsHeight ?? entry.vitals_height ?? '',
+              vitals_bp: entry.vitalsBp ?? entry.vitals_bp ?? '',
+              vitals_pr: entry.vitalsPr ?? entry.vitals_pr ?? '',
+              vitals_rr: entry.vitalsRr ?? entry.vitals_rr ?? '',
+              vitals_temperature: entry.vitalsTemperature ?? entry.vitals_temperature ?? '',
+              vitals_bmi: entry.vitalsBmi ?? entry.vitals_bmi ?? '',
+              vitals_spo2: entry.vitalsSpo2 ?? entry.vitals_spo2 ?? '',
+            });
+            ids.forEach((pid) => {
+              const key = String(pid);
+              const localWeeks = localAll?.[key];
+              if (!localWeeks || typeof localWeeks !== 'object') return;
+              if (!byPatient[key]) byPatient[key] = [];
+              const existingWeeks = new Set(byPatient[key].map((r) => String(r.week_number)));
+              Object.entries(localWeeks).forEach(([weekNum, entry]) => {
+                if (!entry || typeof entry !== 'object') return;
+                if (existingWeeks.has(String(weekNum))) return;
+                byPatient[key].push(makeLocalReport(key, weekNum, entry));
+              });
+              byPatient[key].sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0));
+            });
+            // Fallback mapping when cache keys are stale: map entries by resident name.
+            const rowsByName = {};
+            (activeRows || []).forEach((row) => {
+              const n = String(row.full_name || '').trim().toLowerCase();
+              if (!n) return;
+              rowsByName[n] = row;
+            });
+            Object.entries(localAll || {}).forEach(([cachePid, weeks]) => {
+              if (!weeks || typeof weeks !== 'object') return;
+              Object.entries(weeks).forEach(([weekNum, entry]) => {
+                const residentName = String(entry?.patientName || '').trim().toLowerCase();
+                if (!residentName || !rowsByName[residentName]) return;
+                const realPid = String(rowsByName[residentName].id);
+                if (!byPatient[realPid]) byPatient[realPid] = [];
+                const hasWeek = byPatient[realPid].some((r) => String(r.week_number) === String(weekNum));
+                if (!hasWeek) byPatient[realPid].push(makeLocalReport(realPid, weekNum, entry));
+              });
+            });
+            Object.keys(byPatient).forEach((pidKey) => {
+              byPatient[pidKey].sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0));
+            });
+          } catch {
+            /* ignore */
+          }
+          // Align with Family Home data path: fetch by family-owned patient ids and merge.
+          if (Object.keys(byPatient).length === 0) {
+            try {
+              const { data: familyRows } = await supabase
+                .from('patients')
+                .select('id, full_name')
+                .eq('family_id', user.id);
+              const familyIds = (familyRows || []).map((r) => r.id).filter(Boolean);
+              if (familyIds.length) {
+                const { data: homeRows, error: homeErr } = await supabase
+                  .from('weekly_reports')
+                  .select('*')
+                  .in('patient_id', familyIds);
+                if (!homeErr && homeRows) {
+                  const byNameCurrent = {};
+                  (activeRows || []).forEach((r) => {
+                    const n = String(r.full_name || '').trim().toLowerCase();
+                    if (n) byNameCurrent[n] = String(r.id);
+                  });
+                  (familyRows || []).forEach((r) => {
+                    const n = String(r.full_name || '').trim().toLowerCase();
+                    if (n && !byNameCurrent[n]) byNameCurrent[n] = String(r.id);
+                  });
+                  for (const row of homeRows) {
+                    const pid = String(row.patient_id);
+                    const familyRow = (familyRows || []).find((fr) => String(fr.id) === pid);
+                    const mappedPid = familyRow
+                      ? (byNameCurrent[String(familyRow.full_name || '').trim().toLowerCase()] || pid)
+                      : pid;
+                    if (!byPatient[mappedPid]) byPatient[mappedPid] = [];
+                    byPatient[mappedPid].push(row);
+                  }
+                  Object.keys(byPatient).forEach((pidKey) => {
+                    byPatient[pidKey].sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0));
+                  });
+                }
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+          setWeeklyReportsByPatient(byPatient);
         }
       }
     };
@@ -219,7 +406,50 @@ const PatientDetailsPage = () => {
     };
   };
 
-  const selectedReports = selectedPatient ? (weeklyReportsByPatient[String(selectedPatient.id)] || []) : [];
+  const selectedPatientDetails = selectedPatient ? patientDetailsById[String(selectedPatient.id)] : null;
+  const selectedReports = (() => {
+    if (!selectedPatient) return [];
+    const direct = weeklyReportsByPatient[String(selectedPatient.id)] || [];
+    if (direct.length) return direct;
+    // Last-mile fallback: read local nurse weekly cache by resident name.
+    try {
+      const raw = localStorage.getItem('bh_nurse_weekly_reports');
+      const localAll = raw ? JSON.parse(raw) : {};
+      const targetName = String(selectedPatient.name || '').trim().toLowerCase();
+      if (!targetName) return [];
+      const fallbackRows = [];
+      Object.entries(localAll || {}).forEach(([pid, weeks]) => {
+        if (!weeks || typeof weeks !== 'object') return;
+        Object.entries(weeks).forEach(([weekNum, entry]) => {
+          const entryName = String(entry?.patientName || '').trim().toLowerCase();
+          if (entryName !== targetName) return;
+          fallbackRows.push({
+            id: `local-name-${pid}-${weekNum}`,
+            patient_id: pid,
+            week_number: Number(weekNum),
+            submitted_at: entry?.submittedAt ?? null,
+            created_at: entry?.submittedAt ?? null,
+            nurse_name: entry?.nurseName ?? entry?.nurse_name ?? '',
+            report_date: entry?.reportDate ?? entry?.report_date ?? '',
+            vitals_weight: entry?.vitalsWeight ?? entry?.vitals_weight ?? '',
+            vitals_height: entry?.vitalsHeight ?? entry?.vitals_height ?? '',
+            vitals_bp: entry?.vitalsBp ?? entry?.vitals_bp ?? '',
+            vitals_pr: entry?.vitalsPr ?? entry?.vitals_pr ?? '',
+            vitals_rr: entry?.vitalsRr ?? entry?.vitals_rr ?? '',
+            vitals_temperature: entry?.vitalsTemperature ?? entry?.vitals_temperature ?? '',
+            vitals_bmi: entry?.vitalsBmi ?? entry?.vitals_bmi ?? '',
+            vitals_spo2: entry?.vitalsSpo2 ?? entry?.vitals_spo2 ?? '',
+          });
+        });
+      });
+      return fallbackRows.sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0));
+    } catch {
+      return [];
+    }
+  })();
+  const latestSelectedReport = [...selectedReports].sort(
+    (a, b) => new Date(b.submitted_at || b.created_at || 0).getTime() - new Date(a.submitted_at || a.created_at || 0).getTime()
+  )[0] || null;
   const totalReportsSubmitted = Object.values(weeklyReportsByPatient || {}).reduce((acc, rows) => acc + (rows?.length || 0), 0);
   const averageProgress = patients.length
     ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
@@ -237,7 +467,15 @@ const PatientDetailsPage = () => {
     )
     .sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime())
     .slice(0, 4);
-  const selectedPatientDetails = selectedPatient ? patientDetailsById[String(selectedPatient.id)] : null;
+  const assignedNurseDisplay =
+    latestSelectedReport?.nurse_name
+    || selectedPatientDetails?.program_staff
+    || selectedPatientDetails?.medical_staff_note
+    || 'N/A';
+  const resolveVital = (reportVal, ...fallbacks) => {
+    const first = [reportVal, ...fallbacks].find((v) => String(v ?? '').trim() !== '');
+    return String(first ?? '').trim() || '—';
+  };
   const formatDate = (iso) => {
     if (!iso) return 'N/A';
     try {
@@ -255,6 +493,17 @@ const PatientDetailsPage = () => {
     const m = now.getMonth() - date.getMonth();
     if (m < 0 || (m === 0 && now.getDate() < date.getDate())) age -= 1;
     return age >= 0 ? age : 'N/A';
+  };
+  const formatResidentDisplayId = (patientId) => {
+    const key = String(patientId || '');
+    const detail = patientDetailsById[key] || null;
+    const patient = (patients || []).find((p) => String(p.id) === key) || null;
+    const admittedAt = detail?.admitted_at || patient?.admitted_at || patient?.admissionDate || null;
+    const createdAt = detail?.created_at || patient?.created_at || admittedAt || null;
+    return computeAdmissionDisplayId(
+      { id: key, decided_at: admittedAt, created_at: createdAt },
+      { id: key, admitted_at: admittedAt }
+    );
   };
 
   return (
@@ -336,7 +585,7 @@ const PatientDetailsPage = () => {
           box-sizing: border-box;
         }
         .top-nav-left { display: flex; align-items: center; gap: 30px; }
-        .view-title { color: #F54E25; font-weight: 700; font-size: 20px; }
+        .view-title { color: #F54E25; font-weight: 800; font-size: 18px; letter-spacing: -0.01em; }
         .welcome-text { color: #1B2559; font-weight: 500; font-size: 16px; }
         .scroll-content { flex: 1; padding: 24px 26px; overflow-y: auto; }
         .content-wrap { width: 100%; max-width: 1500px; margin: 0 auto; }
@@ -682,11 +931,11 @@ const PatientDetailsPage = () => {
             <div className="sidebar-icon-wrap">
               <ClipboardList size={22} color="#707EAE" />
             </div>
-            <span className="sidebar-label">Patient Details</span>
+            <span className="sidebar-label">Resident Details</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
             <div className="sidebar-icon-wrap">
-              <ClipboardList size={22} color="#707EAE" />
+              <TrendingUp size={22} color="#707EAE" />
             </div>
             <span className="sidebar-label">Request Management</span>
           </div>
@@ -722,8 +971,7 @@ const PatientDetailsPage = () => {
       <div className="main-view">
         <header className="top-nav">
           <div className="top-nav-left">
-            <span className="view-title">Patient Details</span>
-            <span className="welcome-text">Welcome Back, {firstName}</span>
+            <span className="view-title">Resident Details</span>
           </div>
         </header>
 
@@ -739,10 +987,27 @@ const PatientDetailsPage = () => {
 
             <div className="report-cards-grid">
               {latestWeeklyReports.length ? latestWeeklyReports.map((item, idx) => (
-                <div className="report-card" key={`${item.patientId}-${item.week}-${idx}`}>
+                <div
+                  className="report-card"
+                  key={`${item.patientId}-${item.week}-${idx}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    const target = patients.find((p) => String(p.id) === String(item.patientId));
+                    if (target) setSelectedPatient(target);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      const target = patients.find((p) => String(p.id) === String(item.patientId));
+                      if (target) setSelectedPatient(target);
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
                   <div className="report-kicker">Weekly Report</div>
                   <div style={{ color: '#0F172A', fontWeight: 800, fontSize: 13, marginBottom: 3 }}>Week {item.week}</div>
-                  <div style={{ color: '#334155', fontSize: 12, fontWeight: 700 }}>Patient ID: {String(item.patientId).slice(0, 8)}</div>
+                  <div style={{ color: '#334155', fontSize: 12, fontWeight: 700 }}>Resident ID: {formatResidentDisplayId(item.patientId)}</div>
                   <div style={{ color: '#64748B', fontSize: 11, marginTop: 3 }}>{formatDate(item.submittedAt)}</div>
                   <div style={{ color: '#64748B', fontSize: 11, marginTop: 4 }}>Nurse: {item.nurseName}</div>
                 </div>
@@ -981,8 +1246,8 @@ const PatientDetailsPage = () => {
                         <td>{selectedPatientDetails?.room_code || selectedPatient.roomCode || 'Unassigned'}</td>
                       </tr>
                       <tr>
-                        <th>Case Load Manager</th>
-                        <td>{selectedPatientDetails?.case_load_manager || 'N/A'}</td>
+                        <th>Nurse</th>
+                        <td>{assignedNurseDisplay}</td>
                       </tr>
                       <tr>
                         <th>Program Staff</th>
@@ -991,6 +1256,45 @@ const PatientDetailsPage = () => {
                       <tr>
                         <th>Reports Submitted</th>
                         <td>{selectedReports.length}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="detail-card">
+                  <div className="detail-title"><CheckCircle2 size={15} color="#F54E25" /> Vital Signs (Latest Weekly Report)</div>
+                  <table className="mini-table">
+                    <tbody>
+                      <tr>
+                        <th>Current Weight</th>
+                        <td>{resolveVital(latestSelectedReport?.vitals_weight, selectedPatientDetails?.current_weight, selectedPatientDetails?.weight_kg)}</td>
+                      </tr>
+                      <tr>
+                        <th>Height</th>
+                        <td>{resolveVital(latestSelectedReport?.vitals_height, selectedPatientDetails?.height_cm)}</td>
+                      </tr>
+                      <tr>
+                        <th>Blood Pressure</th>
+                        <td>{resolveVital(latestSelectedReport?.vitals_bp, selectedPatientDetails?.bp, selectedPatientDetails?.blood_pressure)}</td>
+                      </tr>
+                      <tr>
+                        <th>PR</th>
+                        <td>{resolveVital(latestSelectedReport?.vitals_pr, selectedPatientDetails?.pr, selectedPatientDetails?.pulse_rate)}</td>
+                      </tr>
+                      <tr>
+                        <th>RR</th>
+                        <td>{resolveVital(latestSelectedReport?.vitals_rr, selectedPatientDetails?.rr, selectedPatientDetails?.respiratory_rate)}</td>
+                      </tr>
+                      <tr>
+                        <th>Temperature (°F)</th>
+                        <td>{resolveVital(latestSelectedReport?.vitals_temperature, selectedPatientDetails?.temperature_f, selectedPatientDetails?.temperature)}</td>
+                      </tr>
+                      <tr>
+                        <th>BMI</th>
+                        <td>{resolveVital(latestSelectedReport?.vitals_bmi, selectedPatientDetails?.bmi)}</td>
+                      </tr>
+                      <tr>
+                        <th>SPO2</th>
+                        <td>{resolveVital(latestSelectedReport?.vitals_spo2, selectedPatientDetails?.spo2, selectedPatientDetails?.oxygen_saturation)}</td>
                       </tr>
                     </tbody>
                   </table>

@@ -561,7 +561,9 @@ const Progress = () => {
         .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .top-nav { height: 85px; background: white; display: flex; align-items: center; padding: 0 30px; border-bottom: 1px solid #F1F1F1; }
         .top-nav-left { display: flex; align-items: center; gap: 40px; }
-        .view-title { color: #F54E25; font-weight: 800; font-size: 24px; line-height: 1.2; }
+        .view-title { font-weight: 800; font-size: 18px; letter-spacing: -0.01em; line-height: 1.2; }
+        .view-title-accent { color: #F54E25; }
+        .view-title-rest { color: #0F172A; }
         .top-nav-actions { margin-left: auto; display: flex; align-items: center; gap: 14px; }
         .user-avatar-top { width: 40px; height: 40px; background: #F54E25; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
         .notifications-dropdown { position: absolute; top: calc(100% + 10px); right: 0; width: min(360px, calc(100vw - 48px)); background: white; border: 1px solid #E9EDF7; border-radius: 14px; box-shadow: 0 12px 40px rgba(27,37,89,.12); padding: 16px; z-index: 500; }
@@ -773,8 +775,7 @@ const Progress = () => {
           .terms-modal-header, .terms-modal-body, .terms-modal-footer { padding-left: 14px; padding-right: 14px; }
           .terms-modal-title,
           .modal-title,
-          .heading,
-          .view-title { font-size: 20px; }
+          .heading { font-size: 20px; }
         }
       `}</style>
 
@@ -807,6 +808,12 @@ const Progress = () => {
 
       <main className="main-view">
         <header className="top-nav">
+          <div className="top-nav-left">
+            <span className="view-title">
+              <span className="view-title-accent">Request</span>
+              <span className="view-title-rest"> Management</span>
+            </span>
+          </div>
           <div className="top-nav-actions">
             <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
               <button type="button" className="notifications-trigger" aria-expanded={showNotifications} aria-label="Notifications" onClick={() => setShowNotifications((v) => !v)}>
@@ -848,9 +855,6 @@ const Progress = () => {
         <div className="content-area" style={{ background: FAMILY_COLORS.background }}>
           <div className="content-wrap">
             <div className="request-shell">
-              <div className="heading"><span style={{ color: '#F54E25' }}>Request</span> Management</div>
-              <div className="subheading">Submit and track admission or discharge requests from one place.</div>
-
               <div className="tabs">
                 <button className={`tab-btn ${activeTab === 'admission' ? 'active' : ''}`} onClick={() => setActiveTab('admission')}>Admission Form</button>
                 <button className={`tab-btn ${activeTab === 'discharge' ? 'active' : ''}`} onClick={() => setActiveTab('discharge')}>Discharge Form</button>

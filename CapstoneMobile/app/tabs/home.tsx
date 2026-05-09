@@ -10,6 +10,7 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -25,14 +26,21 @@ import { fetchActivityFeedForCurrentUser } from '../../lib/activityFeed';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   loadFamilyNotificationsMobile,
   saveFamilyNotificationsMobile,
 } from '../../lib/familyNotificationsMobile';
+import {
+  listVisitationRequestsByFamily,
+  mergeRequestsFromSupabase,
+  normalizeVisitationStatus,
+  type VisitationRequestRow,
+} from '../../lib/visitationAppointmentsMobile';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
-const BG = '#F8F9FD';
+const BG = '#F8FAFF';
 
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -41,6 +49,67 @@ function deriveInitials(name: string): string {
 
 type PendingAdmission = NonNullable<ReturnType<typeof uiAdmissionRequestFromRow>>;
 type PendingDischarge = NonNullable<ReturnType<typeof uiDischargeRequestFromRow>>;
+
+type NurseWeekRecord = {
+  submittedAt?: string | null;
+  nurseName: string;
+  reportDate: string;
+  summary: string;
+  progressPercent?: number | null;
+  nurseNote: string;
+  behaviorObservation: string;
+  recommendations: string;
+  currentMedications: string;
+  medicationIntervention: string;
+};
+
+type WeeklyReportDetailState = NurseWeekRecord & {
+  patientId: string;
+  patientName: string;
+  week: string;
+};
+
+type RequestTableRow = {
+  key: string;
+  type: 'Admission' | 'Discharge' | 'Appointment';
+  name: string;
+  status: string;
+  date: string;
+};
+
+const HIDDEN_REQUEST_KEYS_PREFIX = 'bh_mobile_hidden_request_keys_v1:';
+
+function computeStayDays(admittedAt?: string | null, dischargedAt?: string | null): number {
+  const a = new Date(admittedAt || 0).getTime();
+  if (!a || Number.isNaN(a)) return 0;
+  const d = dischargedAt ? new Date(dischargedAt).getTime() : Date.now();
+  if (!d || Number.isNaN(d)) return 0;
+  if (d < a) return 1;
+  return Math.max(1, Math.ceil((d - a) / (24 * 60 * 60 * 1000)));
+}
+
+function computeAverageStayDays(
+  list: { admitted_at?: string | null; discharged_at?: string | null }[] | null | undefined
+): number {
+  const stays = (list || [])
+    .map((p) => computeStayDays(p.admitted_at, p.discharged_at))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!stays.length) return 0;
+  return Math.round(stays.reduce((sum, n) => sum + n, 0) / stays.length);
+}
+
+function formatNurseReportDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return '';
+  }
+}
 
 function patientStatus(progress: number) {
   const p = Number(progress) || 0;
@@ -59,7 +128,14 @@ export default function HomeScreen() {
   const [patients, setPatients] = useState<UIPatient[]>([]);
   const [pendingAdmissions, setPendingAdmissions] = useState<PendingAdmission[]>([]);
   const [pendingDischarges, setPendingDischarges] = useState<PendingDischarge[]>([]);
-  const [nurseWeeklyByPatient, setNurseWeeklyByPatient] = useState<Record<string, Record<string, unknown>>>({});
+  const [nurseWeeklyByPatient, setNurseWeeklyByPatient] = useState<Record<string, Record<string, NurseWeekRecord>>>({});
+  const [familyVisitationRequests, setFamilyVisitationRequests] = useState<VisitationRequestRow[]>([]);
+  const [averageStayDays, setAverageStayDays] = useState(0);
+  const [hiddenRequestKeys, setHiddenRequestKeys] = useState<string[]>([]);
+  const [familyUserId, setFamilyUserId] = useState('');
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [weeklyReportExpandedPatientId, setWeeklyReportExpandedPatientId] = useState<string | null>(null);
+  const [weeklyReportDetail, setWeeklyReportDetail] = useState<WeeklyReportDetailState | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [supabaseReadError, setSupabaseReadError] = useState<string | null>(null);
 
@@ -75,6 +151,8 @@ export default function HomeScreen() {
       setPendingAdmissions([]);
       setPendingDischarges([]);
       setNurseWeeklyByPatient({});
+      setFamilyVisitationRequests([]);
+      setAverageStayDays(0);
       setDashboardLoading(false);
       return;
     }
@@ -89,7 +167,21 @@ export default function HomeScreen() {
         setPendingAdmissions([]);
         setPendingDischarges([]);
         setNurseWeeklyByPatient({});
+        setFamilyVisitationRequests([]);
+        setAverageStayDays(0);
+        setFamilyUserId('');
         return;
+      }
+      setFamilyUserId(user.id);
+
+      try {
+        const raw = await AsyncStorage.getItem(`${HIDDEN_REQUEST_KEYS_PREFIX}${user.id}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) setHiddenRequestKeys(parsed.map(String));
+        }
+      } catch {
+        /* keep existing */
       }
 
       const { data: pRows, error: pErr } = await supabase
@@ -98,8 +190,12 @@ export default function HomeScreen() {
           'id, full_name, admitted_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at'
         )
         .eq('family_id', user.id)
-        .is('discharged_at', null)
         .order('admitted_at', { ascending: false });
+
+      const { data: allFamilyRows } = await supabase
+        .from('patients')
+        .select('admitted_at, discharged_at')
+        .eq('family_id', user.id);
 
       if (pErr) {
         console.warn('[home patients]', pErr.message);
@@ -111,6 +207,11 @@ export default function HomeScreen() {
             .filter((x): x is UIPatient => x != null)
         );
       }
+      setAverageStayDays(computeAverageStayDays(allFamilyRows || []));
+
+      const localVisit = await listVisitationRequestsByFamily(user.id);
+      const mergedVisit = await mergeRequestsFromSupabase(user.id, localVisit);
+      setFamilyVisitationRequests(mergedVisit);
 
       const [{ data: aRows, error: aErr }, { data: dRows, error: dErr }] = await Promise.all([
         supabase.from('admission_requests').select('*').eq('family_id', user.id).eq('status', 'pending'),
@@ -137,7 +238,7 @@ export default function HomeScreen() {
       );
 
       const ids = (pRows || []).map((r) => r.id).filter(Boolean);
-      let byPatient: Record<string, Record<string, unknown>> = {};
+      let byPatient: Record<string, Record<string, NurseWeekRecord>> = {};
       if (ids.length) {
         const { data: wRows, error: wErr } = await supabase.from('weekly_reports').select('*').in('patient_id', ids);
         if (!wErr && wRows) {
@@ -146,9 +247,19 @@ export default function HomeScreen() {
             const pid = String(rec.patient_id);
             if (!byPatient[pid]) byPatient[pid] = {};
             byPatient[pid][String(rec.week_number)] = {
-              submittedAt: rec.submitted_at,
-              nurseName: rec.nurse_name || '',
-              reportDate: rec.report_date || '',
+              submittedAt: (rec.submitted_at as string) ?? null,
+              nurseName: String(rec.nurse_name || ''),
+              reportDate: String(rec.report_date || ''),
+              summary: String(rec.summary || rec.report_summary || ''),
+              progressPercent:
+                rec.progress_percent !== undefined && rec.progress_percent !== null
+                  ? Number(rec.progress_percent)
+                  : null,
+              nurseNote: String(rec.nurse_note || rec.notes || ''),
+              behaviorObservation: String(rec.behavior_observation || ''),
+              recommendations: String(rec.recommendations || rec.plan_next_week || ''),
+              currentMedications: String(rec.current_medications || ''),
+              medicationIntervention: String(rec.medication_intervention || ''),
             };
           }
         }
@@ -160,6 +271,8 @@ export default function HomeScreen() {
       setPendingAdmissions([]);
       setPendingDischarges([]);
       setNurseWeeklyByPatient({});
+      setFamilyVisitationRequests([]);
+      setAverageStayDays(0);
     } finally {
       setDashboardLoading(false);
     }
@@ -217,11 +330,15 @@ export default function HomeScreen() {
     (count, patientWeeks) => count + Object.keys(patientWeeks || {}).length,
     0
   );
-  const totalPendingRequests = pendingAdmissions.length + pendingDischarges.length;
+  const pendingAppointmentRequests = familyVisitationRequests.filter(
+    (row) => normalizeVisitationStatus(row?.status) === 'Requested'
+  );
+  const totalPendingRequests =
+    pendingAdmissions.length + pendingDischarges.length + pendingAppointmentRequests.length;
   const summaryGraphData = [
     { label: 'Residents', value: patients.length, color: '#F54E25' },
     { label: 'Admissions', value: pendingAdmissions.length, color: '#EA580C' },
-    { label: 'Discharges', value: pendingDischarges.length, color: '#2B31ED' },
+    { label: 'Discharges', value: pendingDischarges.length, color: '#6366F1' },
     {
       label: 'Avg Progress',
       value: patients.length
@@ -230,6 +347,7 @@ export default function HomeScreen() {
       color: '#16A34A',
     },
     { label: 'Reports', value: reportsReceivedCount, color: '#7C3AED' },
+    { label: 'Avg Stay', value: averageStayDays, color: '#0369A1' },
   ];
   const summaryGraphMax = Math.max(5, ...summaryGraphData.map((d) => Number(d.value) || 0));
   const averageProgress = patients.length
@@ -247,7 +365,7 @@ export default function HomeScreen() {
       color: '#F59E0B',
     },
     {
-      label: 'Avg Recovery Progress',
+      label: 'Avg Recovery',
       value: `${averageProgress}%`,
       note:
         averageProgress >= 70 ? 'Strong recovery trend' : averageProgress >= 40 ? 'Steady recovery' : 'Needs support focus',
@@ -256,14 +374,20 @@ export default function HomeScreen() {
     {
       label: 'Report Coverage',
       value: `${reportCoverageRate}%`,
-      note: 'Submitted nurse reports versus expected weekly slots',
+      note: 'Nurse reports vs expected weekly slots',
       color: '#7C3AED',
     },
     {
       label: 'Admission Pressure',
       value: String(pendingAdmissions.length),
-      note: pendingAdmissions.length ? 'Follow up with admin review' : 'No pending admissions',
+      note: pendingAdmissions.length ? 'Follow up with admin' : 'No pending admissions',
       color: '#EA580C',
+    },
+    {
+      label: 'Avg Stay Days',
+      value: String(averageStayDays),
+      note: 'Includes active and discharged',
+      color: '#0369A1',
     },
   ];
   const highestMetric = summaryGraphData.reduce(
@@ -271,12 +395,17 @@ export default function HomeScreen() {
     summaryGraphData[0] || { label: 'Residents', value: 0, color: '#F54E25' }
   );
 
-  const resolveRequestPatientName = (row: PendingAdmission | PendingDischarge) => {
-    const directName = row.patientName || row.patient_name || '';
+  const resolveRequestPatientName = (row: PendingAdmission | PendingDischarge | VisitationRequestRow) => {
+    const directName =
+      (row as VisitationRequestRow).patientName ||
+      row.patientName ||
+      row.patient_name ||
+      (row as { patient?: string }).patient ||
+      '';
     if (directName && String(directName).trim() && String(directName).trim().toLowerCase() !== 'patient') {
-      return directName;
+      return String(directName).trim();
     }
-    const pid = (row as PendingDischarge).patientId;
+    const pid = (row as PendingDischarge).patientId ?? (row as VisitationRequestRow).patientId;
     if (pid) {
       const match = patients.find((p) => String(p.id) === String(pid));
       if (match?.name) return match.name;
@@ -284,23 +413,60 @@ export default function HomeScreen() {
     return 'Unknown';
   };
 
-  const requestTableRows = [
-    ...pendingAdmissions.map((row) => ({
+  const dismissRequestRow = (key: string) => {
+    setHiddenRequestKeys((prev) => {
+      const next = [...prev, String(key)];
+      if (familyUserId) {
+        void AsyncStorage.setItem(`${HIDDEN_REQUEST_KEYS_PREFIX}${familyUserId}`, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const openWeeklyReportsModal = () => {
+    setWeeklyReportExpandedPatientId(null);
+    setWeeklyReportDetail(null);
+    setShowReportModal(true);
+  };
+
+  const requestTableRows: RequestTableRow[] = [
+    ...pendingAdmissions.map((row, idx) => ({
+      key: `admission-${row?.requestId || row?.id || idx}`,
       type: 'Admission' as const,
       name: resolveRequestPatientName(row),
       status: row?.status || 'Pending',
+      date: String(row?.createdAt || row?.created_at || ''),
     })),
-    ...pendingDischarges.map((row) => ({
+    ...pendingDischarges.map((row, idx) => ({
+      key: `discharge-${row?.dischargeRequestId || row?.requestId || row?.id || idx}`,
       type: 'Discharge' as const,
       name: resolveRequestPatientName(row),
       status: row?.status || 'Pending',
+      date: String(row?.requestTime || row?.created_at || ''),
     })),
-  ].slice(0, 8);
+    ...familyVisitationRequests.map((row, idx) => ({
+      key: `appointment-${row?.id || idx}`,
+      type: 'Appointment' as const,
+      name: resolveRequestPatientName(row),
+      status: normalizeVisitationStatus(row?.status),
+      date: String(row?.createdAt || row?.preferredDate || ''),
+    })),
+  ].filter((row) => !hiddenRequestKeys.includes(String(row.key)));
 
   const patientReportCount = (patientId: string) =>
     Object.keys(nurseWeeklyByPatient[String(patientId)] || {}).length;
 
-  const patientTableRows = patients.slice(0, 8);
+  const patientTableRows = patients;
+
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const dateStr = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: BG }]}>
@@ -362,19 +528,110 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
+        <LinearGradient
+          colors={['#1E293B', '#1D2D50', '#312e81']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroBanner}
+        >
+          <View style={styles.heroInner}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={styles.heroEyebrowRow}>
+                <View style={styles.heroHeartWrap}>
+                  <Ionicons name="heart" size={16} color="#FFFFFF" />
+                </View>
+                <Text style={styles.heroEyebrow} numberOfLines={1}>
+                  Bridges of Hope — Family Portal
+                </Text>
+              </View>
+              <Text style={styles.heroTitle}>
+                {greeting}, {firstName} 👋
+              </Text>
+              <Text style={styles.heroSub}>{dateStr} · Your care overview at a glance</Text>
+            </View>
+            <View style={styles.heroStatRow}>
+              {[
+                { label: 'Residents', val: patients.length, color: '#A5B4FC' },
+                { label: 'Pending', val: totalPendingRequests, color: '#FCA5A5' },
+                { label: 'Reports', val: reportsReceivedCount, color: '#6EE7B7' },
+              ].map((s) => (
+                <View key={s.label} style={styles.heroStatChip}>
+                  <Text style={styles.heroStatChipLabel}>{s.label}</Text>
+                  <Text style={[styles.heroStatChipValue, { color: s.color }]}>{s.val}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.statGrid}>
+          {[
+            {
+              label: 'Active Residents',
+              value: String(patients.length),
+              sub: 'Currently under care',
+              icon: 'pulse' as const,
+              accent: '#6366F1',
+              bg: '#EEF2FF',
+              border: '#C7D2FE',
+            },
+            {
+              label: 'Avg Progress',
+              value: `${averageProgress}%`,
+              sub: averageProgress >= 70 ? 'Strong trend' : 'Steady recovery',
+              icon: 'trending-up' as const,
+              accent: '#10B981',
+              bg: '#ECFDF5',
+              border: '#A7F3D0',
+            },
+            {
+              label: 'Pending Requests',
+              value: String(totalPendingRequests),
+              sub: 'Admissions, discharges, appointments',
+              icon: 'alert-circle' as const,
+              accent: '#F59E0B',
+              bg: '#FFFBEB',
+              border: '#FDE68A',
+            },
+            {
+              label: 'Reports Received',
+              value: String(reportsReceivedCount),
+              sub: 'From nursing staff',
+              icon: 'document-text' as const,
+              accent: '#8B5CF6',
+              bg: '#F5F3FF',
+              border: '#DDD6FE',
+            },
+          ].map((card) => (
+            <View key={card.label} style={[styles.statCard, { borderColor: card.border }]}>
+              <View style={[styles.statCardDeco, { backgroundColor: card.bg }]} />
+              <View style={styles.statCardInner}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.statCardLabel}>{card.label}</Text>
+                  <Text style={styles.statCardValue}>{card.value}</Text>
+                  <Text style={styles.statCardSub}>{card.sub}</Text>
+                </View>
+                <View style={[styles.statCardIconWrap, { backgroundColor: card.bg, borderColor: card.border }]}>
+                  <Ionicons name={card.icon} size={20} color={card.accent} />
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+
         <View style={styles.panelCard}>
           <View style={styles.quickActionsHeaderRow}>
-            <Text style={styles.quickActionsTitle}>
-              <Text style={styles.quickActionsTitleNavy}>Quick </Text>
-              <Text style={styles.quickActionsTitleOrange}>Actions</Text>
-            </Text>
-            <Text style={styles.quickActionsCaption} numberOfLines={2}>
-              Start with your most-used tools
-            </Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="sparkles" size={16} color="#F54E25" />
+                <Text style={styles.sectionTitleText}>Quick Actions</Text>
+              </View>
+              <Text style={styles.sectionSub}>Your most-used tools — one tap away</Text>
+            </View>
           </View>
           <TouchableOpacity
             style={styles.actionCard}
-            onPress={() => router.navigate(TAB_ROUTES.reports)}
+            onPress={openWeeklyReportsModal}
             activeOpacity={0.9}
           >
             <View style={styles.iconSquare}>
@@ -382,25 +639,9 @@ export default function HomeScreen() {
             </View>
             <View style={styles.actionMain}>
               <Text style={styles.actionTitle}>Weekly Report</Text>
-              <Text style={styles.actionSubtitle}>Review submitted weekly care updates</Text>
+              <Text style={styles.actionSubtitle}>Review submitted weekly care updates from nursing staff</Text>
               <View style={[styles.actionBadge, { backgroundColor: '#FFF1EB' }]}>
                 <Text style={[styles.actionBadgeText, { color: '#C2410C' }]}>{reportsReceivedCount} received</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.navigate(TAB_ROUTES.services)}
-            activeOpacity={0.9}
-          >
-            <View style={styles.iconSquare}>
-              <Ionicons name="briefcase" size={22} color="#FFFFFF" />
-            </View>
-            <View style={styles.actionMain}>
-              <Text style={styles.actionTitle}>Services</Text>
-              <Text style={styles.actionSubtitle}>Open billing, inclusions, and support details</Text>
-              <View style={[styles.actionBadge, { backgroundColor: '#EEF2FF' }]}>
-                <Text style={[styles.actionBadgeText, { color: '#3730A3' }]}>Care resources</Text>
               </View>
             </View>
           </TouchableOpacity>
@@ -414,11 +655,27 @@ export default function HomeScreen() {
             </View>
             <View style={styles.actionMain}>
               <Text style={styles.actionTitle}>Admission</Text>
-              <Text style={styles.actionSubtitle}>Submit new admission request forms</Text>
+              <Text style={styles.actionSubtitle}>Submit and track new admission request forms</Text>
               <View style={[styles.actionBadge, { backgroundColor: '#FEF3C7' }]}>
                 <Text style={[styles.actionBadgeText, { color: '#92400E' }]}>
                   {pendingAdmissions.length} pending
                 </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => router.navigate(TAB_ROUTES.services)}
+            activeOpacity={0.9}
+          >
+            <View style={styles.iconSquare}>
+              <Ionicons name="briefcase" size={22} color="#FFFFFF" />
+            </View>
+            <View style={styles.actionMain}>
+              <Text style={styles.actionTitle}>Services</Text>
+              <Text style={styles.actionSubtitle}>Open billing, inclusions, and care support details</Text>
+              <View style={[styles.actionBadge, { backgroundColor: '#EEF2FF' }]}>
+                <Text style={[styles.actionBadgeText, { color: '#3730A3' }]}>Care resources</Text>
               </View>
             </View>
           </TouchableOpacity>
@@ -536,17 +793,42 @@ export default function HomeScreen() {
           {requestTableRows.length === 0 ? (
             <Text style={styles.emptyMuted}>No pending requests.</Text>
           ) : (
-            requestTableRows.map((r, idx) => (
-              <View key={`${r.type}-${r.name}-${idx}`} style={styles.reqRow}>
-                <Text style={styles.reqType}>{r.type}</Text>
-                <Text style={styles.reqName} numberOfLines={1}>
-                  {r.name}
-                </Text>
-                <View style={styles.reqPill}>
-                  <Text style={styles.reqPillText}>{String(r.status || 'pending').toLowerCase()}</Text>
+            requestTableRows.map((r) => {
+              const typeBg =
+                r.type === 'Admission' ? '#EEF2FF' : r.type === 'Discharge' ? '#FFF1F2' : '#ECFDF5';
+              const typeColor =
+                r.type === 'Admission' ? '#3730A3' : r.type === 'Discharge' ? '#9F1239' : '#065F46';
+              return (
+                <View key={r.key} style={styles.reqRow}>
+                  <View style={[styles.reqTypePill, { backgroundColor: typeBg }]}>
+                    <Text style={[styles.reqTypePillText, { color: typeColor }]}>{r.type}</Text>
+                  </View>
+                  <View style={styles.reqMid}>
+                    <Text style={styles.reqName} numberOfLines={1}>
+                      {r.name}
+                    </Text>
+                    {r.date ? (
+                      <Text style={styles.reqDate} numberOfLines={1}>
+                        {r.date}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.reqStatusCell}>
+                    <View style={styles.reqPill}>
+                      <Text style={styles.reqPillText}>{String(r.status || 'pending').toLowerCase()}</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => dismissRequestRow(r.key)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Dismiss from list"
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.reqDismiss}>×</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ))
+              );
+            })
           )}
         </View>
 
@@ -564,7 +846,7 @@ export default function HomeScreen() {
             <View style={styles.overviewItem}>
               <Text style={styles.overviewLabel}>Pending Requests</Text>
               <Text style={styles.overviewValue}>{totalPendingRequests}</Text>
-              <Text style={styles.overviewSub}>Admissions and discharges</Text>
+              <Text style={styles.overviewSub}>Admissions, discharges, and appointments</Text>
             </View>
             <View style={styles.overviewItem}>
               <Text style={styles.overviewLabel}>Average Progress</Text>
@@ -622,7 +904,7 @@ export default function HomeScreen() {
             </View>
             <View style={styles.cleanListItem}>
               <Text style={styles.cleanTitle}>View Weekly Reports</Text>
-              <TouchableOpacity style={styles.openBtnOrange} onPress={() => router.navigate(TAB_ROUTES.reports)}>
+              <TouchableOpacity style={styles.openBtnOrange} onPress={openWeeklyReportsModal}>
                 <Text style={styles.openBtnText}>Open</Text>
               </TouchableOpacity>
             </View>
@@ -647,10 +929,190 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <Text style={styles.welcomeFoot} accessibilityElementsHidden>
-          Welcome back, {firstName}
-        </Text>
       </ScrollView>
+
+      <Modal
+        visible={showReportModal}
+        animationType="slide"
+        onRequestClose={() => {
+          setShowReportModal(false);
+          setWeeklyReportDetail(null);
+          setWeeklyReportExpandedPatientId(null);
+        }}
+      >
+        <View style={[styles.reportModalRoot, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+          <View style={styles.reportModalHeader}>
+            {weeklyReportDetail ? (
+              <TouchableOpacity
+                onPress={() => setWeeklyReportDetail(null)}
+                style={styles.reportModalBack}
+                accessibilityRole="button"
+                accessibilityLabel="Back to patient list"
+              >
+                <Ionicons name="chevron-back" size={22} color="#F54E25" />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.reportModalBackSpacer} />
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.reportModalKicker}>Care updates</Text>
+              <Text style={styles.reportModalTitle}>
+                {weeklyReportDetail
+                  ? `Week ${weeklyReportDetail.week}`
+                  : 'Weekly nurse reports'}
+              </Text>
+              {weeklyReportDetail ? (
+                <Text style={styles.reportModalSub}>{weeklyReportDetail.patientName}</Text>
+              ) : (
+                <Text style={styles.reportModalSub}>Choose a resident, then a week (1–7)</Text>
+              )}
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                setShowReportModal(false);
+                setWeeklyReportDetail(null);
+                setWeeklyReportExpandedPatientId(null);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Ionicons name="close" size={24} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+
+          {!weeklyReportDetail ? (
+            <ScrollView
+              style={styles.reportModalScroll}
+              contentContainerStyle={{ paddingBottom: 24 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {patients.length === 0 ? (
+                <Text style={styles.emptyMuted}>No patient records yet.</Text>
+              ) : (
+                patients.map((p) => {
+                  const expanded = weeklyReportExpandedPatientId === p.id;
+                  const count = patientReportCount(p.id);
+                  return (
+                    <View key={p.id} style={styles.reportPatientBlock}>
+                      <TouchableOpacity
+                        style={styles.reportPatientRow}
+                        onPress={() =>
+                          setWeeklyReportExpandedPatientId(expanded ? null : String(p.id))
+                        }
+                        activeOpacity={0.85}
+                      >
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.reportPatientName} numberOfLines={1}>
+                            {p.name}
+                          </Text>
+                          <Text style={styles.reportPatientMeta}>
+                            Reports submitted: {count}/7
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={expanded ? 'chevron-up' : 'chevron-down'}
+                          size={20}
+                          color="#64748B"
+                        />
+                      </TouchableOpacity>
+                      {expanded ? (
+                        <View style={styles.reportWeekGrid}>
+                          {[1, 2, 3, 4, 5, 6, 7].map((w) => {
+                            const weekKey = String(w);
+                            const rec = nurseWeeklyByPatient[String(p.id)]?.[weekKey];
+                            const has = !!rec;
+                            return (
+                              <TouchableOpacity
+                                key={weekKey}
+                                style={[
+                                  styles.reportWeekChip,
+                                  has ? styles.reportWeekChipOn : styles.reportWeekChipOff,
+                                ]}
+                                disabled={!has}
+                                onPress={() => {
+                                  if (!rec) return;
+                                  setWeeklyReportDetail({
+                                    patientId: String(p.id),
+                                    patientName: p.name,
+                                    week: weekKey,
+                                    ...rec,
+                                  });
+                                }}
+                              >
+                                <Text
+                                  style={[
+                                    styles.reportWeekChipText,
+                                    has ? styles.reportWeekChipTextOn : styles.reportWeekChipTextOff,
+                                  ]}
+                                >
+                                  W{w}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+          ) : (
+            <ScrollView
+              style={styles.reportModalScroll}
+              contentContainerStyle={{ paddingBottom: 32 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.reportDetailMeta}>
+                <Text style={styles.reportDetailMetaText}>
+                  Nurse: {weeklyReportDetail.nurseName || '—'}
+                </Text>
+                <Text style={styles.reportDetailMetaText}>
+                  Report date:{' '}
+                  {weeklyReportDetail.reportDate
+                    ? formatNurseReportDate(weeklyReportDetail.reportDate)
+                    : formatNurseReportDate(weeklyReportDetail.submittedAt ?? undefined) || '—'}
+                </Text>
+                <Text style={styles.reportDetailMetaText}>
+                  Submitted:{' '}
+                  {formatNurseReportDate(weeklyReportDetail.submittedAt ?? undefined) || '—'}
+                </Text>
+              </View>
+              <Text style={styles.reportDetailLabel}>Summary</Text>
+              <Text style={styles.reportDetailVal}>
+                {weeklyReportDetail.summary || 'No summary for this week.'}
+              </Text>
+              <Text style={styles.reportDetailLabel}>Progress</Text>
+              <Text style={styles.reportDetailVal}>
+                {weeklyReportDetail.progressPercent != null &&
+                !Number.isNaN(Number(weeklyReportDetail.progressPercent))
+                  ? `${weeklyReportDetail.progressPercent}%`
+                  : 'N/A'}
+              </Text>
+              <Text style={styles.reportDetailLabel}>Nurse notes</Text>
+              <Text style={styles.reportDetailVal}>
+                {weeklyReportDetail.nurseNote || 'No notes available.'}
+              </Text>
+              <Text style={styles.reportDetailLabel}>Behavior / observation</Text>
+              <Text style={styles.reportDetailVal}>
+                {weeklyReportDetail.behaviorObservation || 'No behavior notes recorded.'}
+              </Text>
+              <Text style={styles.reportDetailLabel}>Recommendations</Text>
+              <Text style={styles.reportDetailVal}>
+                {weeklyReportDetail.recommendations || 'No recommendations recorded.'}
+              </Text>
+              <Text style={styles.reportDetailLabel}>Current medications</Text>
+              <Text style={styles.reportDetailVal}>
+                {weeklyReportDetail.currentMedications || 'None listed.'}
+              </Text>
+              <Text style={styles.reportDetailLabel}>Medication intervention</Text>
+              <Text style={styles.reportDetailVal}>
+                {weeklyReportDetail.medicationIntervention || 'None listed.'}
+              </Text>
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
 
       <FamilyWebMobileNav active="home" />
       <FamilyFloatingChat />
@@ -683,9 +1145,15 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#F54E25',
+    backgroundColor: '#EA580C',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 0,
+    shadowColor: '#F54E25',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   headerAvatarText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
   notifModalRoot: { flex: 1 },
@@ -710,6 +1178,110 @@ const styles = StyleSheet.create({
   notificationsDropdownText: { flex: 1, fontSize: 13, color: '#334155', lineHeight: 18 },
   notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scrollContent: { paddingHorizontal: isCompactScreen ? 14 : 18, paddingTop: 12 },
+  heroBanner: {
+    borderRadius: 22,
+    padding: isCompactScreen ? 16 : 22,
+    marginBottom: 14,
+    overflow: 'hidden',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  heroInner: { gap: 14 },
+  heroEyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  heroHeartWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroEyebrow: {
+    flex: 1,
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  heroTitle: {
+    fontSize: isCompactScreen ? 22 : 26,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  heroSub: { marginTop: 4, fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.45)' },
+  heroStatRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  heroStatChip: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+  },
+  heroStatChipLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.4)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  heroStatChipValue: { marginTop: 4, fontSize: 22, fontWeight: '900' },
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 14,
+  },
+  statCard: {
+    width: (width - (isCompactScreen ? 28 : 36) - 10) / 2,
+    borderRadius: 18,
+    borderWidth: 1,
+    backgroundColor: '#FFFFFF',
+    padding: 14,
+    overflow: 'hidden',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  statCardDeco: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 72,
+    height: 72,
+    borderBottomLeftRadius: 72,
+    opacity: 0.45,
+  },
+  statCardInner: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  statCardLabel: {
+    fontSize: 10,
+    color: '#94A3B8',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  statCardValue: { marginTop: 6, fontSize: 28, fontWeight: '900', color: '#0F172A', letterSpacing: -0.5 },
+  statCardSub: { marginTop: 2, fontSize: 11, color: '#94A3B8', fontWeight: '500' },
+  statCardIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitleText: { fontSize: 14, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
+  sectionSub: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '500' },
   panelCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -723,16 +1295,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   quickActionsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    gap: 10,
+    marginBottom: 14,
   },
-  quickActionsTitle: { flexShrink: 1 },
-  quickActionsTitleNavy: { fontSize: isCompactScreen ? 22 : 26, fontWeight: '800', color: '#1B2559' },
-  quickActionsTitleOrange: { fontSize: isCompactScreen ? 22 : 26, fontWeight: '800', color: '#F54E25' },
-  quickActionsCaption: { maxWidth: width * 0.42, fontSize: 12, fontWeight: '600', color: '#64748B', textAlign: 'right' },
   actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -754,7 +1318,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionMain: { flex: 1, minWidth: 0 },
-  actionTitle: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
+  actionTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
   actionSubtitle: { fontSize: 12, color: '#64748B', fontWeight: '600', marginTop: 4 },
   actionBadge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   actionBadgeText: { fontSize: 10, fontWeight: '800' },
@@ -845,7 +1409,7 @@ const styles = StyleSheet.create({
   tableProgressRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
   tableProgressPct: { fontSize: 11, fontWeight: '800', color: '#1B2559', width: 36 },
   tableProgressTrack: { flex: 1, height: 6, backgroundColor: '#F1F5F9', borderRadius: 8, overflow: 'hidden' },
-  tableProgressFill: { height: '100%', backgroundColor: '#4318FF', borderRadius: 8 },
+  tableProgressFill: { height: '100%', backgroundColor: '#F54E25', borderRadius: 8 },
   reqRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -854,8 +1418,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
-  reqType: { width: 72, fontSize: 12, fontWeight: '800', color: '#3758D5' },
-  reqName: { flex: 1, fontSize: 13, fontWeight: '700', color: '#1B2559' },
+  reqTypePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  reqTypePillText: { fontSize: 10, fontWeight: '800' },
+  reqMid: { flex: 1, minWidth: 0 },
+  reqName: { fontSize: 13, fontWeight: '700', color: '#1B2559' },
+  reqDate: { fontSize: 11, color: '#94A3B8', fontWeight: '600', marginTop: 2 },
+  reqStatusCell: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   reqPill: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -863,6 +1436,81 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
   },
   reqPillText: { fontSize: 10, fontWeight: '800', color: '#475569', textTransform: 'lowercase' },
+  reqDismiss: { fontSize: 20, lineHeight: 22, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 4 },
+  reportModalRoot: { flex: 1, backgroundColor: '#FFFFFF' },
+  reportModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    backgroundColor: '#FFFBF9',
+  },
+  reportModalBack: { padding: 4, marginRight: 4 },
+  reportModalBackSpacer: { width: 30 },
+  reportModalKicker: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#C2410C',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  reportModalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginTop: 4 },
+  reportModalSub: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 4 },
+  reportModalScroll: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  reportPatientBlock: {
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+    borderRadius: 14,
+    marginBottom: 10,
+    overflow: 'hidden',
+    backgroundColor: '#FBFDFF',
+  },
+  reportPatientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 10,
+  },
+  reportPatientName: { fontSize: 16, fontWeight: '800', color: '#1B2559' },
+  reportPatientMeta: { fontSize: 12, color: '#64748B', fontWeight: '600', marginTop: 4 },
+  reportWeekGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+  },
+  reportWeekChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  reportWeekChipOn: { borderColor: '#F54E25', backgroundColor: '#FFF7F4' },
+  reportWeekChipOff: { borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', opacity: 0.7 },
+  reportWeekChipText: { fontSize: 13, fontWeight: '800' },
+  reportWeekChipTextOn: { color: '#F54E25' },
+  reportWeekChipTextOff: { color: '#94A3B8' },
+  reportDetailMeta: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+  },
+  reportDetailMetaText: { fontSize: 12, color: '#475569', fontWeight: '600', marginBottom: 4 },
+  reportDetailLabel: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '800',
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  reportDetailVal: { fontSize: 14, color: '#0F172A', fontWeight: '600', lineHeight: 22 },
   highlightsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
   overviewItem: {
     width: (width - 36 - 32) / 2 - 5,
@@ -901,5 +1549,4 @@ const styles = StyleSheet.create({
   openBtnGreen: { backgroundColor: '#ECFDF3', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   openBtnOrange: { backgroundColor: '#FFF1EB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   openBtnText: { fontSize: 11, fontWeight: '800', color: '#3730A3' },
-  welcomeFoot: { textAlign: 'center', color: '#94A3B8', fontSize: 12, marginTop: 20, marginBottom: 8 },
 });

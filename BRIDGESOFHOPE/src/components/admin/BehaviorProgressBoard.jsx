@@ -528,7 +528,7 @@ export default function BehaviorProgressBoard({
                         return;
                       }
                       if (!isInterventionTile) {
-                        applyStageProgress(n);
+                        toggle(idx);
                       }
                     }}
                     style={{
@@ -567,7 +567,7 @@ export default function BehaviorProgressBoard({
                             type="checkbox"
                             checked={!!checked[idx]}
                             onClick={(e) => e.stopPropagation()}
-                            onChange={() => applyStageProgress(n)}
+                            onChange={() => toggle(idx)}
                             aria-label={`Square ${n}`}
                             style={{ width: 14, height: 14, accentColor: t.border, cursor: 'pointer', flexShrink: 0 }}
                           />
