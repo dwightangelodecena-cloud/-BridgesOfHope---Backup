@@ -24,6 +24,7 @@ export function FamilyFloatingChat() {
     { id: 1, text: 'Hello! How can I help you today?', sender: 'bot', time: '3:18 PM' },
   ]);
   const scrollRef = useRef<ScrollView>(null);
+  const msgIdRef = useRef(2);
 
   useEffect(() => {
     if (!open) return;
@@ -35,7 +36,7 @@ export function FamilyFloatingChat() {
     const t = input.trim();
     if (!t || typing) return;
     const userMsg: Msg = {
-      id: Date.now(),
+      id: msgIdRef.current++,
       text: t,
       sender: 'user',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -48,7 +49,7 @@ export function FamilyFloatingChat() {
       setMessages((m) => [
         ...m,
         {
-          id: Date.now() + 1,
+          id: msgIdRef.current++,
           text: 'Thank you for reaching out to Bridges of Hope. How can I assist you with your recovery journey today?',
           sender: 'bot',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),

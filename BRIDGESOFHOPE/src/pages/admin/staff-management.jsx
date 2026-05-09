@@ -383,8 +383,8 @@ const StaffManagement = () => {
       const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       const rows = (data || []).filter((r) => {
-        const t = String(r.account_type || r.role || '').toLowerCase();
-        return t.includes('nurse') || t.includes('staff');
+        const t = String(r.account_type || r.role || '').trim();
+        return isNurseAccount(t) || isStaffAccount(t);
       });
       setStaff(rows.map((r, idx) => mapRowToStaff(r, idx, meta)));
       setLastRefreshedAt(new Date().toISOString());

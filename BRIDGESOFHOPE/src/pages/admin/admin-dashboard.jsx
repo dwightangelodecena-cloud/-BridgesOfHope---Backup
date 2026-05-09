@@ -247,6 +247,7 @@ const AdminDashboard = () => {
         return (
           t === 'admin' ||
           t.includes('nurse') ||
+          t.includes('program') ||
           t.includes('staff') ||
           t.includes('clinic') ||
           t === 'case_manager' ||

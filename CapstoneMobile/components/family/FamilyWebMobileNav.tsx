@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase } from '../../lib/supabase';
 
-export type FamilyNavTab = 'home' | 'progress' | 'appointments' | 'reports' | 'profile';
+export type FamilyNavTab = 'home' | 'patientDetails' | 'progress' | 'appointments' | 'reports';
 
 type Props = {
   /** Use `'none'` on auxiliary screens (e.g. patient details, services) so no tab looks “selected”. */
@@ -70,10 +70,10 @@ export function FamilyWebMobileNav({ active }: Props) {
           <Ionicons name="home" size={24} color={active === 'home' ? '#F54E25' : '#A3AED0'} />
           {active === 'home' ? <Text style={styles.navLabelActive}>Home</Text> : null}
         </TouchableOpacity>
+        {mid('patientDetails', 'clipboard', TAB_ROUTES.patientDetails, 'Resident details')}
         {mid('progress', 'trending-up', TAB_ROUTES.progress, 'Request management')}
         {mid('appointments', 'calendar', TAB_ROUTES.appointments, 'Appointments')}
         {mid('reports', 'bar-chart', TAB_ROUTES.reports, 'Reports')}
-        {mid('profile', 'person', TAB_ROUTES.profile, 'Profile')}
         <TouchableOpacity style={styles.navItem} onPress={onLogout} accessibilityRole="button" accessibilityLabel="Log out">
           <Ionicons name="log-out-outline" size={24} color="#F54E25" />
         </TouchableOpacity>

@@ -8,7 +8,10 @@ import { resolveAccountRole } from '@/components/RoleGuard';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import { fetchWeeklyReportRecommendation } from '@/lib/weeklyReportAi';
-import BehaviorProgressBoard, { computeBehaviorBoardProgressPercent } from '@/components/admin/BehaviorProgressBoard';
+import BehaviorProgressBoard, {
+  buildBehaviorChecksForStage,
+  computeBehaviorBoardProgressPercent,
+} from '@/components/admin/BehaviorProgressBoard';
 import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
@@ -16,6 +19,67 @@ const ROOM_ASSIGNMENT_STORAGE_KEY = 'bh_patient_room_assignments_v1';
 const STAFF_ASSIGNMENT_STORAGE_KEY = 'bh_patient_staff_assignments_v1';
 const PROGRESS_GOVERNANCE_STORAGE_KEY = 'bh_patient_progress_governance_v1';
 const LOCAL_STAFF_DIRECTORY_KEY = 'bh_staff_directory';
+
+function normalizeLadderChecksFromDb(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const k of Object.keys(raw)) {
+    out[k] = !!raw[k];
+  }
+  return out;
+}
+
+/**
+ * Overwrite list `progress` from saved ladder rows so the grid matches the recovery board / DB.
+ * @param {Array<Record<string, unknown>>} patients
+ * @param {Record<string, { patient_id?: string, current_position?: number, checks?: unknown, updated_at?: string }>} ladderByPatientId
+ */
+function mergeNurseRecoveryLadderProgress(patients, ladderByPatientId) {
+  if (!Array.isArray(patients) || !patients.length || !ladderByPatientId || typeof ladderByPatientId !== 'object') {
+    return patients;
+  }
+  return patients.map((p) => {
+    const ladder = ladderByPatientId[String(p.id)];
+    if (!ladder) return p;
+    const pos = Math.max(1, Math.min(50, Number(ladder.current_position) || 1));
+    const rawChecks =
+      ladder.checks && typeof ladder.checks === 'object' && !Array.isArray(ladder.checks) ? ladder.checks : {};
+    const normalized = normalizeLadderChecksFromDb(rawChecks);
+    const hasChecks = Object.keys(normalized).length > 0;
+    const checkedState = hasChecks ? normalized : buildBehaviorChecksForStage(pos);
+    const pct = Math.min(
+      100,
+      Math.max(0, Math.round(Number(computeBehaviorBoardProgressPercent(checkedState)) || 0))
+    );
+    const ladderUpdated = ladder.updated_at && String(ladder.updated_at).trim() !== '' ? ladder.updated_at : null;
+    return {
+      ...p,
+      progress: pct,
+      ...(ladderUpdated ? { progressUpdatedAt: ladderUpdated } : {}),
+    };
+  });
+}
+
+/** Offline / legacy: ladder position in localStorage (no full checks). */
+function mergeLocalLadderProfilesProgress(patients) {
+  if (!Array.isArray(patients) || !patients.length) return patients;
+  const profiles = loadLadderProfiles();
+  return patients.map((p) => {
+    const prof = profiles[String(p.id)];
+    if (!prof || prof.currentPosition == null) return p;
+    const pos = Math.max(1, Math.min(50, Number(prof.currentPosition) || 1));
+    const pct = Math.min(
+      100,
+      Math.max(0, Math.round(Number(computeBehaviorBoardProgressPercent(buildBehaviorChecksForStage(pos))) || 0))
+    );
+    const updatedAt = prof.updatedAt && String(prof.updatedAt).trim() !== '' ? prof.updatedAt : null;
+    return {
+      ...p,
+      progress: pct,
+      ...(updatedAt ? { progressUpdatedAt: updatedAt } : {}),
+    };
+  });
+}
 
 /** Editable trajectory while in care. Discharged is derived from `discharged_at` (dashboard discharge approval), not set here. */
 const CLINICAL_STATUS_OPTIONS = ['Improving', 'Stable', 'Declining'];
@@ -69,6 +133,24 @@ const concernMatchesCategory = (concernRaw, category) => {
     );
   }
   return true;
+};
+
+/**
+ * Nurse weekly reports concatenate lines into `nurse_note`, including `Food allergies: …`.
+ * For the resident card, show that line as Medical history; value prefers DB columns
+ * (`patients.medical_history`, `weekly_reports.ongoing_medical_concern`) over the legacy inline text.
+ */
+const nurseNotesDisplayReplaceFoodAllergiesWithMedicalHistory = (rawNotes, medicalHistoryFromDb) => {
+  const mh = String(medicalHistoryFromDb ?? '').trim();
+  const lines = String(rawNotes ?? '').split(/\r?\n/);
+  const out = lines.map((line) => {
+    const m = line.match(/^\s*Food allergies:\s*(.*)$/i);
+    if (!m) return line;
+    const fallbackInline = String(m[1] ?? '').trim();
+    const value = mh || fallbackInline;
+    return value ? `Medical history: ${value}` : 'Medical history: —';
+  });
+  return out.join('\n');
 };
 
 const STATUS_ORDER = ['Discharged', 'Declining', 'Stable', 'Improving'].reduce((acc, s, i) => {
@@ -349,6 +431,7 @@ const toUiPatient = (row) => {
     caseLoadManager: row.case_load_manager || '',
     programStaff: row.program_staff || '',
     medicalStaffNote: row.medical_staff_note || '',
+    medicalHistory: row.medical_history || '',
     progressUpdatedBy: row.progress_updated_by || row.status_updated_by || '',
     progressUpdatedAt: row.progress_updated_at || row.status_updated_at || '',
     currentWeight: row.current_weight ?? row.weight_kg ?? row.weight ?? '',
@@ -416,125 +499,6 @@ const sortPatients = (rows, sortKey, direction) => {
   return cp;
 };
 
-/** Right column in patient detail — nurse-entered weekly clinical records. */
-function NursingRecordsPanel({ latestRow, latestVitals, weeklyReportsByWeek }) {
-  const weekHistory = Object.values(weeklyReportsByWeek || {})
-    .filter(Boolean)
-    .sort((a, b) => {
-      const aw = Number(a.week_number) || 0;
-      const bw = Number(b.week_number) || 0;
-      return bw - aw;
-    })
-    .slice(0, 7);
-  if (!latestRow) {
-    return (
-      <div
-        style={{
-          border: '1px dashed #CBD5E1',
-          borderRadius: 16,
-          background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)',
-          padding: 28,
-          minHeight: 300,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textAlign: 'center',
-          gap: 14,
-        }}
-      >
-        <div
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 14,
-            background: 'white',
-            border: '1px solid #E9EDF7',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 2px 8px rgba(27, 37, 89, 0.06)',
-          }}
-        >
-          <ClipboardList size={26} color="#94a3b8" strokeWidth={1.75} aria-hidden />
-        </div>
-        <div>
-          <p style={{ fontWeight: 800, color: '#475569', fontSize: 15, margin: 0 }}>Nursing &amp; clinical records</p>
-          <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55, margin: '8px 0 0', maxWidth: 300 }}>
-            No nurse weekly record has been filed yet for this resident.
-          </p>
-        </div>
-      </div>
-    );
-  }
-  const info = [
-    ['Latest filed week', `Week ${latestRow.week_number || '—'}`],
-    ['Nurse', latestRow.nurse_name || '—'],
-    ['Report date', latestRow.report_date || '—'],
-    ['Submitted at', latestRow.submitted_at ? formatDate(latestRow.submitted_at) : '—'],
-  ];
-  const notes = [
-    ['Current medications', latestRow.current_medications || '—'],
-    ['Medication intervention', latestRow.medication_intervention || '—'],
-    ['Nurse notes', latestRow.nurse_note || latestRow.notes || '—'],
-    ['Behavior / mood', latestRow.behavior_observation || '—'],
-    ['Recommendations', latestRow.recommendations || '—'],
-  ];
-  return (
-    <div
-      style={{
-        border: '1px solid #E5ECFA',
-        borderRadius: 16,
-        background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFF 100%)',
-        padding: 18,
-        minHeight: 300,
-        display: 'grid',
-        gap: 12,
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#1B2559' }}>Nursing &amp; clinical records</p>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 999, padding: '4px 9px' }}>
-          {weekHistory.length} filing{weekHistory.length === 1 ? '' : 's'}
-        </span>
-      </div>
-      <div style={{ display: 'grid', gap: 6 }}>
-        {info.map(([label, value]) => (
-          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, borderBottom: '1px solid #F1F5F9', paddingBottom: 6 }}>
-            <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 700 }}>{label}</span>
-            <span style={{ fontSize: 12, color: '#1B2559', fontWeight: 700, textAlign: 'right' }}>{value}</span>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        {[
-          ['Weight', latestVitals.weight],
-          ['Height', latestVitals.height],
-          ['BP', latestVitals.bp],
-          ['PR', latestVitals.pr],
-          ['RR', latestVitals.rr],
-          ['Temp', latestVitals.temperature],
-          ['BMI', latestVitals.bmi],
-          ['SPO2', latestVitals.spo2],
-        ].map(([label, value]) => (
-          <div key={label} style={{ border: '1px solid #E9EDF7', borderRadius: 10, padding: '8px 10px', background: '#fff' }}>
-            <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{label}</div>
-            <div style={{ fontSize: 12, color: '#1B2559', fontWeight: 800 }}>{String(value || '').trim() || '—'}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'grid', gap: 7 }}>
-        {notes.map(([label, value]) => (
-          <div key={label} style={{ border: '1px solid #E9EDF7', borderRadius: 10, padding: '8px 10px', background: '#fff' }}>
-            <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, marginBottom: 4 }}>{label}</div>
-            <div style={{ fontSize: 12, color: '#334155', fontWeight: 600, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{value}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const mapLegacyLocalPatients = () => {
   const legacy = JSON.parse(localStorage.getItem('bh_patients') || '[]');
   return legacy.map((p, idx) => {
@@ -573,6 +537,7 @@ const mapLegacyLocalPatients = () => {
       caseLoadManager: p.case_load_manager || p.caseLoadManager || '',
       programStaff: p.program_staff || p.programStaff || '',
       medicalStaffNote: p.medical_staff_note || p.medicalStaffNote || '',
+      medicalHistory: p.medical_history || p.medicalHistory || '',
       progressUpdatedBy: p.progress_updated_by || p.status_updated_by || p.progressUpdatedBy || '',
       progressUpdatedAt: p.progress_updated_at || p.status_updated_at || p.progressUpdatedAt || '',
       currentWeight: p.current_weight ?? p.weight_kg ?? p.currentWeight ?? p.weight ?? '',
@@ -597,7 +562,8 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     return '';
   };
   const isNurse = mode === 'nurse';
-  const isLimited = isNurse || staffLimited;
+  const isProgram = mode === 'program';
+  const isLimited = isNurse || staffLimited || isProgram;
   const isAdminMode = mode === 'admin' && !staffLimited;
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -638,13 +604,23 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   const [roomSaving, setRoomSaving] = useState(false);
   const [staffForm, setStaffForm] = useState({ caseLoadManager: '', programStaff: '', medicalStaffNote: '' });
   const [staffSaving, setStaffSaving] = useState(false);
+  const [staffAssignmentModalOpen, setStaffAssignmentModalOpen] = useState(false);
   const [staffDirectory, setStaffDirectory] = useState({ caseLoadManagers: [], programStaff: [] });
   const [nurseIdentityNames, setNurseIdentityNames] = useState([]);
   const [behaviorChecklistChecked, setBehaviorChecklistChecked] = useState({});
   const [recoveryLadderPosition, setRecoveryLadderPosition] = useState(1);
+  const [recoveryLadderSaveState, setRecoveryLadderSaveState] = useState({
+    loading: false,
+    error: '',
+    ok: false,
+  });
   const behaviorRecoveryPercent = useMemo(
     () => computeBehaviorBoardProgressPercent(behaviorChecklistChecked),
     [behaviorChecklistChecked]
+  );
+  const selectedPatientLadderProgressPct = useMemo(
+    () => Math.min(100, Math.max(0, Math.round(Number(behaviorRecoveryPercent) || 0))),
+    [behaviorRecoveryPercent]
   );
 
   const handleRecoveryLadderPositionChange = useCallback((next) => {
@@ -664,7 +640,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      if (!isNurse || !isSupabaseConfigured()) {
+      if (!(isNurse || isProgram) || !isSupabaseConfigured()) {
         if (!cancelled) setNurseIdentityNames([]);
         return;
       }
@@ -693,7 +669,11 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     return () => {
       cancelled = true;
     };
-  }, [isNurse]);
+  }, [isNurse, isProgram]);
+
+  useEffect(() => {
+    setStaffAssignmentModalOpen(false);
+  }, [selectedPatient?.id]);
 
   const upsertName = (bucket, name) => {
     const v = String(name || '').trim();
@@ -730,9 +710,12 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     setFormError('');
     try {
       if (!isSupabaseConfigured()) {
-        const merged = applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(mapLegacyLocalPatients())));
-        setPatients(merged);
-        syncPatientsLocalCache(merged);
+        const merged = applyProgressGovernanceOverrides(
+          applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(mapLegacyLocalPatients()))
+        );
+        const withLadder = mergeLocalLadderProfilesProgress(merged);
+        setPatients(withLadder);
+        syncPatientsLocalCache(withLadder);
         return;
       }
 
@@ -748,6 +731,19 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         .order('admitted_at', { ascending: false });
 
       if (error) throw error;
+
+      /** @type {Record<string, { patient_id?: string, current_position?: number, checks?: unknown, updated_at?: string }>} */
+      const ladderByPatientId = {};
+      const { data: ladderRows, error: ladderErr } = await supabase
+        .from('nurse_recovery_ladders')
+        .select('patient_id, current_position, checks, updated_at');
+      if (ladderErr) {
+        console.warn('[patient-db] nurse_recovery_ladders list:', ladderErr.message);
+      } else {
+        (ladderRows || []).forEach((row) => {
+          if (row?.patient_id != null) ladderByPatientId[String(row.patient_id)] = row;
+        });
+      }
 
       const { data: admissionRows, error: admErr } = await supabase
         .from('admission_requests')
@@ -782,17 +778,23 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         return fallbackGender ? { ...ui, gender: fallbackGender } : ui;
       });
       if (fromDb.length > 0) {
-        const merged = applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(fromDb)));
-        setPatients(merged);
-        syncPatientsLocalCache(merged);
+        const merged = applyProgressGovernanceOverrides(
+          applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(fromDb))
+        );
+        const withLadder = mergeNurseRecoveryLadderProgress(merged, ladderByPatientId);
+        setPatients(withLadder);
+        syncPatientsLocalCache(withLadder);
         return;
       }
 
       const legacyMapped = mapLegacyLocalPatients();
       if (legacyMapped.length > 0) {
-        const merged = applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(legacyMapped)));
-        setPatients(merged);
-        syncPatientsLocalCache(merged);
+        const merged = applyProgressGovernanceOverrides(
+          applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(legacyMapped))
+        );
+        const withLadder = mergeLocalLadderProfilesProgress(merged);
+        setPatients(withLadder);
+        syncPatientsLocalCache(withLadder);
         return;
       }
 
@@ -802,9 +804,12 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       console.error(err);
       const legacyMapped = mapLegacyLocalPatients();
       if (legacyMapped.length > 0) {
-        const merged = applyProgressGovernanceOverrides(applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(legacyMapped)));
-        setPatients(merged);
-        syncPatientsLocalCache(merged);
+        const merged = applyProgressGovernanceOverrides(
+          applyStaffAssignmentOverrides(applyRoomAssignmentOverrides(legacyMapped))
+        );
+        const withLadder = mergeLocalLadderProfilesProgress(merged);
+        setPatients(withLadder);
+        syncPatientsLocalCache(withLadder);
         setFormError(
           `${err.message || 'Failed to load from server.'} Showing locally saved patients.`
         );
@@ -843,9 +848,11 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const scopedPatients = !isNurse
-      ? patients
-      : patients.filter((p) => nurseIdentityNames.includes(String(p.programStaff || '').trim().toLowerCase()));
+    const scopedPatients = isNurse
+      ? patients.filter((p) => nurseIdentityNames.includes(String(p.programStaff || '').trim().toLowerCase()))
+      : isProgram
+        ? patients.filter((p) => nurseIdentityNames.includes(String(p.caseLoadManager || '').trim().toLowerCase()))
+        : patients;
     const bySearch = scopedPatients.filter((p) => {
       if (!q) return true;
       return (
@@ -867,7 +874,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     const byStatus = byConcern.filter((p) => statusFilter === 'All' || p.status === statusFilter);
     const sel = SORT_MENU_ITEMS.find((i) => i.id === sortSelectionId) ?? SORT_MENU_ITEMS[1];
     return sortPatients(byStatus, sel.sortKey, sel.direction);
-  }, [patients, isNurse, nurseIdentityNames, search, sortSelectionId, cohortFilter, concernCategoryFilter, statusFilter]);
+  }, [patients, isNurse, isProgram, nurseIdentityNames, search, sortSelectionId, cohortFilter, concernCategoryFilter, statusFilter]);
 
   const missingStaffAssignments = useMemo(() => {
     const inCare = (patients || []).filter((p) => String(p.status || '').toLowerCase() !== 'discharged');
@@ -905,6 +912,71 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     typeof id === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
+  const saveRecoveryLadderProgress = useCallback(async () => {
+    if (!selectedPatient?.id) return;
+    const id = String(selectedPatient.id);
+    const pctRounded = Math.min(
+      100,
+      Math.max(0, Math.round(Number(computeBehaviorBoardProgressPercent(behaviorChecklistChecked)) || 0))
+    );
+    setRecoveryLadderSaveState({ loading: true, error: '', ok: false });
+    try {
+      const checksPayload = normalizeLadderChecksFromDb(behaviorChecklistChecked);
+
+      if (isSupabaseConfigured() && isSupabasePatientId(id)) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const payload = {
+          patient_id: id,
+          current_position: recoveryLadderPosition,
+          checks: checksPayload,
+          updated_at: new Date().toISOString(),
+        };
+        if (user?.id) payload.updated_by = user.id;
+        const { error: ladderErr } = await supabase
+          .from('nurse_recovery_ladders')
+          .upsert(payload, { onConflict: 'patient_id' });
+        if (ladderErr) throw ladderErr;
+
+        const patientPatch = {
+          progress_percent: pctRounded,
+          progress_updated_at: new Date().toISOString(),
+        };
+        if (user?.id) patientPatch.progress_updated_by = user.id;
+        const { error: patientErr } = await supabase.from('patients').update(patientPatch).eq('id', id);
+        if (patientErr) console.warn('[patient-db] patients.progress_percent:', patientErr.message);
+      }
+
+      const profiles = loadLadderProfiles();
+      profiles[id] = {
+        ...(profiles[id] || {}),
+        currentPosition: recoveryLadderPosition,
+        updatedAt: new Date().toISOString(),
+      };
+      saveLadderProfiles(profiles);
+
+      const nowIso = new Date().toISOString();
+      setSelectedPatient((prev) =>
+        prev && String(prev.id) === id ? { ...prev, progress: pctRounded, progressUpdatedAt: nowIso } : prev
+      );
+      setPatients((prev) =>
+        prev.map((p) => (String(p.id) === id ? { ...p, progress: pctRounded, progressUpdatedAt: nowIso } : p))
+      );
+
+      refreshAppData();
+      setRecoveryLadderSaveState({ loading: false, error: '', ok: true });
+      window.setTimeout(() => setRecoveryLadderSaveState((s) => ({ ...s, ok: false })), 4000);
+    } catch (e) {
+      console.error(e);
+      setRecoveryLadderSaveState({
+        loading: false,
+        error: e?.message || 'Failed to save recovery ladder.',
+        ok: false,
+      });
+    }
+  }, [selectedPatient, behaviorChecklistChecked, recoveryLadderPosition]);
+
   useEffect(() => {
     if (!selectedPatient?.id) {
       setWeeklyReportsByWeek({});
@@ -919,7 +991,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       if (isSupabaseConfigured() && isSupabasePatientId(pidStr)) {
         let { data, error } = await supabase
           .from('weekly_reports')
-          .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent, current_medications, medication_intervention, created_at, vitals_weight, vitals_height, vitals_bmi, vitals_bp, vitals_pr, vitals_rr, vitals_spo2, vitals_temperature')
+          .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent, current_medications, medication_intervention, ongoing_medical_concern, created_at, vitals_weight, vitals_height, vitals_bmi, vitals_bp, vitals_pr, vitals_rr, vitals_spo2, vitals_temperature')
           .eq('patient_id', pid);
         if (error && /column .* does not exist/i.test(String(error.message || ''))) {
           ({ data, error } = await supabase
@@ -955,6 +1027,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               recommendations: e.recommendations ?? e.plan_next_week ?? '',
               current_medications: e.currentMedications ?? e.current_medications ?? '',
               medication_intervention: e.medicationIntervention ?? e.medication_intervention ?? '',
+              ongoing_medical_concern: e.ongoingMedicalConcern ?? e.ongoing_medical_concern ?? '',
               progress_percent: e.progressPercent ?? e.progress_percent ?? null,
               vitals_weight: e.vitalsWeight ?? e.vitals_weight ?? null,
               vitals_height: e.vitalsHeight ?? e.vitals_height ?? null,
@@ -979,6 +1052,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                 recommendations: firstNonEmpty(map[n].recommendations, localRow.recommendations),
                 current_medications: firstNonEmpty(map[n].current_medications, localRow.current_medications),
                 medication_intervention: firstNonEmpty(map[n].medication_intervention, localRow.medication_intervention),
+                ongoing_medical_concern: firstNonEmpty(map[n].ongoing_medical_concern, localRow.ongoing_medical_concern),
                 progress_percent: firstNonEmpty(map[n].progress_percent, localRow.progress_percent),
                 vitals_weight: firstNonEmpty(map[n].vitals_weight, localRow.vitals_weight),
                 vitals_height: firstNonEmpty(map[n].vitals_height, localRow.vitals_height),
@@ -1006,18 +1080,52 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   }, [selectedPatient?.id]);
 
   useEffect(() => {
-    setBehaviorChecklistChecked({});
+    if (!selectedPatient?.id) {
+      setRecoveryLadderPosition(1);
+      setBehaviorChecklistChecked({});
+      return;
+    }
+    const id = String(selectedPatient.id);
+    let cancelled = false;
+
+    const applyLocalFallback = () => {
+      const profiles = loadLadderProfiles();
+      const p = profiles[id];
+      const pos = Math.max(1, Math.min(50, Number(p?.currentPosition) || 1));
+      setRecoveryLadderPosition(pos);
+      setBehaviorChecklistChecked(buildBehaviorChecksForStage(pos));
+    };
+
+    void (async () => {
+      if (isSupabaseConfigured() && isSupabasePatientId(id)) {
+        const { data: row, error } = await supabase
+          .from('nurse_recovery_ladders')
+          .select('current_position, checks')
+          .eq('patient_id', id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (!error && row) {
+          const pos = Math.max(1, Math.min(50, Number(row.current_position) || 1));
+          const rawChecks =
+            row.checks && typeof row.checks === 'object' && !Array.isArray(row.checks) ? row.checks : {};
+          const normalized = normalizeLadderChecksFromDb(rawChecks);
+          const hasChecks = Object.keys(normalized).length > 0;
+          setRecoveryLadderPosition(pos);
+          setBehaviorChecklistChecked(hasChecks ? normalized : buildBehaviorChecksForStage(pos));
+          return;
+        }
+      }
+      if (cancelled) return;
+      applyLocalFallback();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedPatient?.id]);
 
   useEffect(() => {
-    if (!selectedPatient?.id) {
-      setRecoveryLadderPosition(1);
-      return;
-    }
-    const profiles = loadLadderProfiles();
-    const p = profiles[String(selectedPatient.id)];
-    const pos = Math.max(1, Math.min(50, Number(p?.currentPosition) || 1));
-    setRecoveryLadderPosition(pos);
+    setRecoveryLadderSaveState({ loading: false, error: '', ok: false });
   }, [selectedPatient?.id]);
 
   useEffect(() => {
@@ -1314,114 +1422,12 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         ? { ...prev, caseLoadManager, programStaff, medicalStaffNote }
         : prev));
       refreshAppData();
+      setStaffAssignmentModalOpen(false);
     } catch (e) {
       console.error(e);
       setFormError(e.message || 'Failed to save staff assignment.');
     } finally {
       setStaffSaving(false);
-    }
-  };
-
-  const resolveUpdaterLabel = async () => {
-    if (!isSupabaseConfigured()) {
-      if (mode === 'nurse') return 'Nurse (local)';
-      if (staffLimited) return 'Staff (local)';
-      return 'Admin (local)';
-    }
-    try {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      const email = String(user?.email || '').trim();
-      if (email) return email;
-      if (user?.id) return `user:${String(user.id).slice(0, 8)}`;
-    } catch {
-      /* ignore */
-    }
-    if (staffLimited) return 'Staff';
-    return mode === 'nurse' ? 'Nurse' : 'Admin';
-  };
-
-  const computeGovernedProgressFromReports = () => {
-    const submittedCount = [1, 2, 3, 4, 5, 6, 7]
-      .map((w) => weeklyReportsByWeek[w])
-      .filter(Boolean).length;
-    const progress = Math.max(0, Math.min(100, Math.round((submittedCount / 7) * 100)));
-    let clinicalStatus = 'Declining';
-    if (progress >= 67) clinicalStatus = 'Improving';
-    else if (progress >= 34) clinicalStatus = 'Stable';
-    return { progress, clinicalStatus, submittedCount };
-  };
-
-  const applyProgressGovernance = async () => {
-    if (!selectedPatient?.id || selectedPatient.status === 'Discharged') return;
-    setFormError('');
-    const governed = computeGovernedProgressFromReports();
-    const updatedAt = new Date().toISOString();
-    const updatedBy = await resolveUpdaterLabel();
-    const patientId = selectedPatient.id;
-
-    try {
-      if (isSupabaseConfigured() && isSupabasePatientId(patientId)) {
-        const { error } = await supabase
-          .from('patients')
-          .update({
-            progress_percent: governed.progress,
-            clinical_status: governed.clinicalStatus,
-            progress_updated_by: updatedBy,
-            progress_updated_at: updatedAt,
-            status_updated_by: updatedBy,
-            status_updated_at: updatedAt,
-          })
-          .eq('id', patientId);
-        if (error) {
-          // Keep system resilient if governance columns are not yet in DB.
-          const { error: fallbackErr } = await supabase
-            .from('patients')
-            .update({
-              progress_percent: governed.progress,
-              clinical_status: governed.clinicalStatus,
-            })
-            .eq('id', patientId);
-          if (fallbackErr) console.warn('[patient-db] progress governance db update skipped:', fallbackErr.message);
-        }
-      }
-
-      const overrides = loadProgressGovernance();
-      overrides[String(patientId)] = {
-        progress: governed.progress,
-        clinicalStatus: governed.clinicalStatus,
-        progressUpdatedBy: updatedBy,
-        progressUpdatedAt: updatedAt,
-      };
-      saveProgressGovernance(overrides);
-
-      setPatients((prev) => prev.map((p) => (
-        String(p.id) === String(patientId)
-          ? {
-              ...p,
-              progress: governed.progress,
-              clinicalStatus: governed.clinicalStatus,
-              progressUpdatedBy: updatedBy,
-              progressUpdatedAt: updatedAt,
-            }
-          : p
-      )));
-      setSelectedPatient((prev) => (
-        prev
-          ? {
-              ...prev,
-              progress: governed.progress,
-              clinicalStatus: governed.clinicalStatus,
-              progressUpdatedBy: updatedBy,
-              progressUpdatedAt: updatedAt,
-            }
-          : prev
-      ));
-      setFormError('');
-      refreshAppData();
-    } catch (e) {
-      console.error(e);
-      setFormError(e.message || 'Failed to apply progress governance.');
     }
   };
 
@@ -1440,7 +1446,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         `Age: ${selectedPatient.age}`,
         `Primary concern: ${selectedPatient.concern}`,
         `Clinical status: ${selectedPatient.clinicalStatus || selectedPatient.status}`,
-        `Progress: ${selectedPatient.progress}%`,
+        `Progress (recovery ladder): ${selectedPatientLadderProgressPct}%`,
         `Admission: ${selectedPatient.date}`,
         `Family contact name: ${selectedPatient.familyName}`,
       ].join('\n');
@@ -1465,7 +1471,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           setAiLoading(false);
         });
     },
-    [selectedPatient, weeklyReportsByWeek]
+    [selectedPatient, weeklyReportsByWeek, selectedPatientLadderProgressPct]
   );
 
   const openWeeklyReportModal = useCallback((weekNum) => {
@@ -1499,6 +1505,11 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       return (Number(b.week_number) || 0) - (Number(a.week_number) || 0);
     });
   }, [weeklyReportsByWeek]);
+  /** Weeks 1–7 that have a nurse weekly report (empty weeks are hidden in the UI). */
+  const weekNumbersWithReports = useMemo(
+    () => [1, 2, 3, 4, 5, 6, 7].filter((w) => Boolean(weeklyReportsByWeek[w])),
+    [weeklyReportsByWeek],
+  );
   const effectiveVitalsRow = useMemo(() => {
     if (selectedWeeklyVitalsWeek != null && weeklyReportsByWeek[selectedWeeklyVitalsWeek]) {
       return weeklyReportsByWeek[selectedWeeklyVitalsWeek];
@@ -1584,6 +1595,38 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       selectedPatient?.oxygen_saturation
     ),
   }), [effectiveVitalsRow, localWeeklyVitals, selectedPatient]);
+  const weeklyClinicalSnapshot = useMemo(() => {
+    const rawNurseNotes = firstNonEmpty(
+      effectiveVitalsRow?.nurse_note,
+      effectiveVitalsRow?.notes,
+      localWeeklyVitals?.nurseNote,
+      localWeeklyVitals?.nurse_note,
+      localWeeklyVitals?.notes
+    );
+    const medicalHistoryDb = firstNonEmpty(
+      selectedPatient?.medicalHistory,
+      effectiveVitalsRow?.ongoing_medical_concern,
+      localWeeklyVitals?.ongoingMedicalConcern,
+      localWeeklyVitals?.ongoing_medical_concern
+    );
+    return {
+      currentMedications: firstNonEmpty(
+        effectiveVitalsRow?.current_medications,
+        localWeeklyVitals?.currentMedications,
+        localWeeklyVitals?.current_medications
+      ),
+      nurseNotes: nurseNotesDisplayReplaceFoodAllergiesWithMedicalHistory(rawNurseNotes, medicalHistoryDb),
+      behavior: firstNonEmpty(
+        effectiveVitalsRow?.behavior_observation,
+        localWeeklyVitals?.behaviorObservation,
+        localWeeklyVitals?.behavior_observation
+      ),
+      recommendations: firstNonEmpty(
+        effectiveVitalsRow?.recommendations,
+        localWeeklyVitals?.recommendations
+      ),
+    };
+  }, [effectiveVitalsRow, localWeeklyVitals, selectedPatient?.medicalHistory]);
   const formatVitalValue = (value) => {
     const text = String(value ?? '').trim();
     return text || '—';
@@ -1856,6 +1899,45 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           padding: 24px;
           box-shadow: 0 4px 12px rgba(0,0,0,0.02);
         }
+        .view-top-clinical-scroll {
+          max-height: 88px;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          font-variant-numeric: tabular-nums;
+        }
+        /* Light, high-contrast form controls (readable in dark OS / forced color themes) */
+        .db-field-input,
+        .db-field-textarea {
+          box-sizing: border-box;
+          width: 100%;
+          background: #ffffff !important;
+          color: #0f172a !important;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          padding: 8px 10px;
+          font-size: 12px;
+          font-family: inherit;
+          color-scheme: light;
+        }
+        .db-field-input::placeholder,
+        .db-field-textarea::placeholder {
+          color: #94a3b8;
+          opacity: 1;
+        }
+        .db-field-input:read-only,
+        .db-field-textarea:read-only {
+          background: #f1f5f9 !important;
+          color: #475569 !important;
+        }
+        select.db-field-input {
+          cursor: pointer;
+          background-color: #ffffff !important;
+        }
+        .db-field-textarea {
+          resize: vertical;
+          min-height: 56px;
+          line-height: 1.45;
+        }
         .vital-label { color: #A3AED0; font-size: 11px; font-weight: 600; margin-bottom: 2px; text-transform: uppercase; }
         .vital-value { color: #1B2559; font-size: 16px; font-weight: 800; }
         
@@ -2021,16 +2103,40 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           .db-table-mobile { overflow-x: auto; -webkit-overflow-scrolling: touch; }
           .db-controls-mobile { flex-direction: column !important; align-items: stretch !important; gap: 15px !important; }
           .db-search-input { width: 100% !important; }
-          .db-mobile-bottom-nav { position: fixed; bottom: 0; left: 0; width: 100vw; height: 72px; background: white; border-top: 1px solid #F1F1F1; display: flex; justify-content: space-around; align-items: center; z-index: 1000; }
-          .mob-nav-item { display: flex; flex-direction: column; align-items: center; font-size: 10px; color: #A3AED0; }
+          .db-mobile-bottom-nav { position: fixed; bottom: 0; left: 0; width: 100vw; min-height: 72px; background: white; border-top: 1px solid #F1F1F1; display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 4px 2px; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); z-index: 1000; }
+          .mob-nav-item { display: flex; flex-direction: column; align-items: center; font-size: 9px; font-weight: 700; color: #A3AED0; min-width: 0; flex: 1 1 0; max-width: 68px; gap: 2px; }
           .mob-nav-item.active { color: #F54E25; }
           .view-top-row { flex-direction: column !important; gap: 16px !important; }
-          .view-admin-actions-row { grid-template-columns: 1fr !important; gap: 16px !important; }
-          .view-bottom-row { display: flex !important; flex-direction: column !important; gap: 16px !important; }
+          .view-program-weekly-tracking-row { grid-template-columns: 1fr !important; }
+          .view-card2-status-row { flex-wrap: wrap !important; row-gap: 14px !important; column-gap: 8px !important; }
+          .view-card2-status-row > div { flex: 1 1 calc(50% - 8px) !important; min-width: 120px !important; }
+          .view-top-vitals-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .view-top-clinical-scroll { max-height: 108px !important; }
           .view-vitals-row { flex-wrap: wrap !important; gap: 12px !important; }
           .view-vitals-row > div { min-width: 45% !important; margin-bottom: 8px !important; }
-          .view-weeks-row { flex-wrap: wrap !important; gap: 12px !important; }
-          .view-weeks-row > div { min-width: 45% !important; flex: 1 1 45% !important; }
+          .view-weeks-row-scroll {
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            gap: 12px !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: thin !important;
+            scrollbar-color: #a5b4fc #f1f5f9 !important;
+            padding-bottom: 12px !important;
+          }
+          .view-weeks-row-scroll::-webkit-scrollbar {
+            height: 10px !important;
+          }
+          .view-weeks-row-scroll::-webkit-scrollbar-track {
+            background: #f1f5f9 !important;
+            border-radius: 999px !important;
+            margin: 0 6px !important;
+          }
+          .view-weeks-row-scroll::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #a5b4fc 0%, #818cf8 100%) !important;
+            border-radius: 999px !important;
+            border: 2px solid #f1f5f9 !important;
+          }
+          .view-weeks-row-scroll > div { flex: 0 0 auto !important; min-width: 108px !important; width: 112px !important; max-width: none !important; }
           .admin-edit-split {
             display: grid !important;
             grid-template-columns: 1fr !important;
@@ -2052,6 +2158,55 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           border-bottom: none;
           padding-bottom: 0;
         }
+        .view-program-weekly-tracking-row {
+          display: grid;
+          grid-template-columns: 1.15fr 1fr;
+          gap: 24px;
+          align-items: stretch;
+        }
+        .view-program-weekly-tracking-row > .info-card {
+          min-width: 0;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+        }
+        .view-weeks-row-scroll {
+          display: flex;
+          flex-direction: row;
+          flex-wrap: nowrap;
+          gap: 16px;
+          overflow-x: auto;
+          overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+          padding-bottom: 12px;
+          margin-bottom: 2px;
+          scrollbar-width: thin;
+          scrollbar-color: #a5b4fc #f1f5f9;
+        }
+        .view-weeks-row-scroll::-webkit-scrollbar {
+          height: 10px;
+        }
+        .view-weeks-row-scroll::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 999px;
+          margin: 0 6px;
+        }
+        .view-weeks-row-scroll::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, #a5b4fc 0%, #818cf8 100%);
+          border-radius: 999px;
+          border: 2px solid #f1f5f9;
+          box-shadow: 0 1px 2px rgba(27, 37, 89, 0.06);
+        }
+        .view-weeks-row-scroll::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(180deg, #818cf8 0%, #6366f1 100%);
+        }
+        .view-weeks-row-scroll > .week-card {
+          flex: 0 0 auto;
+          width: 124px;
+          min-width: 124px;
+          max-width: 124px;
+        }
       `}</style>
 
       {/* SIDEBAR */}
@@ -2072,9 +2227,22 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               </div>
               <span className="sidebar-label" style={{ color: '#F54E25' }}>Residents</span>
             </div>
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}>
+              <Calendar size={22} color="#707EAE" />
+              <span className="sidebar-label">Calendar</span>
+            </div>
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-weekly-report'); }}>
               <FileText size={22} color="#707EAE" />
               <span className="sidebar-label">Weekly Report</span>
+            </div>
+          </nav>
+        ) : isProgram ? (
+          <nav className="sidebar-nav-scroll" aria-label="Program navigation">
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
+              <div style={{ background: '#F54E25', color: '#fff', borderRadius: 12, padding: 10, display: 'flex' }}>
+                <Users size={22} color="white" />
+              </div>
+              <span className="sidebar-label" style={{ color: '#F54E25' }}>Assigned residents</span>
             </div>
           </nav>
         ) : staffLimited ? (
@@ -2155,7 +2323,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         )}
 
         <div className="sidebar-footer">
-          {isNurse ? (
+          {isProgram ? null : isNurse ? (
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
               <User size={22} color="#707EAE" />
               <span className="sidebar-label">Profile</span>
@@ -2185,17 +2353,34 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       {/* MOBILE TOP BAR */}
       <div className="db-mobile-only db-mobile-top-bar" style={{ padding: '0 20px', height: 64, alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F1F1' }}>
         <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
-        <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>{staffLimited ? 'Resident records' : 'Resident Management'}</span>
+        <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>{isProgram ? 'Assigned residents' : staffLimited ? 'Resident records' : 'Resident Management'}</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>JD</div>
       </div>
 
       {/* MAIN CONTENT */}
       <main className="db-main">
+        {isProgram ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+            <div
+              style={{
+                padding: '8px 16px',
+                borderRadius: 12,
+                background: '#FFF7F4',
+                border: '1px solid #FED7AA',
+                color: '#F54E25',
+                fontWeight: 800,
+                fontSize: 13,
+              }}
+            >
+              Assigned residents
+            </div>
+          </div>
+        ) : null}
         {/* Header Section */}
         <div style={{ marginBottom: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1B2559', marginBottom: 4 }}>
-              {staffLimited ? 'Resident records' : 'Resident Management'}
+              {isProgram ? 'Assigned residents' : staffLimited ? 'Resident records' : 'Resident Management'}
             </h1>
             <p
               onClick={() => selectedPatient && setSelectedPatient(null)}
@@ -2206,7 +2391,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                 cursor: selectedPatient ? 'pointer' : 'default',
               }}
             >
-              {selectedPatient ? 'Resident Information' : 'Resident Management'}
+              {selectedPatient ? 'Resident Information' : isProgram ? 'Assigned residents' : 'Resident Management'}
             </p>
           </div>
           {selectedPatient && (
@@ -2222,16 +2407,16 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         {selectedPatient ? (
           /* VIEW MODE */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div className="view-top-row" style={{ display: 'flex', gap: 18, flexDirection: 'row', alignItems: 'flex-start' }}>
+            <div className="view-top-row" style={{ display: 'flex', gap: 18, flexDirection: 'row', alignItems: 'stretch' }}>
 
               {/* Card 1: Basic Info */}
-              <div className="info-card" style={{ flex: '1.05', display: 'flex', gap: 20, padding: '22px', minHeight: 280 }}>
+              <div className="info-card" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', gap: 20, padding: '22px' }}>
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   <div style={{ width: 84, height: 84, background: '#FF1F1F', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <User size={44} color="white" />
                   </div>
                 </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                     <div>
                       <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Patient Name</p>
@@ -2245,7 +2430,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                       <p style={{ fontSize: 20, fontWeight: 800, color: '#1B2559' }}>{selectedPatient.age}</p>
                     </div>
                   </div>
-                  <div style={{ borderTop: '1px solid #F4F7FE', paddingTop: 14, marginTop: 24 }}>
+                  <div style={{ borderTop: '1px solid #F4F7FE', paddingTop: 12, marginTop: 12 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <div>
                         <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Primary Concern</p>
@@ -2257,11 +2442,30 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                       </div>
                     </div>
                   </div>
+                  <div style={{ borderTop: '1px solid #F4F7FE', paddingTop: 12, marginTop: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600 }}>Progress</p>
+                      <p style={{ fontSize: 13, fontWeight: 800, color: '#1B2559' }}>{selectedPatientLadderProgressPct}%</p>
+                    </div>
+                    <div style={{ width: '100%', height: 16, background: '#E9EDF7', borderRadius: 99, overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${selectedPatientLadderProgressPct}%`,
+                          height: '100%',
+                          background: getProgressColor(selectedPatient),
+                          borderRadius: 99,
+                        }}
+                      />
+                    </div>
+                    <p style={{ margin: '8px 0 0', fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>
+                      Recovery ladder (save to sync with resident list and records)
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Card 2: Status, bed, assigned nurse + progress (layout matches nurse reference) */}
-              <div className="info-card" style={{ flex: '1.35', padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 280 }}>
+              {/* Card 2: Status / bed / nurse (+ room assignment; staff assignment opens as overlay) */}
+              <div className="info-card" style={{ flex: '1 1 0', minWidth: 0, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 0, position: 'relative', overflow: 'hidden' }}>
                 {(() => {
                   const trajectoryLabel =
                     selectedPatient.status === 'Discharged' ? 'Discharged' : selectedPatient.clinicalStatus;
@@ -2272,10 +2476,11 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                     .map((r) => (r?.nurse_name && String(r.nurse_name).trim()) || '')
                     .filter(Boolean);
                   const assignedNurseDisplay = latestAssignedNurse || nurseNames[0] || '—';
+                  const assignedProgramDisplay = String(selectedPatient?.caseLoadManager || '').trim() || '—';
                   return (
-                    <div style={{ borderBottom: '1px solid #F4F7FE', paddingBottom: 16, marginBottom: 16 }}>
-                      <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
-                        <div style={{ flex: 1, minWidth: 0, paddingRight: 14 }}>
+                    <>
+                      <div className="view-card2-status-row" style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
+                        <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
                           <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Status</p>
                           <span
                             style={{
@@ -2294,8 +2499,8 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                           style={{
                             flex: 1,
                             minWidth: 0,
-                            paddingLeft: 14,
-                            paddingRight: 14,
+                            paddingLeft: 10,
+                            paddingRight: 10,
                             borderLeft: '1px solid #F4F7FE',
                           }}
                         >
@@ -2307,71 +2512,325 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                             </span>
                           </div>
                         </div>
-                        <div style={{ flex: 1, minWidth: 0, paddingLeft: 14, borderLeft: '1px solid #F4F7FE' }}>
+                        <div
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            paddingLeft: 10,
+                            paddingRight: 10,
+                            borderLeft: '1px solid #F4F7FE',
+                          }}
+                        >
+                          <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Program</p>
+                          <p style={{ fontSize: 16, fontWeight: 800, color: '#0F172A', lineHeight: 1.3 }}>
+                            {assignedProgramDisplay}
+                          </p>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0, paddingLeft: 10, borderLeft: '1px solid #F4F7FE' }}>
                           <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Assigned Nurse</p>
                           <p style={{ fontSize: 16, fontWeight: 800, color: '#0F172A', lineHeight: 1.3 }}>
                             {assignedNurseDisplay === '—' ? '—' : assignedNurseDisplay}
                           </p>
                         </div>
                       </div>
-                    </div>
+                      {isAdminMode && selectedPatient.status !== 'Discharged' ? (
+                        <div style={{ borderTop: '1px solid #F4F7FE', marginTop: 14, paddingTop: 14 }}>
+                          <p style={{ color: '#475569', fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Room assignment (gender-segregated)</p>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                            <input
+                              type="text"
+                              className="db-field-input"
+                              value={roomForm.roomCode}
+                              onChange={(e) => setRoomForm((prev) => ({ ...prev, roomCode: e.target.value }))}
+                              placeholder="Room code (e.g., Room 203)"
+                            />
+                            <input
+                              type="text"
+                              className="db-field-input"
+                              value={normalizedRoomSegmentFromGender(selectedPatient.gender) || roomForm.roomGenderSegment || 'N/A'}
+                              readOnly
+                              placeholder="Room gender segment"
+                            />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                            <select
+                              className="db-field-input"
+                              value={roomForm.riskLevel}
+                              onChange={(e) => setRoomForm((prev) => ({ ...prev, riskLevel: e.target.value }))}
+                            >
+                              {RISK_LEVEL_OPTIONS.map((opt) => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                            <select
+                              className="db-field-input"
+                              value={roomForm.bunkLevel}
+                              onChange={(e) => setRoomForm((prev) => ({ ...prev, bunkLevel: e.target.value }))}
+                            >
+                              {BUNK_LEVEL_OPTIONS.map((opt) => (
+                                <option key={opt} value={opt}>{opt} bunk</option>
+                              ))}
+                            </select>
+                          </div>
+                          {normalizeRiskLevel(roomForm.riskLevel) === 'Highly Suicidal' && normalizeBunkLevel(roomForm.bunkLevel) === 'Top' ? (
+                            <p style={{ color: '#B91C1C', fontSize: 11, fontWeight: 700, marginBottom: 8 }}>
+                              Policy warning: Highly suicidal residents cannot use top bunk.
+                            </p>
+                          ) : null}
+                          <textarea
+                            className="db-field-textarea"
+                            value={roomForm.roomPlacementNote}
+                            onChange={(e) => setRoomForm((prev) => ({ ...prev, roomPlacementNote: e.target.value }))}
+                            placeholder="Condition-based placement note (required in policy)."
+                            rows={2}
+                          />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormError('');
+                                setStaffAssignmentModalOpen(true);
+                              }}
+                              style={{
+                                background: '#fff',
+                                color: '#0F766E',
+                                border: '2px solid #0F766E',
+                                borderRadius: 8,
+                                padding: '8px 14px',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Staff assignment
+                            </button>
+                            <button
+                              type="button"
+                              onClick={saveRoomAssignment}
+                              disabled={roomSaving}
+                              style={{ background: '#F54E25', color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: roomSaving ? 'not-allowed' : 'pointer' }}
+                            >
+                              {roomSaving ? 'Saving...' : 'Save assignment'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
                   );
                 })()}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <p style={{ color: '#A3AED0', fontSize: 12, fontWeight: 600 }}>Progress</p>
-                    <p style={{ fontSize: 13, fontWeight: 800, color: '#1B2559' }}>{selectedPatient.progress}%</p>
+                {isAdminMode && selectedPatient.status !== 'Discharged' && staffAssignmentModalOpen ? (
+                  <div
+                    role="presentation"
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      zIndex: 6,
+                      background: 'rgba(15, 23, 42, 0.45)',
+                      borderRadius: 20,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 14,
+                    }}
+                    onClick={() => !staffSaving && setStaffAssignmentModalOpen(false)}
+                  >
+                    <div
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="staff-assignment-nested-title"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        width: '100%',
+                        maxWidth: 420,
+                        background: '#fff',
+                        borderRadius: 16,
+                        border: '1px solid #E9EDF7',
+                        boxShadow: '0 16px 40px rgba(27, 37, 89, 0.12)',
+                        padding: '18px 18px 16px',
+                        maxHeight: 'min(90vh, 100%)',
+                        overflowY: 'auto',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+                        <div>
+                          <h2 id="staff-assignment-nested-title" style={{ fontSize: 15, fontWeight: 800, color: '#1B2559', margin: 0 }}>
+                            Staff assignment model (required)
+                          </h2>
+                          <p style={{ color: '#94A3B8', fontSize: 11, margin: '6px 0 0', lineHeight: 1.45 }}>
+                            Per-resident ownership must include Program and Nurse. Medical coverage remains shared across the medical team.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => !staffSaving && setStaffAssignmentModalOpen(false)}
+                          style={{ border: 'none', background: 'transparent', cursor: staffSaving ? 'not-allowed' : 'pointer', padding: 4, color: '#64748b', borderRadius: 8, flexShrink: 0 }}
+                          aria-label="Close staff assignment"
+                        >
+                          <X size={20} />
+                        </button>
+                      </div>
+                      {formError ? (
+                        <p style={{ color: '#B91C1C', fontSize: 11, fontWeight: 700, margin: '0 0 10px' }}>{formError}</p>
+                      ) : null}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <label htmlFor="staff-modal-program" style={{ display: 'block', color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                            Program
+                          </label>
+                          <select
+                            id="staff-modal-program"
+                            className="db-field-input"
+                            value={staffForm.caseLoadManager}
+                            onChange={(e) => setStaffForm((prev) => ({ ...prev, caseLoadManager: e.target.value }))}
+                          >
+                            <option value="">Select program…</option>
+                            {clmOptions.map((name) => (
+                              <option key={`clm_${name}`} value={name}>{name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <label htmlFor="staff-modal-nurse" style={{ display: 'block', color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                            Nurse
+                          </label>
+                          <select
+                            id="staff-modal-nurse"
+                            className="db-field-input"
+                            value={staffForm.programStaff}
+                            onChange={(e) => setStaffForm((prev) => ({ ...prev, programStaff: e.target.value }))}
+                          >
+                            <option value="">Select nurse…</option>
+                            {programOptions.map((name) => (
+                              <option key={`prog_${name}`} value={name}>{name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        className="db-field-input"
+                        value={staffForm.medicalStaffNote}
+                        onChange={(e) => setStaffForm((prev) => ({ ...prev, medicalStaffNote: e.target.value }))}
+                        placeholder="Medical coverage note (optional, shared pool)"
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+                        <button
+                          type="button"
+                          onClick={() => !staffSaving && setStaffAssignmentModalOpen(false)}
+                          style={{ background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: staffSaving ? 'not-allowed' : 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={saveStaffAssignment}
+                          disabled={staffSaving}
+                          style={{ background: '#0F766E', color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: staffSaving ? 'not-allowed' : 'pointer' }}
+                        >
+                          {staffSaving ? 'Saving...' : 'Save staff model'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ width: '100%', height: 16, background: '#E9EDF7', borderRadius: 99, overflow: 'hidden' }}>
-                    <div style={{ width: `${selectedPatient.progress}%`, height: '100%', background: getProgressColor(selectedPatient), borderRadius: 99 }} />
-                  </div>
-                </div>
+                ) : null}
               </div>
 
-              {/* Card 3: Vitals grid — labels only; nurses will populate values later */}
-              <div className="info-card" style={{ flex: '1.35', padding: '22px', display: 'flex', flexDirection: 'column', minHeight: 280 }}>
+              {/* Card 3: Vitals + weekly clinical notes — compact; long text scrolls inside cells */}
+              <div className="info-card view-top-clinical-card" style={{ flex: '1 1 0', minWidth: 0, padding: '18px 20px', display: 'flex', flexDirection: 'column' }}>
                 {(() => {
-                  const cell = (label, value) => (
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                  const fieldLabelStyle = {
+                    color: '#64748b',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    marginBottom: 4,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.045em',
+                  };
+                  const vitalCell = (label, value) => (
+                    <div style={{ minWidth: 0 }}>
+                      <p style={fieldLabelStyle}>{label}</p>
                       <p
                         style={{
-                          color: '#A3AED0',
-                          fontSize: 11,
-                          fontWeight: 600,
-                          marginBottom: 4,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.02em',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: String(value || '').trim() ? '#1B2559' : '#94a3b8',
+                          lineHeight: 1.35,
                         }}
                       >
-                        {label}
+                        {formatVitalValue(value)}
                       </p>
-                      <p style={{ fontSize: 16, fontWeight: 800, color: String(value || '').trim() ? '#1B2559' : '#94a3b8' }}>{formatVitalValue(value)}</p>
                     </div>
                   );
+                  const clinicalCell = (label, value) => {
+                    const text = formatVitalValue(value);
+                    const has = String(value ?? '').trim() !== '';
+                    return (
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={fieldLabelStyle}>{label}</p>
+                        <div
+                          className="view-top-clinical-scroll"
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 500,
+                            color: has ? '#334155' : '#94a3b8',
+                            lineHeight: 1.5,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          {text}
+                        </div>
+                      </div>
+                    );
+                  };
                   return (
                     <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-                        {cell('Current Weight', latestVitals.weight)}
-                        {cell('Height', latestVitals.height)}
-                        {cell('BP', latestVitals.bp)}
-                        {cell('PR', latestVitals.pr)}
+                      <div
+                        className="view-top-vitals-grid"
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                          gap: '8px 10px',
+                          paddingBottom: 10,
+                          marginBottom: 10,
+                          borderBottom: '1px solid #F4F7FE',
+                        }}
+                      >
+                        {vitalCell('Current Weight', latestVitals.weight)}
+                        {vitalCell('Height', latestVitals.height)}
+                        {vitalCell('BP', latestVitals.bp)}
+                        {vitalCell('PR', latestVitals.pr)}
+                        {vitalCell('RR', latestVitals.rr)}
+                        {vitalCell('Temperature (°F)', latestVitals.temperature)}
+                        {vitalCell('BMI', latestVitals.bmi)}
+                        {vitalCell('SPO2', latestVitals.spo2)}
+                      </div>
+                      <div
+                        className="view-vitals-row"
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 10,
+                          marginBottom: 10,
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        {clinicalCell('Current medications', weeklyClinicalSnapshot.currentMedications)}
+                        {clinicalCell('Nurse Notes', weeklyClinicalSnapshot.nurseNotes)}
                       </div>
                       <div
                         className="view-vitals-row"
                         style={{
                           borderTop: '1px solid #F4F7FE',
-                          paddingTop: 16,
+                          paddingTop: 10,
                           display: 'flex',
                           justifyContent: 'space-between',
-                          gap: 12,
-                          flex: 1,
+                          gap: 10,
                           alignItems: 'flex-start',
                         }}
                       >
-                        {cell('RR', latestVitals.rr)}
-                        {cell('Temperature (°F)', latestVitals.temperature)}
-                        {cell('BMI', latestVitals.bmi)}
-                        {cell('SPO2', latestVitals.spo2)}
+                        {clinicalCell('Behavior', weeklyClinicalSnapshot.behavior)}
+                        {clinicalCell('Recommendations', weeklyClinicalSnapshot.recommendations)}
                       </div>
                     </>
                   );
@@ -2379,286 +2838,308 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               </div>
             </div>
 
-            {isAdminMode && selectedPatient.status !== 'Discharged' ? (
-              <div className="view-admin-actions-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 18, alignItems: 'stretch' }}>
-                <div className="info-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', minHeight: 250 }}>
-                  <p style={{ color: '#334155', fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
-                    Progress governance (temporary rule)
-                  </p>
-                  <p style={{ color: '#64748b', fontSize: 11, marginBottom: 8, lineHeight: 1.45 }}>
-                    Progress % = submitted weekly reports / 7 * 100. Status bucket: 0-33 Declining, 34-66 Stable, 67-100 Improving.
-                  </p>
-                  <div style={{ fontSize: 11, color: '#475569', fontWeight: 700, marginBottom: 8 }}>
-                    Last update: {selectedPatient.progressUpdatedBy ? `${selectedPatient.progressUpdatedBy} · ${formatDate(selectedPatient.progressUpdatedAt)}` : 'No governance update yet'}
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
-                    <button
-                      type="button"
-                      onClick={applyProgressGovernance}
-                      style={{ background: '#1D4ED8', color: 'white', border: 'none', borderRadius: 8, padding: '7px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Apply governance update
-                    </button>
-                  </div>
-                </div>
-
-                <div className="info-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', minHeight: 250 }}>
-                  <p style={{ color: '#64748b', fontSize: 12, fontWeight: 700, marginBottom: 10 }}>Room assignment (gender-segregated)</p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    <input
-                      type="text"
-                      value={roomForm.roomCode}
-                      onChange={(e) => setRoomForm((prev) => ({ ...prev, roomCode: e.target.value }))}
-                      placeholder="Room code (e.g., Room 203)"
-                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
-                    />
-                    <input
-                      type="text"
-                      value={normalizedRoomSegmentFromGender(selectedPatient.gender) || roomForm.roomGenderSegment || 'N/A'}
-                      readOnly
-                      placeholder="Room gender segment"
-                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#F8FAFC', color: '#475569', fontWeight: 700 }}
-                    />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    <select
-                      value={roomForm.riskLevel}
-                      onChange={(e) => setRoomForm((prev) => ({ ...prev, riskLevel: e.target.value }))}
-                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
-                    >
-                      {RISK_LEVEL_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={roomForm.bunkLevel}
-                      onChange={(e) => setRoomForm((prev) => ({ ...prev, bunkLevel: e.target.value }))}
-                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
-                    >
-                      {BUNK_LEVEL_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt} bunk</option>
-                      ))}
-                    </select>
-                  </div>
-                  {normalizeRiskLevel(roomForm.riskLevel) === 'Highly Suicidal' && normalizeBunkLevel(roomForm.bunkLevel) === 'Top' ? (
-                    <p style={{ color: '#B91C1C', fontSize: 11, fontWeight: 700, marginBottom: 8 }}>
-                      Policy warning: Highly suicidal residents cannot use top bunk.
-                    </p>
-                  ) : null}
-                  <textarea
-                    value={roomForm.roomPlacementNote}
-                    onChange={(e) => setRoomForm((prev) => ({ ...prev, roomPlacementNote: e.target.value }))}
-                    placeholder="Condition-based placement note (required in policy)."
-                    rows={2}
-                    style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, resize: 'vertical' }}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto', paddingTop: 8 }}>
-                    <button
-                      type="button"
-                      onClick={saveRoomAssignment}
-                      disabled={roomSaving}
-                      style={{ background: '#F54E25', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: roomSaving ? 'not-allowed' : 'pointer' }}
-                    >
-                      {roomSaving ? 'Saving...' : 'Save assignment'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="info-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', minHeight: 250 }}>
-                  <p style={{ color: '#64748b', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                    Staff assignment model (required)
-                  </p>
-                  <p style={{ color: '#94A3B8', fontSize: 11, marginBottom: 10, lineHeight: 1.45 }}>
-                    Per-resident ownership must include Program and Nurse. Medical coverage remains shared across the medical team.
-                  </p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    <select
-                      value={staffForm.caseLoadManager}
-                      onChange={(e) => setStaffForm((prev) => ({ ...prev, caseLoadManager: e.target.value }))}
-                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#fff' }}
-                    >
-                      <option value="">Program (required)</option>
-                      {clmOptions.map((name) => (
-                        <option key={`clm_${name}`} value={name}>{name}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={staffForm.programStaff}
-                      onChange={(e) => setStaffForm((prev) => ({ ...prev, programStaff: e.target.value }))}
-                      style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, background: '#fff' }}
-                    >
-                      <option value="">Nurse (required)</option>
-                      {programOptions.map((name) => (
-                        <option key={`prog_${name}`} value={name}>{name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <input
-                    type="text"
-                    value={staffForm.medicalStaffNote}
-                    onChange={(e) => setStaffForm((prev) => ({ ...prev, medicalStaffNote: e.target.value }))}
-                    placeholder="Medical coverage note (optional, shared pool)"
-                    style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto', paddingTop: 8 }}>
-                    <button
-                      type="button"
-                      onClick={saveStaffAssignment}
-                      disabled={staffSaving}
-                      style={{ background: '#0F766E', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: staffSaving ? 'not-allowed' : 'pointer' }}
-                    >
-                      {staffSaving ? 'Saving...' : 'Save staff model'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Weekly Progress — nurse-filed reports; AI insights via sparkle control */}
-            <div className="info-card" style={{ padding: '32px' }}>
-              <div style={{ marginBottom: 24 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559' }}>Weekly Progress</h3>
-                <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, marginBottom: 0 }}>
-                  Weekly reports filed for this patient (weeks 1–7). Click the AI icon on a card for suggestions based on patient context and that week&apos;s filing data.
-                </p>
-              </div>
-              <div className="view-weeks-row" style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                {[1, 2, 3, 4, 5, 6, 7].map((w) => {
-                  const row = weeklyReportsByWeek[w];
-                  return (
-                    <div
-                      key={w}
-                      className="week-card admin-week-card"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        setSelectedWeeklyVitalsWeek(w);
-                        openWeeklyReportModal(w);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setSelectedWeeklyVitalsWeek(w);
-                          openWeeklyReportModal(w);
-                        }
-                      }}
-                      style={{
-                        flex: '1 1 120px',
-                        minWidth: 100,
-                        maxWidth: 160,
-                        padding: '24px 10px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        className="admin-week-ai-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openWeeklyAiModal(w);
-                        }}
-                        aria-label={`AI recommendations for week ${w}`}
-                        title="AI recommendations"
-                      >
-                        <Sparkles size={16} strokeWidth={2} aria-hidden />
-                      </button>
-                      <p className="week-number" style={{ fontSize: 34, lineHeight: 1, marginTop: 8 }}>
-                        {w}
+            {isProgram ? (
+              <>
+                <div className="view-program-weekly-tracking-row">
+                  <div className="info-card" style={{ padding: '32px', minWidth: 0 }}>
+                    <div style={{ flexShrink: 0, marginBottom: 20 }}>
+                      <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559' }}>Weekly Progress</h3>
+                      <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, marginBottom: 0 }}>
+                        Only weeks with a submitted nurse report are shown. Click the AI icon on a card for suggestions based on patient context and that week&apos;s filing data.
                       </p>
-                      <div style={{ textAlign: 'center' }}>
-                        <p style={{ color: '#64748B', fontSize: 12, fontWeight: 600 }}>Week {w}</p>
-                        <p
-                          style={{
-                            color: row ? '#1D7A68' : '#94a3b8',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            marginTop: 6,
-                          }}
-                        >
-                          {row ? 'Submitted' : 'No report'}
-                        </p>
-                        {row?.report_date ? (
-                          <p style={{ color: '#94a3b8', fontSize: 10, marginTop: 4 }}>{row.report_date}</p>
-                        ) : null}
-                      </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                    <div
+                      style={{
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {weekNumbersWithReports.length === 0 ? (
+                        <p style={{ fontSize: 13, color: '#94a3b8', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
+                          No weekly reports have been filed for this resident yet.
+                        </p>
+                      ) : (
+                        <div className="view-weeks-row-scroll">
+                          {weekNumbersWithReports.map((w) => {
+                            const row = weeklyReportsByWeek[w];
+                            return (
+                              <div
+                                key={w}
+                                className="week-card admin-week-card"
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => {
+                                  setSelectedWeeklyVitalsWeek(w);
+                                  openWeeklyReportModal(w);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setSelectedWeeklyVitalsWeek(w);
+                                    openWeeklyReportModal(w);
+                                  }
+                                }}
+                                style={{
+                                  padding: '24px 10px',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  className="admin-week-ai-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openWeeklyAiModal(w);
+                                  }}
+                                  aria-label={`AI recommendations for week ${w}`}
+                                  title="AI recommendations"
+                                >
+                                  <Sparkles size={16} strokeWidth={2} aria-hidden />
+                                </button>
+                                <p className="week-number" style={{ fontSize: 34, lineHeight: 1, marginTop: 8 }}>
+                                  {w}
+                                </p>
+                                <div style={{ textAlign: 'center' }}>
+                                  <p style={{ color: '#64748B', fontSize: 12, fontWeight: 600 }}>Week {w}</p>
+                                  <p
+                                    style={{
+                                      color: '#1D7A68',
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      marginTop: 6,
+                                    }}
+                                  >
+                                    Submitted
+                                  </p>
+                                  {row?.report_date ? (
+                                    <p style={{ color: '#94a3b8', fontSize: 10, marginTop: 4 }}>{row.report_date}</p>
+                                  ) : null}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-            <div className="view-bottom-row" style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: 24 }}>
-              <div className="info-card" style={{ padding: '28px 32px 32px' }}>
-                <div style={{ marginBottom: 24 }}>
-                  <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Nursing Clinical Records</h3>
-                  <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.45 }}>
-                    Review identity, primary concern, progress, and clinical trajectory. Recovery progress matches the behavior milestone board (non-intervention tiles to 100%). Discharge status follows the discharge workflow.
-                  </p>
-                </div>
-                <div className="admin-edit-split">
-                  <div>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', margin: '0 0 14px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      Clinical summary
-                    </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  <div className="info-card" style={{ padding: '32px' }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559', marginBottom: 24, flexShrink: 0 }}>Tracking Notes</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, flex: 1, minHeight: 0 }}>
                       {[
-                        ['Resident full name', selectedPatient.name],
-                        ['Primary concern', selectedPatient.concern],
-                        ['Recovery progress', `${behaviorRecoveryPercent}%`],
-                        ['Clinical trajectory', selectedPatient.clinicalStatus],
-                      ].map(([label, value]) => (
-                        <div key={label} className="admin-edit-summary-row">
-                          <p style={{ fontSize: 11, color: '#A3AED0', fontWeight: 600, marginBottom: 4 }}>{label}</p>
-                          <p style={{ fontSize: 15, fontWeight: 800, color: '#1B2559', margin: 0 }}>{value}</p>
+                        'All records stay visible, including discharged patients.',
+                        'Discharged appears automatically when a discharge request is approved on the admin dashboard.',
+                        'Clinical trajectory (Improving / Stable / Declining) can be updated from the patient list.',
+                        'Use search, cohort, and status filters to track care from admission through discharge.',
+                      ].map((note) => (
+                        <div key={note} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                          <div style={{ width: 4, height: 4, background: '#1B2559', borderRadius: '50%', marginTop: 8, flexShrink: 0 }} />
+                          <p style={{ fontSize: 12, color: '#1E293B', lineHeight: 1.6, fontWeight: 500 }}>{note}</p>
                         </div>
                       ))}
                     </div>
-                    <p style={{ fontSize: 12, color: '#94a3b8', margin: '16px 0 0', lineHeight: 1.5 }}>
-                      <strong style={{ color: '#475569' }}>Discharged status</strong> is set when a discharge request is approved on the dashboard—not from this screen.
-                    </p>
                   </div>
-                  <NursingRecordsPanel
-                    latestRow={latestWeeklyReport}
-                    latestVitals={latestVitals}
-                    weeklyReportsByWeek={weeklyReportsByWeek}
-                  />
                 </div>
-              </div>
 
-              <div className="info-card" style={{ padding: '32px' }}>
-                <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559', marginBottom: 24 }}>Tracking Notes</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                  {[
-                    'All records stay visible, including discharged patients.',
-                    'Discharged appears automatically when a discharge request is approved on the admin dashboard.',
-                    'Clinical trajectory (Improving / Stable / Declining) can be updated from the patient list.',
-                    'Use search, cohort, and status filters to track care from admission through discharge.',
-                  ].map((note) => (
-                    <div key={note} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                      <div style={{ width: 4, height: 4, background: '#1B2559', borderRadius: '50%', marginTop: 8, flexShrink: 0 }} />
-                      <p style={{ fontSize: 12, color: '#1E293B', lineHeight: 1.6, fontWeight: 500 }}>{note}</p>
+                <div className="info-card" style={{ padding: '28px 32px 32px' }}>
+                  <div style={{ marginBottom: 20 }}>
+                    <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Recovery Ladder</h3>
+                  </div>
+                  <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                    <BehaviorProgressBoard
+                      checked={behaviorChecklistChecked}
+                      setChecked={setBehaviorChecklistChecked}
+                      patientName={selectedPatient?.name ?? ''}
+                      boardPosition={recoveryLadderPosition}
+                      onBoardPositionChange={handleRecoveryLadderPositionChange}
+                      persistenceId={selectedPatient?.id ?? null}
+                    />
+                  </div>
+                  <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+                    <button
+                      type="button"
+                      onClick={() => void saveRecoveryLadderProgress()}
+                      disabled={recoveryLadderSaveState.loading || !selectedPatient}
+                      style={{
+                        background: recoveryLadderSaveState.loading ? '#CBD5E1' : '#F54E25',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 8,
+                        padding: '10px 18px',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: recoveryLadderSaveState.loading || !selectedPatient ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {recoveryLadderSaveState.loading ? 'Saving…' : 'Save recovery ladder progress'}
+                    </button>
+                    {recoveryLadderSaveState.error ? (
+                      <p style={{ margin: 0, fontSize: 12, color: '#B91C1C', fontWeight: 600 }}>{recoveryLadderSaveState.error}</p>
+                    ) : null}
+                    {recoveryLadderSaveState.ok ? (
+                      <p style={{ margin: 0, fontSize: 12, color: '#166534', fontWeight: 600 }}>
+                        Saved. {selectedPatientLadderProgressPct}% stored for this resident.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="view-program-weekly-tracking-row">
+                  {/* Weekly Progress — nurse-filed reports; AI insights via sparkle control */}
+                  <div className="info-card" style={{ padding: '32px', minWidth: 0 }}>
+                    <div style={{ flexShrink: 0, marginBottom: 20 }}>
+                      <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559' }}>Weekly Progress</h3>
+                      <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, marginBottom: 0 }}>
+                        Only weeks with a submitted nurse report are shown. Click the AI icon on a card for suggestions based on patient context and that week&apos;s filing data.
+                      </p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+                    <div
+                      style={{
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {weekNumbersWithReports.length === 0 ? (
+                        <p style={{ fontSize: 13, color: '#94a3b8', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
+                          No weekly reports have been filed for this resident yet.
+                        </p>
+                      ) : (
+                        <div className="view-weeks-row-scroll">
+                          {weekNumbersWithReports.map((w) => {
+                            const row = weeklyReportsByWeek[w];
+                            return (
+                              <div
+                                key={w}
+                                className="week-card admin-week-card"
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => {
+                                  setSelectedWeeklyVitalsWeek(w);
+                                  openWeeklyReportModal(w);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setSelectedWeeklyVitalsWeek(w);
+                                    openWeeklyReportModal(w);
+                                  }
+                                }}
+                                style={{
+                                  padding: '24px 10px',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  className="admin-week-ai-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openWeeklyAiModal(w);
+                                  }}
+                                  aria-label={`AI recommendations for week ${w}`}
+                                  title="AI recommendations"
+                                >
+                                  <Sparkles size={16} strokeWidth={2} aria-hidden />
+                                </button>
+                                <p className="week-number" style={{ fontSize: 34, lineHeight: 1, marginTop: 8 }}>
+                                  {w}
+                                </p>
+                                <div style={{ textAlign: 'center' }}>
+                                  <p style={{ color: '#64748B', fontSize: 12, fontWeight: 600 }}>Week {w}</p>
+                                  <p
+                                    style={{
+                                      color: '#1D7A68',
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      marginTop: 6,
+                                    }}
+                                  >
+                                    Submitted
+                                  </p>
+                                  {row?.report_date ? (
+                                    <p style={{ color: '#94a3b8', fontSize: 10, marginTop: 4 }}>{row.report_date}</p>
+                                  ) : null}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-            {!isNurse ? (
-              <div className="info-card" style={{ padding: '28px 32px 32px' }}>
-                <div style={{ marginBottom: 20 }}>
-                  <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Recovery Ladder</h3>
+                  <div className="info-card" style={{ padding: '32px' }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559', marginBottom: 24, flexShrink: 0 }}>Tracking Notes</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, flex: 1, minHeight: 0 }}>
+                      {[
+                        'All records stay visible, including discharged patients.',
+                        'Discharged appears automatically when a discharge request is approved on the admin dashboard.',
+                        'Clinical trajectory (Improving / Stable / Declining) can be updated from the patient list.',
+                        'Use search, cohort, and status filters to track care from admission through discharge.',
+                      ].map((note) => (
+                        <div key={note} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                          <div style={{ width: 4, height: 4, background: '#1B2559', borderRadius: '50%', marginTop: 8, flexShrink: 0 }} />
+                          <p style={{ fontSize: 12, color: '#1E293B', lineHeight: 1.6, fontWeight: 500 }}>{note}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                  <BehaviorProgressBoard
-                    checked={behaviorChecklistChecked}
-                    setChecked={setBehaviorChecklistChecked}
-                    patientName={selectedPatient?.name ?? ''}
-                    boardPosition={recoveryLadderPosition}
-                    onBoardPositionChange={handleRecoveryLadderPositionChange}
-                  />
-                </div>
-              </div>
-            ) : null}
+
+                {!isNurse ? (
+                  <div className="info-card" style={{ padding: '28px 32px 32px' }}>
+                    <div style={{ marginBottom: 20 }}>
+                      <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>Recovery Ladder</h3>
+                    </div>
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                      <BehaviorProgressBoard
+                        checked={behaviorChecklistChecked}
+                        setChecked={setBehaviorChecklistChecked}
+                        patientName={selectedPatient?.name ?? ''}
+                        boardPosition={recoveryLadderPosition}
+                        onBoardPositionChange={handleRecoveryLadderPositionChange}
+                        persistenceId={selectedPatient?.id ?? null}
+                      />
+                    </div>
+                    <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+                      <button
+                        type="button"
+                        onClick={() => void saveRecoveryLadderProgress()}
+                        disabled={recoveryLadderSaveState.loading || !selectedPatient}
+                        style={{
+                          background: recoveryLadderSaveState.loading ? '#CBD5E1' : '#F54E25',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '10px 18px',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: recoveryLadderSaveState.loading || !selectedPatient ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {recoveryLadderSaveState.loading ? 'Saving…' : 'Save recovery ladder progress'}
+                      </button>
+                      {recoveryLadderSaveState.error ? (
+                        <p style={{ margin: 0, fontSize: 12, color: '#B91C1C', fontWeight: 600 }}>{recoveryLadderSaveState.error}</p>
+                      ) : null}
+                      {recoveryLadderSaveState.ok ? (
+                        <p style={{ margin: 0, fontSize: 12, color: '#166534', fontWeight: 600 }}>
+                          Saved. {selectedPatientLadderProgressPct}% stored for this resident.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         ) : (
           /* TABLE VIEW */
@@ -3010,6 +3491,12 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               </div>
               <span style={{ color: '#F54E25' }}>Residents</span>
             </div>
+            <div className="mob-nav-item" onClick={() => navigate('/nurse-calendar')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <Calendar size={20} color="#A3AED0" />
+              </div>
+              <span>Calendar</span>
+            </div>
             <div className="mob-nav-item" onClick={() => navigate('/nurse-weekly-report')}>
               <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
                 <FileText size={20} color="#A3AED0" />
@@ -3021,6 +3508,19 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                 <User size={20} color="#A3AED0" />
               </div>
               <span>Profile</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/login')}>
+              <LogOut size={22} color="#F54E25" />
+              <span style={{ color: '#F54E25' }}>Logout</span>
+            </div>
+          </>
+        ) : isProgram ? (
+          <>
+            <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
+              <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
+                <Users size={20} color="white" />
+              </div>
+              <span style={{ color: '#F54E25' }}>Assigned</span>
             </div>
             <div className="mob-nav-item" onClick={() => navigate('/login')}>
               <LogOut size={22} color="#F54E25" />
@@ -3270,6 +3770,10 @@ export default function AdminPatientDatabase() {
 
 export function NursePatientDatabase() {
   return <PatientDatabaseShell mode="nurse" />;
+}
+
+export function ProgramPatientDatabase() {
+  return <PatientDatabaseShell mode="program" />;
 }
 
 export function AdminPatientDatabaseGate() {

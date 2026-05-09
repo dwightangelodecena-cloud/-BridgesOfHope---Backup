@@ -30,7 +30,7 @@ const isCompactScreen = width <= 380;
 
 const WEEK_NUMBERS = [1, 2, 3, 4, 5, 6, 7] as const;
 
-/** Two columns per row — matches web / reference layout (week 7 + empty cell). */
+/** Two columns default; compact screens switch to one column per row for readability. */
 const WEEK_GRID_ROWS: readonly (readonly number[])[] = [[1, 2], [3, 4], [5, 6], [7]];
 
 export type NurseWeekRecord = {
@@ -88,6 +88,7 @@ export default function ViewDetailsPage() {
   const [patients, setPatients] = useState<UIPatient[]>([]);
   const [reportsByPatient, setReportsByPatient] = useState<ReportsByPatient>({});
   const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
+  const weekGridRows: readonly (readonly number[])[] = WEEK_NUMBERS.map((n) => [n] as const);
 
   const loadData = useCallback(async () => {
     if (!isSupabaseConfigured()) {
@@ -285,7 +286,7 @@ export default function ViewDetailsPage() {
 
       <ScrollView
         style={styles.bodyScroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 160 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -370,7 +371,7 @@ export default function ViewDetailsPage() {
                     </View>
 
                     <View style={styles.weekGrid}>
-                      {WEEK_GRID_ROWS.map((row, rowIdx) => (
+                      {weekGridRows.map((row, rowIdx) => (
                         <View key={rowIdx} style={styles.weekGridRow}>
                           {row.map((w) => {
                             const rec = reportsForPatient[String(w)];
@@ -383,7 +384,7 @@ export default function ViewDetailsPage() {
                                     has ? styles.weekCardDone : styles.weekCardEmpty,
                                   ]}
                                 >
-                                  <View style={styles.weekCardRow}>
+                                  <View style={[styles.weekCardRow, isCompactScreen ? styles.weekCardRowCompact : null]}>
                                     <View style={styles.weekCardLeft}>
                                       <Text style={styles.weekNum}>Week {w}</Text>
                                       {has && rec ? (
@@ -418,7 +419,6 @@ export default function ViewDetailsPage() {
                               </View>
                             );
                           })}
-                          {row.length === 1 ? <View style={styles.weekGridCell} /> : null}
                         </View>
                       ))}
                     </View>
@@ -763,6 +763,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
+  weekCardRowCompact: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 8,
+  },
   weekCardLeft: {
     flex: 1,
     minWidth: 0,
@@ -788,6 +793,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 100,
     flexShrink: 0,
+    alignSelf: 'flex-start',
   },
   weekOpenPillText: {
     fontSize: 12,

@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -36,11 +37,6 @@ type ReportRow = Record<string, unknown>;
 
 const REPORT_MODAL_MAX_H = Dimensions.get('window').height * 0.92;
 
-function deriveInitials(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
-  return parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('') || 'FU';
-}
-
 function formatDate(iso: string | null | undefined) {
   if (!iso) return 'N/A';
   try {
@@ -59,6 +55,71 @@ function calculateAge(dob: string | null | undefined) {
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age -= 1;
   return age >= 0 ? age : 'N/A';
+}
+
+function deriveInitials(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
+  return parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('') || 'FU';
+}
+
+function dedupeReportPatients(cards: PatientCard[]): PatientCard[] {
+  const seen = new Set<string>();
+  const out: PatientCard[] = [];
+  for (let i = 0; i < cards.length; i++) {
+    const c = cards[i];
+    const id = String(c.id ?? '').trim();
+    const key = id || `rp-fallback-${i}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(id ? c : { ...c, id: key });
+  }
+  return out;
+}
+
+function ReportFieldCard({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+}) {
+  return (
+    <View style={styles.fieldCard}>
+      <View style={styles.fieldCardHead}>
+        <Ionicons name={icon} size={13} color="#F54E25" />
+        <Text style={styles.fieldCardLbl}>{label}</Text>
+      </View>
+      <Text style={styles.fieldCardVal}>{value || '—'}</Text>
+    </View>
+  );
+}
+
+function ReportStatCard({
+  label,
+  value,
+  icon,
+  borderColor,
+  iconBg,
+  iconColor,
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  borderColor: string;
+  iconBg: string;
+  iconColor: string;
+}) {
+  return (
+    <View style={[styles.rptStatCard, { borderColor }]}>
+      <View style={[styles.rptStatIcon, { backgroundColor: iconBg, borderColor }]}>
+        <Ionicons name={icon} size={20} color={iconColor} />
+      </View>
+      <Text style={styles.rptStatLbl}>{label}</Text>
+      <Text style={styles.rptStatVal}>{value}</Text>
+    </View>
+  );
 }
 
 export default function ReportsScreen() {
@@ -133,30 +194,44 @@ export default function ReportsScreen() {
           })) as typeof rows;
         }
 
-        const mappedPatients: PatientCard[] = rows.map((row: Record<string, unknown>) => {
-          const mapped = uiPatientFromRow(row as unknown as PatientRow);
-          return {
-            id: String(mapped?.id || row.id),
-            name: mapped?.name || String(row.full_name || 'Resident'),
-            date: mapped?.date || formatDate(row.admitted_at as string),
-            progress: mapped?.progress ?? 0,
-            age: calculateAge(row.date_of_birth as string),
-          };
-        });
+        const mappedPatients: PatientCard[] = dedupeReportPatients(
+          rows.map((row: Record<string, unknown>) => {
+            const mapped = uiPatientFromRow(row as unknown as PatientRow);
+            return {
+              id: String(mapped?.id || row.id),
+              name: mapped?.name || String(row.full_name || 'Resident'),
+              date: mapped?.date || formatDate(row.admitted_at as string),
+              progress: mapped?.progress ?? 0,
+              age: calculateAge(row.date_of_birth as string),
+            };
+          })
+        );
 
-        const ids = rows.map((r) => r.id).filter(Boolean);
+        const ids = mappedPatients.map((p) => p.id).filter(Boolean);
         const byPatient: Record<string, ReportRow[]> = {};
         if (ids.length) {
-          const { data: reportRows, error: reportErr } = await supabase
+          const direct = await supabase
             .from('weekly_reports')
             .select('*')
-            .in('patient_id', ids as string[])
+            .in('patient_id', ids)
             .order('week_number', { ascending: true });
-
-          if (!reportErr && reportRows) {
+          let reportRows = direct.data || null;
+          const reportErr = direct.error || null;
+          if (reportErr || !(reportRows || []).length) {
+            const rpcReports = await supabase.rpc('bh_family_weekly_reports');
+            if (!rpcReports.error && rpcReports.data) {
+              const idSet = new Set(ids.map((x) => String(x)));
+              reportRows = (rpcReports.data as ReportRow[]).filter((row) => idSet.has(String(row.patient_id)));
+            }
+          }
+          if (reportRows) {
+            const seenReport = new Set<string>();
             for (const row of reportRows) {
               const rec = row as ReportRow;
               const key = String(rec.patient_id);
+              const rid = String(rec.id ?? '');
+              if (rid && seenReport.has(`${key}:${rid}`)) continue;
+              if (rid) seenReport.add(`${key}:${rid}`);
               if (!byPatient[key]) byPatient[key] = [];
               byPatient[key].push(rec);
             }
@@ -261,8 +336,21 @@ export default function ReportsScreen() {
     setSelectedReportId(next?.id ? String(next.id) : '');
   }, [selectedPatient, selectedWeek, visibleReports]);
 
+  const totalReportsCount = allReports.length;
+  const avgProgress = useMemo(
+    () =>
+      patients.length
+        ? Math.round(patients.reduce((s, p) => s + (Number(p.progress) || 0), 0) / patients.length)
+        : 0,
+    [patients]
+  );
+  const patientsWithReportsCount = useMemo(
+    () => patients.filter((p) => (weeklyReportsByPatient[String(p.id)] || []).length > 0).length,
+    [patients, weeklyReportsByPatient]
+  );
+
   return (
-    <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: '#F8F9FD' }]}>
+    <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: '#F0F4FF' }]}>
       <Modal visible={showNotifications} transparent animationType="fade" onRequestClose={() => setShowNotifications(false)}>
         <View style={styles.notifRoot}>
           <Pressable style={styles.notifBackdrop} onPress={() => setShowNotifications(false)} />
@@ -306,13 +394,71 @@ export default function ReportsScreen() {
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
         <Text style={styles.welcome}>Welcome Back, {firstName}</Text>
 
-        <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Patient Weekly Reports</Text>
-          <Text style={styles.panelSub}>View latest and past weekly reports from your patient records.</Text>
-          <View style={styles.toolbar}>
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{allReports.length} total reports</Text>
+        <LinearGradient
+          colors={['#0F172A', '#1E2D4F', '#2D1B69']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroBanner}
+        >
+          <View style={styles.heroKickerRow}>
+            <View style={styles.heroIconBox}>
+              <Ionicons name="bar-chart" size={16} color="#FFFFFF" />
             </View>
+            <Text style={styles.heroKicker}>Family Portal · Weekly Reports</Text>
+          </View>
+          <Text style={styles.heroTitle}>Patient Weekly Reports</Text>
+          <Text style={styles.heroSub}>Select a resident to view their full report history and care updates</Text>
+        </LinearGradient>
+
+        <View style={styles.statGrid}>
+          <ReportStatCard
+            label="Residents"
+            value={patients.length}
+            icon="people"
+            borderColor="#C7D2FE"
+            iconBg="#EEF2FF"
+            iconColor="#6366F1"
+          />
+          <ReportStatCard
+            label="Total Reports"
+            value={totalReportsCount}
+            icon="document-text"
+            borderColor="#A7F3D0"
+            iconBg="#ECFDF5"
+            iconColor="#10B981"
+          />
+          <ReportStatCard
+            label="With Reports"
+            value={patientsWithReportsCount}
+            icon="checkmark-circle"
+            borderColor="#DDD6FE"
+            iconBg="#F5F3FF"
+            iconColor="#8B5CF6"
+          />
+          <ReportStatCard
+            label="Avg Progress"
+            value={`${avgProgress}%`}
+            icon="trending-up"
+            borderColor="#FDE68A"
+            iconBg="#FFFBEB"
+            iconColor="#F59E0B"
+          />
+        </View>
+
+        <View style={styles.panel}>
+          <View style={styles.panelHeadRow}>
+            <View style={styles.panelHeadIcon}>
+              <Ionicons name="people" size={14} color="#F54E25" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.panelTitle}>Select a Resident</Text>
+              <Text style={styles.panelSub}>
+                Tap a card to open that resident&apos;s full report history.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.toolbar}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weekScroll}>
               <TouchableOpacity
                 style={[styles.weekChip, selectedWeek === 'all' && styles.weekChipOn]}
@@ -332,28 +478,72 @@ export default function ReportsScreen() {
             </ScrollView>
           </View>
 
-          {loading ? <Text style={styles.muted}>Loading live reports…</Text> : null}
+          {loading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color="#F54E25" />
+              <Text style={styles.muted}>Loading live reports…</Text>
+            </View>
+          ) : null}
           {loadError ? <Text style={styles.err}>{loadError}</Text> : null}
 
           {!loading && !patients.length ? (
             <Text style={styles.empty}>No assigned patients found yet for this account.</Text>
           ) : (
-            patients.map((patient) => {
+            patients.map((patient, pidx) => {
               const reportCount = (weeklyReportsByPatient[String(patient.id)] || []).length;
               const active = selectedPatient && String(selectedPatient.id) === String(patient.id);
+              const progress = Number(patient.progress) || 0;
+              const statusCfg =
+                progress >= 70
+                  ? { label: 'Stable', bg: '#DCFCE7', color: '#166534' }
+                  : progress >= 40
+                    ? { label: 'Recovering', bg: '#FEF3C7', color: '#92400E' }
+                    : { label: 'Needs Attention', bg: '#FEE2E2', color: '#991B1B' };
               return (
                 <TouchableOpacity
-                  key={patient.id}
-                  style={[styles.patientBtn, active && styles.patientBtnOn]}
+                  key={`rp-${pidx}`}
+                  style={[styles.patientCardV2, active && styles.patientCardV2On]}
                   onPress={() => setSelectedPatient(patient)}
+                  activeOpacity={0.9}
                 >
-                  <Text style={styles.patientName}>{patient.name}</Text>
-                  <Text style={styles.patientMeta}>Age: {patient.age}</Text>
-                  <Text style={styles.patientMeta}>Admitted: {patient.date || 'N/A'}</Text>
-                  <View style={styles.kpi}>
-                    <Text style={styles.kpiTxt}>
-                      {reportCount} report{reportCount === 1 ? '' : 's'}
-                    </Text>
+                  <View style={styles.patientCardV2Top}>
+                    <LinearGradient
+                      colors={active ? ['#F54E25', '#EA580C'] : ['#EEF2FF', '#C7D2FE']}
+                      style={styles.patientCardV2Avatar}
+                    >
+                      <Text style={[styles.patientCardV2Initials, active && { color: '#FFFFFF' }]}>
+                        {deriveInitials(patient.name)}
+                      </Text>
+                    </LinearGradient>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.patientName} numberOfLines={1}>
+                        {patient.name}
+                      </Text>
+                      <Text style={styles.patientMeta}>
+                        Age {patient.age} · Admitted {patient.date || 'N/A'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.patientCardV2ProgRow}>
+                    <View style={styles.patientCardV2Track}>
+                      <LinearGradient
+                        colors={active ? ['#F54E25', '#EA580C'] : ['#6366F1', '#818CF8']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={[styles.patientCardV2Fill, { width: `${progress}%` }]}
+                      />
+                    </View>
+                    <Text style={styles.patientCardV2Pct}>{progress}%</Text>
+                  </View>
+                  <View style={styles.patientCardV2Foot}>
+                    <View style={[styles.patientStatusPill, { backgroundColor: statusCfg.bg }]}>
+                      <Text style={[styles.patientStatusPillTxt, { color: statusCfg.color }]}>{statusCfg.label}</Text>
+                    </View>
+                    <View style={[styles.kpi, active && { backgroundColor: '#FFF7ED' }]}>
+                      <Text style={[styles.kpiTxt, active && { color: '#C2410C' }]}>
+                        {reportCount} report{reportCount === 1 ? '' : 's'}
+                      </Text>
+                    </View>
                   </View>
                 </TouchableOpacity>
               );
@@ -368,80 +558,164 @@ export default function ReportsScreen() {
             style={[styles.modalCard, { maxHeight: REPORT_MODAL_MAX_H }]}
             onPress={(e) => e.stopPropagation()}
           >
-            <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.kicker}>Care updates</Text>
-                <Text style={styles.modalTitle}>
-                  <Text style={styles.modalTitleAccent}>{selectedWeek === 'all' ? 'Latest' : `Week ${selectedWeek}`}</Text>{' '}
-                  report
-                </Text>
-                <Text style={styles.modalDesc}>{selectedPatient?.name} — weekly patient report details.</Text>
+            <LinearGradient
+              colors={['#0F172A', '#1E2D4F']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.modalHeaderGradient}
+            >
+              <View style={styles.modalHeaderTop}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.modalKickerLight}>Care Updates · Bridges of Hope</Text>
+                  <Text style={styles.modalTitleLight} numberOfLines={2}>
+                    <Text style={styles.modalTitleAccentLight}>
+                      {selectedWeek === 'all' ? 'Full Report History' : `Week ${selectedWeek}`}
+                    </Text>
+                    {selectedPatient ? ` — ${selectedPatient.name}` : ''}
+                  </Text>
+                  <Text style={styles.modalSubLight}>
+                    {visibleReports.length} report{visibleReports.length === 1 ? '' : 's'} · Progress:{' '}
+                    {selectedPatient ? Number(selectedPatient.progress) || 0 : 0}%
+                  </Text>
+                  {selectedPatient ? (
+                    <View style={styles.modalHeaderTrack}>
+                      <LinearGradient
+                        colors={['#6EE7B7', '#34D399']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={[
+                          styles.modalHeaderFill,
+                          { width: `${Math.min(100, Math.max(0, Number(selectedPatient.progress) || 0))}%` },
+                        ]}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+                <TouchableOpacity onPress={() => setSelectedPatient(null)} accessibilityLabel="Close" hitSlop={12}>
+                  <Ionicons name="close" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={() => setSelectedPatient(null)} accessibilityLabel="Close">
-                <Ionicons name="close" size={22} color="#94A3B8" />
-              </TouchableOpacity>
-            </View>
+            </LinearGradient>
             <ScrollView
               style={styles.modalBody}
               contentContainerStyle={styles.modalBodyContent}
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.historyTitle}>Past reports</Text>
+              <Text style={styles.historyTitle}>Report history</Text>
               {!visibleReports.length ? (
                 <Text style={styles.muted}>No reports available for this filter.</Text>
               ) : (
-                visibleReports.map((row) => (
+                visibleReports.map((row, hidx) => (
                   <TouchableOpacity
-                    key={String(row.id)}
+                    key={`h-${hidx}-${String(row.id ?? row.week_number ?? '')}`}
                     style={[styles.historyBtn, String(selectedReportId) === String(row.id) && styles.historyBtnOn]}
                     onPress={() => setSelectedReportId(String(row.id))}
                   >
-                    <Text style={styles.historyWeek}>Week {String(row.week_number ?? '—')}</Text>
+                    <View style={styles.historyBtnHead}>
+                      <Text style={styles.historyWeek}>Week {String(row.week_number ?? '—')}</Text>
+                      {String(selectedReportId) === String(row.id) ? (
+                        <View style={styles.historyDot} />
+                      ) : null}
+                    </View>
                     <Text style={styles.historyMeta}>{formatDate(String(row.submitted_at || row.created_at))}</Text>
+                    {row.progress_percent != null ? (
+                      <View style={styles.historyMiniTrack}>
+                        <LinearGradient
+                          colors={['#F54E25', '#EA580C']}
+                          style={[
+                            styles.historyMiniFill,
+                            { width: `${Math.min(100, Math.max(0, Number(row.progress_percent) || 0))}%` },
+                          ]}
+                        />
+                      </View>
+                    ) : null}
                   </TouchableOpacity>
                 ))
               )}
-              <View style={styles.detailBlock}>
-                <Text style={styles.lbl}>Summary</Text>
-                <Text style={styles.val}>
-                  {String(weeklyReport?.summary || weeklyReport?.report_summary || 'No report available for this week.')}
-                </Text>
-                <Text style={styles.lbl}>Progress</Text>
-                <Text style={styles.val}>
-                  {weeklyReport?.progress_percent !== undefined && weeklyReport?.progress_percent !== null
-                    ? `${weeklyReport.progress_percent}%`
-                    : 'N/A'}
-                </Text>
-                <Text style={styles.lbl}>Nurse notes</Text>
-                <Text style={styles.val}>
-                  {String(weeklyReport?.nurse_note || weeklyReport?.notes || 'No notes available.')}
-                </Text>
-                <Text style={styles.lbl}>Behavior / mood</Text>
-                <Text style={styles.val}>
-                  {String(
-                    weeklyReport?.behavior_observation ||
-                      weeklyReport?.mood_assessment ||
-                      'No behavior notes recorded.'
-                  )}
-                </Text>
-                <Text style={styles.lbl}>Recommendations</Text>
-                <Text style={styles.val}>
-                  {String(
-                    weeklyReport?.recommendations || weeklyReport?.plan_next_week || 'No recommendations recorded.'
-                  )}
-                </Text>
-                <Text style={styles.lbl}>Current medications</Text>
-                <Text style={styles.val}>
-                  {String(weeklyReport?.current_medications || 'None listed.')}
-                </Text>
-                <Text style={styles.lbl}>Medication intervention</Text>
-                <Text style={styles.val}>
-                  {String(weeklyReport?.medication_intervention || 'None listed.')}
-                </Text>
-                <Text style={styles.lbl}>Submitted</Text>
-                <Text style={styles.val}>{formatDate(String(weeklyReport?.submitted_at || weeklyReport?.created_at))}</Text>
-              </View>
+              {weeklyReport ? (
+                <>
+                  <Text style={styles.detailIntro}>
+                    Week {String(weeklyReport.week_number ?? '—')} ·{' '}
+                    {formatDate(String(weeklyReport.submitted_at || weeklyReport.created_at))}
+                  </Text>
+                  {selectedPatient ? (
+                    <Text style={styles.detailPatientName}>{selectedPatient.name}</Text>
+                  ) : null}
+                  {weeklyReport.progress_percent != null ? (
+                    <View style={styles.detailProgRow}>
+                      <View style={styles.detailProgTrack}>
+                        <LinearGradient
+                          colors={['#F54E25', '#EA580C']}
+                          style={[
+                            styles.detailProgFill,
+                            {
+                              width: `${Math.min(100, Math.max(0, Number(weeklyReport.progress_percent) || 0))}%`,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.detailProgPct}>{String(weeklyReport.progress_percent)}%</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.fieldGrid}>
+                    <ReportFieldCard
+                      label="Summary"
+                      value={String(weeklyReport?.summary || weeklyReport?.report_summary || 'No report available.')}
+                      icon="reader"
+                    />
+                    <ReportFieldCard
+                      label="Progress"
+                      value={
+                        weeklyReport?.progress_percent !== undefined && weeklyReport?.progress_percent !== null
+                          ? `${weeklyReport.progress_percent}%`
+                          : 'N/A'
+                      }
+                      icon="stats-chart"
+                    />
+                    <ReportFieldCard
+                      label="Nurse notes"
+                      value={String(weeklyReport?.nurse_note || weeklyReport?.notes || 'No notes available.')}
+                      icon="document-text"
+                    />
+                    <ReportFieldCard
+                      label="Behavior / mood"
+                      value={String(
+                        weeklyReport?.behavior_observation ||
+                          weeklyReport?.mood_assessment ||
+                          'No behavior notes recorded.'
+                      )}
+                      icon="heart"
+                    />
+                    <ReportFieldCard
+                      label="Recommendations"
+                      value={String(
+                        weeklyReport?.recommendations ||
+                          weeklyReport?.plan_next_week ||
+                          'No recommendations recorded.'
+                      )}
+                      icon="checkmark-circle"
+                    />
+                    <ReportFieldCard
+                      label="Current medications"
+                      value={String(weeklyReport?.current_medications || 'None listed.')}
+                      icon="flask"
+                    />
+                    <ReportFieldCard
+                      label="Medication intervention"
+                      value={String(weeklyReport?.medication_intervention || 'None listed.')}
+                      icon="shield-checkmark"
+                    />
+                    <ReportFieldCard
+                      label="Submitted"
+                      value={formatDate(String(weeklyReport?.submitted_at || weeklyReport?.created_at))}
+                      icon="calendar"
+                    />
+                  </View>
+                </>
+              ) : (
+                <Text style={styles.muted}>Select a report above to view details.</Text>
+              )}
             </ScrollView>
           </Pressable>
         </Pressable>
@@ -495,6 +769,171 @@ const styles = StyleSheet.create({
   notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 16, paddingTop: 12 },
   welcome: { fontSize: 14, fontWeight: '600', color: '#1B2559', marginBottom: 12 },
+  heroBanner: { borderRadius: 24, padding: 22, marginBottom: 12, overflow: 'hidden' },
+  heroKickerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  heroIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroKicker: {
+    flex: 1,
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.4)',
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  heroTitle: { fontSize: 22, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.5 },
+  heroSub: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 6, lineHeight: 18 },
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 12,
+  },
+  rptStatCard: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 4,
+  },
+  rptStatIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  rptStatLbl: {
+    fontSize: 10,
+    color: '#94A3B8',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  rptStatVal: { fontSize: 26, fontWeight: '900', color: '#0F172A', marginTop: 5 },
+  panelHeadRow: { flexDirection: 'row', gap: 10, marginBottom: 14, alignItems: 'flex-start' },
+  panelHeadIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#FFF1EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  patientCardV2: {
+    borderWidth: 2,
+    borderColor: '#E9EDF7',
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    padding: 18,
+    marginBottom: 12,
+  },
+  patientCardV2On: { borderColor: '#F54E25', backgroundColor: '#FFFBFA' },
+  patientCardV2Top: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  patientCardV2Avatar: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  patientCardV2Initials: { fontSize: 16, fontWeight: '900', color: '#4338CA' },
+  patientCardV2ProgRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  patientCardV2Track: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  patientCardV2Fill: { height: '100%', borderRadius: 999 },
+  patientCardV2Pct: { fontSize: 11, fontWeight: '800', color: '#0F172A' },
+  patientCardV2Foot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  patientStatusPill: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999 },
+  patientStatusPillTxt: { fontSize: 10, fontWeight: '800' },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  modalHeaderGradient: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 16 },
+  modalHeaderTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  modalKickerLight: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.4)',
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  modalTitleLight: { fontSize: 18, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.3 },
+  modalTitleAccentLight: { color: '#FDA4AF', fontWeight: '900' },
+  modalSubLight: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 6 },
+  modalHeaderTrack: {
+    marginTop: 12,
+    height: 5,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 999,
+    overflow: 'hidden',
+    maxWidth: 400,
+    alignSelf: 'stretch',
+  },
+  modalHeaderFill: { height: '100%', borderRadius: 999 },
+  historyBtnHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  historyDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#F54E25' },
+  historyMiniTrack: {
+    marginTop: 8,
+    height: 4,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  historyMiniFill: { height: '100%', borderRadius: 999 },
+  detailIntro: {
+    fontSize: 10,
+    color: '#94A3B8',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 8,
+  },
+  detailPatientName: { fontSize: 18, fontWeight: '900', color: '#0F172A', marginTop: 4 },
+  detailProgRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
+  detailProgTrack: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  detailProgFill: { height: '100%', borderRadius: 999 },
+  detailProgPct: { fontSize: 12, fontWeight: '900', color: '#F54E25' },
+  fieldGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 14 },
+  fieldCard: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    elevation: 2,
+  },
+  fieldCardHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  fieldCardLbl: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    flex: 1,
+  },
+  fieldCardVal: { fontSize: 13, fontWeight: '700', color: '#0F172A', lineHeight: 20 },
   panel: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -505,17 +944,6 @@ const styles = StyleSheet.create({
   panelTitle: { fontSize: 18, fontWeight: '800', color: '#1B2559' },
   panelSub: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 6, marginBottom: 12 },
   toolbar: { marginBottom: 8 },
-  chip: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#DCE7FF',
-    backgroundColor: '#EEF4FF',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginBottom: 10,
-  },
-  chipText: { fontSize: 11, fontWeight: '800', color: '#3758D5' },
   weekScroll: { maxHeight: 40 },
   weekChip: {
     paddingHorizontal: 12,

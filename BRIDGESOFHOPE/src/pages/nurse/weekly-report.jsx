@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, LogOut, FileText, ChevronDown, LayoutGrid, Users } from 'lucide-react';
+import { User, LogOut, FileText, ChevronDown, LayoutGrid, Users, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -346,6 +346,9 @@ const WeeklyReport = () => {
       reportDate: reportDateField,
       summary: summaryText,
       nurseNote: noteText,
+      dietaryRestrictions: reportDetails.dietaryRestrictions || '',
+      foodAllergies: reportDetails.foodAllergies || '',
+      ongoingMedicalConcern: reportDetails.ongoingMedicalConcern || '',
       behaviorObservation: reportDetails.ongoingMedicalConcern,
       recommendations: recommendationText,
       progressPercent: progressFromPatient,
@@ -1120,14 +1123,17 @@ const WeeklyReport = () => {
             bottom: 0;
             left: 0;
             right: 0;
-            height: 72px;
+            min-height: 72px;
             background: white;
             border-top: 1px solid #F1F1F1;
             display: flex;
             justify-content: space-around;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 4px 2px;
+            padding: 6px 4px;
             z-index: 1000;
-            padding-bottom: env(safe-area-inset-bottom);
+            padding-bottom: calc(6px + env(safe-area-inset-bottom));
             box-shadow: 0 -4px 20px rgba(0,0,0,0.06);
           }
 
@@ -1135,11 +1141,14 @@ const WeeklyReport = () => {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 4px;
-            font-size: 10px;
+            gap: 2px;
+            font-size: 9px;
             font-weight: 700;
             color: #A3AED0;
             cursor: pointer;
+            min-width: 0;
+            flex: 1 1 0;
+            max-width: 72px;
           }
 
           .mob-nav-item.active { color: #F54E25; }
@@ -1160,6 +1169,10 @@ const WeeklyReport = () => {
         <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}>
           <Users size={22} color="#707EAE" />
           <span className="sidebar-label">Residents</span>
+        </div>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}>
+          <Calendar size={22} color="#707EAE" />
+          <span className="sidebar-label">Calendar</span>
         </div>
         <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
           <div style={{ background: '#F54E25', color: 'white', padding: 12, borderRadius: 12, display: 'flex' }}>
@@ -1589,6 +1602,12 @@ const WeeklyReport = () => {
             <Users size={20} color="#707EAE" />
           </div>
           <span>Residents</span>
+        </div>
+        <div className="mob-nav-item" onClick={() => navigate('/nurse-calendar')}>
+          <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
+            <Calendar size={20} color="#707EAE" />
+          </div>
+          <span>Calendar</span>
         </div>
         <div className="mob-nav-item active">
           <div style={{ background: '#F54E25', color: 'white', padding: 10, borderRadius: 10, display: 'flex' }}>

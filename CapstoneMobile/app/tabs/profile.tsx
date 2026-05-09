@@ -395,7 +395,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      <FamilyWebMobileNav active="profile" />
+      <FamilyWebMobileNav active="none" />
       <FamilyFloatingChat />
     </View>
   );

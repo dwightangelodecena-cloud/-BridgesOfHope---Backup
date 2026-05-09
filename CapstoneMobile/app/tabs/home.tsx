@@ -396,10 +396,11 @@ export default function HomeScreen() {
   );
 
   const resolveRequestPatientName = (row: PendingAdmission | PendingDischarge | VisitationRequestRow) => {
+    const asRecord = row as Record<string, unknown>;
     const directName =
       (row as VisitationRequestRow).patientName ||
       row.patientName ||
-      row.patient_name ||
+      String(asRecord.patient_name || '') ||
       (row as { patient?: string }).patient ||
       '';
     if (directName && String(directName).trim() && String(directName).trim().toLowerCase() !== 'patient') {
@@ -438,7 +439,7 @@ export default function HomeScreen() {
       date: String(row?.createdAt || row?.created_at || ''),
     })),
     ...pendingDischarges.map((row, idx) => ({
-      key: `discharge-${row?.dischargeRequestId || row?.requestId || row?.id || idx}`,
+      key: `discharge-${row?.dischargeRequestId || (row as { requestId?: string }).requestId || row?.id || idx}`,
       type: 'Discharge' as const,
       name: resolveRequestPatientName(row),
       status: row?.status || 'Pending',
@@ -548,18 +549,6 @@ export default function HomeScreen() {
                 {greeting}, {firstName} 👋
               </Text>
               <Text style={styles.heroSub}>{dateStr} · Your care overview at a glance</Text>
-            </View>
-            <View style={styles.heroStatRow}>
-              {[
-                { label: 'Residents', val: patients.length, color: '#A5B4FC' },
-                { label: 'Pending', val: totalPendingRequests, color: '#FCA5A5' },
-                { label: 'Reports', val: reportsReceivedCount, color: '#6EE7B7' },
-              ].map((s) => (
-                <View key={s.label} style={styles.heroStatChip}>
-                  <Text style={styles.heroStatChipLabel}>{s.label}</Text>
-                  <Text style={[styles.heroStatChipValue, { color: s.color }]}>{s.val}</Text>
-                </View>
-              ))}
             </View>
           </View>
         </LinearGradient>
@@ -1214,25 +1203,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   heroSub: { marginTop: 4, fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.45)' },
-  heroStatRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  heroStatChip: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-  },
-  heroStatChipLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.4)',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  heroStatChipValue: { marginTop: 4, fontSize: 22, fontWeight: '900' },
   statGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
