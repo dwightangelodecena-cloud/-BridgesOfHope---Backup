@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = typeof import.meta.env.VITE_SUPABASE_URL === 'string'
+  ? import.meta.env.VITE_SUPABASE_URL.trim()
+  : '';
+const supabaseAnonKey = typeof import.meta.env.VITE_SUPABASE_ANON_KEY === 'string'
+  ? import.meta.env.VITE_SUPABASE_ANON_KEY.trim()
+  : '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
@@ -9,7 +13,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl ?? '', supabaseAnonKey ?? '', {
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     flowType: 'pkce',
     detectSessionInUrl: true,
@@ -19,5 +23,5 @@ export const supabase = createClient(supabaseUrl ?? '', supabaseAnonKey ?? '', {
 });
 
 export function isSupabaseConfigured() {
-  return Boolean(supabaseUrl?.trim() && supabaseAnonKey?.trim());
+  return Boolean(supabaseUrl && supabaseAnonKey);
 }

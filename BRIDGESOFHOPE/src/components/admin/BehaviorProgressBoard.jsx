@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
 
 const INTERVENTION_SUFFIX = ' — Intervention';
 
@@ -99,6 +100,55 @@ export function computeBehaviorBoardProgressPercent(checked) {
   return Math.min(100, Math.round(sum * 100) / 100);
 }
 
+/** Checklist state for “all non-intervention tiles through `stageNumber` checked” (intervention tiles never checked). */
+export function buildBehaviorChecksForStage(stageNumber) {
+  const normalizedStage = Math.max(1, Math.min(50, Number(stageNumber) || 1));
+  /** @type {Record<number|string, boolean>} */
+  const next = {};
+  for (let i = 0; i < BEHAVIOR_CHECKLIST_ITEMS.length; i++) {
+    if (!isInterventionLabel(BEHAVIOR_CHECKLIST_ITEMS[i])) {
+      next[i] = i + 1 <= normalizedStage;
+    } else {
+      next[i] = false;
+    }
+  }
+  next.completion = false;
+  next.reintegration = false;
+  return next;
+}
+
+function normalizeFailedInterventionMap(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  /** @type {Record<number, boolean>} */
+  const out = {};
+  Object.keys(raw).forEach((k) => {
+    const n = Number(k);
+    if (Number.isFinite(n) && raw[k]) out[n] = true;
+  });
+  return out;
+}
+
+/** @param {Record<number, boolean>} failed */
+function persistFailedSteps(persistenceId, failed) {
+  if (persistenceId == null || String(persistenceId).trim() === '') return;
+  const profiles = loadLadderProfiles();
+  const id = String(persistenceId);
+  profiles[id] = {
+    ...(profiles[id] || {}),
+    failedInterventionSteps: failed,
+    updatedAt: new Date().toISOString(),
+  };
+  saveLadderProfiles(profiles);
+}
+
+function interventionBadgeStatus(n, isInterventionTile, boardPos, failedMap) {
+  if (!isInterventionTile) return 'pending';
+  if (failedMap[n]) return 'failed';
+  if (boardPos === n) return 'current';
+  if (boardPos > n) return 'passed';
+  return 'upcoming';
+}
+
 /** Intervention demotion slides — click tile when the patient piece is on `from` to demote to `to`. */
 const SNAKES = [
   { from: 49, to: 39 },
@@ -140,7 +190,7 @@ const TIERS = {
   assistant: { label: 'Assistant', border: '#F59E0B' },
   head: { label: 'Head', border: '#C026D3' },
   senior: { label: 'Senior', border: '#2563EB' },
-  intervention: { label: 'Intervention', border: '#0E7490' },
+  intervention: { label: 'Intervention', border: '#DC2626' },
   reintegration: { label: 'Reintegration', border: '#991B1B' },
   completion: { label: 'Completion', border: '#4F46E5' },
   empty: { label: '', border: '#94A3B8' },
@@ -180,6 +230,15 @@ export const renderBehaviorChecklistLabel = (text, interventionStatus = 'pending
     return <span style={{ fontWeight: 600, fontSize: '0.8em', color: '#1E293B' }}>{display}</span>;
   }
 
+  const palette =
+    interventionStatus === 'current'
+      ? { fg: '#854D0E', bg: '#FEF9C3', border: '#EAB308' }
+      : interventionStatus === 'passed'
+        ? { fg: '#166534', bg: '#ECFDF3', border: '#22C55E' }
+        : interventionStatus === 'failed'
+          ? { fg: '#991B1B', bg: '#FEE2E2', border: '#EF4444' }
+          : { fg: '#991B1B', bg: '#FEF2F2', border: '#DC2626' };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <span style={{ fontWeight: 600, fontSize: '0.8em', color: '#1E293B' }}>{display}</span>
@@ -190,25 +249,9 @@ export const renderBehaviorChecklistLabel = (text, interventionStatus = 'pending
           fontWeight: 700,
           letterSpacing: '0.06em',
           textTransform: 'uppercase',
-          color:
-            interventionStatus === 'current'
-              ? '#854D0E'
-              : interventionStatus === 'passed'
-                ? '#166534'
-                : '#991B1B',
-          background:
-            interventionStatus === 'current'
-              ? '#FEF9C3'
-              : interventionStatus === 'passed'
-                ? '#ECFDF3'
-                : '#FEF2F2',
-          border: `1px solid ${
-            interventionStatus === 'current'
-              ? '#FDE047'
-              : interventionStatus === 'passed'
-                ? '#86EFAC'
-                : '#FCA5A5'
-          }`,
+          color: palette.fg,
+          background: palette.bg,
+          border: `1px solid ${palette.border}`,
           padding: '3px 7px',
           borderRadius: 4,
           lineHeight: 1.2,
@@ -228,6 +271,7 @@ export const renderBehaviorChecklistLabel = (text, interventionStatus = 'pending
  * @param {boolean} [props.embedded] — hide header/name when nested in clinical layout
  * @param {number} [props.boardPosition] — ladder slot (1–50) when controlled by parent; not shown on the board
  * @param {(n: number) => void} [props.onBoardPositionChange] — called after intervention demotion moves the ladder position
+ * @param {string|null} [props.persistenceId] — resident id: persist failed-intervention markers in ladder profile
  */
 const COMPLETION_MODAL_BODY =
   'All checkable milestones will be checked except Reintegration. Intervention tiles have no checkbox. Recovery progress will show 100%.';
@@ -238,6 +282,8 @@ const UNCHECK_COMPLETION_MODAL_BODY =
 const INTERVENTION_DEMOTION_MODAL_BODY =
   'Intervention triggered. The patient will move back to a previous stage.';
 
+const REINTEGRATION_MODAL_Z = 10052;
+
 export default function BehaviorProgressBoard({
   checked,
   setChecked,
@@ -245,13 +291,18 @@ export default function BehaviorProgressBoard({
   embedded = false,
   boardPosition: boardPositionProp,
   onBoardPositionChange,
+  persistenceId = null,
 }) {
   /** null | 'complete' — mark all | 'clear' — uncheck all */
   const [completionModalMode, setCompletionModalMode] = useState(null);
+  /** null | 1 — first sure? | 2 — final confirm */
+  const [reintegrationModalStep, setReintegrationModalStep] = useState(null);
   /** Pending intervention demotion after user confirms */
   const [pendingInterventionDemotion, setPendingInterventionDemotion] = useState(null);
   /** Second-step confirmation for intervention demotion */
   const [interventionSecondConfirm, setInterventionSecondConfirm] = useState(false);
+  /** @type {Record<number, boolean>} */
+  const [failedInterventionSteps, setFailedInterventionSteps] = useState({});
 
   const [internalBoardPosition, setInternalBoardPosition] = useState(1);
   const isBoardPositionControlled =
@@ -266,26 +317,47 @@ export default function BehaviorProgressBoard({
     else setInternalBoardPosition(v);
   };
 
-  const toggle = (key) => {
-    setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+  const reintegrationDisplayName =
+    patientName != null && String(patientName).trim() !== '' ? String(patientName).trim() : 'this resident';
 
-  const applyStageProgress = (stageNumber) => {
+  useEffect(() => {
+    if (persistenceId == null || String(persistenceId).trim() === '') {
+      setFailedInterventionSteps({});
+      return;
+    }
+    const prof = loadLadderProfiles()[String(persistenceId)];
+    setFailedInterventionSteps(normalizeFailedInterventionMap(prof?.failedInterventionSteps));
+  }, [persistenceId]);
+
+  /**
+   * @param {number} stageNumber
+   * @param {{ markFailedFrom?: number }} [opts] — set when confirming a snake demotion (marks `from` as failed/red).
+   */
+  const applyStageProgress = (stageNumber, opts = {}) => {
     const normalizedStage = Math.max(1, Math.min(50, Number(stageNumber) || 1));
-    setChecked((prev) => {
+    const markFailedFrom = opts.markFailedFrom;
+    setFailedInterventionSteps((prev) => {
       const next = { ...prev };
-      for (let i = 0; i < BEHAVIOR_CHECKLIST_ITEMS.length; i++) {
-        if (!isInterventionLabel(BEHAVIOR_CHECKLIST_ITEMS[i])) {
-          next[i] = i + 1 <= normalizedStage;
-        } else {
-          next[i] = false;
-        }
-      }
-      next.completion = false;
-      next.reintegration = false;
+      Object.keys(next).forEach((k) => {
+        const stepNum = Number(k);
+        if (normalizedStage > stepNum) delete next[stepNum];
+      });
+      if (markFailedFrom != null) next[markFailedFrom] = true;
+      persistFailedSteps(persistenceId, next);
       return next;
     });
+    setChecked(() => buildBehaviorChecksForStage(normalizedStage));
     setBoardPosition(normalizedStage);
+  };
+
+  /** Checkbox: check → progress through n; uncheck → progress through n−1 (min 1). */
+  const handleMilestoneCheckboxChange = (n) => (e) => {
+    const want = e.target.checked;
+    if (want) {
+      applyStageProgress(n);
+    } else {
+      applyStageProgress(Math.max(1, n - 1));
+    }
   };
 
   const applyCompletionConfirmed = () => {
@@ -314,7 +386,29 @@ export default function BehaviorProgressBoard({
     });
   };
 
+  /** Full reset: all milestones off, 0% progress, ladder position 1, intervention failure markers cleared. */
+  const resetLadderFullyForReintegration = () => {
+    persistFailedSteps(persistenceId, {});
+    setFailedInterventionSteps({});
+    setChecked((prev) => {
+      const next = { ...prev };
+      for (let i = 0; i < BEHAVIOR_CHECKLIST_ITEMS.length; i++) {
+        next[i] = false;
+      }
+      next.completion = false;
+      next.reintegration = false;
+      return next;
+    });
+    setBoardPosition(1);
+  };
+
   const closeCompletionModal = () => setCompletionModalMode(null);
+  const closeReintegrationModal = () => setReintegrationModalStep(null);
+  const confirmReintegrationStep1 = () => setReintegrationModalStep(2);
+  const confirmReintegrationFinal = () => {
+    resetLadderFullyForReintegration();
+    setReintegrationModalStep(null);
+  };
 
   const confirmCompletionModal = () => {
     if (completionModalMode === 'complete') {
@@ -326,16 +420,17 @@ export default function BehaviorProgressBoard({
   };
 
   useEffect(() => {
-    if (!completionModalMode && !pendingInterventionDemotion) return;
+    if (!completionModalMode && !pendingInterventionDemotion && reintegrationModalStep == null) return;
     const onKey = (ev) => {
       if (ev.key === 'Escape') {
         setCompletionModalMode(null);
         setPendingInterventionDemotion(null);
+        setReintegrationModalStep(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [completionModalMode, pendingInterventionDemotion]);
+  }, [completionModalMode, pendingInterventionDemotion, reintegrationModalStep]);
 
   const confirmInterventionDemotion = () => {
     if (!pendingInterventionDemotion) return;
@@ -343,7 +438,8 @@ export default function BehaviorProgressBoard({
       setInterventionSecondConfirm(true);
       return;
     }
-    applyStageProgress(pendingInterventionDemotion.to);
+    const { from, to } = pendingInterventionDemotion;
+    applyStageProgress(to, { markFailedFrom: from });
     setInterventionSecondConfirm(false);
     setPendingInterventionDemotion(null);
   };
@@ -353,17 +449,12 @@ export default function BehaviorProgressBoard({
     setPendingInterventionDemotion(null);
   };
 
-  const handleCompletionChange = (e) => {
-    const wantChecked = e.target.checked;
-    if (wantChecked) {
+  const handleCompletionButtonClick = () => {
+    if (!checked.completion) {
       setCompletionModalMode('complete');
       return;
     }
-    if (checked.completion) {
-      setCompletionModalMode('clear');
-      return;
-    }
-    setChecked((prev) => ({ ...prev, completion: false }));
+    setCompletionModalMode('clear');
   };
 
   return (
@@ -441,13 +532,28 @@ export default function BehaviorProgressBoard({
                       <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                         Completion
                       </span>
-                      <input
-                        type="checkbox"
-                        checked={!!checked.completion}
-                        onChange={handleCompletionChange}
-                        aria-label="Completion milestone"
-                        style={{ width: 15, height: 15, accentColor: t.border, cursor: 'pointer' }}
-                      />
+                      <button
+                        type="button"
+                        onClick={handleCompletionButtonClick}
+                        aria-pressed={!!checked.completion}
+                        aria-label={checked.completion ? 'Remove completion and reset ladder' : 'Mark program completion'}
+                        style={{
+                          marginTop: 'auto',
+                          width: '100%',
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          border: `2px solid ${t.border}`,
+                          background: checked.completion ? `${t.border}18` : '#FFFFFF',
+                          color: '#1e293b',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {checked.completion ? 'Remove' : 'Mark complete'}
+                      </button>
                     </div>
                   );
                 }
@@ -484,13 +590,29 @@ export default function BehaviorProgressBoard({
                       >
                         Reintegration
                       </span>
-                      <input
-                        type="checkbox"
-                        checked={!!checked.reintegration}
-                        onChange={() => toggle('reintegration')}
-                        aria-label="Reintegration milestone"
-                        style={{ width: 15, height: 15, accentColor: t.border, cursor: 'pointer' }}
-                      />
+                      <button
+                        type="button"
+                        onClick={() => setReintegrationModalStep(1)}
+                        aria-haspopup="dialog"
+                        aria-expanded={reintegrationModalStep != null}
+                        aria-label="Reintegrate resident — confirmation required"
+                        style={{
+                          marginTop: 'auto',
+                          width: '100%',
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          border: `2px solid ${t.border}`,
+                          background: '#FFFFFF',
+                          color: '#1e293b',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        Reintegrate
+                      </button>
                     </div>
                   );
                 }
@@ -503,12 +625,10 @@ export default function BehaviorProgressBoard({
                 const snake = SNAKES.find((s) => s.from === n);
                 const idx = n - 1;
                 const tileWeightPct = PERCENT_WEIGHT_BY_INDEX[idx];
-                const interventionStatus =
-                  isInterventionTile && currentBoardPosition === n
-                    ? 'current'
-                    : isInterventionTile && currentBoardPosition > n
-                      ? 'passed'
-                      : 'pending';
+                const badgeStatus = interventionBadgeStatus(n, isInterventionTile, currentBoardPosition, failedInterventionSteps);
+                const demotionBadgeStatus = snake
+                  ? interventionBadgeStatus(snake.from, true, currentBoardPosition, failedInterventionSteps)
+                  : 'upcoming';
                 const openDemotionModal = () => {
                   if (!snake) return;
                   setInterventionSecondConfirm(false);
@@ -520,7 +640,7 @@ export default function BehaviorProgressBoard({
                     key={`${ri}-${ci}-${n}`}
                     onClick={(e) => {
                       const el = e.target;
-                      if (el instanceof Element && el.closest('input[type="checkbox"]')) return;
+                      if (el instanceof Element && el.closest('input[type="checkbox"], button')) return;
                       if (el instanceof Element && el.closest('[data-intervention-demotion]')) return;
 
                       if (snake && isInterventionTile) {
@@ -528,7 +648,7 @@ export default function BehaviorProgressBoard({
                         return;
                       }
                       if (!isInterventionTile) {
-                        toggle(idx);
+                        applyStageProgress(n);
                       }
                     }}
                     style={{
@@ -567,7 +687,7 @@ export default function BehaviorProgressBoard({
                             type="checkbox"
                             checked={!!checked[idx]}
                             onClick={(e) => e.stopPropagation()}
-                            onChange={() => toggle(idx)}
+                            onChange={handleMilestoneCheckboxChange(n)}
                             aria-label={`Square ${n}`}
                             style={{ width: 14, height: 14, accentColor: t.border, cursor: 'pointer', flexShrink: 0 }}
                           />
@@ -588,23 +708,29 @@ export default function BehaviorProgressBoard({
                             letterSpacing: '0.04em',
                             textTransform: 'uppercase',
                             color:
-                              interventionStatus === 'current'
+                              demotionBadgeStatus === 'current'
                                 ? '#854D0E'
-                                : interventionStatus === 'passed'
+                                : demotionBadgeStatus === 'passed'
                                   ? '#166534'
-                                  : '#991B1B',
+                                  : demotionBadgeStatus === 'failed'
+                                    ? '#991B1B'
+                                    : '#991B1B',
                             background:
-                              interventionStatus === 'current'
+                              demotionBadgeStatus === 'current'
                                 ? '#FEF9C3'
-                                : interventionStatus === 'passed'
+                                : demotionBadgeStatus === 'passed'
                                   ? '#ECFDF3'
-                                  : '#FEF2F2',
+                                  : demotionBadgeStatus === 'failed'
+                                    ? '#FEE2E2'
+                                    : '#FEF2F2',
                             border: `1px solid ${
-                              interventionStatus === 'current'
-                                ? '#FDE047'
-                                : interventionStatus === 'passed'
-                                  ? '#86EFAC'
-                                  : '#FCA5A5'
+                              demotionBadgeStatus === 'current'
+                                ? '#EAB308'
+                                : demotionBadgeStatus === 'passed'
+                                  ? '#22C55E'
+                                  : demotionBadgeStatus === 'failed'
+                                    ? '#EF4444'
+                                    : '#DC2626'
                             }`,
                             borderRadius: 4,
                             padding: '3px 6px',
@@ -617,7 +743,7 @@ export default function BehaviorProgressBoard({
                       ) : null}
                     </div>
                     <div style={{ flex: 1, minHeight: 0, lineHeight: 1.3, overflow: 'hidden' }}>
-                      {renderBehaviorChecklistLabel(label, interventionStatus)}
+                      {renderBehaviorChecklistLabel(label, badgeStatus)}
                     </div>
                     <div
                       style={{
@@ -625,20 +751,28 @@ export default function BehaviorProgressBoard({
                         right: 6,
                         bottom: 4,
                         textAlign: 'right',
-                        lineHeight: 1.1,
+                        lineHeight: 1.15,
                       }}
                     >
                       {tileWeightPct != null ? (
-                        <div style={{ fontSize: 8, fontWeight: 600, color: '#64748B', marginBottom: 2 }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: '#475569', marginBottom: 3 }}>
                           {`${tileWeightPct.toFixed(2)}%`}
                         </div>
                       ) : null}
                       <span
                         style={{
-                          fontSize: 11,
-                          fontWeight: 700,
+                          display: 'inline-block',
+                          fontSize: 13,
+                          fontWeight: 800,
                           color: '#0F172A',
                           fontVariantNumeric: 'tabular-nums',
+                          letterSpacing: '-0.02em',
+                          background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)',
+                          border: '1px solid #CBD5E1',
+                          borderRadius: 6,
+                          padding: '3px 9px',
+                          minWidth: 28,
+                          boxShadow: '0 1px 0 rgba(15, 23, 42, 0.06)',
                         }}
                       >
                         {n}
@@ -762,6 +896,100 @@ export default function BehaviorProgressBoard({
                     }}
                   >
                     {interventionSecondConfirm ? 'Confirm' : 'OK'}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+
+      {reintegrationModalStep != null
+        ? createPortal(
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reintegration-modal-title"
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: REINTEGRATION_MODAL_Z,
+                background: 'rgba(15, 23, 42, 0.45)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 20,
+              }}
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) closeReintegrationModal();
+              }}
+            >
+              <div
+                style={{
+                  background: TILE_FILL,
+                  borderRadius: 14,
+                  border: '1px solid #E2E8F0',
+                  boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25)',
+                  maxWidth: 420,
+                  width: '100%',
+                  padding: '24px 24px 20px',
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <h2
+                  id="reintegration-modal-title"
+                  style={{ margin: '0 0 10px', fontSize: 17, fontWeight: 800, color: '#1B2559' }}
+                >
+                  {reintegrationModalStep === 1 ? 'Reintegrate resident?' : 'Confirm reintegration'}
+                </h2>
+                <p style={{ margin: '0 0 22px', fontSize: 13, color: '#64748B', lineHeight: 1.55 }}>
+                  {reintegrationModalStep === 1 ? (
+                    <>
+                      Are you sure you want to reintegrate{' '}
+                      <strong style={{ color: '#1e293b' }}>{reintegrationDisplayName}</strong>? You will be asked to
+                      confirm again before anything changes.
+                    </>
+                  ) : (
+                    <>
+                      Final confirmation: this will clear every milestone on the recovery ladder for{' '}
+                      <strong style={{ color: '#1e293b' }}>{reintegrationDisplayName}</strong>, reset ladder position to
+                      the start, and remove intervention flags. Recovery progress will return to{' '}
+                      <strong style={{ color: '#1e293b' }}>0%</strong>.
+                    </>
+                  )}
+                </p>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={closeReintegrationModal}
+                    style={{
+                      padding: '10px 18px',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: '#475569',
+                      background: '#F1F5F9',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: 10,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={reintegrationModalStep === 1 ? confirmReintegrationStep1 : confirmReintegrationFinal}
+                    style={{
+                      padding: '10px 18px',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: '#fff',
+                      background: TIERS.reintegration.border,
+                      border: 'none',
+                      borderRadius: 10,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {reintegrationModalStep === 1 ? 'Yes, continue' : 'Confirm'}
                   </button>
                 </div>
               </div>
