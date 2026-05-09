@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  LayoutGrid, Users, FileText, User, LogOut,
+  Users, FileText, LogOut,
   Calendar as CalendarIcon, ArrowLeft, ArrowRight,
   Plus, X, ClipboardList, AlertCircle, Stethoscope, Clock,
-  CheckCircle2, Trash2,
+  Trash2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
@@ -34,8 +34,8 @@ function newId() {
   });
 }
 
-/* ── NurseSidebar (100% unchanged) ── */
-function NurseSidebar({ isExpanded, setIsExpanded, navigate, active }) {
+/** Program workspace navigation — matches weekly report / assigned residents routes. */
+function ProgramSidebar({ isExpanded, setIsExpanded, navigate, active }) {
   const item = (reactKey, iconEl, label, path, opts = {}) => {
     const onClick = (e) => { e.stopPropagation(); navigate(path); };
     const activeStyle = opts.isActive ? { background:'#F54E25', borderRadius:12, padding:10, display:'flex' } : {};
@@ -52,13 +52,11 @@ function NurseSidebar({ isExpanded, setIsExpanded, navigate, active }) {
         <img src={logo} alt="Kalinga" style={{ width:isExpanded?120:70 }} />
       </div>
       <div style={{ width:'100%', flex:1, minHeight:0, overflowY:'auto', overflowX:'hidden', display:'flex', flexDirection:'column' }}>
-        {item('dash', <LayoutGrid size={22} color={active==='dashboard'?'#FFFFFF':'#707EAE'} />, 'Dashboard', '/nurse-dashboard', { isActive:active==='dashboard' })}
-        {item('res', <Users size={22} color={active==='residents'?'#FFFFFF':'#707EAE'} />, 'Residents', '/patient-database', { isActive:active==='residents' })}
-        {item('cal', <CalendarIcon size={22} color={active==='calendar'?'#FFFFFF':'#707EAE'} />, 'Calendar', '/nurse-calendar', { isActive:active==='calendar' })}
-        {item('med', <FileText size={22} color={active==='medical'?'#FFFFFF':'#707EAE'} />, 'Medical Report', '/nurse-medical-report', { isActive:active==='medical' })}
+        {item('res', <Users size={22} color={active==='residents'?'#FFFFFF':'#707EAE'} />, 'Assigned residents', '/program', { isActive:active==='residents' })}
+        {item('cal', <CalendarIcon size={22} color={active==='calendar'?'#FFFFFF':'#707EAE'} />, 'Calendar', '/program-calendar', { isActive:active==='calendar' })}
+        {item('wr', <FileText size={22} color={active==='weekly'?'#FFFFFF':'#707EAE'} />, 'Weekly Report', '/program-weekly-report', { isActive:active==='weekly' })}
       </div>
       <div style={{ flexShrink:0, width:'100%', padding:'16px 0 20px', marginTop:'auto', borderTop:'1px solid #f1f5f9' }}>
-        {item('prof', <User size={22} color="#707EAE" />, 'Profile', '/nurseprofile', { isActive:false })}
         <div style={{ display:'flex', alignItems:'center', gap:14, minHeight:48, padding:isExpanded?'0 28px':0, justifyContent:isExpanded?'flex-start':'center', boxSizing:'border-box', cursor:'pointer' }} onClick={e => { e.stopPropagation(); navigate('/login'); }}>
           <LogOut size={22} color="#F54E25" />
           {isExpanded ? <span style={{ color:'#F54E25', fontWeight:700 }}>Logout</span> : null}
@@ -96,7 +94,8 @@ function SectionTitle({ icon: Icon, children, color = '#F54E25' }) {
 /* ══════════════════════════════════════════
    MAIN PAGE
 ══════════════════════════════════════════ */
-export default function NurseCalendarPage() {
+/** Calendar for program staff — same features as nurse calendar; residents scoped by case load manager. */
+export default function ProgramCalendarPage() {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [userId, setUserId] = useState('');
@@ -133,7 +132,7 @@ export default function NurseCalendarPage() {
         supabase.from('patients').select('*').is('discharged_at', null).order('admitted_at', { ascending: false }),
       ]);
       const names = getCandidateNames(user, profile?.full_name).map(toName);
-      setAssigned((patients||[]).filter(p => names.includes(toName(p.program_staff))));
+      setAssigned((patients||[]).filter(p => names.includes(toName(p.case_load_manager))));
     };
     void load();
   }, []);
@@ -274,7 +273,7 @@ export default function NurseCalendarPage() {
       `}</style>
 
       {/* ── SIDEBAR (100% unchanged) ── */}
-      <NurseSidebar isExpanded={isExpanded} setIsExpanded={setIsExpanded} navigate={navigate} active="calendar" />
+      <ProgramSidebar isExpanded={isExpanded} setIsExpanded={setIsExpanded} navigate={navigate} active="calendar" />
 
       <main style={{ flex:1, marginLeft:isExpanded?280:110, padding:'24px 28px 48px', transition:'margin-left .3s', background:'#F0F4FF', minHeight:'100vh', display:'flex', flexDirection:'column', boxSizing:'border-box' }}>
 
@@ -292,7 +291,7 @@ export default function NurseCalendarPage() {
               </div>
               <h1 style={{ margin:0, color:'#fff', fontSize:26, fontWeight:900, letterSpacing:'-0.02em' }}>Calendar</h1>
               <p style={{ color:'rgba(255,255,255,0.55)', margin:'8px 0 0', fontSize:13, lineHeight:1.45, maxWidth:520 }}>
-                Your month at a glance — personal and resident agendas, plus report deadlines from admin.
+                Your month at a glance — personal and resident agendas for your assigned case load, plus report deadlines from admin.
               </p>
               <div style={{ marginTop:14 }}>{legendPills}</div>
             </div>

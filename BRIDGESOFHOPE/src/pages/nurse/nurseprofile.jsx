@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutGrid, User, LogOut, Users, FileText, Calendar, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { LayoutGrid, User, LogOut, Users, Calendar, FileText, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import logo from '@/assets/kalingalogo.png';
@@ -395,9 +395,9 @@ const NurseProfile = () => {
           <Calendar size={22} color="#707EAE" />
           <span className="sidebar-label">Calendar</span>
         </div>
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-weekly-report'); }}>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}>
           <FileText size={22} color="#707EAE" />
-          <span className="sidebar-label">Weekly Report</span>
+          <span className="sidebar-label">Medical Report</span>
         </div>
         </div>
 
@@ -653,11 +653,11 @@ const NurseProfile = () => {
             </div>
             <span>Calendar</span>
           </div>
-          <div className="mob-nav-item" onClick={() => navigate('/nurse-weekly-report')}>
+          <div className="mob-nav-item" onClick={() => navigate('/nurse-medical-report')}>
             <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
               <FileText size={20} color="#707EAE" />
             </div>
-            <span>Weekly</span>
+            <span>Medical</span>
           </div>
           <div className="mob-nav-item active" onClick={() => navigate('/nurseprofile')}>
             <User size={22} color="#F54E25" />

@@ -2231,9 +2231,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               <Calendar size={22} color="#707EAE" />
               <span className="sidebar-label">Calendar</span>
             </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-weekly-report'); }}>
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}>
               <FileText size={22} color="#707EAE" />
-              <span className="sidebar-label">Weekly Report</span>
+              <span className="sidebar-label">Medical Report</span>
             </div>
           </nav>
         ) : isProgram ? (
@@ -2243,6 +2243,14 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                 <Users size={22} color="white" />
               </div>
               <span className="sidebar-label" style={{ color: '#F54E25' }}>Assigned residents</span>
+            </div>
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program-calendar'); }}>
+              <Calendar size={22} color="#707EAE" />
+              <span className="sidebar-label">Calendar</span>
+            </div>
+            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program-weekly-report'); }}>
+              <FileText size={22} color="#707EAE" />
+              <span className="sidebar-label">Weekly Report</span>
             </div>
           </nav>
         ) : staffLimited ? (
@@ -2990,12 +2998,14 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
             ) : (
               <>
                 <div className="view-program-weekly-tracking-row">
-                  {/* Weekly Progress — nurse-filed reports; AI insights via sparkle control */}
+                  {/* Weekly Progress / Medical Report — nurse-filed reports; AI insights via sparkle control */}
                   <div className="info-card" style={{ padding: '32px', minWidth: 0 }}>
                     <div style={{ flexShrink: 0, marginBottom: 20 }}>
-                      <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559' }}>Weekly Progress</h3>
+                      <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559' }}>{isNurse ? 'Medical Report' : 'Weekly Progress'}</h3>
                       <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, marginBottom: 0 }}>
-                        Only weeks with a submitted nurse report are shown. Click the AI icon on a card for suggestions based on patient context and that week&apos;s filing data.
+                        {isNurse
+                          ? 'Only weeks with a submitted medical report are shown. Click the AI icon on a card for suggestions based on patient context and that week&apos;s filing data.'
+                          : 'Only weeks with a submitted nurse report are shown. Click the AI icon on a card for suggestions based on patient context and that week&apos;s filing data.'}
                       </p>
                     </div>
                     <div
@@ -3009,7 +3019,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                     >
                       {weekNumbersWithReports.length === 0 ? (
                         <p style={{ fontSize: 13, color: '#94a3b8', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
-                          No weekly reports have been filed for this resident yet.
+                          {isNurse
+                            ? 'No medical reports have been filed for this resident yet.'
+                            : 'No weekly reports have been filed for this resident yet.'}
                         </p>
                       ) : (
                         <div className="view-weeks-row-scroll">
@@ -3497,11 +3509,11 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               </div>
               <span>Calendar</span>
             </div>
-            <div className="mob-nav-item" onClick={() => navigate('/nurse-weekly-report')}>
+            <div className="mob-nav-item" onClick={() => navigate('/nurse-medical-report')}>
               <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
                 <FileText size={20} color="#A3AED0" />
               </div>
-              <span>Weekly</span>
+              <span>Medical</span>
             </div>
             <div className="mob-nav-item" onClick={() => navigate('/nurseprofile')}>
               <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
@@ -3521,6 +3533,18 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                 <Users size={20} color="white" />
               </div>
               <span style={{ color: '#F54E25' }}>Assigned</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/program-calendar')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <Calendar size={20} color="#A3AED0" />
+              </div>
+              <span>Calendar</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/program-weekly-report')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <FileText size={20} color="#A3AED0" />
+              </div>
+              <span>Weekly</span>
             </div>
             <div className="mob-nav-item" onClick={() => navigate('/login')}>
               <LogOut size={22} color="#F54E25" />
@@ -3610,7 +3634,8 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               <div className="admin-ai-modal-header">
                 <div>
                   <h2 id="admin-weekly-report-modal-title" style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>
-                    Nurse weekly report{weeklyReportModalWeek != null ? ` · Week ${weeklyReportModalWeek}` : ''}
+                    {isNurse ? 'Medical report' : 'Nurse weekly report'}
+                    {weeklyReportModalWeek != null ? ` · Week ${weeklyReportModalWeek}` : ''}
                   </h2>
                   <p style={{ fontSize: 12, color: '#64748b', margin: '6px 0 0' }}>
                     {selectedPatient?.name || 'Resident'}
@@ -3630,7 +3655,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               </div>
               <div className="admin-ai-modal-body">
                 {!weeklyReportModalRow ? (
-                  <div style={{ color: '#94a3b8' }}>No nurse report filed for this week yet.</div>
+                  <div style={{ color: '#94a3b8' }}>
+                    {isNurse ? 'No medical report filed for this week yet.' : 'No nurse report filed for this week yet.'}
+                  </div>
                 ) : (
                   <div style={{ display: 'grid', gap: 10 }}>
                     <div className="report-row">
