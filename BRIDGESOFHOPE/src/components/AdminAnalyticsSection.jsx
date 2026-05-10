@@ -41,7 +41,6 @@ const GENDER_OPTIONS = [
 
 const AGE_OPTIONS = [
     { value: 'all', label: 'All Ages' },
-    { value: '0-17', label: '0–17' },
     { value: '18-35', label: '18–35' },
     { value: '36-55', label: '36–55' },
     { value: '56+', label: '56+' },
@@ -97,7 +96,7 @@ function programMatchesFilter(rawKey, filterVal) {
 function ageBucket(age) {
     if (age == null || age === '' || Number.isNaN(Number(age))) return null;
     const n = Number(age);
-    if (n <= 17) return '0-17';
+    if (n < 18) return null;
     if (n <= 35) return '18-35';
     if (n <= 55) return '36-55';
     return '56+';
@@ -185,6 +184,7 @@ function mapDeclinedFromDb(rows, type) {
         created_at: r.created_at,
         declinedAt: r.decided_at || r.updated_at || r.created_at,
         patient_gender: r.patient_gender,
+        patient_birth_date: r.patient_birth_date,
         assignedStaff: String(r.assigned_staff || r.assignedStaff || '').trim() || 'Unassigned',
         type,
     }));
@@ -425,19 +425,16 @@ export default function AdminAnalyticsSection() {
             if (rt != null && rt < periodStartMs) return false;
             const reason = req.reason || '';
             if (!programMatchesFilter(mapProgramKey(reason), filterProgram)) return false;
+            if (filterOutcome !== 'all') return false;
             if (filterGender !== 'all') {
                 const g = req.patient_gender || req.gender;
-                if (g && String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
+                if (!g || String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
             }
-            if (filterAge !== 'all' && req.patient_birth_date) {
-                const dob = new Date(req.patient_birth_date);
-                if (!Number.isNaN(dob.getTime())) {
-                    let age = new Date().getFullYear() - dob.getFullYear();
-                    const m = new Date().getMonth() - dob.getMonth();
-                    if (m < 0 || (m === 0 && new Date().getDate() < dob.getDate())) age--;
-                    const b = ageBucket(age);
-                    if (!b || b !== filterAge) return false;
-                }
+            if (filterAge !== 'all') {
+                const age = ageFromDob(req.patient_birth_date);
+                if (age == null) return false;
+                const b = ageBucket(age);
+                if (!b || b !== filterAge) return false;
             }
             if (filterTherapist !== 'all') {
                 const st = String(req.assignedStaff || req.therapist || '').trim() || 'Unassigned';
@@ -445,7 +442,7 @@ export default function AdminAnalyticsSection() {
             }
             return true;
         });
-    }, [snapshot.pendingAdmissions, periodStartMs, filterProgram, filterGender, filterAge, filterTherapist]);
+    }, [snapshot.pendingAdmissions, periodStartMs, filterProgram, filterGender, filterAge, filterTherapist, filterOutcome]);
 
     const filteredDeclined = useMemo(() => {
         return snapshot.declined.filter((req) => {
@@ -453,9 +450,16 @@ export default function AdminAnalyticsSection() {
             if (rt != null && rt < periodStartMs) return false;
             const reason = req.reason || '';
             if (!programMatchesFilter(mapProgramKey(reason), filterProgram)) return false;
+            if (filterOutcome !== 'all') return false;
             if (filterGender !== 'all') {
                 const g = req.patient_gender || req.gender;
-                if (g && String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
+                if (!g || String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
+            }
+            if (filterAge !== 'all') {
+                const age = ageFromDob(req.patient_birth_date);
+                if (age == null) return false;
+                const b = ageBucket(age);
+                if (!b || b !== filterAge) return false;
             }
             if (filterTherapist !== 'all') {
                 const st = String(req.assignedStaff || req.therapist || '').trim() || 'Unassigned';
@@ -463,16 +467,21 @@ export default function AdminAnalyticsSection() {
             }
             return true;
         });
-    }, [snapshot.declined, periodStartMs, filterProgram, filterGender, filterTherapist]);
+    }, [snapshot.declined, periodStartMs, filterProgram, filterGender, filterAge, filterTherapist, filterOutcome]);
 
     const filteredPendingDischarges = useMemo(() => {
         return snapshot.pendingDischarges.filter((req) => {
-            const rt = requestTimeMs(req);
             const reason = req.reason_category || req.reason_details || req.reason || '';
             if (!programMatchesFilter(mapProgramKey(reason), filterProgram)) return false;
             if (filterGender !== 'all') {
                 const g = req.patient_gender || req.gender;
-                if (g && String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
+                if (!g || String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
+            }
+            if (filterAge !== 'all') {
+                const age = ageFromDob(req.patient_birth_date);
+                if (age == null) return false;
+                const b = ageBucket(age);
+                if (!b || b !== filterAge) return false;
             }
             if (filterTherapist !== 'all') {
                 const st = String(req.assigned_staff || req.assignedStaff || req.therapist || '').trim() || 'Unassigned';
@@ -480,7 +489,7 @@ export default function AdminAnalyticsSection() {
             }
             return true;
         });
-    }, [snapshot.pendingDischarges, filterProgram, filterGender, filterTherapist]);
+    }, [snapshot.pendingDischarges, filterProgram, filterGender, filterAge, filterTherapist]);
 
     const filteredAdmissionRequests = useMemo(() => {
         return (snapshot.admissionRequests || []).filter((req) => {
@@ -490,17 +499,13 @@ export default function AdminAnalyticsSection() {
             if (!programMatchesFilter(mapProgramKey(reason), filterProgram)) return false;
             if (filterGender !== 'all') {
                 const g = req.patient_gender || req.gender;
-                if (g && String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
+                if (!g || String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
             }
-            if (filterAge !== 'all' && req.patient_birth_date) {
-                const dob = new Date(req.patient_birth_date);
-                if (!Number.isNaN(dob.getTime())) {
-                    let age = new Date().getFullYear() - dob.getFullYear();
-                    const m = new Date().getMonth() - dob.getMonth();
-                    if (m < 0 || (m === 0 && new Date().getDate() < dob.getDate())) age--;
-                    const b = ageBucket(age);
-                    if (!b || b !== filterAge) return false;
-                }
+            if (filterAge !== 'all') {
+                const age = ageFromDob(req.patient_birth_date);
+                if (age == null) return false;
+                const b = ageBucket(age);
+                if (!b || b !== filterAge) return false;
             }
             if (filterTherapist !== 'all') {
                 const st = String(req.assigned_staff || req.assignedStaff || req.therapist || '').trim() || 'Unassigned';
