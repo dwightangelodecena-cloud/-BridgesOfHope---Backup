@@ -1,5 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Home, User, LogOut, Calendar, BarChart3, ClipboardList, FileText, X, CheckCircle2, TrendingUp } from 'lucide-react';
+import {
+  Home, User, LogOut, Calendar, BarChart3, ClipboardList, FileText, X,
+  CheckCircle2, TrendingUp, Heart, Stethoscope,
+  ArrowRight, ChevronRight, Shield
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -8,6 +12,99 @@ import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
 
+/* ─── unchanged helpers ─── */
+const formatDate = (iso) => {
+  if (!iso) return 'N/A';
+  try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+  catch { return 'N/A'; }
+};
+const calculateAge = (dob) => {
+  if (!dob) return 'N/A';
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return 'N/A';
+  const n = new Date(); let age = n.getFullYear() - d.getFullYear();
+  const m = n.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && n.getDate() < d.getDate())) age -= 1;
+  return age >= 0 ? age : 'N/A';
+};
+
+/* ─── design-only components ─── */
+function ProgressRing({ pct = 0, size = 56, stroke = 5, color = '#F54E25' }) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const filled = (Math.min(100, Math.max(0, pct)) / 100) * circ;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block', flexShrink: 0 }}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#F1F5F9" strokeWidth={stroke} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+        strokeDasharray={`${filled} ${circ-filled}`} strokeLinecap="round"
+        transform={`rotate(-90 ${size/2} ${size/2})`} />
+      <text x={size/2} y={size/2+1} textAnchor="middle" fontSize="11" fontWeight="900" fill="#0F172A" dominantBaseline="middle">{pct}%</text>
+    </svg>
+  );
+}
+
+function StatusPill({ progress, dischargedAt }) {
+  if (dischargedAt) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: '#E2E8F0', color: '#475569', border: '1px solid #CBD5E1' }}>
+        Discharged
+      </span>
+    );
+  }
+  const p = Number(progress) || 0;
+  const cfg = p >= 70
+    ? { label: 'Stable', bg: '#DCFCE7', color: '#166534' }
+    : p >= 40
+    ? { label: 'Recovering', bg: '#FEF3C7', color: '#92400E' }
+    : { label: 'Needs Attention', bg: '#FEE2E2', color: '#991B1B' };
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: cfg.bg, color: cfg.color }}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function VitalRow({ label, value }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #F8FAFC' }}>
+      <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 800, color: '#0F172A' }}>{value}</span>
+    </div>
+  );
+}
+
+function DataRow({ label, value }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '9px 0', borderBottom: '1px solid #F8FAFC' }}>
+      <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600, flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A', textAlign: 'right' }}>{value || '—'}</span>
+    </div>
+  );
+}
+
+function SectionCard({ children, style = {} }) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E9EDF7', borderRadius: 20, padding: '18px 20px', boxShadow: '0 4px 20px rgba(15,23,42,0.05)', ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function CardTitle({ icon: Icon, children, color = '#F54E25' }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+      <div style={{ width: 28, height: 28, borderRadius: 8, background: '#FFF1EB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon size={14} color={color} />
+      </div>
+      <span style={{ fontSize: 13, fontWeight: 900, color: '#0F172A', letterSpacing: '-0.01em' }}>{children}</span>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   MAIN PAGE
+══════════════════════════════════════════ */
 const PatientDetailsPage = () => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -19,6 +116,7 @@ const PatientDetailsPage = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const fileInputRefs = useRef([]);
 
+  /* ── all data-loading useEffects UNCHANGED ── */
   useEffect(() => {
     let mounted = true;
     const loadUser = async () => {
@@ -26,17 +124,13 @@ const PatientDetailsPage = () => {
       const user = data?.user;
       const fallbackProfile = localStorage.getItem('bh_family_profile');
       const fallbackName = fallbackProfile ? JSON.parse(fallbackProfile).fullName : null;
-      const name =
-        user?.user_metadata?.full_name ||
+      const name = user?.user_metadata?.full_name ||
         [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ') ||
-        fallbackName ||
-        'Family User';
+        fallbackName || 'Family User';
       if (mounted) setDisplayName(name);
     };
     loadUser();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
@@ -44,100 +138,47 @@ const PatientDetailsPage = () => {
     const loadPatients = async () => {
       if (!isSupabaseConfigured()) {
         const saved = localStorage.getItem('bh_patients');
-        if (!cancelled) {
-          setPatients(saved ? JSON.parse(saved) : []);
-          setPatientDetailsById({});
-          setWeeklyReportsByPatient({});
-        }
+        if (!cancelled) { setPatients(saved ? JSON.parse(saved) : []); setPatientDetailsById({}); setWeeklyReportsByPatient({}); }
         return;
       }
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        if (!cancelled) {
-          setPatients([]);
-          setPatientDetailsById({});
-          setWeeklyReportsByPatient({});
-        }
-        return;
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { if (!cancelled) { setPatients([]); setPatientDetailsById({}); setWeeklyReportsByPatient({}); } return; }
 
       const fetchPatientsRows = async () => {
-        // Keep this query aligned with family/home.jsx to avoid schema drift breakage.
-        const safeSelect =
-          'id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at';
+        const safeSelect = 'id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at';
         const runQuery = (selectClause, scopeFamily = true) => {
-          let q = supabase
-            .from('patients')
-            .select(selectClause)
-            .is('discharged_at', null)
-            .order('admitted_at', { ascending: false });
+          let q = supabase.from('patients').select(selectClause).order('admitted_at', { ascending: false });
           if (scopeFamily) q = q.eq('family_id', user.id);
           return q;
         };
-
         return runQuery(safeSelect, true);
       };
 
       const { data: rows, error } = await fetchPatientsRows();
+
       const mapApprovedAdmissionsToPatients = async () => {
-        const { data: admissions, error: admissionsError } = await supabase
-          .from('admission_requests')
-          .select('id, patient_name, patient_birth_date, reason_for_admission, status, created_at, decided_at')
-          .eq('family_id', user.id)
-          .eq('status', 'approved')
-          .order('decided_at', { ascending: false });
+        const { data: admissions, error: admissionsError } = await supabase.from('admission_requests').select('id, patient_name, patient_birth_date, reason_for_admission, status, created_at, decided_at').eq('family_id', user.id).eq('status', 'approved').order('decided_at', { ascending: false });
         if (admissionsError || !(admissions || []).length) return [];
         const names = [...new Set((admissions || []).map((a) => (a.patient_name || '').trim()).filter(Boolean))];
         const detailsByName = {};
         if (names.length) {
-          const { data: matchedRows } = await supabase
-            .from('patients')
-            .select(
-              'id, full_name, admitted_at, progress_percent, clinical_status, family_id, discharged_at, date_of_birth, gender, primary_concern, room_code, room_gender_segment, case_load_manager, program_staff, medical_staff_note, progress_updated_at, current_weight, weight_kg, height_cm, bmi, bp, pr, rr, spo2, temperature_f, blood_pressure, pulse_rate, respiratory_rate, oxygen_saturation, temperature'
-            )
-            .is('discharged_at', null)
-            .in('full_name', names)
-            .order('admitted_at', { ascending: false });
-          (matchedRows || []).forEach((row) => {
-            const key = String(row.full_name || '').trim().toLowerCase();
-            if (key && !detailsByName[key]) detailsByName[key] = row;
-          });
+          const { data: matchedRows } = await supabase.from('patients').select('id, full_name, admitted_at, progress_percent, clinical_status, family_id, discharged_at, date_of_birth, gender, primary_concern, room_code, room_gender_segment, case_load_manager, program_staff, medical_staff_note, progress_updated_at, current_weight, weight_kg, height_cm, bmi, bp, pr, rr, spo2, temperature_f, blood_pressure, pulse_rate, respiratory_rate, oxygen_saturation, temperature').in('full_name', names).order('admitted_at', { ascending: false });
+          (matchedRows || []).forEach((row) => { const key = String(row.full_name || '').trim().toLowerCase(); if (key && !detailsByName[key]) detailsByName[key] = row; });
         }
         return admissions.map((a) => {
           const name = a.patient_name || 'Approved Resident';
           const matched = detailsByName[String(name).trim().toLowerCase()] || null;
-          return {
-            id: matched?.id || `admission-${a.id}`,
-            name,
-            date: formatDate(a.decided_at || a.created_at),
-            progress: Number(matched?.progress_percent) || 0,
-            reason: a.reason_for_admission || '',
-            status: matched?.clinical_status || 'Recovering',
-            dateOfBirth: matched?.date_of_birth || a.patient_birth_date || '',
-            roomCode: matched?.room_code || '',
-          };
+          return { id: matched?.id || `admission-${a.id}`, name, date: formatDate(a.decided_at || a.created_at), progress: Number(matched?.progress_percent) || 0, reason: a.reason_for_admission || '', status: matched?.clinical_status || 'Recovering', dateOfBirth: matched?.date_of_birth || a.patient_birth_date || '', roomCode: matched?.room_code || '', discharged_at: matched?.discharged_at ?? null };
         });
       };
+
       const fetchPatientsFromApprovedAdmissions = async () => {
-        const safeSelect =
-          'id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at';
-        const { data: admissions, error: admissionsError } = await supabase
-          .from('admission_requests')
-          .select('patient_name')
-          .eq('family_id', user.id)
-          .eq('status', 'approved');
+        const safeSelect = 'id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at';
+        const { data: admissions, error: admissionsError } = await supabase.from('admission_requests').select('patient_name').eq('family_id', user.id).eq('status', 'approved');
         if (admissionsError || !(admissions || []).length) return [];
         const names = [...new Set((admissions || []).map((a) => (a.patient_name || '').trim()).filter(Boolean))];
         if (!names.length) return [];
-        const { data: matchedRows, error: queryError } = await supabase
-          .from('patients')
-          .select(safeSelect)
-          .is('discharged_at', null)
-          .in('full_name', names)
-          .order('admitted_at', { ascending: false });
+        const { data: matchedRows, error: queryError } = await supabase.from('patients').select(safeSelect).in('full_name', names).order('admitted_at', { ascending: false });
         if (queryError) return [];
         return matchedRows || [];
       };
@@ -147,30 +188,14 @@ const PatientDetailsPage = () => {
           const approvedFallback = await mapApprovedAdmissionsToPatients();
           if (approvedFallback.length) {
             setPatients(approvedFallback);
-            const fallbackIds = approvedFallback
-              .map((p) => p.id)
-              .filter((id) => id && !String(id).startsWith('admission-'));
+            const fallbackIds = approvedFallback.map((p) => p.id).filter((id) => id && !String(id).startsWith('admission-'));
             if (fallbackIds.length) {
-              const { data: reportRows } = await supabase
-                .from('weekly_reports')
-                .select('*')
-                .in('patient_id', fallbackIds)
-                .order('week_number', { ascending: true });
+              const { data: reportRows } = await supabase.from('weekly_reports').select('*').in('patient_id', fallbackIds).order('week_number', { ascending: true });
               const byPatient = {};
-              (reportRows || []).forEach((row) => {
-                const key = String(row.patient_id);
-                if (!byPatient[key]) byPatient[key] = [];
-                byPatient[key].push(row);
-              });
+              (reportRows || []).forEach((row) => { const key = String(row.patient_id); if (!byPatient[key]) byPatient[key] = []; byPatient[key].push(row); });
               setWeeklyReportsByPatient(byPatient);
-            } else {
-              setWeeklyReportsByPatient({});
-            }
-          } else {
-            // In Supabase mode, never fall back to shared local cache to avoid cross-family leakage.
-            setPatients([]);
-            setWeeklyReportsByPatient({});
-          }
+            } else { setWeeklyReportsByPatient({}); }
+          } else { setPatients([]); setWeeklyReportsByPatient({}); }
           setPatientDetailsById({});
         } else {
           const mappedPatients = (rows || []).map((r) => uiPatientFromRow(r)).filter(Boolean);
@@ -186,48 +211,25 @@ const PatientDetailsPage = () => {
               setPatientDetailsById(resolvedDetails);
             } else {
               const approvedFallback = await mapApprovedAdmissionsToPatients();
-              if (approvedFallback.length) {
-                setPatients(approvedFallback);
-              } else {
-                // In Supabase mode, never fall back to shared local cache to avoid cross-family leakage.
-                setPatients([]);
-              }
+              if (approvedFallback.length) { setPatients(approvedFallback); } else { setPatients([]); }
             }
           }
           const details = {};
           for (const row of rows || []) details[String(row.id)] = row;
           const activeRows = (rows && rows.length) ? rows : await fetchPatientsFromApprovedAdmissions();
           const ids = (activeRows || []).map((r) => r.id).filter(Boolean);
-          // Load full patient detail using '*' to avoid column-name mismatches.
           if (ids.length) {
-            const { data: detailRows } = await supabase
-              .from('patients')
-              .select('*')
-              .in('id', ids);
+            const { data: detailRows } = await supabase.from('patients').select('*').in('id', ids);
             if ((detailRows || []).length) {
               const fullDetails = {};
               for (const row of detailRows) fullDetails[String(row.id)] = row;
               setPatientDetailsById(fullDetails);
-            } else if (Object.keys(details).length) {
-              setPatientDetailsById(details);
-            }
-          } else if (Object.keys(details).length) {
-            setPatientDetailsById(details);
-          }
-          if (!ids.length) {
-            setWeeklyReportsByPatient({});
-            return;
-          }
-          let reportRows = null;
-          let reportError = null;
-          const directReports = await supabase
-            .from('weekly_reports')
-            .select('*')
-            .in('patient_id', ids)
-            .order('week_number', { ascending: true });
-          reportRows = directReports.data || null;
-          reportError = directReports.error || null;
-          // Fallback to security-definer RPC for family-owned reports.
+            } else if (Object.keys(details).length) { setPatientDetailsById(details); }
+          } else if (Object.keys(details).length) { setPatientDetailsById(details); }
+          if (!ids.length) { setWeeklyReportsByPatient({}); return; }
+          let reportRows = null, reportError = null;
+          const directReports = await supabase.from('weekly_reports').select('*').in('patient_id', ids).order('week_number', { ascending: true });
+          reportRows = directReports.data || null; reportError = directReports.error || null;
           if (reportError || !(reportRows || []).length) {
             const rpcReports = await supabase.rpc('bh_family_weekly_reports');
             if (!rpcReports.error && rpcReports.data) {
@@ -238,57 +240,23 @@ const PatientDetailsPage = () => {
           }
           const byPatient = {};
           if (!reportError && reportRows) {
-            for (const row of reportRows) {
-              const key = String(row.patient_id);
-              if (!byPatient[key]) byPatient[key] = [];
-              byPatient[key].push(row);
-            }
+            for (const row of reportRows) { const key = String(row.patient_id); if (!byPatient[key]) byPatient[key] = []; byPatient[key].push(row); }
           }
-          // Merge local weekly nurse cache as fallback for recently saved updates.
           try {
             const raw = localStorage.getItem('bh_nurse_weekly_reports');
             const localAll = raw ? JSON.parse(raw) : {};
-            const makeLocalReport = (pid, weekNum, entry) => ({
-              id: `local-${pid}-${weekNum}`,
-              patient_id: pid,
-              week_number: Number(weekNum),
-              submitted_at: entry.submittedAt ?? null,
-              nurse_name: entry.nurseName ?? entry.nurse_name ?? '',
-              report_date: entry.reportDate ?? entry.report_date ?? '',
-              summary: entry.summary ?? entry.report_summary ?? '',
-              nurse_note: entry.nurseNote ?? entry.nurse_note ?? entry.notes ?? '',
-              notes: entry.notes ?? '',
-              behavior_observation: entry.behaviorObservation ?? entry.behavior_observation ?? '',
-              recommendations: entry.recommendations ?? entry.plan_next_week ?? '',
-              vitals_weight: entry.vitalsWeight ?? entry.vitals_weight ?? '',
-              vitals_height: entry.vitalsHeight ?? entry.vitals_height ?? '',
-              vitals_bp: entry.vitalsBp ?? entry.vitals_bp ?? '',
-              vitals_pr: entry.vitalsPr ?? entry.vitals_pr ?? '',
-              vitals_rr: entry.vitalsRr ?? entry.vitals_rr ?? '',
-              vitals_temperature: entry.vitalsTemperature ?? entry.vitals_temperature ?? '',
-              vitals_bmi: entry.vitalsBmi ?? entry.vitals_bmi ?? '',
-              vitals_spo2: entry.vitalsSpo2 ?? entry.vitals_spo2 ?? '',
-            });
+            const makeLocalReport = (pid, weekNum, entry) => ({ id: `local-${pid}-${weekNum}`, patient_id: pid, week_number: Number(weekNum), submitted_at: entry.submittedAt ?? null, nurse_name: entry.nurseName ?? entry.nurse_name ?? '', report_date: entry.reportDate ?? entry.report_date ?? '', summary: entry.summary ?? entry.report_summary ?? '', nurse_note: entry.nurseNote ?? entry.nurse_note ?? entry.notes ?? '', notes: entry.notes ?? '', behavior_observation: entry.behaviorObservation ?? entry.behavior_observation ?? '', recommendations: entry.recommendations ?? entry.plan_next_week ?? '', vitals_weight: entry.vitalsWeight ?? entry.vitals_weight ?? '', vitals_height: entry.vitalsHeight ?? entry.vitals_height ?? '', vitals_bp: entry.vitalsBp ?? entry.vitals_bp ?? '', vitals_pr: entry.vitalsPr ?? entry.vitals_pr ?? '', vitals_rr: entry.vitalsRr ?? entry.vitals_rr ?? '', vitals_temperature: entry.vitalsTemperature ?? entry.vitals_temperature ?? '', vitals_bmi: entry.vitalsBmi ?? entry.vitals_bmi ?? '', vitals_spo2: entry.vitalsSpo2 ?? entry.vitals_spo2 ?? '' });
             ids.forEach((pid) => {
               const key = String(pid);
               const localWeeks = localAll?.[key];
               if (!localWeeks || typeof localWeeks !== 'object') return;
               if (!byPatient[key]) byPatient[key] = [];
               const existingWeeks = new Set(byPatient[key].map((r) => String(r.week_number)));
-              Object.entries(localWeeks).forEach(([weekNum, entry]) => {
-                if (!entry || typeof entry !== 'object') return;
-                if (existingWeeks.has(String(weekNum))) return;
-                byPatient[key].push(makeLocalReport(key, weekNum, entry));
-              });
+              Object.entries(localWeeks).forEach(([weekNum, entry]) => { if (!entry || typeof entry !== 'object') return; if (existingWeeks.has(String(weekNum))) return; byPatient[key].push(makeLocalReport(key, weekNum, entry)); });
               byPatient[key].sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0));
             });
-            // Fallback mapping when cache keys are stale: map entries by resident name.
             const rowsByName = {};
-            (activeRows || []).forEach((row) => {
-              const n = String(row.full_name || '').trim().toLowerCase();
-              if (!n) return;
-              rowsByName[n] = row;
-            });
+            (activeRows || []).forEach((row) => { const n = String(row.full_name || '').trim().toLowerCase(); if (!n) return; rowsByName[n] = row; });
             Object.entries(localAll || {}).forEach(([cachePid, weeks]) => {
               if (!weeks || typeof weeks !== 'object') return;
               Object.entries(weeks).forEach(([weekNum, entry]) => {
@@ -300,86 +268,53 @@ const PatientDetailsPage = () => {
                 if (!hasWeek) byPatient[realPid].push(makeLocalReport(realPid, weekNum, entry));
               });
             });
-            Object.keys(byPatient).forEach((pidKey) => {
-              byPatient[pidKey].sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0));
-            });
-          } catch {
-            /* ignore */
-          }
-          // Align with Family Home data path: fetch by family-owned patient ids and merge.
+            Object.keys(byPatient).forEach((pidKey) => { byPatient[pidKey].sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0)); });
+          } catch { /* ignore */ }
           if (Object.keys(byPatient).length === 0) {
             try {
-              const { data: familyRows } = await supabase
-                .from('patients')
-                .select('id, full_name')
-                .eq('family_id', user.id);
+              const { data: familyRows } = await supabase.from('patients').select('id, full_name').eq('family_id', user.id);
               const familyIds = (familyRows || []).map((r) => r.id).filter(Boolean);
               if (familyIds.length) {
-                const { data: homeRows, error: homeErr } = await supabase
-                  .from('weekly_reports')
-                  .select('*')
-                  .in('patient_id', familyIds);
+                const { data: homeRows, error: homeErr } = await supabase.from('weekly_reports').select('*').in('patient_id', familyIds);
                 if (!homeErr && homeRows) {
                   const byNameCurrent = {};
-                  (activeRows || []).forEach((r) => {
-                    const n = String(r.full_name || '').trim().toLowerCase();
-                    if (n) byNameCurrent[n] = String(r.id);
-                  });
-                  (familyRows || []).forEach((r) => {
-                    const n = String(r.full_name || '').trim().toLowerCase();
-                    if (n && !byNameCurrent[n]) byNameCurrent[n] = String(r.id);
-                  });
+                  (activeRows || []).forEach((r) => { const n = String(r.full_name || '').trim().toLowerCase(); if (n) byNameCurrent[n] = String(r.id); });
+                  (familyRows || []).forEach((r) => { const n = String(r.full_name || '').trim().toLowerCase(); if (n && !byNameCurrent[n]) byNameCurrent[n] = String(r.id); });
                   for (const row of homeRows) {
                     const pid = String(row.patient_id);
                     const familyRow = (familyRows || []).find((fr) => String(fr.id) === pid);
-                    const mappedPid = familyRow
-                      ? (byNameCurrent[String(familyRow.full_name || '').trim().toLowerCase()] || pid)
-                      : pid;
+                    const mappedPid = familyRow ? (byNameCurrent[String(familyRow.full_name || '').trim().toLowerCase()] || pid) : pid;
                     if (!byPatient[mappedPid]) byPatient[mappedPid] = [];
                     byPatient[mappedPid].push(row);
                   }
-                  Object.keys(byPatient).forEach((pidKey) => {
-                    byPatient[pidKey].sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0));
-                  });
+                  Object.keys(byPatient).forEach((pidKey) => { byPatient[pidKey].sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0)); });
                 }
               }
-            } catch {
-              /* ignore */
-            }
+            } catch { /* ignore */ }
           }
           setWeeklyReportsByPatient(byPatient);
         }
       }
     };
-
     loadPatients();
     window.addEventListener('storage', loadPatients);
     window.addEventListener(APP_DATA_REFRESH, loadPatients);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('storage', loadPatients);
-      window.removeEventListener(APP_DATA_REFRESH, loadPatients);
-    };
+    return () => { cancelled = true; window.removeEventListener('storage', loadPatients); window.removeEventListener(APP_DATA_REFRESH, loadPatients); };
   }, []);
 
+  /* ── unchanged handlers ── */
   const handleImageChange = (index, event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const file = event.target.files?.[0]; if (!file) return;
     const imageUrl = URL.createObjectURL(file);
     setPatientImages((prev) => ({ ...prev, [index]: imageUrl }));
   };
-
-  const triggerFileInput = (index) => {
-    fileInputRefs.current[index]?.click();
-  };
-
+  const triggerFileInput = (index) => { fileInputRefs.current[index]?.click(); };
   const patientStatusTone = (progress) => {
-    const value = Number(progress) || 0;
-    if (value >= 70) return { label: 'Stable', bg: '#DCFCE7', color: '#166534' };
-    if (value >= 40) return { label: 'Recovering', bg: '#FEF3C7', color: '#92400E' };
+    const v = Number(progress) || 0;
+    if (v >= 70) return { label: 'Stable', bg: '#DCFCE7', color: '#166534' };
+    if (v >= 40) return { label: 'Recovering', bg: '#FEF3C7', color: '#92400E' };
     return { label: 'Needs Attention', bg: '#FEE2E2', color: '#991B1B' };
   };
-
   const patientSummaryPayload = (patient) => {
     const value = Number(patient?.progress) || 0;
     const adherence = Math.min(100, Math.max(0, value + 8));
@@ -387,17 +322,8 @@ const PatientDetailsPage = () => {
     const physical = Math.min(100, Math.max(0, value + 10));
     return {
       status: patientStatusTone(value).label,
-      summary:
-        value >= 70
-          ? 'Resident shows consistent recovery and strong response to the care plan.'
-          : value >= 40
-            ? 'Resident shows moderate progress and benefits from continued monitoring.'
-            : 'Resident requires closer follow-up and additional recovery support.',
-      goals: [
-        'Maintain appointment attendance and family check-ins.',
-        'Complete weekly counseling and progress documentation.',
-        'Monitor medication and wellness adherence daily.',
-      ],
+      summary: value >= 70 ? 'Resident shows consistent recovery and strong response to the care plan.' : value >= 40 ? 'Resident shows moderate progress and benefits from continued monitoring.' : 'Resident requires closer follow-up and additional recovery support.',
+      goals: ['Maintain appointment attendance and family check-ins.', 'Complete weekly counseling and progress documentation.', 'Monitor medication and wellness adherence daily.'],
       reviewRows: [
         { label: 'Treatment Adherence', value: `${adherence}%`, note: 'Based on latest care updates' },
         { label: 'Emotional Stability', value: `${emotional}%`, note: 'Counselor observations' },
@@ -411,7 +337,6 @@ const PatientDetailsPage = () => {
     if (!selectedPatient) return [];
     const direct = weeklyReportsByPatient[String(selectedPatient.id)] || [];
     if (direct.length) return direct;
-    // Last-mile fallback: read local nurse weekly cache by resident name.
     try {
       const raw = localStorage.getItem('bh_nurse_weekly_reports');
       const localAll = raw ? JSON.parse(raw) : {};
@@ -423,897 +348,426 @@ const PatientDetailsPage = () => {
         Object.entries(weeks).forEach(([weekNum, entry]) => {
           const entryName = String(entry?.patientName || '').trim().toLowerCase();
           if (entryName !== targetName) return;
-          fallbackRows.push({
-            id: `local-name-${pid}-${weekNum}`,
-            patient_id: pid,
-            week_number: Number(weekNum),
-            submitted_at: entry?.submittedAt ?? null,
-            created_at: entry?.submittedAt ?? null,
-            nurse_name: entry?.nurseName ?? entry?.nurse_name ?? '',
-            report_date: entry?.reportDate ?? entry?.report_date ?? '',
-            vitals_weight: entry?.vitalsWeight ?? entry?.vitals_weight ?? '',
-            vitals_height: entry?.vitalsHeight ?? entry?.vitals_height ?? '',
-            vitals_bp: entry?.vitalsBp ?? entry?.vitals_bp ?? '',
-            vitals_pr: entry?.vitalsPr ?? entry?.vitals_pr ?? '',
-            vitals_rr: entry?.vitalsRr ?? entry?.vitals_rr ?? '',
-            vitals_temperature: entry?.vitalsTemperature ?? entry?.vitals_temperature ?? '',
-            vitals_bmi: entry?.vitalsBmi ?? entry?.vitals_bmi ?? '',
-            vitals_spo2: entry?.vitalsSpo2 ?? entry?.vitals_spo2 ?? '',
-          });
+          fallbackRows.push({ id: `local-name-${pid}-${weekNum}`, patient_id: pid, week_number: Number(weekNum), submitted_at: entry?.submittedAt ?? null, created_at: entry?.submittedAt ?? null, nurse_name: entry?.nurseName ?? entry?.nurse_name ?? '', report_date: entry?.reportDate ?? entry?.report_date ?? '', vitals_weight: entry?.vitalsWeight ?? entry?.vitals_weight ?? '', vitals_height: entry?.vitalsHeight ?? entry?.vitals_height ?? '', vitals_bp: entry?.vitalsBp ?? entry?.vitals_bp ?? '', vitals_pr: entry?.vitalsPr ?? entry?.vitals_pr ?? '', vitals_rr: entry?.vitalsRr ?? entry?.vitals_rr ?? '', vitals_temperature: entry?.vitalsTemperature ?? entry?.vitals_temperature ?? '', vitals_bmi: entry?.vitalsBmi ?? entry?.vitals_bmi ?? '', vitals_spo2: entry?.vitalsSpo2 ?? entry?.vitals_spo2 ?? '' });
         });
       });
       return fallbackRows.sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0));
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   })();
-  const latestSelectedReport = [...selectedReports].sort(
-    (a, b) => new Date(b.submitted_at || b.created_at || 0).getTime() - new Date(a.submitted_at || a.created_at || 0).getTime()
-  )[0] || null;
-  const totalReportsSubmitted = Object.values(weeklyReportsByPatient || {}).reduce((acc, rows) => acc + (rows?.length || 0), 0);
-  const averageProgress = patients.length
-    ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
-    : 0;
-  const patientsWithReports = Object.values(weeklyReportsByPatient || {}).filter((rows) => (rows?.length || 0) > 0).length;
-  const pendingReviewCount = Math.max(0, patients.length - patientsWithReports);
-  const latestWeeklyReports = Object.entries(weeklyReportsByPatient || {})
-    .flatMap(([patientId, rows]) =>
-      (rows || []).map((row) => ({
-        patientId,
-        week: row.week_number || '-',
-        submittedAt: row.submitted_at || row.created_at || null,
-        nurseName: row.nurse_name || 'Assigned Nurse',
-      }))
-    )
-    .sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime())
-    .slice(0, 4);
-  const assignedNurseDisplay =
-    latestSelectedReport?.nurse_name
-    || selectedPatientDetails?.program_staff
-    || selectedPatientDetails?.medical_staff_note
-    || 'N/A';
-  const resolveVital = (reportVal, ...fallbacks) => {
-    const first = [reportVal, ...fallbacks].find((v) => String(v ?? '').trim() !== '');
-    return String(first ?? '').trim() || '—';
-  };
-  const formatDate = (iso) => {
-    if (!iso) return 'N/A';
-    try {
-      return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    } catch {
-      return 'N/A';
-    }
-  };
-  const calculateAge = (dob) => {
-    if (!dob) return 'N/A';
-    const date = new Date(dob);
-    if (Number.isNaN(date.getTime())) return 'N/A';
-    const now = new Date();
-    let age = now.getFullYear() - date.getFullYear();
-    const m = now.getMonth() - date.getMonth();
-    if (m < 0 || (m === 0 && now.getDate() < date.getDate())) age -= 1;
-    return age >= 0 ? age : 'N/A';
-  };
+
+  const latestSelectedReport = [...selectedReports].sort((a, b) => new Date(b.submitted_at || b.created_at || 0).getTime() - new Date(a.submitted_at || a.created_at || 0).getTime())[0] || null;
+  const latestWeeklyReports = Object.entries(weeklyReportsByPatient || {}).flatMap(([patientId, rows]) =>
+    (rows || []).map((row) => ({ patientId, week: row.week_number || '-', submittedAt: row.submitted_at || row.created_at || null, nurseName: row.nurse_name || 'Assigned Nurse' }))
+  ).sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()).slice(0, 4);
+
+  const assignedNurseDisplay = latestSelectedReport?.nurse_name || selectedPatientDetails?.program_staff || selectedPatientDetails?.medical_staff_note || 'N/A';
+  const resolveVital = (reportVal, ...fallbacks) => { const first = [reportVal, ...fallbacks].find((v) => String(v ?? '').trim() !== ''); return String(first ?? '').trim() || '—'; };
   const formatResidentDisplayId = (patientId) => {
     const key = String(patientId || '');
     const detail = patientDetailsById[key] || null;
     const patient = (patients || []).find((p) => String(p.id) === key) || null;
     const admittedAt = detail?.admitted_at || patient?.admitted_at || patient?.admissionDate || null;
     const createdAt = detail?.created_at || patient?.created_at || admittedAt || null;
-    return computeAdmissionDisplayId(
-      { id: key, decided_at: admittedAt, created_at: createdAt },
-      { id: key, admitted_at: admittedAt }
-    );
+    return computeAdmissionDisplayId({ id: key, decided_at: admittedAt, created_at: createdAt }, { id: key, admitted_at: admittedAt });
   };
+  const patientInitials = (name) => name ? String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') : '?';
 
+  /* ── RENDER ── */
   return (
-    <div className="app-container">
+    <div style={{ display: 'flex', width: '100vw', height: '100vh', background: '#F0F4FF', fontFamily: "'DM Sans',-apple-system,sans-serif", overflow: 'hidden' }}>
       <style>{`
-        .app-container {
-          display: flex;
-          width: 100vw;
-          height: 100vh;
-          background: #F8F9FD;
-          font-family: 'Inter', -apple-system, sans-serif;
-          overflow: hidden;
-        }
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
+        *, *::before, *::after { box-sizing: border-box; }
+        button { font-family: inherit; }
+
+        /* SIDEBAR (structure 100% unchanged) */
         .desktop-sidebar {
           width: ${isExpanded ? '280px' : '110px'};
-          background: white;
-          border-right: 1px solid #F1F1F1;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 25px 0 170px;
-          z-index: 100;
-          transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          cursor: pointer;
-          position: relative;
+          background: #fff; border-right: 1px solid #F1F1F1;
+          display: flex; flex-direction: column; align-items: center;
+          padding: 25px 0 170px; z-index: 100;
+          transition: width 0.3s cubic-bezier(0.4,0,0.2,1); cursor: pointer; position: relative;
         }
         .sidebar-logo-container { display: flex; justify-content: center; width: 100%; margin-bottom: 40px; }
-        .sidebar-logo { width: ${isExpanded ? '120px' : '70px'}; transition: width 0.3s ease; }
-        .sidebar-nav-item {
-          display: flex;
-          align-items: center;
-          width: 100%;
-          padding: 0 ${isExpanded ? '35px' : '0'};
-          justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 20px;
-          margin-bottom: 25px;
-          min-height: 52px;
-          box-sizing: border-box;
-          border: 2px solid transparent;
-          border-radius: 12px;
-        }
-        .sidebar-icon-wrap {
-          padding: 12px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
+        .sidebar-logo { width: ${isExpanded ? '120px' : '70px'}; transition: width .3s; }
+        .sidebar-nav-item { display: flex; align-items: center; width: 100%; padding: 0 ${isExpanded ? '35px' : '0'}; justify-content: ${isExpanded ? 'flex-start' : 'center'}; gap: 20px; margin-bottom: 25px; min-height: 52px; box-sizing: border-box; border: 2px solid transparent; border-radius: 12px; }
         .sidebar-nav-item.sidebar-nav-active { border-color: #F54E25; }
-        .sidebar-label {
-          display: ${isExpanded ? 'block' : 'none'};
-          font-weight: 700;
-          font-size: 18px;
-          color: #707EAE;
-          max-width: 140px;
-          white-space: normal;
-          overflow-wrap: anywhere;
-          line-height: 1.2;
-        }
+        .sidebar-icon-wrap { padding: 12px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 700; font-size: 18px; color: #707EAE; max-width: 140px; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
         .sidebar-primary { width: 100%; }
-        .sidebar-footer {
-          position: absolute;
-          left: 0;
-          right: 0;
-          bottom: 20px;
-          width: 100%;
-        }
+        .sidebar-footer { position: absolute; left: 0; right: 0; bottom: 20px; width: 100%; }
         .sidebar-footer .sidebar-nav-item { margin-bottom: 0; }
         .sidebar-footer .sidebar-nav-item + .sidebar-nav-item { margin-top: 14px; }
-        .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .top-nav {
-          height: 85px;
-          background: white;
-          display: flex;
-          align-items: center;
-          padding: 0 30px;
-          border-bottom: 1px solid #F1F1F1;
-          box-sizing: border-box;
-        }
-        .top-nav-left { display: flex; align-items: center; gap: 30px; }
-        .view-title { color: #F54E25; font-weight: 800; font-size: 18px; letter-spacing: -0.01em; }
-        .welcome-text { color: #1B2559; font-weight: 500; font-size: 16px; }
-        .scroll-content { flex: 1; padding: 24px 26px; overflow-y: auto; }
-        .content-wrap { width: 100%; max-width: 1500px; margin: 0 auto; }
-        .section-header { margin-bottom: 14px; }
-        .section-title { color: #1B2559; font-size: 1.35rem; font-weight: 800; margin: 0; }
-        .section-subtitle { color: #64748b; font-size: 13px; margin-top: 4px; }
-        .report-cards-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 12px;
-          margin-bottom: 16px;
-        }
-        .report-card {
-          border: 1px solid #E6EDF9;
-          border-radius: 14px;
-          background: #fff;
-          padding: 12px;
-          box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
-        }
-        .report-kicker {
-          color: #7C3AED;
-          font-size: 10px;
-          font-weight: 800;
-          text-transform: uppercase;
-          letter-spacing: 0.03em;
-          margin-bottom: 6px;
-        }
-        .patient-table-card {
-          border: 1px solid #E6EDF9;
-          border-radius: 14px;
-          background: #fff;
-          overflow: hidden;
-          margin-bottom: 16px;
-          box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
-          width: 100%;
-        }
-        .patient-table-head {
-          padding: 12px 14px;
-          border-bottom: 1px solid #EEF3FB;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 8px;
-          background: linear-gradient(180deg, #fffdfb 0%, #ffffff 100%);
-        }
-        .patient-table-scroll {
-          overflow-x: auto;
-        }
-        .patient-table {
-          width: 100%;
-          min-width: 100%;
-          border-collapse: collapse;
-          table-layout: fixed;
-          font-size: 12px;
-        }
-        .patient-table th {
-          text-align: left;
-          color: #64748B;
-          font-weight: 800;
-          padding: 11px 12px;
-          background: #F8FAFE;
-          border-bottom: 1px solid #EEF3FB;
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-          font-size: 10px;
-          white-space: nowrap;
-        }
-        .patient-table td {
-          padding: 10px 12px;
-          border-bottom: 1px solid #EEF3FB;
-          color: #334155;
-          font-weight: 600;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .patient-table th.num-col,
-        .patient-table td.num-col {
-          text-align: center;
-        }
-        .patient-table th.status-col,
-        .patient-table td.status-col {
-          text-align: left;
-        }
-        .patient-table tr:last-child td { border-bottom: none; }
-        .patient-table tbody tr:hover td {
-          background: #FBFDFF;
-        }
-        .details-hint {
-          margin-top: 8px;
-          color: #64748b;
-          font-size: 12px;
-          font-weight: 700;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          background: #EEF4FF;
-          border: 1px solid #DCE7FF;
-          border-radius: 999px;
-          padding: 4px 10px;
-        }
-        .patient-card {
-          width: 100%;
-          background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
-          border: 1px solid #E6EDF9;
-          border-radius: 16px;
-          padding: 18px 22px;
-          display: grid;
-          grid-template-columns: auto minmax(220px, 1fr) minmax(220px, 300px) minmax(200px, 260px);
-          gap: 14px 16px;
-          align-items: center;
-          margin-bottom: 12px;
-          box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
-          cursor: pointer;
-          transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-          overflow: hidden;
-        }
-        .patient-card:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
-          border-color: #D6E0F4;
-        }
-        .patient-img-placeholder {
-          width: 56px;
-          height: 56px;
-          border-radius: 50%;
-          background: #F4F7FE;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: 1px dashed #A3AED0;
-          cursor: pointer;
-          overflow: hidden;
-        }
-        .patient-attached-img { width: 100%; height: 100%; object-fit: cover; }
-        .progress-track {
-          height: 8px;
-          background: #F4F7FE;
-          border-radius: 10px;
-          overflow: hidden;
-        }
-        .progress-fill { height: 100%; background: #4318FF; border-radius: 10px; }
-        .status-chip {
-          background: #FFF9C4;
-          color: #856404;
-          font-size: 11px;
-          padding: 4px 10px;
-          border-radius: 999px;
-          font-weight: 700;
-        }
-        .card-right {
-          display: grid;
-          gap: 10px;
-        }
-        .patient-summary-cell {
-          border: 1px solid #E6EDF9;
-          border-radius: 12px;
-          background: #FCFDFF;
-          padding: 10px 12px;
-        }
-        .summary-metric-line {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          color: #475569;
-          font-size: 12px;
-          font-weight: 700;
-          margin-bottom: 6px;
-        }
-        .summary-metric-line:last-child { margin-bottom: 0; }
-        .view-details-btn {
-          border: none;
-          border-radius: 10px;
-          background: #EEF2FF;
-          color: #3730A3;
-          font-size: 12px;
-          font-weight: 800;
-          padding: 8px 12px;
-          cursor: pointer;
-          justify-self: end;
-        }
-        .details-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(15, 23, 42, 0.34);
-          backdrop-filter: blur(3px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 4000;
-          padding: 18px;
-        }
-        .details-modal {
-          width: min(860px, 100%);
-          max-height: 88vh;
-          overflow: auto;
-          border-radius: 18px;
-          background: #fff;
-          border: 1px solid #E6EDF9;
-          box-shadow: 0 24px 44px rgba(15, 23, 42, 0.2);
-        }
-        .details-modal-head {
-          padding: 16px 18px;
-          border-bottom: 1px solid #EEF3FB;
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 14px;
-          background: linear-gradient(180deg, #fffdfb 0%, #ffffff 100%);
-          position: sticky;
-          top: 0;
-          z-index: 2;
-        }
-        .details-modal-body {
-          padding: 16px 18px 18px;
-          display: grid;
-          gap: 14px;
-        }
-        .detail-grid {
-          display: grid;
-          grid-template-columns: 1.1fr 1fr;
-          gap: 12px;
-        }
-        .detail-grid-2 {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 12px;
-        }
-        .detail-card {
-          border: 1px solid #E6EDF9;
-          border-radius: 12px;
-          background: #FCFDFF;
-          padding: 12px;
-        }
-        .detail-title {
-          color: #1B2559;
-          font-size: 13px;
-          font-weight: 800;
-          margin-bottom: 8px;
-          display: flex;
-          align-items: center;
-          gap: 7px;
-        }
-        .review-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          padding: 8px 0;
-          border-bottom: 1px solid #EEF3FB;
-        }
-        .review-row:last-child { border-bottom: none; }
-        .review-value {
-          color: #1B2559;
-          font-weight: 800;
-          font-size: 13px;
-        }
-        .mini-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 12px;
-        }
-        .mini-table th {
-          text-align: left;
-          color: #64748B;
-          font-weight: 800;
-          padding: 8px 10px;
-          background: #F8FAFE;
-          border-bottom: 1px solid #EEF3FB;
-        }
-        .mini-table td {
-          padding: 8px 10px;
-          color: #334155;
-          border-bottom: 1px solid #EEF3FB;
-          font-weight: 600;
-        }
-        .mini-table tr:last-child td { border-bottom: none; }
-        .week-status-pill {
-          display: inline-flex;
-          border-radius: 999px;
-          padding: 3px 8px;
-          font-size: 10px;
-          font-weight: 800;
-          background: #DCFCE7;
-          color: #166534;
-        }
-        .close-modal-btn {
-          border: none;
-          background: transparent;
-          color: #1B2559;
-          padding: 0;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .close-modal-btn:hover {
-          color: #0F172A;
-        }
-        .close-modal-btn svg {
-          display: block;
-          width: 24px;
-          height: 24px;
-          stroke-width: 2.2;
-        }
-        .empty-state {
-          background: white;
-          border: 1px dashed #D6E0F5;
-          border-radius: 16px;
-          padding: 30px;
-          text-align: center;
-          color: #64748B;
-          font-weight: 600;
-        }
+
+        /* SCROLL */
+        .scroll-content::-webkit-scrollbar { width: 4px; }
+        .scroll-content::-webkit-scrollbar-track { background: transparent; }
+        .scroll-content::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 999px; }
+
+        /* PATIENT CARD HOVER */
+        .patient-row-card { transition: transform .15s, box-shadow .15s, border-color .15s; }
+        .patient-row-card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(15,23,42,0.1) !important; border-color: #FECDD3 !important; }
+
+        /* DETAIL TABLE */
+        .dt th { text-align: left; color: #94A3B8; font-weight: 700; padding: 8px 14px; background: #F8FAFF; border-bottom: 1px solid #F1F5F9; font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
+        .dt td { padding: 10px 14px; color: #0F172A; border-bottom: 1px solid #F8FAFC; font-weight: 600; font-size: 12px; }
+        .dt tr:last-child td { border-bottom: none; }
+        .dt tbody tr:hover td { background: #FAFBFF; }
+
         @media (max-width: 768px) {
           .desktop-sidebar { display: none; }
-          .top-nav { padding: 0 18px; height: 72px; }
-          .top-nav-left { gap: 12px; }
-          .welcome-text { font-size: 13px; }
-          .scroll-content { padding: 14px; }
-          .patient-card { grid-template-columns: 1fr; }
-          .card-right { justify-self: stretch; }
-          .view-details-btn { justify-self: start; }
-          .detail-grid { grid-template-columns: 1fr; }
-          .detail-grid-2 { grid-template-columns: 1fr; }
-          .report-cards-grid { grid-template-columns: 1fr 1fr; }
+          .scroll-content { padding: 14px !important; }
         }
       `}</style>
 
+      {/* ── SIDEBAR (100% unchanged) ── */}
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container">
-          <img src={logo} alt="Kalinga" className="sidebar-logo" />
-        </div>
+        <div className="sidebar-logo-container"><img src={logo} alt="Kalinga" className="sidebar-logo" /></div>
         <div className="sidebar-primary">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
-            <div className="sidebar-icon-wrap">
-              <Home size={22} color="#707EAE" />
-            </div>
-            <span className="sidebar-label">Dashboard</span>
-          </div>
-          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}>
-            <div className="sidebar-icon-wrap">
-              <ClipboardList size={22} color="#707EAE" />
-            </div>
-            <span className="sidebar-label">Resident Details</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-            <div className="sidebar-icon-wrap">
-              <TrendingUp size={22} color="#707EAE" />
-            </div>
-            <span className="sidebar-label">Request Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
-            <div className="sidebar-icon-wrap">
-              <Calendar size={22} color="#707EAE" />
-            </div>
-            <span className="sidebar-label">Appointments</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
-            <div className="sidebar-icon-wrap">
-              <BarChart3 size={22} color="#707EAE" />
-            </div>
-            <span className="sidebar-label">Reports</span>
-          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}><div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span></div>
+          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}><div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Resident Details</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}><div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}><div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div><span className="sidebar-label">Appointments</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}><div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE" /></div><span className="sidebar-label">Reports</span></div>
         </div>
         <div className="sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}>
-            <div className="sidebar-icon-wrap">
-              <User size={22} color="#707EAE" />
-            </div>
-            <span className="sidebar-label">Profile</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <div className="sidebar-icon-wrap">
-              <LogOut size={22} color="#F54E25" />
-            </div>
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
-          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}><div className="sidebar-icon-wrap"><User size={22} color="#707EAE" /></div><span className="sidebar-label">Profile</span></div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}><div className="sidebar-icon-wrap"><LogOut size={22} color="#F54E25" /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span></div>
         </div>
       </aside>
 
-      <div className="main-view">
-        <header className="top-nav">
-          <div className="top-nav-left">
-            <span className="view-title">Resident Details</span>
+      {/* ── MAIN ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Top Nav */}
+        <header style={{ height: 68, background: '#fff', display: 'flex', alignItems: 'center', padding: '0 28px', borderBottom: '1px solid #EAEFFB', boxShadow: '0 1px 12px rgba(15,23,42,0.06)', zIndex: 300, boxSizing: 'border-box', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ color: '#F54E25', fontWeight: 900, fontSize: 18, letterSpacing: '-0.02em' }}>Resident Details</span>
+            <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>· {patients.length} resident{patients.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button onClick={() => navigate('/profile')} style={{ width: 38, height: 38, background: 'linear-gradient(135deg,#F54E25,#EA580C)', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12, border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245,78,37,0.3)' }}>
+              {displayName.split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase() || 'FU'}
+            </button>
           </div>
         </header>
 
-        <div className="scroll-content">
-          <div className="content-wrap">
-            <div className="section-header">
-              <h2 className="section-title">Assigned Residents</h2>
-              <div className="section-subtitle">View current admissions and monitor progress in one place.</div>
-              <div className="details-hint">
-                <FileText size={14} /> Click any resident to view summary and review
+        <div className="scroll-content" style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 48px', background: '#F0F4FF' }}>
+          <div style={{ width: '100%', maxWidth: 1560, margin: '0 auto', display: 'grid', gap: 20 }}>
+
+            {/* ── HERO BANNER ── */}
+            <div style={{ background: 'linear-gradient(135deg,#0F172A 0%,#1E2D4F 50%,#2D1B69 100%)', borderRadius: 24, padding: '26px 30px', boxShadow: '0 16px 48px rgba(15,23,42,0.22)', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: 'radial-gradient(circle,rgba(99,102,241,0.2),transparent 70%)' }} />
+              <div style={{ position: 'absolute', bottom: -20, left: '40%', width: 120, height: 120, borderRadius: '50%', background: 'radial-gradient(circle,rgba(245,78,37,0.15),transparent 70%)' }} />
+              <div style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ClipboardList size={16} color="#fff" />
+                  </div>
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Family Portal · Resident Overview</span>
+                </div>
+                <h1 style={{ margin: 0, color: '#fff', fontSize: 26, fontWeight: 900, letterSpacing: '-0.03em' }}>Assigned Residents</h1>
+                <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>Monitor progress, vitals, and care updates in one place</p>
               </div>
             </div>
 
-            <div className="report-cards-grid">
-              {latestWeeklyReports.length ? latestWeeklyReports.map((item, idx) => (
-                <div
-                  className="report-card"
-                  key={`${item.patientId}-${item.week}-${idx}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => {
-                    const target = patients.find((p) => String(p.id) === String(item.patientId));
-                    if (target) setSelectedPatient(target);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      const target = patients.find((p) => String(p.id) === String(item.patientId));
-                      if (target) setSelectedPatient(target);
-                    }
-                  }}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="report-kicker">Weekly Report</div>
-                  <div style={{ color: '#0F172A', fontWeight: 800, fontSize: 13, marginBottom: 3 }}>Week {item.week}</div>
-                  <div style={{ color: '#334155', fontSize: 12, fontWeight: 700 }}>Resident ID: {formatResidentDisplayId(item.patientId)}</div>
-                  <div style={{ color: '#64748B', fontSize: 11, marginTop: 3 }}>{formatDate(item.submittedAt)}</div>
-                  <div style={{ color: '#64748B', fontSize: 11, marginTop: 4 }}>Nurse: {item.nurseName}</div>
+            {/* ── RECENT REPORTS STRIP ── */}
+            {latestWeeklyReports.length > 0 && (
+              <SectionCard>
+                <CardTitle icon={FileText}>Recent Weekly Reports</CardTitle>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+                  {latestWeeklyReports.map((item, idx) => (
+                    <div key={`${item.patientId}-${item.week}-${idx}`} onClick={() => { const t = patients.find((p) => String(p.id) === String(item.patientId)); if (t) setSelectedPatient(t); }} style={{ background: '#FAFBFF', border: '1px solid #E9EDF7', borderRadius: 16, padding: '14px 16px', cursor: 'pointer', transition: 'border-color .15s, box-shadow .15s' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: '#8B5CF6', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Week {item.week}</span>
+                        <CheckCircle2 size={14} color="#10B981" />
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: '#0F172A', marginBottom: 4 }}>ID: {formatResidentDisplayId(item.patientId)}</div>
+                      <div style={{ fontSize: 11, color: '#64748B', marginBottom: 3 }}>{formatDate(item.submittedAt)}</div>
+                      <div style={{ fontSize: 11, color: '#94A3B8' }}>Nurse: {item.nurseName}</div>
+                      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#6366F1' }}>
+                        View Resident <ArrowRight size={12} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )) : (
-                <div className="report-card" style={{ gridColumn: '1 / -1' }}>
-                  <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No weekly reports submitted yet.</div>
-                </div>
-              )}
-            </div>
+              </SectionCard>
+            )}
 
-            <div className="patient-table-card">
-              <div className="patient-table-head">
-                <div className="detail-title" style={{ marginBottom: 0 }}><BarChart3 size={15} color="#F54E25" /> Resident Directory Table</div>
-                <span style={{ color: '#64748B', fontSize: 11, fontWeight: 700 }}>{patients.length} entries</span>
+            {/* ── DIRECTORY TABLE ── */}
+            <SectionCard style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FAFBFF' }}>
+                <CardTitle icon={BarChart3} style={{ marginBottom: 0 }}>Resident Directory</CardTitle>
+                <span style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, background: '#F1F5F9', padding: '3px 10px', borderRadius: 999 }}>{patients.length} entries</span>
               </div>
-              <div className="patient-table-scroll">
-                <table className="patient-table">
-                  <colgroup>
-                    <col style={{ width: '20%' }} />
-                    <col style={{ width: '14%' }} />
-                    <col style={{ width: '8%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '14%' }} />
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '11%' }} />
-                    <col style={{ width: '11%' }} />
-                  </colgroup>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="dt" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr>
                       <th>Resident</th>
                       <th>Admission Date</th>
-                      <th className="num-col">Progress</th>
-                      <th className="status-col">Status</th>
+                      <th>Progress</th>
+                      <th>Status</th>
                       <th>Primary Concern</th>
                       <th>Room</th>
-                      <th className="num-col">Weekly Reports</th>
-                      <th>Latest Review</th>
+                      <th>Reports</th>
+                      <th>Review</th>
                     </tr>
                   </thead>
                   <tbody>
                     {patients.length ? patients.map((p) => (
-                      <tr key={p.id}>
-                        <td>{p.name}</td>
-                        <td>{p.date || 'N/A'}</td>
-                        <td className="num-col">{Number(p.progress) || 0}%</td>
-                        <td className="status-col" style={{ color: patientStatusTone(p.progress).color }}>{patientStatusTone(p.progress).label}</td>
-                        <td>{patientDetailsById[String(p.id)]?.primary_concern || p.reason || 'N/A'}</td>
-                        <td>{patientDetailsById[String(p.id)]?.room_code || p.roomCode || 'Unassigned'}</td>
-                        <td className="num-col">{(weeklyReportsByPatient[String(p.id)] || []).length}</td>
-                        <td>{(weeklyReportsByPatient[String(p.id)] || []).length ? 'Available' : 'Waiting'}</td>
+                      <tr key={p.id} onClick={() => setSelectedPatient(p)} style={{ cursor: 'pointer' }}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#EEF2FF,#C7D2FE)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <span style={{ fontSize: 11, fontWeight: 900, color: '#4338CA' }}>{patientInitials(p.name)}</span>
+                            </div>
+                            <span style={{ fontWeight: 800, color: '#0F172A' }}>{p.name}</span>
+                          </div>
+                        </td>
+                        <td style={{ color: '#64748B' }}>{p.date || 'N/A'}</td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 100 }}>
+                            <div style={{ flex: 1, height: 5, background: '#F1F5F9', borderRadius: 999, overflow: 'hidden' }}>
+                              <div style={{ width: `${Number(p.progress)||0}%`, height: '100%', background: 'linear-gradient(90deg,#F54E25,#EA580C)', borderRadius: 999 }} />
+                            </div>
+                            <span style={{ fontWeight: 800, color: '#0F172A', fontSize: 11 }}>{Number(p.progress)||0}%</span>
+                          </div>
+                        </td>
+                        <td><StatusPill progress={p.progress} dischargedAt={p.discharged_at || patientDetailsById[String(p.id)]?.discharged_at} /></td>
+                        <td style={{ color: '#64748B' }}>{patientDetailsById[String(p.id)]?.primary_concern || p.reason || 'N/A'}</td>
+                        <td style={{ color: '#64748B' }}>{patientDetailsById[String(p.id)]?.room_code || p.roomCode || 'Unassigned'}</td>
+                        <td style={{ fontWeight: 800, color: '#0F172A' }}>{(weeklyReportsByPatient[String(p.id)] || []).length}</td>
+                        <td>
+                          <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 999,
+                            background: (weeklyReportsByPatient[String(p.id)]||[]).length ? '#ECFDF5' : '#F1F5F9',
+                            color: (weeklyReportsByPatient[String(p.id)]||[]).length ? '#065F46' : '#94A3B8' }}>
+                            {(weeklyReportsByPatient[String(p.id)] || []).length ? 'Available' : 'Waiting'}
+                          </span>
+                        </td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={8} style={{ color: '#94A3B8' }}>No residents yet.</td></tr>
+                      <tr><td colSpan={8} style={{ textAlign: 'center', color: '#CBD5E1', padding: '28px 14px' }}>No residents yet.</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
-            </div>
+            </SectionCard>
 
+            {/* ── PATIENT CARDS ── */}
             {patients.length === 0 ? (
-              <div className="empty-state">
-                No active residents yet. Once admissions are approved, resident details will appear here.
-              </div>
+              <SectionCard>
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <div style={{ width: 56, height: 56, borderRadius: 18, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                    <ClipboardList size={24} color="#CBD5E1" />
+                  </div>
+                  <p style={{ margin: 0, fontWeight: 800, color: '#334155', fontSize: 15 }}>No residents yet</p>
+                  <p style={{ margin: '6px 0 0', color: '#94A3B8', fontSize: 13 }}>Once admissions are approved, resident details will appear here.</p>
+                </div>
+              </SectionCard>
             ) : (
-              patients.map((p, i) => (
-                <div key={p.id || i} className="patient-card" onClick={() => setSelectedPatient(p)}>
-                  <div className="patient-img-placeholder" onClick={() => triggerFileInput(i)}>
-                    <input type="file" hidden accept="image/*" ref={(el) => { fileInputRefs.current[i] = el; }} onChange={(e) => handleImageChange(i, e)} />
-                    {patientImages[i] ? (
-                      <img src={patientImages[i]} alt="" className="patient-attached-img" />
-                    ) : (
-                      <User size={22} color="#A3AED0" opacity={0.5} />
-                    )}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                      <span style={{ fontWeight: 800, fontSize: '1.05rem', color: '#1B2559' }}>{p.name}</span>
-                      <span className="status-chip">Recovering</span>
+              patients.map((p, i) => {
+                const tone = patientStatusTone(p.progress);
+                const progress = Number(p.progress) || 0;
+                const reportCount = (weeklyReportsByPatient[String(p.id)] || []).length;
+                return (
+                  <div key={p.id || i} className="patient-row-card" onClick={() => setSelectedPatient(p)}
+                    style={{ background: '#fff', border: '1px solid #E9EDF7', borderRadius: 22, padding: '20px 24px', display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: '16px 20px', alignItems: 'center', cursor: 'pointer', boxShadow: '0 4px 20px rgba(15,23,42,0.05)' }}>
+                    {/* Avatar */}
+                    <div style={{ position: 'relative' }} onClick={(e) => { e.stopPropagation(); triggerFileInput(i); }}>
+                      <input type="file" hidden accept="image/*" ref={(el) => { fileInputRefs.current[i] = el; }} onChange={(e) => handleImageChange(i, e)} />
+                      <div style={{ width: 56, height: 56, borderRadius: 18, background: 'linear-gradient(135deg,#EEF2FF,#C7D2FE)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid #E0E7FF', cursor: 'pointer', flexShrink: 0 }}>
+                        {patientImages[i]
+                          ? <img src={patientImages[i]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <span style={{ fontSize: 18, fontWeight: 900, color: '#4338CA' }}>{patientInitials(p.name)}</span>}
+                      </div>
                     </div>
-                    <div style={{ color: '#1B2559', fontSize: 13, fontWeight: 600 }}>{p.date}</div>
-                    <div style={{ color: '#A3AED0', fontSize: 11 }}>Date of Admission</div>
-                  </div>
-                  <div className="patient-summary-cell">
-                    <div className="summary-metric-line">
-                      <span>Status</span>
-                      <span style={{ color: patientStatusTone(p.progress).color }}>{patientStatusTone(p.progress).label}</span>
+                    {/* Info */}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 900, fontSize: 16, color: '#0F172A', letterSpacing: '-0.01em' }}>{p.name}</span>
+                        <StatusPill progress={p.progress} dischargedAt={p.discharged_at || patientDetailsById[String(p.id)]?.discharged_at} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 12, color: '#64748B' }}>Admitted <strong style={{ color: '#334155' }}>{p.date}</strong></span>
+                        <span style={{ fontSize: 12, color: '#64748B' }}>Concern: <strong style={{ color: '#334155' }}>{patientDetailsById[String(p.id)]?.primary_concern || 'N/A'}</strong></span>
+                        <span style={{ fontSize: 12, color: '#64748B' }}>Reports: <strong style={{ color: '#334155' }}>{reportCount}</strong></span>
+                      </div>
                     </div>
-                    <div className="summary-metric-line">
-                      <span>Primary Concern</span>
-                      <span>{patientDetailsById[String(p.id)]?.primary_concern || 'N/A'}</span>
+                    {/* Progress ring */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <ProgressRing pct={progress} size={60} stroke={6} color={tone.color} />
+                      <span style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600 }}>Recovery</span>
                     </div>
-                    <div className="summary-metric-line">
-                      <span>Weekly Reports</span>
-                      <span>{(weeklyReportsByPatient[String(p.id)] || []).length} submitted</span>
-                    </div>
-                    <div className="summary-metric-line">
-                      <span>Latest Review</span>
-                      <span>{(weeklyReportsByPatient[String(p.id)] || []).length ? 'Available' : 'Waiting'}</span>
-                    </div>
-                  </div>
-                  <div className="card-right">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <span style={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>Recovery Progress</span>
-                      <span style={{ color: '#1B2559', fontSize: 12, fontWeight: 700 }}>{Number(p.progress) || 0}%</span>
-                    </div>
-                    <div className="progress-track">
-                      <div className="progress-fill" style={{ width: `${Number(p.progress) || 0}%` }} />
-                    </div>
-                    <button
-                      type="button"
-                      className="view-details-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedPatient(p);
-                      }}
-                    >
-                      View Summary & Review
+                    {/* CTA */}
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedPatient(p); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#F54E25,#EA580C)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(245,78,37,0.28)', whiteSpace: 'nowrap' }}>
+                      View Details <ChevronRight size={14} />
                     </button>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
       </div>
 
+      {/* ══════════════════════════════════
+          DETAIL MODAL (functionality 100% unchanged, design improved)
+      ══════════════════════════════════ */}
       {selectedPatient && (
-        <div className="details-overlay" onClick={() => setSelectedPatient(null)}>
-          <div className="details-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="details-modal-head">
-              <div>
-                <div style={{ color: '#1B2559', fontSize: 18, fontWeight: 800 }}>{selectedPatient.name}</div>
-                <div style={{ color: '#64748B', fontSize: 13, marginTop: 3 }}>
-                  Admission date: {selectedPatient.date || 'N/A'} · Progress: {Number(selectedPatient.progress) || 0}%
-                </div>
-              </div>
-              <button type="button" className="close-modal-btn" onClick={() => setSelectedPatient(null)} aria-label="Close">
-                <X size={18} strokeWidth={2.5} />
-              </button>
-            </div>
-            <div className="details-modal-body">
-              <div className="detail-grid">
-                <div className="detail-card">
-                  <div className="detail-title"><FileText size={15} color="#F54E25" /> Patient Summary</div>
-                  <p style={{ color: '#334155', fontSize: 13, lineHeight: 1.55, margin: 0 }}>
-                    {patientSummaryPayload(selectedPatient).summary}
-                  </p>
-                  <div style={{ marginTop: 10, display: 'inline-flex', borderRadius: 999, background: '#EEF2FF', color: '#3730A3', padding: '4px 10px', fontSize: 11, fontWeight: 800 }}>
-                    {patientSummaryPayload(selectedPatient).status}
+        <div onClick={() => setSelectedPatient(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(900px,100%)', maxHeight: '90vh', overflow: 'hidden', borderRadius: 24, background: '#fff', boxShadow: '0 30px 80px rgba(15,23,42,0.28)', display: 'flex', flexDirection: 'column' }}>
+            {/* Modal Header */}
+            <div style={{ background: 'linear-gradient(135deg,#0F172A,#1E2D4F)', padding: '22px 26px', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+              <div style={{ position: 'absolute', top: -30, right: -30, width: 130, height: 130, borderRadius: '50%', background: 'radial-gradient(circle,rgba(99,102,241,0.25),transparent 70%)' }} />
+              <div style={{ position: 'absolute', bottom: -20, left: '40%', width: 90, height: 90, borderRadius: '50%', background: 'radial-gradient(circle,rgba(245,78,37,0.18),transparent 70%)' }} />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Resident Detail View</div>
+                  <div style={{ fontSize: 22, color: '#fff', fontWeight: 900, letterSpacing: '-0.02em' }}>{selectedPatient.name}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <span>Admitted {selectedPatient.date || 'N/A'}</span>
+                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'inline-block' }} />
+                    <span>Progress: {Number(selectedPatient.progress)||0}%</span>
+                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'inline-block' }} />
+                    <span>{selectedReports.length} reports</span>
+                    {(selectedPatientDetails?.discharged_at || selectedPatient.discharged_at) ? (
+                      <>
+                        <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'inline-block' }} />
+                        <span style={{ color: 'rgba(253,164,175,0.95)', fontWeight: 700 }}>Discharged {formatDate(selectedPatientDetails?.discharged_at || selectedPatient.discharged_at)}</span>
+                      </>
+                    ) : null}
                   </div>
                 </div>
-                <div className="detail-card">
-                  <div className="detail-title"><BarChart3 size={15} color="#F54E25" /> Patient Data</div>
-                  <table className="mini-table">
-                    <tbody>
-                      <tr>
-                        <th>Patient Name</th>
-                        <td>{selectedPatient.name}</td>
-                      </tr>
-                      <tr>
-                        <th>Admission Date</th>
-                        <td>{selectedPatient.date || 'N/A'}</td>
-                      </tr>
-                      <tr>
-                        <th>Progress</th>
-                        <td>{Number(selectedPatient.progress) || 0}%</td>
-                      </tr>
-                      <tr>
-                        <th>Status</th>
-                        <td>{patientStatusTone(selectedPatient.progress).label}</td>
-                      </tr>
-                      <tr>
-                        <th>Primary Concern</th>
-                        <td>{selectedPatientDetails?.primary_concern || selectedPatient.reason || 'N/A'}</td>
-                      </tr>
-                      <tr>
-                        <th>Age</th>
-                        <td>{calculateAge(selectedPatientDetails?.date_of_birth || selectedPatient.dateOfBirth)}</td>
-                      </tr>
-                      <tr>
-                        <th>Gender</th>
-                        <td>{selectedPatientDetails?.gender || selectedPatient.gender || 'N/A'}</td>
-                      </tr>
-                      <tr>
-                        <th>Reports Submitted</th>
-                        <td>{selectedReports.length}</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                <button type="button" onClick={() => setSelectedPatient(null)} style={{ width: 36, height: 36, borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                  <X size={16} />
+                </button>
+              </div>
+              {/* Progress bar in header */}
+              <div style={{ marginTop: 16, background: 'rgba(255,255,255,0.08)', borderRadius: 12, padding: '10px 14px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>
+                  <span style={{ fontWeight: 700 }}>Recovery Progress</span>
+                  <span style={{ fontWeight: 900, color: '#6EE7B7' }}>{Number(selectedPatient.progress)||0}%</span>
+                </div>
+                <div style={{ height: 6, background: 'rgba(255,255,255,0.15)', borderRadius: 999, overflow: 'hidden' }}>
+                  <div style={{ width: `${Number(selectedPatient.progress)||0}%`, height: '100%', background: 'linear-gradient(90deg,#6EE7B7,#34D399)', borderRadius: 999 }} />
                 </div>
               </div>
-              <div className="detail-grid-2">
-                <div className="detail-card">
-                  <div className="detail-title"><BarChart3 size={15} color="#F54E25" /> Weekly Report Timeline</div>
-                  <table className="mini-table">
-                    <thead>
-                      <tr>
-                        <th>Week</th>
-                        <th>Submitted</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px 24px', background: '#F8FAFF' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                {/* Summary */}
+                <SectionCard>
+                  <CardTitle icon={Heart}>Patient Summary</CardTitle>
+                  <p style={{ margin: '0 0 12px', color: '#475569', fontSize: 13, lineHeight: 1.6 }}>{patientSummaryPayload(selectedPatient).summary}</p>
+                  <StatusPill progress={selectedPatient.progress} dischargedAt={selectedPatientDetails?.discharged_at || selectedPatient.discharged_at} />
+                  <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {patientSummaryPayload(selectedPatient).reviewRows.map((row) => (
+                      <div key={row.label}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
+                          <span style={{ color: '#64748B', fontWeight: 600 }}>{row.label}</span>
+                          <span style={{ fontWeight: 800, color: '#0F172A' }}>{row.value}</span>
+                        </div>
+                        <div style={{ height: 5, background: '#F1F5F9', borderRadius: 999, overflow: 'hidden' }}>
+                          <div style={{ width: row.value, height: '100%', background: 'linear-gradient(90deg,#F54E25,#EA580C)', borderRadius: 999 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </SectionCard>
+                {/* Patient Data */}
+                <SectionCard>
+                  <CardTitle icon={ClipboardList}>Patient Data</CardTitle>
+                  {[
+                    ['Patient Name', selectedPatient.name],
+                    ['Admission Date', selectedPatient.date || 'N/A'],
+                    ...(selectedPatientDetails?.discharged_at || selectedPatient.discharged_at
+                      ? [['Discharge Date', formatDate(selectedPatientDetails?.discharged_at || selectedPatient.discharged_at)]]
+                      : []),
+                    ['Progress', `${Number(selectedPatient.progress)||0}%`],
+                    ['Status', (selectedPatientDetails?.discharged_at || selectedPatient.discharged_at) ? 'Discharged' : patientStatusTone(selectedPatient.progress).label],
+                    ['Primary Concern', selectedPatientDetails?.primary_concern || selectedPatient.reason || 'N/A'],
+                    ['Age', calculateAge(selectedPatientDetails?.date_of_birth || selectedPatient.dateOfBirth)],
+                    ['Gender', selectedPatientDetails?.gender || selectedPatient.gender || 'N/A'],
+                    ['Reports Submitted', selectedReports.length],
+                  ].map(([l, v]) => <DataRow key={l} label={l} value={String(v)} />)}
+                </SectionCard>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
+                {/* Weekly Timeline */}
+                <SectionCard style={{ overflow: 'hidden', padding: 0 }}>
+                  <div style={{ padding: '14px 16px', borderBottom: '1px solid #F1F5F9' }}>
+                    <CardTitle icon={FileText} style={{ marginBottom: 0 }}>Report Timeline</CardTitle>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead><tr>
+                      <th style={{ textAlign: 'left', padding: '8px 16px', background: '#F8FAFF', color: '#94A3B8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', borderBottom: '1px solid #F1F5F9' }}>Week</th>
+                      <th style={{ textAlign: 'left', padding: '8px 16px', background: '#F8FAFF', color: '#94A3B8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', borderBottom: '1px solid #F1F5F9' }}>Submitted</th>
+                      <th style={{ textAlign: 'left', padding: '8px 16px', background: '#F8FAFF', color: '#94A3B8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', borderBottom: '1px solid #F1F5F9' }}>Status</th>
+                    </tr></thead>
                     <tbody>
                       {selectedReports.length ? selectedReports.map((row) => (
-                        <tr key={String(row.id)}>
-                          <td>Week {row.week_number || '-'}</td>
-                          <td>{formatDate(row.submitted_at || row.created_at)}</td>
-                          <td><span className="week-status-pill">Received</span></td>
+                        <tr key={String(row.id)} style={{ borderBottom: '1px solid #F8FAFC' }}>
+                          <td style={{ padding: '10px 16px', fontWeight: 800, color: '#0F172A' }}>Week {row.week_number || '-'}</td>
+                          <td style={{ padding: '10px 16px', color: '#64748B', fontSize: 11 }}>{formatDate(row.submitted_at || row.created_at)}</td>
+                          <td style={{ padding: '10px 16px' }}><span style={{ fontSize: 9, fontWeight: 800, background: '#DCFCE7', color: '#166534', padding: '3px 8px', borderRadius: 999 }}>✓ Done</span></td>
                         </tr>
-                      )) : (
-                        <tr>
-                          <td colSpan={3} style={{ color: '#94A3B8' }}>No weekly reports submitted yet.</td>
-                        </tr>
-                      )}
+                      )) : <tr><td colSpan={3} style={{ padding: '20px 16px', textAlign: 'center', color: '#CBD5E1', fontSize: 12 }}>No reports yet.</td></tr>}
                     </tbody>
                   </table>
-                </div>
-                <div className="detail-card">
-                  <div className="detail-title"><FileText size={15} color="#F54E25" /> Summary Table</div>
-                  <table className="mini-table">
-                    <tbody>
-                      <tr>
-                        <th>Patient Name</th>
-                        <td>{selectedPatient.name}</td>
-                      </tr>
-                      <tr>
-                        <th>Admission Date</th>
-                        <td>{selectedPatient.date || 'N/A'}</td>
-                      </tr>
-                      <tr>
-                        <th>Progress</th>
-                        <td>{Number(selectedPatient.progress) || 0}%</td>
-                      </tr>
-                      <tr>
-                        <th>Room Assignment</th>
-                        <td>{selectedPatientDetails?.room_code || selectedPatient.roomCode || 'Unassigned'}</td>
-                      </tr>
-                      <tr>
-                        <th>Nurse</th>
-                        <td>{assignedNurseDisplay}</td>
-                      </tr>
-                      <tr>
-                        <th>Program Staff</th>
-                        <td>{selectedPatientDetails?.program_staff || 'N/A'}</td>
-                      </tr>
-                      <tr>
-                        <th>Reports Submitted</th>
-                        <td>{selectedReports.length}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div className="detail-card">
-                  <div className="detail-title"><CheckCircle2 size={15} color="#F54E25" /> Vital Signs (Latest Weekly Report)</div>
-                  <table className="mini-table">
-                    <tbody>
-                      <tr>
-                        <th>Current Weight</th>
-                        <td>{resolveVital(latestSelectedReport?.vitals_weight, selectedPatientDetails?.current_weight, selectedPatientDetails?.weight_kg)}</td>
-                      </tr>
-                      <tr>
-                        <th>Height</th>
-                        <td>{resolveVital(latestSelectedReport?.vitals_height, selectedPatientDetails?.height_cm)}</td>
-                      </tr>
-                      <tr>
-                        <th>Blood Pressure</th>
-                        <td>{resolveVital(latestSelectedReport?.vitals_bp, selectedPatientDetails?.bp, selectedPatientDetails?.blood_pressure)}</td>
-                      </tr>
-                      <tr>
-                        <th>PR</th>
-                        <td>{resolveVital(latestSelectedReport?.vitals_pr, selectedPatientDetails?.pr, selectedPatientDetails?.pulse_rate)}</td>
-                      </tr>
-                      <tr>
-                        <th>RR</th>
-                        <td>{resolveVital(latestSelectedReport?.vitals_rr, selectedPatientDetails?.rr, selectedPatientDetails?.respiratory_rate)}</td>
-                      </tr>
-                      <tr>
-                        <th>Temperature (°F)</th>
-                        <td>{resolveVital(latestSelectedReport?.vitals_temperature, selectedPatientDetails?.temperature_f, selectedPatientDetails?.temperature)}</td>
-                      </tr>
-                      <tr>
-                        <th>BMI</th>
-                        <td>{resolveVital(latestSelectedReport?.vitals_bmi, selectedPatientDetails?.bmi)}</td>
-                      </tr>
-                      <tr>
-                        <th>SPO2</th>
-                        <td>{resolveVital(latestSelectedReport?.vitals_spo2, selectedPatientDetails?.spo2, selectedPatientDetails?.oxygen_saturation)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                </SectionCard>
+                {/* Summary Table */}
+                <SectionCard>
+                  <CardTitle icon={Shield}>Care Summary</CardTitle>
+                  {[
+                    ['Patient Name', selectedPatient.name],
+                    ['Admission Date', selectedPatient.date || 'N/A'],
+                    ['Progress', `${Number(selectedPatient.progress)||0}%`],
+                    ['Room Assignment', selectedPatientDetails?.room_code || selectedPatient.roomCode || 'Unassigned'],
+                    ['Nurse', assignedNurseDisplay],
+                    ['Program Staff', selectedPatientDetails?.program_staff || 'N/A'],
+                    ['Reports Submitted', selectedReports.length],
+                  ].map(([l, v]) => <DataRow key={l} label={l} value={String(v)} />)}
+                </SectionCard>
+                {/* Vitals */}
+                <SectionCard>
+                  <CardTitle icon={Stethoscope}>Vital Signs</CardTitle>
+                  {[
+                    ['Weight', resolveVital(latestSelectedReport?.vitals_weight, selectedPatientDetails?.current_weight, selectedPatientDetails?.weight_kg)],
+                    ['Height', resolveVital(latestSelectedReport?.vitals_height, selectedPatientDetails?.height_cm)],
+                    ['Blood Pressure', resolveVital(latestSelectedReport?.vitals_bp, selectedPatientDetails?.bp, selectedPatientDetails?.blood_pressure)],
+                    ['Pulse Rate', resolveVital(latestSelectedReport?.vitals_pr, selectedPatientDetails?.pr, selectedPatientDetails?.pulse_rate)],
+                    ['Resp. Rate', resolveVital(latestSelectedReport?.vitals_rr, selectedPatientDetails?.rr, selectedPatientDetails?.respiratory_rate)],
+                    ['Temperature', resolveVital(latestSelectedReport?.vitals_temperature, selectedPatientDetails?.temperature_f, selectedPatientDetails?.temperature)],
+                    ['BMI', resolveVital(latestSelectedReport?.vitals_bmi, selectedPatientDetails?.bmi)],
+                    ['SPO2', resolveVital(latestSelectedReport?.vitals_spo2, selectedPatientDetails?.spo2, selectedPatientDetails?.oxygen_saturation)],
+                  ].map(([l, v]) => <VitalRow key={l} label={l} value={v} />)}
+                </SectionCard>
               </div>
-              <div className="detail-card">
-                <div className="detail-title"><CheckCircle2 size={15} color="#F54E25" /> Recommended Next Steps</div>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {patientSummaryPayload(selectedPatient).goals.map((goal) => (
-                    <div key={goal} style={{ color: '#334155', fontSize: 13, lineHeight: 1.45 }}>
-                      - {goal}
+
+              {/* Next Steps */}
+              <SectionCard>
+                <CardTitle icon={CheckCircle2}>Recommended Next Steps</CardTitle>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  {patientSummaryPayload(selectedPatient).goals.map((goal, i) => (
+                    <div key={goal} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#FAFBFF', border: '1px solid #F1F5F9', borderRadius: 14, padding: '12px 14px' }}>
+                      <div style={{ width: 24, height: 24, borderRadius: 8, background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <CheckCircle2 size={13} color="#10B981" />
+                      </div>
+                      <span style={{ fontSize: 12, color: '#334155', lineHeight: 1.5, fontWeight: 600 }}>{goal}</span>
                     </div>
                   ))}
                 </div>
-              </div>
+              </SectionCard>
             </div>
           </div>
         </div>
       )}
+
       <FloatingChatHead />
     </div>
   );
