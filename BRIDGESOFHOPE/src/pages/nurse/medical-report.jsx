@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, LogOut, FileText, ChevronDown, LayoutGrid, Users, Calendar } from 'lucide-react';
+import { LogOut, FileText, ChevronDown, Users, Calendar, LayoutGrid, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -27,13 +27,9 @@ const INITIAL_VITALS = {
 
 const INITIAL_REPORT_DETAILS = {
   currentMedications: '',
-  interventionMedication: '',
   dietaryRestrictions: '',
   foodAllergies: '',
-  interventionNutrition: '',
   ongoingMedicalConcern: '',
-  upcomingProcedureDescription: '',
-  upcomingProcedureDate: '',
 };
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
@@ -95,7 +91,8 @@ const deriveAge = (row) => {
   return age >= 0 ? String(age) : '';
 };
 
-const WeeklyReport = () => {
+/** Nurse medical report filing — same workflow as weekly reports; assigned residents match `program_staff` (nurse). */
+const NurseMedicalReportPage = () => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -151,7 +148,30 @@ const WeeklyReport = () => {
       if (!isSupabaseConfigured()) {
         try {
           const raw = localStorage.getItem('bh_patients');
-          setAdmittedPatients(raw ? JSON.parse(raw) : []);
+          const list = raw ? JSON.parse(raw) : [];
+          const arr = Array.isArray(list) ? list : [];
+          const scopedRows = arr.filter((r) => {
+            if (nurseIdentityNames.length === 0) return false;
+            const ns = String(r.program_staff ?? r.programStaff ?? '').trim().toLowerCase();
+            return nurseIdentityNames.includes(ns);
+          });
+          setAdmittedPatients(
+            scopedRows.map((r) => ({
+              id: r.id,
+              name: r.name || r.full_name,
+              date: r.admitted_at || r.admissionDate
+                ? new Date(r.admitted_at || r.admissionDate).toLocaleDateString('en-US', {
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })
+                : '',
+              reason: r.primary_concern || r.concern || '',
+              age: deriveAge(r),
+              dateOfBirth: r.date_of_birth || null,
+              raw: r,
+            }))
+          );
         } catch {
           setAdmittedPatients([]);
         }
@@ -163,7 +183,7 @@ const WeeklyReport = () => {
         .is('discharged_at', null)
         .order('admitted_at', { ascending: false });
       if (error) {
-        console.warn('[weekly-report patients]', error.message);
+        console.warn('[nurse-medical-report patients]', error.message);
         setAdmittedPatients([]);
         return;
       }
@@ -227,10 +247,6 @@ const WeeklyReport = () => {
     }));
     setVitals(deriveVitalsFromPatient(patient.raw || {}));
     setNurseSignatureDate(new Date().toLocaleDateString('en-US'));
-    setReportDetails((prev) => ({
-      ...prev,
-      upcomingProcedureDate: prev.upcomingProcedureDate || new Date().toLocaleDateString('en-US'),
-    }));
     setPickerOpen(false);
     setExpandedPatientId(null);
   };
@@ -309,7 +325,7 @@ const WeeklyReport = () => {
       return;
     }
 
-    const nurseName = nurseSignatureName.trim();
+    const nurseNameSigned = nurseSignatureName.trim();
     const reportDateField = nurseSignatureDate.trim();
     const pname = (reportBasics.patientName || 'Resident').trim();
     const submittedAt = new Date().toISOString();
@@ -320,18 +336,11 @@ const WeeklyReport = () => {
     })();
     const summaryText = [
       reportDetails.currentMedications && `Current medications: ${reportDetails.currentMedications}`,
-      reportDetails.interventionMedication && `Medication intervention: ${reportDetails.interventionMedication}`,
       reportDetails.ongoingMedicalConcern && `Ongoing medical concern: ${reportDetails.ongoingMedicalConcern}`,
     ]
       .filter(Boolean)
       .join('\n');
-    const recommendationText = [
-      reportDetails.interventionNutrition && `Nutrition intervention: ${reportDetails.interventionNutrition}`,
-      reportDetails.upcomingProcedureDescription && `Upcoming procedure: ${reportDetails.upcomingProcedureDescription}`,
-      reportDetails.upcomingProcedureDate && `Scheduled date: ${reportDetails.upcomingProcedureDate}`,
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const recommendationText = '';
     const noteText = [
       reportDetails.dietaryRestrictions && `Dietary restrictions: ${reportDetails.dietaryRestrictions}`,
       reportDetails.foodAllergies && `Food allergies: ${reportDetails.foodAllergies}`,
@@ -342,10 +351,11 @@ const WeeklyReport = () => {
     const localEntry = {
       submittedAt,
       patientName: reportBasics.patientName,
-      nurseName,
+      nurseName: nurseNameSigned,
       reportDate: reportDateField,
       summary: summaryText,
       nurseNote: noteText,
+      currentMedications: reportDetails.currentMedications || '',
       dietaryRestrictions: reportDetails.dietaryRestrictions || '',
       foodAllergies: reportDetails.foodAllergies || '',
       ongoingMedicalConcern: reportDetails.ongoingMedicalConcern || '',
@@ -369,13 +379,13 @@ const WeeklyReport = () => {
         window.dispatchEvent(new Event('storage'));
         window.dispatchEvent(new Event(APP_DATA_REFRESH));
         await appendActivityFeed(
-          `Weekly care report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`
+          `Medical report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`
         );
       } catch {
         /* ignore */
       }
       setShowConfirm(false);
-      navigate('/home');
+      navigate('/patient-database');
       return;
     }
 
@@ -387,7 +397,7 @@ const WeeklyReport = () => {
     const basePayload = {
       patient_id: patientId,
       week_number: parseInt(weekNum, 10),
-      nurse_name: nurseName || null,
+      nurse_name: nurseNameSigned || null,
       report_date: reportDateField || null,
       created_by: user?.id ?? null,
       submitted_at: submittedAt,
@@ -401,13 +411,13 @@ const WeeklyReport = () => {
       notes: noteText || null,
       progress_percent: progressFromPatient,
       current_medications: reportDetails.currentMedications || null,
-      medication_intervention: reportDetails.interventionMedication || null,
+      medication_intervention: null,
       dietary_restrictions: reportDetails.dietaryRestrictions || null,
       food_allergies: reportDetails.foodAllergies || null,
-      nutrition_intervention: reportDetails.interventionNutrition || null,
+      nutrition_intervention: null,
       ongoing_medical_concern: reportDetails.ongoingMedicalConcern || null,
-      upcoming_procedure_description: reportDetails.upcomingProcedureDescription || null,
-      upcoming_procedure_date: reportDetails.upcomingProcedureDate || null,
+      upcoming_procedure_description: null,
+      upcoming_procedure_date: null,
       vitals_weight: vitals.weight || null,
       vitals_height: vitals.height || null,
       vitals_bmi: vitals.bmi || null,
@@ -424,7 +434,7 @@ const WeeklyReport = () => {
 
     if (error) {
       console.warn('[weekly_reports upsert]', error.message);
-      setSubmitError(`Failed to save weekly report: ${error.message}`);
+      setSubmitError(`Failed to save medical report: ${error.message}`);
       setShowConfirm(false);
       return;
     } else {
@@ -442,7 +452,7 @@ const WeeklyReport = () => {
         rr: vitals.rr || null,
         spo2: vitals.spo2 || null,
         temperature_f: vitals.temperature || null,
-        medical_staff_note: nurseName || null,
+        medical_staff_note: nurseNameSigned || null,
       };
       // Keep patient master vitals in sync with the latest nurse weekly filing.
       const { error: patientVitalsError } = await supabase
@@ -452,21 +462,21 @@ const WeeklyReport = () => {
       if (patientVitalsError) {
         console.warn('[patients vitals update]', patientVitalsError.message);
         // Non-blocking: weekly report was saved already; keep flow moving.
-        setSubmitError(`Weekly report saved, but patient vitals update failed: ${patientVitalsError.message}`);
+        setSubmitError(`Medical report saved, but patient vitals update failed: ${patientVitalsError.message}`);
       }
       mirrorPatientVitalsToLocal(patientId, vitals);
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new Event(APP_DATA_REFRESH));
       await appendActivityFeed(
-        `Weekly care report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`,
+        `Medical report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`,
         { familyId: patientRow?.family_id ?? null }
       );
     }
 
     setSubmitError('');
     setShowConfirm(false);
-    navigate('/home');
-  }, [activeReportPatientId, admittedPatients, reportBasics.patientName, reportBasics.weekLabel, navigate, reportDetails, vitals]);
+    navigate('/patient-database');
+  }, [activeReportPatientId, admittedPatients, reportBasics.patientName, reportBasics.weekLabel, navigate, reportDetails, vitals, nurseSignatureName, nurseSignatureDate]);
 
   return (
     <div className="wr-container">
@@ -1178,7 +1188,7 @@ const WeeklyReport = () => {
           <div style={{ background: '#F54E25', color: 'white', padding: 12, borderRadius: 12, display: 'flex' }}>
             <FileText size={22} />
           </div>
-          <span className="sidebar-label" style={{ color: '#F54E25' }}>Weekly Report</span>
+          <span className="sidebar-label" style={{ color: '#F54E25' }}>Medical Report</span>
         </div>
         </div>
 
@@ -1197,7 +1207,7 @@ const WeeklyReport = () => {
       {/* MOBILE TOP BAR */}
       <div className="mobile-only mobile-top-bar">
         <img src={logo} alt="Kalinga" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
-          <span className="mobile-top-bar-title">Weekly Report</span>
+          <span className="mobile-top-bar-title">Medical Report</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>JD</div>
       </div>
 
@@ -1207,8 +1217,8 @@ const WeeklyReport = () => {
         {/* Header */}
         <div className="wr-header">
           <div>
-            <h1>Weekly Report</h1>
-            <p>Write your Weekly Reports</p>
+            <h1>Medical Report</h1>
+            <p>File weekly medical documentation for assigned residents</p>
           </div>
           <div ref={pickerRef} className="wr-picker-wrap">
             <button
@@ -1264,7 +1274,7 @@ const WeeklyReport = () => {
                       </button>
                       {expandedPatientId === p.id && (
                         <div className="wr-weeks-panel">
-                          <div className="wr-weeks-label">Weekly reports — tap a week to load the form</div>
+                          <div className="wr-weeks-label">Medical reports by week — tap a week to load the form</div>
                           <div className="wr-weeks-grid">
                             {[1, 2, 3, 4, 5, 6, 7].map((w) => (
                               <button
@@ -1292,7 +1302,7 @@ const WeeklyReport = () => {
 
         {/* Paper */}
         <div className="wr-paper">
-          <div className="wr-paper-title">Weekly Report</div>
+          <div className="wr-paper-title">Medical Report</div>
 
           <form onSubmit={(e) => { e.preventDefault(); setShowConfirm(true); }}>
 
@@ -1303,7 +1313,7 @@ const WeeklyReport = () => {
                 <input
                   type="text"
                   className="form-underline-input"
-                  placeholder="Use Weekly Report above"
+                  placeholder="Select week above"
                   value={reportBasics.weekLabel}
                   onChange={(e) => setReportBasics((prev) => ({ ...prev, weekLabel: e.target.value }))}
                 />
@@ -1449,17 +1459,6 @@ const WeeklyReport = () => {
               </div>
             </div>
 
-            {/* Intervention (Medication Management) */}
-            <div className="form-section">
-              <div className="section-title">Intervention (Medication Management)</div>
-              <textarea
-                className="form-textarea"
-                placeholder="Describe any medication changes, adjustments, or interventions made this week..."
-                value={reportDetails.interventionMedication}
-                onChange={(e) => setReportDetails((prev) => ({ ...prev, interventionMedication: e.target.value }))}
-              />
-            </div>
-
             {/* Diet Restrictions */}
             <div className="form-section">
               <div className="section-title">Diet Restrictions</div>
@@ -1486,17 +1485,6 @@ const WeeklyReport = () => {
               </div>
             </div>
 
-            {/* Intervention (Nutrition) */}
-            <div className="form-section">
-              <div className="section-title">Intervention (Nutrition)</div>
-              <textarea
-                className="form-textarea"
-                placeholder="Document any nutritional interventions, meal plan adjustments, or consultations with dietitian..."
-                value={reportDetails.interventionNutrition}
-                onChange={(e) => setReportDetails((prev) => ({ ...prev, interventionNutrition: e.target.value }))}
-              />
-            </div>
-
             {/* Ongoing Medical Concern */}
             <div className="form-section">
               <div className="section-title">Ongoing Medical Concern</div>
@@ -1508,35 +1496,10 @@ const WeeklyReport = () => {
               />
             </div>
 
-            {/* Upcoming Medical Procedure */}
-            <div className="form-section">
-              <div className="section-title">Upcoming Medical Procedure</div>
-              <div className="section-fields">
-                <div>
-                  <label className="form-label" style={{ marginBottom: 8 }}>Procedure Description:</label>
-                  <textarea
-                    className="form-textarea"
-                    placeholder="Describe any scheduled medical procedures, tests, or appointments..."
-                    value={reportDetails.upcomingProcedureDescription}
-                    onChange={(e) => setReportDetails((prev) => ({ ...prev, upcomingProcedureDescription: e.target.value }))}
-                  />
-                </div>
-                <div className="form-field">
-                  <label className="form-label">Scheduled Date:</label>
-                  <input
-                    type="text"
-                    className="form-underline-input"
-                    value={reportDetails.upcomingProcedureDate}
-                    onChange={(e) => setReportDetails((prev) => ({ ...prev, upcomingProcedureDate: e.target.value }))}
-                  />
-                </div>
-              </div>
-            </div>
-
             {/* Signatures */}
             <div className="form-grid-2" style={{ marginBottom: 0 }}>
               <div className="form-field">
-                <label className="form-label">Nurse's Name:</label>
+                <label className="form-label">Nurse&apos;s name:</label>
                 <input
                   type="text"
                   className="form-underline-input"
@@ -1576,12 +1539,12 @@ const WeeklyReport = () => {
               ) : null}
               {showConfirm ? (
                 <div className="confirm-bar">
-                  <span className="confirm-text">Ready to submit the Report?</span>
+                  <span className="confirm-text">Ready to submit the medical report?</span>
                   <button type="button" className="confirm-btn-cancel" onClick={() => setShowConfirm(false)}>Cancel</button>
                   <button type="button" className="confirm-btn-ok" onClick={persistWeeklyReport}>Confirm</button>
                 </div>
               ) : (
-                <button type="submit" className="btn-submit">Submit Report</button>
+                <button type="submit" className="btn-submit">Submit Medical Report</button>
               )}
             </div>
 
@@ -1613,10 +1576,10 @@ const WeeklyReport = () => {
           <div style={{ background: '#F54E25', color: 'white', padding: 10, borderRadius: 10, display: 'flex' }}>
             <FileText size={20} />
           </div>
-          <span>Weekly</span>
+          <span>Medical</span>
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/nurseprofile')}>
-          <User size={22} />
+          <User size={22} color="#707EAE" />
           <span>Profile</span>
         </div>
         <div className="mob-nav-item" onClick={() => navigate('/login')}>
@@ -1629,4 +1592,4 @@ const WeeklyReport = () => {
   );
 };
 
-export default WeeklyReport;
+export default NurseMedicalReportPage;
