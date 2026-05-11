@@ -474,7 +474,7 @@ const HomeDashboard = () => {
         .hero-deco-1 { position: absolute; top: -40px; right: -40px; width: 180px; height: 180px; border-radius: 50%; background: rgba(255,255,255,0.04); }
         .hero-deco-2 { position: absolute; bottom: -20px; right: 120px; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.05); }
         .hero-deco-3 { position: absolute; top: 20px; right: 200px; width: 60px; height: 60px; border-radius: 50%; background: rgba(245,78,37,0.15); }
-        .hero-banner-inner { position: relative; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+        .hero-banner-inner { position: relative; }
 
         /* ── Stat cards ── */
         .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
@@ -781,8 +781,6 @@ const HomeDashboard = () => {
           .chat-window { width: 320px; height: 450px; bottom: 85px; right: 15px; border-radius: 20px; }
           .mobile-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 70px; background: white; border-top: 1px solid #EEE; display: flex; justify-content: space-around; align-items: center; padding-bottom: env(safe-area-inset-bottom); z-index: 1000; }
           .hero-banner { border-radius: 18px; padding: 18px 16px; }
-          .hero-banner-inner { flex-direction: column; align-items: stretch; gap: 14px; }
-          .hero-banner-inner > div:last-child { width: 100%; justify-content: space-between; }
           .icon-square { width: 48px; height: 48px; border-radius: 14px; }
           .icon-square svg { width: 22px; height: 22px; }
           .action-card {
@@ -1081,18 +1079,6 @@ const HomeDashboard = () => {
                     </div>
                     <h1 style={{ margin: 0, color: '#fff', fontSize: 26, fontWeight: 900, letterSpacing: '-0.02em' }}>{greeting}, {firstName} 👋</h1>
                     <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>{dateStr} · Your care overview at a glance</p>
-                  </div>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    {[
-                      { label: 'Residents', val: patients.length, color: '#A5B4FC' },
-                      { label: 'Pending', val: totalPendingRequests, color: '#FCA5A5' },
-                      { label: 'Reports', val: reportsReceivedCount, color: '#6EE7B7' },
-                    ].map((s) => (
-                      <div key={s.label} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 14, padding: '10px 16px', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'center', minWidth: 72 }}>
-                        <p style={{ margin: 0, fontSize: 9, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</p>
-                        <p style={{ margin: '4px 0 0', fontSize: 24, fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.val}</p>
-                      </div>
-                    ))}
                   </div>
                 </div>
               </div>
