@@ -42,7 +42,8 @@ const Profile = () => {
   const notificationsDesktopRef = useRef(null);
   const notificationsMobileRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
+  const [familyNotifUserId, setFamilyNotifUserId] = useState('');
+  const [notificationItems, setNotificationItems] = useState([]);
   const {
     data: profileSnapshot,
     loading: snapshotLoading,
@@ -117,6 +118,7 @@ const Profile = () => {
         setProfileForm(resolved);
         setDraftProfile(resolved);
         localStorage.setItem('bh_family_profile', JSON.stringify(resolved));
+        if (user?.id) setFamilyNotifUserId(user.id);
       }
     };
 
@@ -141,18 +143,24 @@ const Profile = () => {
   const handleNotificationToggle = () => setShowNotifications((v) => !v);
 
   useEffect(() => {
-    saveFamilyNotifications(notificationItems);
-  }, [notificationItems]);
+    if (!familyNotifUserId) return;
+    saveFamilyNotifications(notificationItems, familyNotifUserId);
+  }, [notificationItems, familyNotifUserId]);
 
   useEffect(() => {
-    const reload = () => setNotificationItems(loadFamilyNotifications());
+    if (!familyNotifUserId) {
+      setNotificationItems([]);
+      return undefined;
+    }
+    setNotificationItems(loadFamilyNotifications(familyNotifUserId));
+    const reload = () => setNotificationItems(loadFamilyNotifications(familyNotifUserId));
     window.addEventListener('storage', reload);
     window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
     return () => {
       window.removeEventListener('storage', reload);
       window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
     };
-  }, []);
+  }, [familyNotifUserId]);
 
   const userInitials =
     profileForm.fullName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase()).join('') || 'FU';
@@ -882,7 +890,7 @@ const Profile = () => {
                         className="notif-clear-all"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setNotificationItems(clearAllFamilyNotifications());
+                          setNotificationItems(clearAllFamilyNotifications(familyNotifUserId));
                         }}
                       >
                         Clear all
@@ -944,7 +952,7 @@ const Profile = () => {
                         className="notif-clear-all"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setNotificationItems(clearAllFamilyNotifications());
+                          setNotificationItems(clearAllFamilyNotifications(familyNotifUserId));
                         }}
                       >
                         Clear all

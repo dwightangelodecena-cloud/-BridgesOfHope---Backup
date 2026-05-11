@@ -27,7 +27,8 @@ const Progress = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [userInitials, setUserInitials] = useState('FU');
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
+  const [familyNotifUserId, setFamilyNotifUserId] = useState('');
+  const [notificationItems, setNotificationItems] = useState([]);
   const notificationsDesktopRef = useRef(null);
   const notificationsMobileRef = useRef(null);
   const patientBirthdayInputRef = useRef(null);
@@ -275,6 +276,7 @@ const Progress = () => {
       }
       if (isMounted) {
         setUserInitials(deriveInitials(resolvedName));
+        setFamilyNotifUserId(user?.id || '');
       }
     };
     loadUser();
@@ -296,22 +298,32 @@ const Progress = () => {
   }, [showNotifications]);
 
   useEffect(() => {
-    saveFamilyNotifications(notificationItems);
-  }, [notificationItems]);
+    if (!familyNotifUserId) return;
+    saveFamilyNotifications(notificationItems, familyNotifUserId);
+  }, [notificationItems, familyNotifUserId]);
 
   useEffect(() => {
-    const reload = () => setNotificationItems(loadFamilyNotifications());
+    if (!familyNotifUserId) {
+      setNotificationItems([]);
+      return undefined;
+    }
+    setNotificationItems(loadFamilyNotifications(familyNotifUserId));
+    const reload = () => setNotificationItems(loadFamilyNotifications(familyNotifUserId));
     window.addEventListener('storage', reload);
     window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
     return () => {
       window.removeEventListener('storage', reload);
       window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
     };
-  }, []);
+  }, [familyNotifUserId]);
 
   const addProcessingNotification = () => {
-    appendFamilyNotificationsIfNew([{ id: `local-processing-${Date.now()}`, text: 'Your request is being processed.' }]);
-    setNotificationItems(loadFamilyNotifications());
+    if (!familyNotifUserId) return;
+    appendFamilyNotificationsIfNew(
+      [{ id: `local-processing-${Date.now()}`, text: 'Your request is being processed.' }],
+      familyNotifUserId
+    );
+    setNotificationItems(loadFamilyNotifications(familyNotifUserId));
   };
 
   const handleAdmissionChange = (e) => {
@@ -849,7 +861,7 @@ const Progress = () => {
                   <div className="notif-dropdown-head">
                     <div className="notif-dropdown-title"><Bell size={16} color="#F54E25" /> Notifications</div>
                     {notificationItems.length > 0 ? (
-                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyNotifUserId)); }}>Clear all</button>
                     ) : null}
                   </div>
                   {notificationItems.length === 0 ? (
@@ -882,7 +894,7 @@ const Progress = () => {
                   <div className="notif-dropdown-head">
                     <div className="notif-dropdown-title"><Bell size={16} color="#F54E25" /> Notifications</div>
                     {notificationItems.length > 0 ? (
-                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyNotifUserId)); }}>Clear all</button>
                     ) : null}
                   </div>
                   {notificationItems.length === 0 ? (

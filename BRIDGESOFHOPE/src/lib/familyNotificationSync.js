@@ -2,12 +2,22 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { appendFamilyNotificationsIfNew } from '@/lib/familyNotifications';
 import { normalizeVisitationStatus } from '@/lib/visitationAppointments';
 
-const ENTITY_STATE_KEY = 'bh_family_notif_entity_state_v1';
+/** Legacy global key (mixed all users). Removed on first sync so each account uses only per-user state. */
+const LEGACY_ENTITY_STATE_KEY = 'bh_family_notif_entity_state_v1';
+const ENTITY_STATE_PREFIX = 'bh_family_notif_entity_state_v2:';
 const PROGRESS_STEP = 5;
 
-function readState() {
+function entityStateKey(userId) {
+  const id = userId != null ? String(userId).trim() : '';
+  if (!id) return null;
+  return `${ENTITY_STATE_PREFIX}${id}`;
+}
+
+function readState(userId) {
+  const key = entityStateKey(userId);
+  if (!key) return { admission: {}, discharge: {}, visit: {}, progress: {}, bootstrapped: false };
   try {
-    const raw = localStorage.getItem(ENTITY_STATE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return { admission: {}, discharge: {}, visit: {}, progress: {}, bootstrapped: false };
     const o = JSON.parse(raw);
     return {
@@ -22,9 +32,11 @@ function readState() {
   }
 }
 
-function writeState(s) {
+function writeState(userId, s) {
+  const key = entityStateKey(userId);
+  if (!key) return;
   localStorage.setItem(
-    ENTITY_STATE_KEY,
+    key,
     JSON.stringify({
       admission: s.admission,
       discharge: s.discharge,
@@ -106,6 +118,12 @@ export async function runFamilyNotificationSync(userId) {
   }
   if (!uid) return;
 
+  try {
+    localStorage.removeItem(LEGACY_ENTITY_STATE_KEY);
+  } catch {
+    /* ignore */
+  }
+
   const [{ data: admRows, error: admErr }, { data: disRows, error: disErr }, { data: visRows, error: visErr }, { data: patRows, error: patErr }] =
     await Promise.all([
       supabase.from('admission_requests').select('*').eq('family_id', uid).order('created_at', { ascending: false }).limit(200),
@@ -123,7 +141,7 @@ export async function runFamilyNotificationSync(userId) {
   if (visErr) console.warn('[familyNotificationSync] visitation_requests', visErr.message);
   if (patErr) console.warn('[familyNotificationSync] patients', patErr.message);
 
-  const state = readState();
+  const state = readState(uid);
   const next = {
     admission: { ...state.admission },
     discharge: { ...state.discharge },
@@ -242,6 +260,6 @@ export async function runFamilyNotificationSync(userId) {
   (visRows || []).forEach(pushVisit);
   (patRows || []).filter((r) => !r.discharged_at).forEach(pushProgress);
 
-  writeState(next);
-  if (toAdd.length) appendFamilyNotificationsIfNew(toAdd);
+  writeState(uid, next);
+  if (toAdd.length) appendFamilyNotificationsIfNew(toAdd, uid);
 }

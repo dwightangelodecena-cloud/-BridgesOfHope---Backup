@@ -215,69 +215,85 @@ const SignUp = () => {
     }
 
     setSubmitting(true);
-    const first = formData.firstName.trim();
-    const last = formData.lastName.trim();
-    const middle = formData.middleInitial.trim();
-    const fullName = middle
-      ? `${first} ${middle.toUpperCase()}. ${last}`
-      : `${first} ${last}`;
+    try {
+      const first = formData.firstName.trim();
+      const last = formData.lastName.trim();
+      const middle = formData.middleInitial.trim();
+      const fullName = middle
+        ? `${first} ${middle.toUpperCase()}. ${last}`
+        : `${first} ${last}`;
 
-    const province = formData.province.trim();
-    const municipality = formData.municipality.trim();
-    const barangay = formData.barangay.trim();
-    const street = formData.street.trim();
-    const houseBlockLot = formData.houseBlockLot.trim();
-    const addressLine = [houseBlockLot, street, barangay, municipality, province].filter(Boolean).join(', ');
+      const province = formData.province.trim();
+      const municipality = formData.municipality.trim();
+      const barangay = formData.barangay.trim();
+      const street = formData.street.trim();
+      const houseBlockLot = formData.houseBlockLot.trim();
+      const addressLine = [houseBlockLot, street, barangay, municipality, province].filter(Boolean).join(', ');
 
-    const { data, error } = await supabase.auth.signUp({
-      email: formData.email.trim(),
-      password: formData.password,
-      options: {
-        data: {
-          first_name: first,
-          last_name: last,
-          middle_initial: middle.toUpperCase() || null,
-          full_name: fullName,
-          contact_number: formData.contactNumber.trim(),
-          province,
-          municipality,
-          barangay,
-          street,
-          house_block_lot: houseBlockLot,
-          address: addressLine,
-          account_type: 'family'
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email.trim(),
+        password: formData.password,
+        options: {
+          data: {
+            first_name: first,
+            last_name: last,
+            middle_initial: middle.toUpperCase() || null,
+            full_name: fullName,
+            contact_number: formData.contactNumber.trim(),
+            province,
+            municipality,
+            barangay,
+            street,
+            house_block_lot: houseBlockLot,
+            address: addressLine,
+            account_type: 'family'
+          }
+        }
+      });
+
+      if (error) {
+        setFormError(formatAuthError(error));
+        return;
+      }
+
+      if (!data.user) {
+        setFormError('Sign up did not complete. Please try again.');
+        return;
+      }
+
+      if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        setFormError('This email is already registered. Try signing in or use Forgot password.');
+        return;
+      }
+
+      // When a session exists (e.g. email confirmation off), RLS allows this upsert.
+      // Otherwise `handle_new_user_profile` trigger creates the row after deploy.
+      if (data.user.id) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: data.user.id,
+            full_name: fullName,
+            phone: formData.contactNumber.trim(),
+            account_type: 'family',
+            province,
+            municipality,
+            barangay,
+            street,
+            house_block_lot: houseBlockLot
+          }, { onConflict: 'id' });
+
+        if (profileError) {
+          console.warn('[signup] profile upsert failed:', profileError.message);
         }
       }
-    });
-    setSubmitting(false);
 
-    if (error) {
-      setFormError(formatAuthError(error));
-      return;
+      const needsEmailConfirm = !data.session;
+      sessionStorage.setItem('bh_post_signup', needsEmailConfirm ? 'check_email' : 'welcome');
+      navigate('/login');
+    } finally {
+      setSubmitting(false);
     }
-
-    // Best-effort profile write to `public.profiles` for app-level user data.
-    if (data.user?.id) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: data.user.id,
-          full_name: fullName,
-          phone: formData.contactNumber.trim(),
-          account_type: 'family',
-          province,
-          municipality,
-          barangay,
-          street,
-          house_block_lot: houseBlockLot
-        }, { onConflict: 'id' });
-
-      if (profileError) {
-        console.warn('[signup] profile upsert failed:', profileError.message);
-      }
-    }
-
-    navigate('/login');
   };
 
   const pwChecks = getPasswordStrengthChecks(formData.password);

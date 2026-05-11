@@ -65,7 +65,8 @@ export default function FamilyReportsPage() {
   const notificationsDesktopRef = useRef(null);
   const notificationsMobileRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
+  const [familyNotifUserId, setFamilyNotifUserId] = useState('');
+  const [notificationItems, setNotificationItems] = useState([]);
 
   /* ── all data logic 100% unchanged ── */
   const formatDate = (iso) => { if (!iso) return 'N/A'; try { return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return 'N/A'; } };
@@ -76,10 +77,27 @@ export default function FamilyReportsPage() {
     const loadData = async () => {
       setLoading(true); setLoadError('');
       try {
-        if (!isSupabaseConfigured()) { if (!cancelled) { setPatients([]); setWeeklyReportsByPatient({}); setLoadError('Supabase is not configured.'); } return; }
+        if (!isSupabaseConfigured()) {
+          if (!cancelled) {
+            setPatients([]);
+            setWeeklyReportsByPatient({});
+            setLoadError('Supabase is not configured.');
+            setFamilyNotifUserId('');
+          }
+          return;
+        }
         const { data: authData, error: authError } = await supabase.auth.getUser();
-        if (authError || !authData?.user) { if (!cancelled) { setPatients([]); setWeeklyReportsByPatient({}); setLoadError('Please sign in to view reports.'); } return; }
+        if (authError || !authData?.user) {
+          if (!cancelled) {
+            setPatients([]);
+            setWeeklyReportsByPatient({});
+            setLoadError('Please sign in to view reports.');
+            setFamilyNotifUserId('');
+          }
+          return;
+        }
         const user = authData.user;
+        if (!cancelled) setFamilyNotifUserId(user.id);
         const displayName = user.user_metadata?.full_name || user.email || 'Family User';
         const nextFirstName = String(displayName).trim().split(/\s+/)[0] || 'Family';
         if (!cancelled) setFirstName(nextFirstName);
@@ -154,17 +172,25 @@ export default function FamilyReportsPage() {
   }, []);
   useEffect(() => { if (!showNotifications) return; const onDoc = (e) => { if (!notificationsDesktopRef.current?.contains(e.target) && !notificationsMobileRef.current?.contains(e.target)) setShowNotifications(false); }; document.addEventListener('mousedown', onDoc); return () => document.removeEventListener('mousedown', onDoc); }, [showNotifications]);
   const handleNotificationToggle = () => setShowNotifications((v) => !v);
-  useEffect(() => { saveFamilyNotifications(notificationItems); }, [notificationItems]);
+  useEffect(() => {
+    if (!familyNotifUserId) return;
+    saveFamilyNotifications(notificationItems, familyNotifUserId);
+  }, [notificationItems, familyNotifUserId]);
 
   useEffect(() => {
-    const reload = () => setNotificationItems(loadFamilyNotifications());
+    if (!familyNotifUserId) {
+      setNotificationItems([]);
+      return undefined;
+    }
+    setNotificationItems(loadFamilyNotifications(familyNotifUserId));
+    const reload = () => setNotificationItems(loadFamilyNotifications(familyNotifUserId));
     window.addEventListener('storage', reload);
     window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
     return () => {
       window.removeEventListener('storage', reload);
       window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
     };
-  }, []);
+  }, [familyNotifUserId]);
 
   /* derived */
   const patientInitials = (name) => name ? String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') : '?';
@@ -255,7 +281,7 @@ export default function FamilyReportsPage() {
                   <div className="ntf-dropdown-head">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 900, color: '#0F172A', fontSize: 14, margin: 0 }}><Bell size={16} color="#F54E25" /> Notifications</div>
                     {notificationItems.length > 0 ? (
-                      <button type="button" className="ntf-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                      <button type="button" className="ntf-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyNotifUserId)); }}>Clear all</button>
                     ) : null}
                   </div>
                   {notificationItems.length === 0 ? <div style={{ color: '#94A3B8', fontSize: 12 }}>No notifications.</div>
@@ -286,7 +312,7 @@ export default function FamilyReportsPage() {
                   <div className="ntf-dropdown-head">
                     <div style={{ fontWeight: 900, color: '#0F172A', fontSize: 14, margin: 0, display: 'flex', gap: 8, alignItems: 'center' }}><Bell size={16} color="#F54E25" /> Notifications</div>
                     {notificationItems.length > 0 ? (
-                      <button type="button" className="ntf-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                      <button type="button" className="ntf-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyNotifUserId)); }}>Clear all</button>
                     ) : null}
                   </div>
                   {notificationItems.length === 0 ? <div style={{ color: '#94A3B8', fontSize: 12 }}>No notifications.</div>

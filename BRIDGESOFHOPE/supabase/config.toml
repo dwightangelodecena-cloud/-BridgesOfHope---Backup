@@ -190,8 +190,8 @@ password_requirements = ""
 # rp_origins = ["http://127.0.0.1:3000"]
 
 [auth.rate_limit]
-# Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
-email_sent = 2
+# Number of auth emails per hour per IP (signup confirm, reset password, etc.). Default 2 is harsh for dev.
+email_sent = 60
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.
@@ -223,6 +223,13 @@ enable_confirmations = false
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
+# Branded HTML (paths relative to this config.toml file).
+[auth.email.template.confirmation]
+subject = "Verify your Bridges of Hope account"
+content_path = "./templates/confirm_signup.html"
+[auth.email.template.recovery]
+subject = "Reset your Bridges of Hope password"
+content_path = "./templates/recovery.html"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).

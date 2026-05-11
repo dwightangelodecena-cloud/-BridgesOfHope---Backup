@@ -61,7 +61,7 @@ export default function FamilyAppointmentsPage() {
   const [userInitials, setUserInitials] = useState('FU');
   const notificationsDesktopRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
+  const [notificationItems, setNotificationItems] = useState([]);
   const [visitationSettings, setVisitationSettings] = useState(() => loadVisitationSettings());
   const [requests, setRequests] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -151,17 +151,25 @@ export default function FamilyAppointmentsPage() {
   useEffect(()=>{ if(!timeSlots.length){if(form.preferredTime)setForm(p=>({...p,preferredTime:''}));return;} if(!form.preferredTime||!timeSlots.includes(form.preferredTime))setForm(p=>({...p,preferredTime:timeSlots[0]})); },[visitationSettings.startTime,visitationSettings.endTime]); // eslint-disable-line
 
   useEffect(()=>{ if(!showNotifications)return; const onDoc=e=>{ if(!notificationsDesktopRef.current?.contains(e.target))setShowNotifications(false); }; document.addEventListener('mousedown',onDoc); return()=>document.removeEventListener('mousedown',onDoc); },[showNotifications]);
-  useEffect(()=>{ saveFamilyNotifications(notificationItems); },[notificationItems]);
+  useEffect(() => {
+    if (!familyUserId) return;
+    saveFamilyNotifications(notificationItems, familyUserId);
+  }, [notificationItems, familyUserId]);
 
   useEffect(() => {
-    const reload = () => setNotificationItems(loadFamilyNotifications());
+    if (!familyUserId) {
+      setNotificationItems([]);
+      return undefined;
+    }
+    setNotificationItems(loadFamilyNotifications(familyUserId));
+    const reload = () => setNotificationItems(loadFamilyNotifications(familyUserId));
     window.addEventListener('storage', reload);
     window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
     return () => {
       window.removeEventListener('storage', reload);
       window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
     };
-  }, []);
+  }, [familyUserId]);
 
   const approvedCount=requests.filter(r=>normalizeVisitationStatus(r.status)==='Approved').length;
   const pendingCount=requests.filter(r=>normalizeVisitationStatus(r.status)==='Requested').length;
@@ -235,7 +243,7 @@ export default function FamilyAppointmentsPage() {
                 <div className="ntf-dropdown">
                   <div className="ntf-dropdown-head">
                     <div style={{display:'flex',alignItems:'center',gap:8,fontWeight:900,color:'#0F172A',fontSize:14,margin:0}}><Bell size={16} color="#F54E25"/> Notifications</div>
-                    {notificationItems.length>0?<button type="button" className="ntf-clear-all" onClick={(e)=>{e.stopPropagation();setNotificationItems(clearAllFamilyNotifications());}}>Clear all</button>:null}
+                    {notificationItems.length>0?<button type="button" className="ntf-clear-all" onClick={(e)=>{e.stopPropagation();setNotificationItems(clearAllFamilyNotifications(familyUserId));}}>Clear all</button>:null}
                   </div>
                   {notificationItems.length===0?<p style={{color:'#94A3B8',fontSize:12,margin:0}}>No notifications.</p>:notificationItems.map((item,idx)=>(
                     <div key={item.id||`n-${idx}`} style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:10,fontSize:12,color:'#334155'}}>

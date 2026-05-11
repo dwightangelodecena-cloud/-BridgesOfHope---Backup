@@ -169,7 +169,7 @@ const HomeDashboard = () => {
   const notificationsDesktopRef = useRef(null);
   const notificationsMobileRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
+  const [notificationItems, setNotificationItems] = useState([]);
   const [activityFeed, setActivityFeed] = useState([]);
   const [supabaseReadError, setSupabaseReadError] = useState(null);
 
@@ -344,18 +344,24 @@ const HomeDashboard = () => {
   const handleNotificationToggle = () => setShowNotifications((v) => !v);
 
   useEffect(() => {
-    saveFamilyNotifications(notificationItems);
-  }, [notificationItems]);
+    if (!familyUserId) return;
+    saveFamilyNotifications(notificationItems, familyUserId);
+  }, [notificationItems, familyUserId]);
 
   useEffect(() => {
-    const reload = () => setNotificationItems(loadFamilyNotifications());
+    if (!familyUserId) {
+      setNotificationItems([]);
+      return undefined;
+    }
+    setNotificationItems(loadFamilyNotifications(familyUserId));
+    const reload = () => setNotificationItems(loadFamilyNotifications(familyUserId));
     window.addEventListener('storage', reload);
     window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
     return () => {
       window.removeEventListener('storage', reload);
       window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
     };
-  }, []);
+  }, [familyUserId]);
 
   const [layoutCompact, setLayoutCompact] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 899px)').matches);
@@ -986,7 +992,7 @@ const HomeDashboard = () => {
                   <div className="notif-dropdown-head">
                     <div className="panel-title" style={{ margin: 0 }}><Bell size={16} color="#F54E25" /> Notifications</div>
                     {notificationItems.length > 0 ? (
-                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyUserId)); }}>Clear all</button>
                     ) : null}
                   </div>
                   {notificationItems.length === 0 ? (
@@ -1030,7 +1036,7 @@ const HomeDashboard = () => {
                   <div className="notif-dropdown-head">
                     <div className="panel-title" style={{ margin: 0 }}><Bell size={16} color="#F54E25" /> Notifications</div>
                     {notificationItems.length > 0 ? (
-                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyUserId)); }}>Clear all</button>
                     ) : null}
                   </div>
                   {notificationItems.length === 0 ? (

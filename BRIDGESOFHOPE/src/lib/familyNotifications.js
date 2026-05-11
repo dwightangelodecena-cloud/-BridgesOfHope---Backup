@@ -1,5 +1,7 @@
 const LEGACY_KEY = 'bh_family_notifications_v1';
-const STORAGE_KEY = 'bh_family_notifications_v2';
+/** Pre–per-user bucket (shared across accounts on same browser). Migrated once into the active user’s v3 key. */
+const GLOBAL_V2_KEY = 'bh_family_notifications_v2';
+const PER_USER_PREFIX = 'bh_family_notifications_v3:';
 
 export const FAMILY_NOTIFICATIONS_CHANGED = 'bh_family_notifications_changed';
 
@@ -13,6 +15,13 @@ function dispatchChanged() {
 
 function randomId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** Stable storage key per signed-in family user (auth uid or `local-family`). */
+export function notificationStorageKeyForUser(userId) {
+  const id = userId != null ? String(userId).trim() : '';
+  if (!id) return null;
+  return `${PER_USER_PREFIX}${id}`;
 }
 
 /** Normalize stored row to { id, text, createdAt }. */
@@ -33,24 +42,39 @@ export function normalizeNotificationItem(raw, index = 0) {
   return null;
 }
 
-function migrateLegacyIfNeeded() {
-  if (localStorage.getItem(STORAGE_KEY)) return;
+/**
+ * One-time: move shared v2/v1 pool into this user’s key so existing installs keep one copy
+ * for the first account that loads after upgrade (then other users stay isolated).
+ */
+function migrateSharedPoolIntoUserKey(userId) {
+  const key = notificationStorageKeyForUser(userId);
+  if (!key) return;
   try {
-    const raw = localStorage.getItem(LEGACY_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
+    if (localStorage.getItem(key)) return;
+    const rawV2 = localStorage.getItem(GLOBAL_V2_KEY);
+    if (rawV2) {
+      localStorage.setItem(key, rawV2);
+      localStorage.removeItem(GLOBAL_V2_KEY);
+      return;
+    }
+    const rawV1 = localStorage.getItem(LEGACY_KEY);
+    if (!rawV1) return;
+    const parsed = JSON.parse(rawV1);
     if (!Array.isArray(parsed)) return;
     const next = parsed.map((x, i) => normalizeNotificationItem(x, i)).filter(Boolean);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(key, JSON.stringify(next));
+    localStorage.removeItem(LEGACY_KEY);
   } catch {
     /* ignore */
   }
 }
 
-export function loadFamilyNotifications() {
-  migrateLegacyIfNeeded();
+export function loadFamilyNotifications(userId) {
+  migrateSharedPoolIntoUserKey(userId);
+  const key = notificationStorageKeyForUser(userId);
+  if (!key) return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -60,19 +84,22 @@ export function loadFamilyNotifications() {
   }
 }
 
-export function saveFamilyNotifications(items) {
+export function saveFamilyNotifications(items, userId) {
+  const key = notificationStorageKeyForUser(userId);
+  if (!key) return [];
   const normalized = (Array.isArray(items) ? items : [])
     .map((x, i) => normalizeNotificationItem(x, i))
     .filter(Boolean);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  localStorage.setItem(key, JSON.stringify(normalized));
   dispatchChanged();
   return normalized;
 }
 
 /** Append rows with stable `id`; skips duplicates already present in storage. */
-export function appendFamilyNotificationsIfNew(entries) {
-  if (!Array.isArray(entries) || !entries.length) return loadFamilyNotifications();
-  const cur = loadFamilyNotifications();
+export function appendFamilyNotificationsIfNew(entries, userId) {
+  const key = notificationStorageKeyForUser(userId);
+  if (!key || !Array.isArray(entries) || !entries.length) return loadFamilyNotifications(userId);
+  const cur = loadFamilyNotifications(userId);
   const existing = new Set(cur.map((r) => r.id));
   let changed = false;
   const next = [...cur];
@@ -89,14 +116,16 @@ export function appendFamilyNotificationsIfNew(entries) {
     changed = true;
   }
   if (changed) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(key, JSON.stringify(next));
     dispatchChanged();
   }
   return changed ? next : cur;
 }
 
-export function clearAllFamilyNotifications() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+export function clearAllFamilyNotifications(userId) {
+  const key = notificationStorageKeyForUser(userId);
+  if (!key) return [];
+  localStorage.setItem(key, JSON.stringify([]));
   dispatchChanged();
   return [];
 }

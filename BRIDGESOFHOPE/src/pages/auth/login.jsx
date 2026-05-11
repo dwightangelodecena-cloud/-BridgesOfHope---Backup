@@ -23,6 +23,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [signupNotice, setSignupNotice] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const touchPresence = async (userId) => {
@@ -77,6 +78,17 @@ const Login = () => {
   }, []);
 
   useEffect(() => {
+    const v = sessionStorage.getItem('bh_post_signup');
+    if (!v) return;
+    if (v === 'check_email') {
+      setSignupNotice('Check your email and confirm your account, then sign in below.');
+    } else if (v === 'welcome') {
+      setSignupNotice('Account created. You can sign in now.');
+    }
+    sessionStorage.removeItem('bh_post_signup');
+  }, []);
+
+  useEffect(() => {
     const oauthError = searchParams.get('oauth_error');
     if (!oauthError) return;
     takeOAuthExpectedRole();
@@ -101,12 +113,14 @@ const Login = () => {
     }));
     if (error) setError('');
     if (success) setSuccess(false);
+    if (signupNotice) setSignupNotice('');
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess(false);
+    setSignupNotice('');
 
     const identifier = formData.identifier.trim();
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
@@ -383,6 +397,12 @@ const Login = () => {
           border: 1px solid #bbf7d0;
         }
 
+        .info-msg {
+          background-color: #e0f2fe;
+          color: #075985;
+          border: 1px solid #bae6fd;
+        }
+
         .form-extras {
           display: flex;
           justify-content: space-between;
@@ -557,6 +577,7 @@ const Login = () => {
 
         <div className="form-side">
           <div className="login-card">
+            {signupNotice && <div className="status-msg info-msg">{signupNotice}</div>}
             {error && <div className="status-msg error-msg">{error}</div>}
             {success && <div className="status-msg success-msg">Login Successful!</div>}
 
