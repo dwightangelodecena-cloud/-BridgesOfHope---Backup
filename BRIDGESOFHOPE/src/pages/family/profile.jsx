@@ -6,7 +6,13 @@ import { useAsyncData } from '@/hooks/useAsyncData';
 import { familyDataService } from '@/services/familyDataService';
 import { FAMILY_COLORS, StatusBadge, AuditLine, LoadingState, ErrorState } from '@/components/family/shared/ui';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
-import { loadFamilyNotifications, saveFamilyNotifications } from '@/lib/familyNotifications';
+import {
+  loadFamilyNotifications,
+  saveFamilyNotifications,
+  FAMILY_NOTIFICATIONS_CHANGED,
+  notificationDisplayText,
+  clearAllFamilyNotifications,
+} from '@/lib/familyNotifications';
 
 import logo from '@/assets/kalingalogo.png';
 
@@ -137,6 +143,16 @@ const Profile = () => {
   useEffect(() => {
     saveFamilyNotifications(notificationItems);
   }, [notificationItems]);
+
+  useEffect(() => {
+    const reload = () => setNotificationItems(loadFamilyNotifications());
+    window.addEventListener('storage', reload);
+    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    return () => {
+      window.removeEventListener('storage', reload);
+      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    };
+  }, []);
 
   const userInitials =
     profileForm.fullName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase()).join('') || 'FU';
@@ -305,6 +321,32 @@ const Profile = () => {
           display: flex;
           align-items: center;
           gap: 8px;
+        }
+
+        .notif-dropdown-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+        .notif-dropdown-head .panel-title {
+          margin-bottom: 0;
+        }
+        .notif-clear-all {
+          border: none;
+          background: transparent;
+          color: #94a3b8;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          padding: 4px 6px;
+          border-radius: 8px;
+          flex-shrink: 0;
+        }
+        .notif-clear-all:hover {
+          color: #64748b;
+          background: #f1f5f9;
         }
 
         .interactive-row {
@@ -830,25 +872,44 @@ const Profile = () => {
               </button>
               {showNotifications && (
                 <div className="notifications-dropdown">
-                  <div className="panel-title" style={{ marginBottom: 12 }}>
-                    <Bell size={16} color="#F54E25" /> Notifications
+                  <div className="notif-dropdown-head">
+                    <div className="panel-title" style={{ marginBottom: 0 }}>
+                      <Bell size={16} color="#F54E25" /> Notifications
+                    </div>
+                    {notificationItems.length > 0 ? (
+                      <button
+                        type="button"
+                        className="notif-clear-all"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNotificationItems(clearAllFamilyNotifications());
+                        }}
+                      >
+                        Clear all
+                      </button>
+                    ) : null}
                   </div>
                   {notificationItems.length === 0 ? (
                     <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
-                  ) : notificationItems.map((item, idx) => (
-                    <div key={`${item}-${idx}`} className="interactive-row">
-                      <CheckCircle2 size={15} color="#2B31ED" />
-                      <span className="notif-row-text">{item}</span>
-                      <button
-                        type="button"
-                        className="notif-remove-btn"
-                        aria-label="Remove notification"
-                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                  ) : (
+                    notificationItems.map((item, idx) => (
+                      <div key={item.id || `n-${idx}`} className="interactive-row">
+                        <CheckCircle2 size={15} color="#2B31ED" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span className="notif-row-text">{notificationDisplayText(item)}</span>
+                        <button
+                          type="button"
+                          className="notif-remove-btn"
+                          aria-label="Remove notification"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx)));
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
@@ -873,25 +934,44 @@ const Profile = () => {
               </button>
               {showNotifications && (
                 <div className="notifications-dropdown mobile-notifications-dropdown">
-                  <div className="panel-title" style={{ marginBottom: 12 }}>
-                    <Bell size={16} color="#F54E25" /> Notifications
+                  <div className="notif-dropdown-head">
+                    <div className="panel-title" style={{ marginBottom: 0 }}>
+                      <Bell size={16} color="#F54E25" /> Notifications
+                    </div>
+                    {notificationItems.length > 0 ? (
+                      <button
+                        type="button"
+                        className="notif-clear-all"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNotificationItems(clearAllFamilyNotifications());
+                        }}
+                      >
+                        Clear all
+                      </button>
+                    ) : null}
                   </div>
                   {notificationItems.length === 0 ? (
                     <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
-                  ) : notificationItems.map((item, idx) => (
-                    <div key={`m-${item}-${idx}`} className="interactive-row">
-                      <CheckCircle2 size={15} color="#2B31ED" />
-                      <span className="notif-row-text">{item}</span>
-                      <button
-                        type="button"
-                        className="notif-remove-btn"
-                        aria-label="Remove notification"
-                        onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                  ) : (
+                    notificationItems.map((item, idx) => (
+                      <div key={item.id || `m-${idx}`} className="interactive-row">
+                        <CheckCircle2 size={15} color="#2B31ED" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span className="notif-row-text">{notificationDisplayText(item)}</span>
+                        <button
+                          type="button"
+                          className="notif-remove-btn"
+                          aria-label="Remove notification"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx)));
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>

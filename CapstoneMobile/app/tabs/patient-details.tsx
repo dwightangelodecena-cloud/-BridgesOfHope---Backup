@@ -282,7 +282,7 @@ export default function PatientDetailsScreen() {
         const detailsByName: Record<string, Record<string, unknown>> = {};
         if (names.length) {
           const { data: matchedRows } = await supabase
-            .from('patients')
+        .from('patients')
             .select('*')
             .is('discharged_at', null)
             .in('full_name', names)
@@ -337,7 +337,7 @@ export default function PatientDetailsScreen() {
         const { data: admissions, error: admissionsError } = await supabase
           .from('admission_requests')
           .select('patient_name')
-          .eq('family_id', user.id)
+        .eq('family_id', user.id)
           .eq('status', 'approved');
         if (admissionsError || !(admissions || []).length) return [];
         const names = [...new Set((admissions || []).map((a) => (a.patient_name || '').trim()).filter(Boolean))];
@@ -345,9 +345,9 @@ export default function PatientDetailsScreen() {
         const { data: matchedRows, error: queryError } = await supabase
           .from('patients')
           .select(safeSelect)
-          .is('discharged_at', null)
+        .is('discharged_at', null)
           .in('full_name', names)
-          .order('admitted_at', { ascending: false });
+        .order('admitted_at', { ascending: false });
         if (queryError) return [];
         return (matchedRows || []) as Record<string, unknown>[];
       };
@@ -601,8 +601,8 @@ export default function PatientDetailsScreen() {
             ) : (
               notificationItems.map((t, idx) => (
                 <View key={`${t}-${idx}`} style={styles.notifRow}>
-                  <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                  <Text style={styles.notifText}>{t}</Text>
+                <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
+                <Text style={styles.notifText}>{t}</Text>
                   <TouchableOpacity
                     onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
                     accessibilityRole="button"
@@ -610,7 +610,7 @@ export default function PatientDetailsScreen() {
                   >
                     <Text style={styles.notifDismiss}>×</Text>
                   </TouchableOpacity>
-                </View>
+              </View>
               ))
             )}
           </View>
@@ -765,14 +765,14 @@ export default function PatientDetailsScreen() {
                     >
                       <Text style={styles.cardV2Initials}>{deriveInitials(p.name)}</Text>
                     </LinearGradient>
-                    <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={styles.nameRow}>
-                        <Text style={styles.name} numberOfLines={1}>
-                          {p.name}
-                        </Text>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {p.name}
+                  </Text>
                         <View style={[styles.statusChip, { backgroundColor: tone.bg }]}>
                           <Text style={[styles.statusChipTxt, { color: tone.color }]}>{tone.label}</Text>
-                        </View>
+                </View>
                       </View>
                       <Text style={styles.meta}>
                         Admitted <Text style={styles.metaStrong}>{p.date || '—'}</Text>
@@ -786,19 +786,19 @@ export default function PatientDetailsScreen() {
                       <Text style={styles.miniLine}>Room: {String(room)}</Text>
                     </View>
                     <ProgressRing pct={prog} size={56} color={tone.color} />
-                  </View>
-                  <View style={styles.progressRow}>
-                    <Text style={styles.progressLabel}>Recovery progress</Text>
+              </View>
+              <View style={styles.progressRow}>
+                <Text style={styles.progressLabel}>Recovery progress</Text>
                     <Text style={styles.progressPct}>{prog}%</Text>
-                  </View>
-                  <View style={styles.track}>
+              </View>
+              <View style={styles.track}>
                     <LinearGradient
                       colors={['#F54E25', '#EA580C']}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
                       style={[styles.fillGradient, { width: `${prog}%` }]}
                     />
-                  </View>
+              </View>
                   <TouchableOpacity
                     style={styles.viewDetailsCta}
                     onPress={() => setSelected(p)}
@@ -807,7 +807,7 @@ export default function PatientDetailsScreen() {
                   >
                     <Text style={styles.viewDetailsCtaTxt}>View details</Text>
                     <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-                  </TouchableOpacity>
+            </TouchableOpacity>
                 </TouchableOpacity>
               );
             })}
@@ -838,8 +838,8 @@ export default function PatientDetailsScreen() {
                   </View>
                   <TouchableOpacity onPress={() => setSelected(null)} hitSlop={12} accessibilityLabel="Close">
                     <Ionicons name="close" size={22} color="#FFFFFF" />
-                  </TouchableOpacity>
-                </View>
+              </TouchableOpacity>
+            </View>
                 <View style={styles.modalHeroProgressWrap}>
                   <View style={styles.modalHeroProgressLabels}>
                     <Text style={styles.modalHeroProgressLbl}>Recovery Progress</Text>
@@ -938,7 +938,7 @@ export default function PatientDetailsScreen() {
                         <Text style={styles.timelineWeek}>Week {String(row.week_number ?? '—')}</Text>
                         <Text style={styles.timelineDate}>
                           {formatDate(String(row.submitted_at || row.created_at))}
-                        </Text>
+              </Text>
                         <View style={styles.receivedPill}>
                           <Text style={styles.receivedPillTxt}>Received</Text>
                         </View>
@@ -1042,9 +1042,9 @@ export default function PatientDetailsScreen() {
                 </View>
 
                 <View style={styles.actionRow}>
-                  <TouchableOpacity
+              <TouchableOpacity
                     style={styles.secondaryBtn}
-                    onPress={() => {
+                onPress={() => {
                       setSelected(null);
                       router.navigate(TAB_ROUTES.reports as never);
                     }}
@@ -1056,19 +1056,19 @@ export default function PatientDetailsScreen() {
                     onPress={() => {
                       const id = selected.id;
                       const name = selected.name;
-                      setSelected(null);
-                      if (id) {
-                        router.push({
-                          pathname: TAB_ROUTES.weeklyReport,
-                          params: { patientId: id, patientName: name || '' },
-                        } as never);
-                      }
-                    }}
-                  >
+                  setSelected(null);
+                  if (id) {
+                    router.push({
+                      pathname: TAB_ROUTES.weeklyReport,
+                      params: { patientId: id, patientName: name || '' },
+                    } as never);
+                  }
+                }}
+              >
                     <Text style={styles.primaryBtnTxt}>Weekly report activity</Text>
-                  </TouchableOpacity>
+              </TouchableOpacity>
                 </View>
-              </ScrollView>
+            </ScrollView>
             </>
           ) : null}
         </View>

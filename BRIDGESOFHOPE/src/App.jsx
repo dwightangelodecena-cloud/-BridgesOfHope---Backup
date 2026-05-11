@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 
 // Component Imports
@@ -40,10 +40,53 @@ import ContentManagement from '@/pages/admin/content-management';
 import AdminProfile from '@/pages/admin/admin-profile';
 import AdminAppointmentsPage from '@/pages/admin/admin-appointments';
 import AdminReportsPage from '@/pages/admin/admin-reports';
-import RecoveryRoadmapPage from '@/pages/admin/recovery-roadmap';
 import ProgramPage from '@/pages/program/program';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
+import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import { runFamilyNotificationSync } from '@/lib/familyNotificationSync';
+
+const FAMILY_NOTIFICATION_PATHS = [
+  '/home',
+  '/services',
+  '/progress',
+  '/appointments',
+  '/reports',
+  '/patient-details',
+  '/profile',
+  '/changepass',
+];
+
+function FamilyNotificationSyncRunner() {
+  const location = useLocation();
+  const debounceRef = useRef(null);
+
+  const scheduleSync = useCallback(() => {
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      debounceRef.current = null;
+      void runFamilyNotificationSync();
+    }, 400);
+  }, []);
+
+  useEffect(() => {
+    const p = location.pathname;
+    const isFamily = FAMILY_NOTIFICATION_PATHS.some((prefix) => p === prefix || p.startsWith(`${prefix}/`));
+    if (!isFamily) return;
+    scheduleSync();
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    };
+  }, [location.pathname, scheduleSync]);
+
+  useEffect(() => {
+    const onRefresh = () => scheduleSync();
+    window.addEventListener(APP_DATA_REFRESH, onRefresh);
+    return () => window.removeEventListener(APP_DATA_REFRESH, onRefresh);
+  }, [scheduleSync]);
+
+  return null;
+}
 
 const ROUTE_TITLES = {
   '/': 'Home',
@@ -76,7 +119,6 @@ const ROUTE_TITLES = {
   '/admin-profile': 'Admin profile',
   '/admin-appointments': 'Admin appointments',
   '/admin-reports': 'Printable reports',
-  '/admin-recovery-roadmap': 'Recovery roadmap',
 };
 
 function getPageTitle(pathname) {
@@ -116,6 +158,7 @@ function App() {
   return (
     <Router>
       <RouteMeta />
+      <FamilyNotificationSyncRunner />
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
@@ -360,14 +403,6 @@ function App() {
           element={
             <RoleGuard allowedRoles={['admin', 'staff']}>
               <AdminReportsPage />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/admin-recovery-roadmap"
-          element={
-            <RoleGuard allowedRoles={['admin', 'nurse', 'staff']}>
-              <RecoveryRoadmapPage />
             </RoleGuard>
           }
         />

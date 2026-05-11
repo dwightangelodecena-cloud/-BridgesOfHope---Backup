@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   LayoutGrid,
-  HeartPulse,
   BookUser,
   Users,
   LogOut,
@@ -518,10 +517,6 @@ function ContentManagement() {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
             <div className="icon-box inactive"><Stethoscope size={22} /></div>
             <span className="sidebar-label">Staff Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
-            <div className="icon-box inactive"><HeartPulse size={22} /></div>
-            <span className="sidebar-label">Recovery Roadmap</span>
           </div>
           <div className="sidebar-nav-item">
             <div className="icon-box active"><LayoutTemplate size={22} /></div>

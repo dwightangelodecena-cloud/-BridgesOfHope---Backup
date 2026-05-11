@@ -11,7 +11,13 @@ import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { uiPatientFromRow } from '@/lib/dbMappers';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
-import { loadFamilyNotifications, saveFamilyNotifications } from '@/lib/familyNotifications';
+import {
+  loadFamilyNotifications,
+  saveFamilyNotifications,
+  FAMILY_NOTIFICATIONS_CHANGED,
+  notificationDisplayText,
+  clearAllFamilyNotifications,
+} from '@/lib/familyNotifications';
 
 /* ─── design-only helpers ─── */
 function ProgressBar({ value = 0, color = '#F54E25', height = 6 }) {
@@ -150,6 +156,16 @@ export default function FamilyReportsPage() {
   const handleNotificationToggle = () => setShowNotifications((v) => !v);
   useEffect(() => { saveFamilyNotifications(notificationItems); }, [notificationItems]);
 
+  useEffect(() => {
+    const reload = () => setNotificationItems(loadFamilyNotifications());
+    window.addEventListener('storage', reload);
+    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    return () => {
+      window.removeEventListener('storage', reload);
+      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    };
+  }, []);
+
   /* derived */
   const patientInitials = (name) => name ? String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') : '?';
 
@@ -178,6 +194,9 @@ export default function FamilyReportsPage() {
         .notifications-trigger:hover { background: #e0421a; }
         .notifications-trigger svg { display: block; width: 20px; height: 20px; stroke: #fff; }
         .notifications-dropdown { position: absolute; top: calc(100% + 10px); right: 0; width: min(360px,calc(100vw - 48px)); background: #fff; border: 1px solid #E9EDF7; border-radius: 20px; box-shadow: 0 20px 60px rgba(15,23,42,0.14); padding: 20px; z-index: 400; }
+        .ntf-dropdown-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+        .ntf-clear-all { border: none; background: transparent; color: #94A3B8; font-size: 12px; font-weight: 700; cursor: pointer; padding: 4px 6px; border-radius: 8px; }
+        .ntf-clear-all:hover { color: #64748b; background: #f1f5f9; }
         .user-avatar-top { width: 40px; height: 40px; background: linear-gradient(135deg,#F54E25,#EA580C); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(245,78,37,0.3); }
 
         /* PATIENT CARDS */
@@ -233,13 +252,18 @@ export default function FamilyReportsPage() {
               </button>
               {showNotifications && (
                 <div className="notifications-dropdown">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 900, color: '#0F172A', fontSize: 14, marginBottom: 14 }}><Bell size={16} color="#F54E25" /> Notifications</div>
+                  <div className="ntf-dropdown-head">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 900, color: '#0F172A', fontSize: 14, margin: 0 }}><Bell size={16} color="#F54E25" /> Notifications</div>
+                    {notificationItems.length > 0 ? (
+                      <button type="button" className="ntf-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                    ) : null}
+                  </div>
                   {notificationItems.length === 0 ? <div style={{ color: '#94A3B8', fontSize: 12 }}>No notifications.</div>
                     : notificationItems.map((item, idx) => (
-                      <div key={`${item}-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10, fontSize: 12, color: '#334155' }}>
+                      <div key={item.id || `n-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10, fontSize: 12, color: '#334155' }}>
                         <CheckCircle2 size={14} color="#6366F1" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span style={{ flex: 1 }}>{item}</span>
-                        <button type="button" style={{ border: 'none', background: 'transparent', color: '#CBD5E1', cursor: 'pointer', fontSize: 16, padding: 0 }} onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}>×</button>
+                        <span style={{ flex: 1 }}>{notificationDisplayText(item)}</span>
+                        <button type="button" aria-label="Remove notification" style={{ border: 'none', background: 'transparent', color: '#CBD5E1', cursor: 'pointer', fontSize: 16, padding: 0 }} onClick={(e) => { e.stopPropagation(); setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx))); }}>×</button>
                       </div>
                     ))}
                 </div>
@@ -259,12 +283,18 @@ export default function FamilyReportsPage() {
               </button>
               {showNotifications && (
                 <div className="notifications-dropdown" style={{ right: 0, left: 'auto', width: 'min(340px,calc(100vw - 40px))' }}>
-                  <div style={{ fontWeight: 900, color: '#0F172A', fontSize: 14, marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}><Bell size={16} color="#F54E25" /> Notifications</div>
-                  {notificationItems.map((item, idx) => (
-                    <div key={`m-${item}-${idx}`} style={{ display: 'flex', gap: 10, marginBottom: 10, fontSize: 12, color: '#334155' }}>
+                  <div className="ntf-dropdown-head">
+                    <div style={{ fontWeight: 900, color: '#0F172A', fontSize: 14, margin: 0, display: 'flex', gap: 8, alignItems: 'center' }}><Bell size={16} color="#F54E25" /> Notifications</div>
+                    {notificationItems.length > 0 ? (
+                      <button type="button" className="ntf-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                    ) : null}
+                  </div>
+                  {notificationItems.length === 0 ? <div style={{ color: '#94A3B8', fontSize: 12 }}>No notifications.</div>
+                    : notificationItems.map((item, idx) => (
+                    <div key={item.id || `m-${idx}`} style={{ display: 'flex', gap: 10, marginBottom: 10, fontSize: 12, color: '#334155' }}>
                       <CheckCircle2 size={14} color="#6366F1" />
-                      <span style={{ flex: 1 }}>{item}</span>
-                      <button type="button" style={{ border: 'none', background: 'transparent', color: '#CBD5E1', cursor: 'pointer', fontSize: 16, padding: 0 }} onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}>×</button>
+                      <span style={{ flex: 1 }}>{notificationDisplayText(item)}</span>
+                      <button type="button" aria-label="Remove notification" style={{ border: 'none', background: 'transparent', color: '#CBD5E1', cursor: 'pointer', fontSize: 16, padding: 0 }} onClick={(e) => { e.stopPropagation(); setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx))); }}>×</button>
                     </div>
                   ))}
                 </div>

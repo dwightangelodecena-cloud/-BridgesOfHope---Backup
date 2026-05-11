@@ -693,20 +693,50 @@ export default function AdminAnalyticsSection() {
         };
     }, [admissionDecisionCounts, metrics.approved, metrics.total]);
 
+    /** Mean length of stay (days) for residents whose episode intersects the reporting window: admitted by now,
+     *  not discharged before the window start; includes in-progress stays (discharge → today). */
     const avgStayDays = useMemo(() => {
+        const now = Date.now();
         let sum = 0;
         let n = 0;
-        filteredPatients.forEach((p) => {
-            const adm = parseTs(p.admitted_at);
+        normalizedPatients.forEach((p) => {
+            if (!programMatchesFilter(p.programKeyRaw, filterProgram)) return;
+            if (filterGender !== 'all' && String(p.gender).toLowerCase() !== String(filterGender).toLowerCase()) {
+                return;
+            }
+            if (filterAge !== 'all') {
+                const b = ageBucket(p.age);
+                if (!b || b !== filterAge) return;
+            }
+            if (filterTherapist !== 'all' && (p.therapist || 'Unassigned') !== filterTherapist) return;
+            if (filterOutcome !== 'all' && String(p.status).toLowerCase() !== String(filterOutcome).toLowerCase()) {
+                return;
+            }
+
+            const admit = parseTs(p.admitted_at);
+            if (!admit || admit > now) return;
             const dis = parseTs(p.discharged_at);
-            if (adm && dis && dis > adm) {
-                sum += (dis - adm) / (86400000);
+            if (dis != null && dis < admit) return;
+            const epEnd = dis != null && dis >= admit ? Math.min(dis, now) : now;
+            if (epEnd < periodStartMs) return;
+
+            const days = (epEnd - admit) / 86400000;
+            if (Number.isFinite(days) && days >= 0) {
+                sum += days;
                 n += 1;
             }
         });
-        if (n === 0) return 28;
-        return Math.max(1, Math.round(sum / n));
-    }, [filteredPatients]);
+        if (n === 0) return null;
+        return Math.round(sum / n);
+    }, [
+        normalizedPatients,
+        periodStartMs,
+        filterProgram,
+        filterGender,
+        filterAge,
+        filterTherapist,
+        filterOutcome,
+    ]);
 
     const barCounts = useMemo(() => {
         const c = { drugs: 0, alcohol: 0, gambling: 0, mental_health: 0 };
@@ -1000,7 +1030,7 @@ export default function AdminAnalyticsSection() {
                 ['Pending', String(metrics.pending)],
                 ['Declined', String(metrics.declined)],
                 ['Success Rate (admissions)', successRateInfo.pdfText],
-                ['Average Stay', `${avgStayDays} day(s)`],
+                ['Average Stay', avgStayDays == null ? '— (no residents in cohort)' : `${avgStayDays} day(s)`],
             ],
             styles: { fontSize: 10, cellPadding: 6, textColor: [30, 41, 59] },
             headStyles: { fillColor: [245, 78, 37], textColor: [255, 255, 255] },
@@ -2002,7 +2032,11 @@ export default function AdminAnalyticsSection() {
                         </div>
                         <div className="stat-box stat-box--t3">
                             <div className="stat-label-s">Average Stay Duration</div>
-                            <div className="stat-val-s">{avgStayDays} days</div>
+                            <div className="stat-val-s">
+                                {avgStayDays == null
+                                    ? '—'
+                                    : `${avgStayDays} day${avgStayDays === 1 ? '' : 's'}`}
+                            </div>
                         </div>
                         <div className="stat-box stat-box--t4">
                             <div className="stat-label-s">Success Rate</div>

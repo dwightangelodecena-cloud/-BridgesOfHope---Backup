@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutGrid, HeartPulse, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, LayoutTemplate, Calendar } from 'lucide-react';
+import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, LayoutTemplate, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -2269,10 +2269,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               <div className="icon-box inactive"><FileText size={22} /></div>
               <span className="sidebar-label">Printable reports</span>
             </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
-              <div className="icon-box inactive"><HeartPulse size={22} /></div>
-              <span className="sidebar-label">Recovery roadmap</span>
-            </div>
           </nav>
         ) : (
           <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
@@ -2308,12 +2304,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                 <Stethoscope size={22} />
               </div>
               <span className="sidebar-label">Staff Management</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
-              <div className="icon-box inactive">
-                <HeartPulse size={22} />
-              </div>
-              <span className="sidebar-label">Recovery Roadmap</span>
             </div>
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
               <div className="icon-box inactive"><LayoutTemplate size={22} /></div>

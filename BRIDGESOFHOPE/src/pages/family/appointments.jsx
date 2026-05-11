@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Home, User, LogOut, Calendar, ClipboardList, BarChart3, TrendingUp,
-  Bell, CheckCircle2, Clock, AlertCircle, ChevronLeft, ChevronRight,
+  Bell, CheckCircle2, Clock, AlertCircle, ArrowLeft, ArrowRight,
   Info, Shield
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -16,7 +16,13 @@ import {
   upsertVisitationRequest, normalizeVisitationStatus,
   isVisitationLocalDraftSuperseded,
 } from '@/lib/visitationAppointments';
-import { loadFamilyNotifications, saveFamilyNotifications } from '@/lib/familyNotifications';
+import {
+  loadFamilyNotifications,
+  saveFamilyNotifications,
+  FAMILY_NOTIFICATIONS_CHANGED,
+  notificationDisplayText,
+  clearAllFamilyNotifications,
+} from '@/lib/familyNotifications';
 
 /* ── unchanged pure helpers ── */
 function dedupeVisitationRequests(rows) {
@@ -147,6 +153,16 @@ export default function FamilyAppointmentsPage() {
   useEffect(()=>{ if(!showNotifications)return; const onDoc=e=>{ if(!notificationsDesktopRef.current?.contains(e.target))setShowNotifications(false); }; document.addEventListener('mousedown',onDoc); return()=>document.removeEventListener('mousedown',onDoc); },[showNotifications]);
   useEffect(()=>{ saveFamilyNotifications(notificationItems); },[notificationItems]);
 
+  useEffect(() => {
+    const reload = () => setNotificationItems(loadFamilyNotifications());
+    window.addEventListener('storage', reload);
+    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    return () => {
+      window.removeEventListener('storage', reload);
+      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    };
+  }, []);
+
   const approvedCount=requests.filter(r=>normalizeVisitationStatus(r.status)==='Approved').length;
   const pendingCount=requests.filter(r=>normalizeVisitationStatus(r.status)==='Requested').length;
 
@@ -182,6 +198,9 @@ export default function FamilyAppointmentsPage() {
         .scroll-area::-webkit-scrollbar-thumb{background:#E2E8F0;border-radius:999px;}
         .req-card{border-radius:18px;padding:14px 16px;border:1px solid #F1F5F9;background:#fff;box-shadow:0 2px 10px rgba(15,23,42,.04);transition:border-color .15s;}
         .req-card:hover{border-color:#E0E7FF;}
+        .ntf-dropdown-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
+        .ntf-clear-all{border:none;background:transparent;color:#94A3B8;font-size:12px;font-weight:700;cursor:pointer;padding:4px 6px;border-radius:8px;}
+        .ntf-clear-all:hover{color:#64748b;background:#f1f5f9;}
         @media(max-width:768px){.desktop-sidebar{display:none;}.scroll-area{padding:14px!important;}.appt-grid{grid-template-columns:1fr!important;}}
       `}</style>
 
@@ -214,12 +233,15 @@ export default function FamilyAppointmentsPage() {
               </button>
               {showNotifications&&(
                 <div className="ntf-dropdown">
-                  <div style={{display:'flex',alignItems:'center',gap:8,fontWeight:900,color:'#0F172A',fontSize:14,marginBottom:14}}><Bell size={16} color="#F54E25"/> Notifications</div>
+                  <div className="ntf-dropdown-head">
+                    <div style={{display:'flex',alignItems:'center',gap:8,fontWeight:900,color:'#0F172A',fontSize:14,margin:0}}><Bell size={16} color="#F54E25"/> Notifications</div>
+                    {notificationItems.length>0?<button type="button" className="ntf-clear-all" onClick={(e)=>{e.stopPropagation();setNotificationItems(clearAllFamilyNotifications());}}>Clear all</button>:null}
+                  </div>
                   {notificationItems.length===0?<p style={{color:'#94A3B8',fontSize:12,margin:0}}>No notifications.</p>:notificationItems.map((item,idx)=>(
-                    <div key={`${item}-${idx}`} style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:10,fontSize:12,color:'#334155'}}>
+                    <div key={item.id||`n-${idx}`} style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:10,fontSize:12,color:'#334155'}}>
                       <CheckCircle2 size={14} color="#6366F1" style={{flexShrink:0,marginTop:2}}/>
-                      <span style={{flex:1}}>{item}</span>
-                      <button type="button" style={{border:'none',background:'transparent',color:'#CBD5E1',cursor:'pointer',fontSize:16,padding:0}} onClick={()=>setNotificationItems(p=>p.filter((_,i)=>i!==idx))}>×</button>
+                      <span style={{flex:1}}>{notificationDisplayText(item)}</span>
+                      <button type="button" style={{border:'none',background:'transparent',color:'#CBD5E1',cursor:'pointer',fontSize:16,padding:0}} aria-label="Remove notification" onClick={(e)=>{e.stopPropagation();setNotificationItems(p=>p.filter((row,i)=>(item.id?row.id!==item.id:i!==idx)));}}>×</button>
                     </div>
                   ))}
                 </div>
@@ -318,13 +340,19 @@ export default function FamilyAppointmentsPage() {
 
                 {/* Calendar */}
                 <div style={{background:'#F8FAFF',border:'1px solid #E9EDF7',borderRadius:18,padding:'18px 16px',marginTop:14}}>
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
-                    <button type="button" onClick={()=>setCalendarMonth(p=>new Date(p.getFullYear(),p.getMonth()-1,1))} style={{width:36,height:36,borderRadius:10,border:'1px solid #E9EDF7',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:'0 2px 6px rgba(15,23,42,.06)'}}>
-                      <ChevronLeft size={18} color="#475569"/>
+                  <div style={{display:'grid',gridTemplateColumns:'auto 1fr auto',alignItems:'center',gap:12,marginBottom:16}}>
+                    <button type="button" aria-label="Previous month" onClick={()=>setCalendarMonth(p=>new Date(p.getFullYear(),p.getMonth()-1,1))}
+                      style={{border:'1px solid #E2E8F0',background:'#fff',borderRadius:12,width:44,height:44,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 3px rgba(15,23,42,0.06)',flexShrink:0,overflow:'visible'}}>
+                      <span style={{display:'flex',lineHeight:0}} aria-hidden>
+                        <ArrowLeft size={24} strokeWidth={2.5} color="#1e293b"/>
+                      </span>
                     </button>
-                    <span style={{fontSize:16,fontWeight:900,color:'#0F172A',letterSpacing:'-0.02em'}}>{monthLabel}</span>
-                    <button type="button" onClick={()=>setCalendarMonth(p=>new Date(p.getFullYear(),p.getMonth()+1,1))} style={{width:36,height:36,borderRadius:10,border:'1px solid #E9EDF7',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:'0 2px 6px rgba(15,23,42,.06)'}}>
-                      <ChevronRight size={18} color="#475569"/>
+                    <span style={{fontSize:16,fontWeight:900,color:'#0F172A',letterSpacing:'-0.02em',textAlign:'center'}}>{monthLabel}</span>
+                    <button type="button" aria-label="Next month" onClick={()=>setCalendarMonth(p=>new Date(p.getFullYear(),p.getMonth()+1,1))}
+                      style={{border:'1px solid #E2E8F0',background:'#fff',borderRadius:12,width:44,height:44,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 3px rgba(15,23,42,0.06)',flexShrink:0,overflow:'visible'}}>
+                      <span style={{display:'flex',lineHeight:0}} aria-hidden>
+                        <ArrowRight size={24} strokeWidth={2.5} color="#1e293b"/>
+                      </span>
                     </button>
                   </div>
                   <div style={{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',gap:4,marginBottom:8}}>

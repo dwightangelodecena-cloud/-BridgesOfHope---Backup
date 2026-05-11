@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import {
   LayoutGrid,
-  HeartPulse,
   BookUser,
   Users,
   LogOut,
@@ -829,10 +828,6 @@ const StaffManagement = () => {
           <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
             <div className="icon-box active"><Stethoscope size={22} /></div>
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Staff Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-recovery-roadmap'); }}>
-            <div className="icon-box inactive"><HeartPulse size={22} /></div>
-            <span className="sidebar-label">Recovery Roadmap</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
             <div className="icon-box inactive"><LayoutTemplate size={22} /></div>

@@ -20,7 +20,13 @@ import {
   createVisitationRequest,
   normalizeVisitationStatus,
 } from '@/lib/visitationAppointments';
-import { loadFamilyNotifications, saveFamilyNotifications } from '@/lib/familyNotifications';
+import {
+  loadFamilyNotifications,
+  saveFamilyNotifications,
+  FAMILY_NOTIFICATIONS_CHANGED,
+  notificationDisplayText,
+  clearAllFamilyNotifications,
+} from '@/lib/familyNotifications';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
 import FamilyFeesInclusionsPanel from '@/components/family/FamilyFeesInclusionsPanel';
 
@@ -337,7 +343,19 @@ const HomeDashboard = () => {
 
   const handleNotificationToggle = () => setShowNotifications((v) => !v);
 
-  useEffect(() => { saveFamilyNotifications(notificationItems); }, [notificationItems]);
+  useEffect(() => {
+    saveFamilyNotifications(notificationItems);
+  }, [notificationItems]);
+
+  useEffect(() => {
+    const reload = () => setNotificationItems(loadFamilyNotifications());
+    window.addEventListener('storage', reload);
+    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    return () => {
+      window.removeEventListener('storage', reload);
+      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    };
+  }, []);
 
   const [layoutCompact, setLayoutCompact] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 899px)').matches);
@@ -421,6 +439,9 @@ const HomeDashboard = () => {
         }
         .notifications-trigger:hover { background: #e0421a; }
         .notifications-trigger svg { display: block; width: 21px; height: 21px; stroke: #fff; color: #fff; flex-shrink: 0; }
+        .notif-dropdown-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+        .notif-clear-all { border: none; background: transparent; color: #94a3b8; font-size: 12px; font-weight: 700; cursor: pointer; padding: 4px 6px; border-radius: 8px; flex-shrink: 0; }
+        .notif-clear-all:hover { color: #64748b; background: #f1f5f9; }
         .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .top-nav {
           height: 72px; background: white; display: flex; align-items: center;
@@ -964,14 +985,33 @@ const HomeDashboard = () => {
               </button>
               {showNotifications && (
                 <div className="notifications-dropdown">
-                  <div className="panel-title" style={{ marginBottom: 12 }}><Bell size={16} color="#F54E25" /> Notifications</div>
-                  {notificationItems.map((item, idx) => (
-                    <div key={`${item}-${idx}`} className="interactive-row">
-                      <CheckCircle2 size={15} color="#6366F1" />
-                      <span className="notif-row-text">{item}</span>
-                      <button type="button" className="notif-remove-btn" aria-label="Remove notification" onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}>×</button>
-                    </div>
-                  ))}
+                  <div className="notif-dropdown-head">
+                    <div className="panel-title" style={{ margin: 0 }}><Bell size={16} color="#F54E25" /> Notifications</div>
+                    {notificationItems.length > 0 ? (
+                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                    ) : null}
+                  </div>
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 600 }}>No notifications.</div>
+                  ) : (
+                    notificationItems.map((item, idx) => (
+                      <div key={item.id || `n-${idx}`} className="interactive-row">
+                        <CheckCircle2 size={15} color="#6366F1" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span className="notif-row-text">{notificationDisplayText(item)}</span>
+                        <button
+                          type="button"
+                          className="notif-remove-btn"
+                          aria-label="Remove notification"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx)));
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
@@ -989,14 +1029,33 @@ const HomeDashboard = () => {
               </button>
               {showNotifications && (
                 <div className="notifications-dropdown mobile-notifications-dropdown">
-                  <div className="panel-title" style={{ marginBottom: 12 }}><Bell size={16} color="#F54E25" /> Notifications</div>
-                  {notificationItems.map((item, idx) => (
-                    <div key={`${item}-${idx}`} className="interactive-row">
-                      <CheckCircle2 size={15} color="#6366F1" />
-                      <span className="notif-row-text">{item}</span>
-                      <button type="button" className="notif-remove-btn" aria-label="Remove notification" onClick={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}>×</button>
-                    </div>
-                  ))}
+                  <div className="notif-dropdown-head">
+                    <div className="panel-title" style={{ margin: 0 }}><Bell size={16} color="#F54E25" /> Notifications</div>
+                    {notificationItems.length > 0 ? (
+                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                    ) : null}
+                  </div>
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 600 }}>No notifications.</div>
+                  ) : (
+                    notificationItems.map((item, idx) => (
+                      <div key={(item.id || '') + String(idx)} className="interactive-row">
+                        <CheckCircle2 size={15} color="#6366F1" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span className="notif-row-text">{notificationDisplayText(item)}</span>
+                        <button
+                          type="button"
+                          className="notif-remove-btn"
+                          aria-label="Remove notification"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx)));
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>

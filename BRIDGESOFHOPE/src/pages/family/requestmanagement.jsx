@@ -12,6 +12,14 @@ import { usePsgcAddressCascade } from '@/hooks/usePsgcAddressCascade';
 import { getAddressStorageKey, loadAddressDraft, saveAddressDraft, clearAddressDraft } from '@/lib/addressPersistence';
 import logo from '@/assets/kalingalogo.png';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
+import {
+  loadFamilyNotifications,
+  saveFamilyNotifications,
+  FAMILY_NOTIFICATIONS_CHANGED,
+  appendFamilyNotificationsIfNew,
+  notificationDisplayText,
+  clearAllFamilyNotifications,
+} from '@/lib/familyNotifications';
 
 const Progress = () => {
   const navigate = useNavigate();
@@ -19,11 +27,7 @@ const Progress = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [userInitials, setUserInitials] = useState('FU');
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState([
-    'Submit missing laboratory result before Friday.',
-    'Family support session is scheduled on April 5, 10:00 AM.',
-    'Weekly report reviewed by your assigned counselor.',
-  ]);
+  const [notificationItems, setNotificationItems] = useState(() => loadFamilyNotifications());
   const notificationsDesktopRef = useRef(null);
   const notificationsMobileRef = useRef(null);
   const patientBirthdayInputRef = useRef(null);
@@ -291,8 +295,23 @@ const Progress = () => {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [showNotifications]);
 
+  useEffect(() => {
+    saveFamilyNotifications(notificationItems);
+  }, [notificationItems]);
+
+  useEffect(() => {
+    const reload = () => setNotificationItems(loadFamilyNotifications());
+    window.addEventListener('storage', reload);
+    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    return () => {
+      window.removeEventListener('storage', reload);
+      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    };
+  }, []);
+
   const addProcessingNotification = () => {
-    setNotificationItems((prev) => ['Your request is being processed.', ...prev]);
+    appendFamilyNotificationsIfNew([{ id: `local-processing-${Date.now()}`, text: 'Your request is being processed.' }]);
+    setNotificationItems(loadFamilyNotifications());
   };
 
   const handleAdmissionChange = (e) => {
@@ -591,8 +610,14 @@ const Progress = () => {
           display: block;
           flex-shrink: 0;
         }
-        .notif-dropdown-title { color: #1B2559; font-weight: 800; font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .notif-dropdown-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+        .notif-dropdown-title { color: #1B2559; font-weight: 800; font-size: 16px; margin-bottom: 0; display: flex; align-items: center; gap: 8px; }
+        .notif-clear-all { border: none; background: transparent; color: #94A3B8; font-size: 12px; font-weight: 700; cursor: pointer; padding: 4px 6px; border-radius: 8px; }
+        .notif-clear-all:hover { color: #64748b; background: #f1f5f9; }
         .notif-dropdown-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; color: #334155; font-size: 13px; }
+        .notif-dropdown-row span { flex: 1; min-width: 0; }
+        .notif-remove-x { border: none; background: transparent; color: #CBD5E1; cursor: pointer; font-size: 16px; padding: 0; line-height: 1; flex-shrink: 0; }
+        .notif-remove-x:hover { color: #EF4444; }
         .content-area { flex: 1; padding: 24px 30px 30px; overflow-y: auto; }
         .content-wrap { width: 100%; max-width: 1600px; margin: 0 auto; }
         .request-shell { background: #fff; border: 1px solid #E9EDF7; border-radius: 20px; padding: 22px; min-height: calc(100vh - 170px); display: flex; flex-direction: column; box-shadow: 0 14px 35px rgba(15, 23, 42, 0.06); }
@@ -821,10 +846,23 @@ const Progress = () => {
               </button>
               {showNotifications && (
                 <div className="notifications-dropdown">
-                  <div className="notif-dropdown-title"><Bell size={16} color="#F54E25" /> Notifications</div>
-                  {notificationItems.map((item, idx) => (
-                    <div key={`${item}-${idx}`} className="notif-dropdown-row"><CheckCircle2 size={15} color="#2B31ED" /><span>{item}</span></div>
-                  ))}
+                  <div className="notif-dropdown-head">
+                    <div className="notif-dropdown-title"><Bell size={16} color="#F54E25" /> Notifications</div>
+                    {notificationItems.length > 0 ? (
+                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                    ) : null}
+                  </div>
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
+                  ) : (
+                    notificationItems.map((item, idx) => (
+                      <div key={item.id || `n-${idx}`} className="notif-dropdown-row">
+                        <CheckCircle2 size={15} color="#2B31ED" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span>{notificationDisplayText(item)}</span>
+                        <button type="button" className="notif-remove-x" aria-label="Remove notification" onClick={(e) => { e.stopPropagation(); setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx))); }}>×</button>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
@@ -841,10 +879,23 @@ const Progress = () => {
               </button>
               {showNotifications && (
                 <div className="notifications-dropdown">
-                  <div className="notif-dropdown-title"><Bell size={16} color="#F54E25" /> Notifications</div>
-                  {notificationItems.map((item, idx) => (
-                    <div key={`${item}-m-${idx}`} className="notif-dropdown-row"><CheckCircle2 size={15} color="#2B31ED" /><span>{item}</span></div>
-                  ))}
+                  <div className="notif-dropdown-head">
+                    <div className="notif-dropdown-title"><Bell size={16} color="#F54E25" /> Notifications</div>
+                    {notificationItems.length > 0 ? (
+                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications()); }}>Clear all</button>
+                    ) : null}
+                  </div>
+                  {notificationItems.length === 0 ? (
+                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
+                  ) : (
+                    notificationItems.map((item, idx) => (
+                      <div key={item.id || `m-${idx}`} className="notif-dropdown-row">
+                        <CheckCircle2 size={15} color="#2B31ED" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span>{notificationDisplayText(item)}</span>
+                        <button type="button" className="notif-remove-x" aria-label="Remove notification" onClick={(e) => { e.stopPropagation(); setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx))); }}>×</button>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
