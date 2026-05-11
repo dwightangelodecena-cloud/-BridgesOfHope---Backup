@@ -1101,14 +1101,21 @@ export default function AdminAnalyticsSection() {
             { f: decPerc / 100, fill: '#ea580c' },
             { f: penPerc / 100, fill: '#2563eb' },
         ];
-        const pts = (r, a) => ({
-            x: cx + r * Math.cos(a),
-            y: cy + r * Math.sin(a),
+        const pts = (r, ang) => ({
+            x: cx + r * Math.cos(ang),
+            y: cy + r * Math.sin(ang),
         });
         let a = -Math.PI / 2;
         const paths = [];
-        seg.forEach(({ f, fill }) => {
+
+        const pushArc = (f, fill) => {
             if (f <= 0) return;
+            /* One SVG elliptical arc cannot sweep 360° (start and end coincide → zero-length path). */
+            if (f >= 1 - 1e-9) {
+                pushArc(0.5, fill);
+                pushArc(0.5, fill);
+                return;
+            }
             const a0 = a;
             const a1 = a + f * 2 * Math.PI;
             const os = pts(r1, a0);
@@ -1125,7 +1132,9 @@ export default function AdminAnalyticsSection() {
             ].join(' ');
             paths.push({ d, fill });
             a = a1;
-        });
+        };
+
+        seg.forEach(({ f, fill }) => pushArc(f, fill));
         return paths;
     }, [appPerc, decPerc, penPerc]);
 
@@ -2047,8 +2056,11 @@ export default function AdminAnalyticsSection() {
                             <div className="stat-label-s">Success Rate</div>
                             <div className="stat-val-s">{successRateInfo.percent != null ? `${successRateInfo.percent}%` : '—'}</div>
                         </div>
-                        <div className="stat-box stat-box--t5">
-                            <div className="stat-label-s">Active Users</div>
+                        <div
+                            className="stat-box stat-box--t5"
+                            title="Residents matching the filters above with admit date in the selected period (same count as Approved). Not app login users."
+                        >
+                            <div className="stat-label-s">Residents</div>
                             <div className="stat-val-s">{metrics.approved}</div>
                         </div>
                     </div>
