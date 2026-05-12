@@ -29,8 +29,15 @@ function normalizeLadderChecksFromDb(raw) {
   return out;
 }
 
+function parseProgressTs(iso) {
+  if (!iso) return 0;
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
 /**
- * Overwrite list `progress` from saved ladder rows so the grid matches the recovery board / DB.
+ * Merge list `progress` with `nurse_recovery_ladders` and `patients.progress_percent` so admin UI
+ * matches what family sees (`progress_percent`), while preferring the newer of ladder vs patient row.
  * @param {Array<Record<string, unknown>>} patients
  * @param {Record<string, { patient_id?: string, current_position?: number, checks?: unknown, updated_at?: string }>} ladderByPatientId
  */
@@ -47,15 +54,30 @@ function mergeNurseRecoveryLadderProgress(patients, ladderByPatientId) {
     const normalized = normalizeLadderChecksFromDb(rawChecks);
     const hasChecks = Object.keys(normalized).length > 0;
     const checkedState = hasChecks ? normalized : buildBehaviorChecksForStage(pos);
-    const pct = Math.min(
+    const fromLadder = Math.min(
       100,
       Math.max(0, Math.round(Number(computeBehaviorBoardProgressPercent(checkedState)) || 0))
     );
+    const fromColumn = Math.min(100, Math.max(0, Math.round(Number(p.progress) || 0)));
     const ladderUpdated = ladder.updated_at && String(ladder.updated_at).trim() !== '' ? ladder.updated_at : null;
+    const ladderT = parseProgressTs(ladderUpdated);
+    const patientT = parseProgressTs(p.progressUpdatedAt);
+    let pct;
+    let progressUpdatedAt;
+    if (ladderT > patientT) {
+      pct = fromLadder;
+      progressUpdatedAt = ladderUpdated || p.progressUpdatedAt;
+    } else if (patientT > ladderT) {
+      pct = fromColumn;
+      progressUpdatedAt = p.progressUpdatedAt || ladderUpdated;
+    } else {
+      pct = Math.max(fromColumn, fromLadder);
+      progressUpdatedAt = p.progressUpdatedAt || ladderUpdated;
+    }
     return {
       ...p,
       progress: pct,
-      ...(ladderUpdated ? { progressUpdatedAt: ladderUpdated } : {}),
+      ...(progressUpdatedAt ? { progressUpdatedAt } : {}),
     };
   });
 }
@@ -822,6 +844,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     }
   };
 
+  const loadPatientsRef = useRef(loadPatients);
+  loadPatientsRef.current = loadPatients;
+
   useEffect(() => {
     void loadPatients();
     const onRefresh = () => void loadPatients();
@@ -830,6 +855,32 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     return () => {
       window.removeEventListener('storage', onRefresh);
       window.removeEventListener(APP_DATA_REFRESH, onRefresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return undefined;
+    let cancelled = false;
+    const channel = supabase
+      .channel('patient-db-patients-progress-sync')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'patients' },
+        () => {
+          if (!cancelled) void loadPatientsRef.current();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'nurse_recovery_ladders' },
+        () => {
+          if (!cancelled) void loadPatientsRef.current();
+        }
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -944,8 +995,22 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           progress_updated_at: new Date().toISOString(),
         };
         if (user?.id) patientPatch.progress_updated_by = user.id;
-        const { error: patientErr } = await supabase.from('patients').update(patientPatch).eq('id', id);
-        if (patientErr) console.warn('[patient-db] patients.progress_percent:', patientErr.message);
+        const { data: updatedPatientRows, error: patientErr } = await supabase
+          .from('patients')
+          .update(patientPatch)
+          .eq('id', id)
+          .select('id, progress_percent');
+        if (patientErr) {
+          throw new Error(
+            patientErr.message
+              || 'Could not update patients.progress_percent (family dashboard reads this column). Check patients RLS for staff UPDATE.'
+          );
+        }
+        if (!updatedPatientRows?.length) {
+          throw new Error(
+            'Recovery ladder saved, but patients row was not updated (0 rows). Usually RLS on public.patients blocks UPDATE for your role, or the id does not exist. Family dashboards read progress_percent from patients — add/fix an UPDATE policy for nurse/program/admin.'
+          );
+        }
       }
 
       const profiles = loadLadderProfiles();

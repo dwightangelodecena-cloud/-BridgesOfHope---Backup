@@ -18,6 +18,7 @@ import {
   notificationDisplayText,
   clearAllFamilyNotifications,
 } from '@/lib/familyNotifications';
+import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 
 /* ─── design-only helpers ─── */
 function ProgressBar({ value = 0, color = '#F54E25', height = 6 }) {
@@ -67,6 +68,8 @@ export default function FamilyReportsPage() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [familyNotifUserId, setFamilyNotifUserId] = useState('');
   const [notificationItems, setNotificationItems] = useState([]);
+
+  useFamilyPatientProgressRealtime();
 
   /* ── all data logic 100% unchanged ── */
   const formatDate = (iso) => { if (!iso) return 'N/A'; try { return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return 'N/A'; } };

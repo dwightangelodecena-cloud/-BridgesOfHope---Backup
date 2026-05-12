@@ -67,6 +67,84 @@ const formatDate = (iso) => {
   }
 };
 
+/** Match staff-management role filters for assignment dropdowns. */
+const isProgramStaffAccountType = (account) => {
+  const a = String(account || '').toLowerCase();
+  return (
+    a.includes('program')
+    || a.includes('staff')
+    || a === 'clinic'
+    || a.includes('clinic')
+    || a === 'case_manager'
+    || a.includes('case_load')
+  );
+};
+
+const toTitleCase = (value) =>
+  String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+
+const normalizeMiddleInitial = (value) => String(value || '').trim().replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase();
+
+const composeProfileName = (firstName, lastName, middleInitial) =>
+  [toTitleCase(firstName), normalizeMiddleInitial(middleInitial), toTitleCase(lastName)].filter(Boolean).join(' ');
+
+/** Same resolution as staff-management `mapRowToStaff` so DB rows with only first/last name still appear. */
+const profileDisplayNameFromRow = (row) => {
+  const composed =
+    String(row?.full_name || row?.name || '').trim()
+    || composeProfileName(row?.first_name, row?.last_name, row?.middle_initial);
+  return composed.trim();
+};
+
+const partitionProfilesForAdmissionAssign = (profiles) => {
+  const nurses = [];
+  const program = [];
+  const seenN = new Set();
+  const seenP = new Set();
+  (profiles || []).forEach((row) => {
+    const name = profileDisplayNameFromRow(row);
+    if (!name) return;
+    const accountNorm = String(row?.account_type || row?.role || '').trim().toLowerCase();
+    if (accountNorm === 'family' || accountNorm === '') return;
+
+    const dept = String(row?.department || row?.role_label || '').trim().toLowerCase();
+    const isNurse =
+      accountNorm === 'nurse'
+      || accountNorm.includes('nurse')
+      || dept.includes('nurse');
+    const isProgramSide =
+      !isNurse
+      && accountNorm !== 'admin'
+      && (
+        accountNorm === 'program'
+        || accountNorm === 'staff'
+        || isProgramStaffAccountType(accountNorm)
+        || dept.includes('program')
+        || dept.includes('case load')
+      );
+
+    if (isNurse) {
+      if (!seenN.has(name)) {
+        seenN.add(name);
+        nurses.push(name);
+      }
+    } else if (isProgramSide) {
+      if (!seenP.has(name)) {
+        seenP.add(name);
+        program.push(name);
+      }
+    }
+  });
+  nurses.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  program.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  return { nurses, programStaff: program };
+};
+
 const ts = (iso) => {
   const t = new Date(iso || 0).getTime();
   return Number.isNaN(t) ? 0 : t;
@@ -87,6 +165,13 @@ function sortRows(rows, sortId) {
   return cp;
 }
 
+function isSupabasePatientId(id) {
+  return (
+    typeof id === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  );
+}
+
 const AdmissionManagement = () => {
   const navigate = useNavigate();
   const pendingApproveRowRef = useRef(null);
@@ -102,6 +187,8 @@ const AdmissionManagement = () => {
 
   const [viewRow, setViewRow] = useState(null);
   const [editRow, setEditRow] = useState(null);
+  const [assignStaffLists, setAssignStaffLists] = useState({ nurses: [], programStaff: [] });
+  const [assignStaffLoadError, setAssignStaffLoadError] = useState('');
 
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
@@ -119,15 +206,29 @@ const AdmissionManagement = () => {
       const overrides = loadWorkflowOverrides();
       if (!isSupabaseConfigured()) {
         setRows([]);
+        setAssignStaffLists({ nurses: [], programStaff: [] });
+        setAssignStaffLoadError('');
         return;
       }
-      const { data: admissions, error: aErr } = await supabase
-        .from('admission_requests')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const [{ data: admissions, error: aErr }, { data: patients, error: pErr }, { data: profiles, error: profErr }] =
+        await Promise.all([
+          supabase.from('admission_requests').select('*').order('created_at', { ascending: false }),
+          supabase.from('patients').select('*'),
+          // Must use * — selecting non-existent columns (e.g. role) fails the whole query on PostgREST.
+          supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        ]);
       if (aErr) throw aErr;
-      const { data: patients, error: pErr } = await supabase.from('patients').select('*');
       if (pErr) throw pErr;
+      if (profErr) {
+        console.error(profErr);
+        setAssignStaffLists({ nurses: [], programStaff: [] });
+        setAssignStaffLoadError(
+          profErr.message || 'Could not load staff for assignment. If you are not an admin, apply the latest Supabase migration for internal staff profile access.'
+        );
+      } else {
+        setAssignStaffLoadError('');
+        setAssignStaffLists(partitionProfilesForAdmissionAssign(profiles));
+      }
 
       const list = (admissions || []).map((ar) => {
         const patient = findPatientForAdmission(patients || [], ar);
@@ -139,6 +240,8 @@ const AdmissionManagement = () => {
       console.error(e);
       setFormError(e.message || 'Failed to load admissions.');
       setRows([]);
+      setAssignStaffLists({ nurses: [], programStaff: [] });
+      setAssignStaffLoadError('');
     } finally {
       setLoading(false);
     }
@@ -177,7 +280,8 @@ const AdmissionManagement = () => {
       return (
         String(r.admissionDisplayId).toLowerCase().includes(q) ||
         String(r.patientName).toLowerCase().includes(q) ||
-        String(r.assignedStaff).toLowerCase().includes(q) ||
+        String(r.assignedNurse).toLowerCase().includes(q) ||
+        String(r.programStaff).toLowerCase().includes(q) ||
         String(r.status).toLowerCase().includes(q) ||
         String(r.reason).toLowerCase().includes(q)
       );
@@ -201,11 +305,33 @@ const AdmissionManagement = () => {
     refreshAppData();
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editRow) return;
     const e = editRow;
+    const nurseTrim = e._editAssignedNurse?.trim() || '';
+    const programTrim = e._editProgramStaff?.trim() || '';
+
+    if (isSupabaseConfigured() && e.patientId && isSupabasePatientId(String(e.patientId))) {
+      setFormError('');
+      try {
+        const { error } = await supabase
+          .from('patients')
+          .update({
+            program_staff: nurseTrim || null,
+            case_load_manager: programTrim || null,
+          })
+          .eq('id', e.patientId);
+        if (error) throw error;
+      } catch (err) {
+        console.error(err);
+        setFormError(err?.message || 'Could not save nurse/program to the resident record (same fields as Resident Management).');
+        return;
+      }
+    }
+
     persistOverride(e.requestId, {
-      assignedStaff: e._editAssigned || e.assignedStaff,
+      assignedNurse: nurseTrim || '—',
+      programStaff: programTrim || '—',
       admissionType: e._editType || e.admissionType,
       branch: e._editBranch || e.pricingDetail.branch,
       monthsOfCare: Number(e._editMonths ?? e.pricingDetail.monthsOfCare) || 1,
@@ -214,6 +340,7 @@ const AdmissionManagement = () => {
     });
     pushActivity(`Admission ${e.admissionDisplayId}: record updated`);
     setEditRow(null);
+    await loadData();
   };
 
   const handleMoveToDischarge = (r) => {
@@ -523,7 +650,7 @@ const AdmissionManagement = () => {
                   <input
                     className="db-search-input"
                     type="text"
-                    placeholder="Search patient ID (e.g. 2026-1234), patient, staff…"
+                    placeholder="Search patient ID (e.g. 2026-1234), patient, nurse, program…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -617,12 +744,15 @@ const AdmissionManagement = () => {
             </div>
 
             {formError && <div style={{ marginBottom: 10, color: '#b91c1c', fontWeight: 600, fontSize: 13 }}>{formError}</div>}
+            {assignStaffLoadError && (
+              <div style={{ marginBottom: 10, color: '#b45309', fontWeight: 600, fontSize: 13 }}>{assignStaffLoadError}</div>
+            )}
 
             <div className="am-table-wrap">
               <table className="am-data-table">
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['Resident ID', 'Resident', 'Reason / Concern', 'Assigned Staff', 'Type', 'Admission Date', 'Est. Cost', 'Status', 'Actions'].map((col, idx) => (
+                    {['Resident ID', 'Resident', 'Reason / Concern', 'Nurse / Program', 'Type', 'Admission Date', 'Est. Cost', 'Status', 'Actions'].map((col, idx) => (
                       <th className="am-th" key={col} style={{ padding: '10px 10px', borderRight: idx < 8 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>
                         {col}
                       </th>
@@ -656,7 +786,16 @@ const AdmissionManagement = () => {
                           </div>
                         </td>
                         <td style={{ padding: '9px 10px', maxWidth: 200, color: '#334155' }}>{r.reason}</td>
-                        <td style={{ padding: '9px 10px', color: '#707EAE' }}>{r.assignedStaff}</td>
+                        <td style={{ padding: '9px 10px', color: '#707EAE' }}>
+                          {(r.assignedNurse && r.assignedNurse !== '—') || (r.programStaff && r.programStaff !== '—') ? (
+                            <div style={{ fontSize: 12, lineHeight: 1.4 }}>
+                              {r.assignedNurse && r.assignedNurse !== '—' ? <div>Nurse: {r.assignedNurse}</div> : null}
+                              {r.programStaff && r.programStaff !== '—' ? <div>Program: {r.programStaff}</div> : null}
+                            </div>
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>—</span>
+                          )}
+                        </td>
                         <td style={{ padding: '9px 10px' }}>{r.admissionType}</td>
                         <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{formatDate(r.admissionDate)}</td>
                         <td style={{ padding: '9px 10px', fontWeight: 700, color: '#05CD99', whiteSpace: 'nowrap' }}>{formatPhp(r.estimatedCost)}</td>
@@ -685,7 +824,8 @@ const AdmissionManagement = () => {
                               onClick={() =>
                                 setEditRow({
                                   ...r,
-                                  _editAssigned: r.assignedStaff,
+                                  _editAssignedNurse: r.assignedNurse && r.assignedNurse !== '—' ? r.assignedNurse : '',
+                                  _editProgramStaff: r.programStaff && r.programStaff !== '—' ? r.programStaff : '',
                                   _editType: r.admissionType,
                                   _editBranch: r.pricingDetail.branch,
                                   _editMonths: r.pricingDetail.monthsOfCare,
@@ -751,7 +891,8 @@ const AdmissionManagement = () => {
               <div className="am-modal-field"><span className="am-modal-label">Gender</span><div className="am-input">{viewRow.patientGender?.trim() ? viewRow.patientGender : 'Not specified'}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Status</span><div className="am-input">{viewRow.status}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Admission date</span><div className="am-input">{formatDate(viewRow.admissionDate)}</div></div>
-              <div className="am-modal-field"><span className="am-modal-label">Assigned staff</span><div className="am-input">{viewRow.assignedStaff}</div></div>
+              <div className="am-modal-field"><span className="am-modal-label">Assigned nurse</span><div className="am-input">{viewRow.assignedNurse}</div></div>
+              <div className="am-modal-field"><span className="am-modal-label">Program staff</span><div className="am-input">{viewRow.programStaff}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Admission type</span><div className="am-input">{viewRow.admissionType}</div></div>
               <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}><span className="am-modal-label">Reason / concern</span><div className="am-input">{viewRow.reason}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Location (monthly rate)</span><div className="am-input">{BRANCH_LABEL[viewRow.pricingDetail.branch] || 'Imus Branch'}</div></div>
@@ -773,8 +914,36 @@ const AdmissionManagement = () => {
             </div>
             <div className="am-modal-body">
               <label className="am-modal-field">
-                <span className="am-modal-label">Assigned staff</span>
-                <input className="am-input" value={editRow._editAssigned} onChange={(e) => setEditRow((p) => ({ ...p, _editAssigned: e.target.value }))} />
+                <span className="am-modal-label">Assigned nurse</span>
+                <select
+                  className="am-input"
+                  value={editRow._editAssignedNurse}
+                  onChange={(e) => setEditRow((p) => ({ ...p, _editAssignedNurse: e.target.value }))}
+                >
+                  <option value="">— Select nurse —</option>
+                  {editRow._editAssignedNurse && !assignStaffLists.nurses.includes(editRow._editAssignedNurse) ? (
+                    <option value={editRow._editAssignedNurse}>{editRow._editAssignedNurse} (saved)</option>
+                  ) : null}
+                  {assignStaffLists.nurses.map((name) => (
+                    <option key={`n-${name}`} value={name}>{name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="am-modal-field">
+                <span className="am-modal-label">Program staff</span>
+                <select
+                  className="am-input"
+                  value={editRow._editProgramStaff}
+                  onChange={(e) => setEditRow((p) => ({ ...p, _editProgramStaff: e.target.value }))}
+                >
+                  <option value="">— Select program staff —</option>
+                  {editRow._editProgramStaff && !assignStaffLists.programStaff.includes(editRow._editProgramStaff) ? (
+                    <option value={editRow._editProgramStaff}>{editRow._editProgramStaff} (saved)</option>
+                  ) : null}
+                  {assignStaffLists.programStaff.map((name) => (
+                    <option key={`p-${name}`} value={name}>{name}</option>
+                  ))}
+                </select>
               </label>
               <label className="am-modal-field">
                 <span className="am-modal-label">Admission type</span>
@@ -809,7 +978,7 @@ const AdmissionManagement = () => {
             </div>
             <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="db-action-btn" onClick={() => setEditRow(null)}>Cancel</button>
-              <button type="button" className="db-edit-btn" onClick={() => handleSaveEdit()}>Save</button>
+              <button type="button" className="db-edit-btn" onClick={() => void handleSaveEdit()}>Save</button>
             </div>
           </div>
         </div>

@@ -20,6 +20,7 @@ import {
   notificationDisplayText,
   clearAllFamilyNotifications,
 } from '@/lib/familyNotifications';
+import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 
 const Progress = () => {
   const navigate = useNavigate();
@@ -38,6 +39,8 @@ const Progress = () => {
   const [confirmModal, setConfirmModal] = useState({ open: false, type: null });
   const [successModal, setSuccessModal] = useState({ open: false, message: '' });
   const [showTermsModal, setShowTermsModal] = useState(false);
+
+  useFamilyPatientProgressRealtime();
 
   const [admissionForm, setAdmissionForm] = useState({
     fullName: '',

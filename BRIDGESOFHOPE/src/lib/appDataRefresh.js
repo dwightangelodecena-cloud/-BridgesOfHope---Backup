@@ -7,4 +7,9 @@ export function refreshAppData() {
   } catch {
     /* ignore */
   }
+  try {
+    localStorage.setItem(APP_DATA_REFRESH, String(Date.now()));
+  } catch {
+    /* ignore */
+  }
 }

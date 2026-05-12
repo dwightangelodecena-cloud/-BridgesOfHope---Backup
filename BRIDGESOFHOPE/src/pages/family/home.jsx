@@ -29,6 +29,7 @@ import {
 } from '@/lib/familyNotifications';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
 import FamilyFeesInclusionsPanel from '@/components/family/FamilyFeesInclusionsPanel';
+import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 
 import logo from '@/assets/kalingalogo.png';
 import servicesIcon from '@/assets/services.png';
@@ -172,6 +173,7 @@ const HomeDashboard = () => {
   const [notificationItems, setNotificationItems] = useState([]);
   const [activityFeed, setActivityFeed] = useState([]);
   const [supabaseReadError, setSupabaseReadError] = useState(null);
+  useFamilyPatientProgressRealtime();
 
   const PENDING_ADMISSIONS_KEY = 'bh_pending_admissions';
   const PENDING_DISCHARGES_KEY = 'bh_pending_discharges';

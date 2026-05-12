@@ -165,6 +165,24 @@ export function computeAdmissionDisplayId(admissionRow, patientRow) {
   return `${year}-${stableTrackingSuffix(idSource)}`;
 }
 
+/** Nurse ↔ `patients.program_staff`, Program ↔ `patients.case_load_manager` (same as Resident Management). */
+function staffLabelFromOverrideOrPatient(overrideKey, o, patientColumnValue) {
+  if (o && Object.prototype.hasOwnProperty.call(o, overrideKey)) {
+    const v = o[overrideKey];
+    if (v == null || String(v).trim() === '' || String(v).trim() === '—') return '—';
+    return String(v).trim();
+  }
+  const c = patientColumnValue != null && String(patientColumnValue).trim() ? String(patientColumnValue).trim() : '';
+  return c || '—';
+}
+
+function pickStaffForAdmissionRow(overrideKey, o, patientRow, patientColumnValue) {
+  const hasPatient = patientRow?.id != null;
+  const fromDb = patientColumnValue != null && String(patientColumnValue).trim() ? String(patientColumnValue).trim() : '';
+  if (hasPatient && fromDb) return fromDb;
+  return staffLabelFromOverrideOrPatient(overrideKey, o, null);
+}
+
 export function buildAdmissionRow(admissionRow, patientRow, override) {
   const requestId = admissionRow.id;
   const o = override || {};
@@ -195,6 +213,8 @@ export function buildAdmissionRow(admissionRow, patientRow, override) {
     admissionDisplayId,
     patientName: admissionRow.patient_name || 'Unknown',
     assignedStaff: o.assignedStaff || '—',
+    assignedNurse: pickStaffForAdmissionRow('assignedNurse', o, patientRow, patientRow?.program_staff),
+    programStaff: pickStaffForAdmissionRow('programStaff', o, patientRow, patientRow?.case_load_manager),
     admissionType: o.admissionType || 'Residential',
     reason: admissionRow.reason_for_admission || '—',
     admissionDate,

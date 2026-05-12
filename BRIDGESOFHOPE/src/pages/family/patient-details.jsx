@@ -11,6 +11,7 @@ import { uiPatientFromRow } from '@/lib/dbMappers';
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
+import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 
 /* ─── unchanged helpers ─── */
 const formatDate = (iso) => {
@@ -115,6 +116,8 @@ const PatientDetailsPage = () => {
   const [patientImages, setPatientImages] = useState({});
   const [selectedPatient, setSelectedPatient] = useState(null);
   const fileInputRefs = useRef([]);
+
+  useFamilyPatientProgressRealtime();
 
   /* ── all data-loading useEffects UNCHANGED ── */
   useEffect(() => {
@@ -224,6 +227,17 @@ const PatientDetailsPage = () => {
               const fullDetails = {};
               for (const row of detailRows) fullDetails[String(row.id)] = row;
               setPatientDetailsById(fullDetails);
+              setPatients((prev) =>
+                prev.map((p) => {
+                  const d = fullDetails[String(p.id)];
+                  if (!d) return p;
+                  const raw = d.progress_percent;
+                  if (raw === undefined || raw === null || raw === '') return p;
+                  const pct = Math.min(100, Math.max(0, Number(raw)));
+                  if (!Number.isFinite(pct) || Number(p.progress) === pct) return p;
+                  return { ...p, progress: pct };
+                })
+              );
             } else if (Object.keys(details).length) { setPatientDetailsById(details); }
           } else if (Object.keys(details).length) { setPatientDetailsById(details); }
           if (!ids.length) { setWeeklyReportsByPatient({}); return; }
@@ -301,6 +315,15 @@ const PatientDetailsPage = () => {
     window.addEventListener(APP_DATA_REFRESH, loadPatients);
     return () => { cancelled = true; window.removeEventListener('storage', loadPatients); window.removeEventListener(APP_DATA_REFRESH, loadPatients); };
   }, []);
+
+  useEffect(() => {
+    setSelectedPatient((prev) => {
+      if (!prev) return null;
+      const next = patients.find((p) => String(p.id) === String(prev.id));
+      if (!next) return prev;
+      return { ...next };
+    });
+  }, [patients]);
 
   /* ── unchanged handlers ── */
   const handleImageChange = (index, event) => {
