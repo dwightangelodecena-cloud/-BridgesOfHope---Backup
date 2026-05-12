@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Home, User, LogOut, Calendar, BarChart3, ClipboardList, FileText, X,
-  CheckCircle2, TrendingUp, Heart, Stethoscope,
+  CheckCircle2, TrendingUp, Stethoscope,
   ArrowRight, ChevronRight, Shield
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -681,27 +681,7 @@ const PatientDetailsPage = () => {
 
             {/* Modal Body */}
             <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px 24px', background: '#F8FAFF' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-                {/* Summary */}
-                <SectionCard>
-                  <CardTitle icon={Heart}>Patient Summary</CardTitle>
-                  <p style={{ margin: '0 0 12px', color: '#475569', fontSize: 13, lineHeight: 1.6 }}>{patientSummaryPayload(selectedPatient).summary}</p>
-                  <StatusPill progress={selectedPatient.progress} dischargedAt={selectedPatientDetails?.discharged_at || selectedPatient.discharged_at} />
-                  <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {patientSummaryPayload(selectedPatient).reviewRows.map((row) => (
-                      <div key={row.label}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
-                          <span style={{ color: '#64748B', fontWeight: 600 }}>{row.label}</span>
-                          <span style={{ fontWeight: 800, color: '#0F172A' }}>{row.value}</span>
-                        </div>
-                        <div style={{ height: 5, background: '#F1F5F9', borderRadius: 999, overflow: 'hidden' }}>
-                          <div style={{ width: row.value, height: '100%', background: 'linear-gradient(90deg,#F54E25,#EA580C)', borderRadius: 999 }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </SectionCard>
-                {/* Patient Data */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 14 }}>
                 <SectionCard>
                   <CardTitle icon={ClipboardList}>Patient Data</CardTitle>
                   {[
