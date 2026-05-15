@@ -21,7 +21,7 @@ import {
   LayoutTemplate,
   Calendar,
   User,
-  FileText,
+  FileText, MessageCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
@@ -605,6 +605,10 @@ const AdmissionManagement = () => {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
             <div className="icon-box inactive"><Calendar size={22} /></div>
             <span className="sidebar-label">Appointments</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }}>
+            <div className="icon-box inactive"><MessageCircle size={22} /></div>
+            <span className="sidebar-label">Messages</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
             <div className="icon-box inactive"><FileText size={22} /></div>

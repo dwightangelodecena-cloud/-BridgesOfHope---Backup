@@ -40,6 +40,7 @@ import ContentManagement from '@/pages/admin/content-management';
 import AdminProfile from '@/pages/admin/admin-profile';
 import AdminAppointmentsPage from '@/pages/admin/admin-appointments';
 import AdminReportsPage from '@/pages/admin/admin-reports';
+import AdminMessagesPage from '@/pages/admin/admin-messages';
 import ProgramPage from '@/pages/program/program';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
@@ -119,6 +120,7 @@ const ROUTE_TITLES = {
   '/admin-profile': 'Admin profile',
   '/admin-appointments': 'Admin appointments',
   '/admin-reports': 'Printable reports',
+  '/admin-messages': 'Messages',
 };
 
 function getPageTitle(pathname) {
@@ -403,6 +405,14 @@ function App() {
           element={
             <RoleGuard allowedRoles={['admin', 'staff']}>
               <AdminReportsPage />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-messages"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <AdminMessagesPage />
             </RoleGuard>
           }
         />

@@ -10,7 +10,7 @@ import {
   LayoutTemplate,
   Calendar,
   User,
-  FileText,
+  FileText, MessageCircle,
   Download,
   RefreshCw,
 } from 'lucide-react';
@@ -277,6 +277,10 @@ export default function AdminReportsPage() {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
             <div className="icon-box inactive"><Calendar size={22} /></div>
             <span className="sidebar-label">Appointments</span>
+          </div>
+          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }}>
+            <div className="icon-box inactive"><MessageCircle size={22} /></div>
+            <span className="sidebar-label">Messages</span>
           </div>
           <div className="sidebar-nav-item">
             <div className="icon-box active"><FileText size={22} /></div>

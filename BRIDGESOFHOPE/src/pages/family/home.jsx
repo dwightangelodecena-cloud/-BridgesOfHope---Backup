@@ -30,6 +30,7 @@ import {
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
 import FamilyFeesInclusionsPanel from '@/components/family/FamilyFeesInclusionsPanel';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
+import { useSupportChat } from '@/hooks/useSupportChat';
 
 import logo from '@/assets/kalingalogo.png';
 import servicesIcon from '@/assets/services.png';
@@ -75,7 +76,15 @@ const HomeDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false);
+  const {
+    messages,
+    loading: chatLoading,
+    sending: chatSending,
+    isChatOpen,
+    setIsChatOpen,
+    sendMessage: sendSupportMessage,
+    sendError: chatSendError,
+  } = useSupportChat();
   const [showReport, setShowReport] = useState(false);
   const [showServicesModal, setShowServicesModal] = useState(false);
   const [weeklyReportExpandedPatientId, setWeeklyReportExpandedPatientId] = useState(null);
@@ -92,17 +101,13 @@ const HomeDashboard = () => {
   });
 
   const [inputValue, setInputValue] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [messages, setMessages] = useState([
-    { id: 1, text: "Hello! How can I help you today?", sender: 'bot', time: '3:18 PM' }
-  ]);
   const chatBodyRef = useRef(null);
 
   useEffect(() => {
     if (chatBodyRef.current) {
       chatBodyRef.current.scrollTo({ top: chatBodyRef.current.scrollHeight, behavior: 'smooth' });
     }
-  }, [messages, isChatOpen, isTyping]);
+  }, [messages, isChatOpen, chatSending]);
 
   useEffect(() => {
     let isMounted = true;
@@ -153,16 +158,11 @@ const HomeDashboard = () => {
     };
   }, [familyUserId]);
 
-  const handleSendMessage = () => {
-    if (!inputValue.trim() || isTyping) return;
-    const userMsg = { id: Date.now(), text: inputValue, sender: 'user', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-    setMessages(prev => [...prev, userMsg]);
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || chatSending) return;
+    const text = inputValue;
     setInputValue('');
-    setIsTyping(true);
-    setTimeout(() => {
-      setIsTyping(false);
-      setMessages(prev => [...prev, { id: Date.now() + 1, text: "Thank you for reaching out to Bridges of Hope. How can I assist you with your recovery journey today?", sender: 'bot', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-    }, 1500);
+    await sendSupportMessage(text);
   };
 
   const [patientImages, setPatientImages] = useState({});
@@ -1367,23 +1367,28 @@ const HomeDashboard = () => {
               <div style={{ width: 38, height: 38, background: 'linear-gradient(135deg,#F54E25,#EA580C)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <MessageCircle size={20} color="white" />
               </div>
-              <div><div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>Support AI</div><div style={{ fontSize: 11, color: '#22C55E', fontWeight: 700 }}>● Active now</div></div>
+              <div><div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>Bridges of Hope</div><div style={{ fontSize: 11, color: '#22C55E', fontWeight: 700 }}>● Care team</div></div>
             </div>
             <X size={20} color="#A3AED0" style={{ cursor: 'pointer' }} onClick={() => setIsChatOpen(false)} />
           </div>
           <div className="chat-body" ref={chatBodyRef}>
             {messages.map(msg => (
-              <div key={msg.id} className={`msg-bubble ${msg.sender === 'bot' ? 'msg-received' : 'msg-sent'}`}>
+              <div key={msg.id} className={`msg-bubble ${msg.sender === 'staff' ? 'msg-received' : 'msg-sent'}`}>
                 {msg.text}
-                <div style={{ fontSize: 9, marginTop: 6, opacity: 0.6, textAlign: msg.sender === 'bot' ? 'left' : 'right' }}>{msg.time}</div>
+                <div style={{ fontSize: 9, marginTop: 6, opacity: 0.6, textAlign: msg.sender === 'staff' ? 'left' : 'right' }}>{msg.time}</div>
               </div>
             ))}
-            {isTyping && <div className="typing-indicator"><div className="dot"/><div className="dot"/><div className="dot"/></div>}
+            {chatSending && <div className="typing-indicator"><div className="dot"/><div className="dot"/><div className="dot"/></div>}
           </div>
+          {chatSendError ? (
+            <div style={{ padding: '8px 16px', fontSize: 12, color: '#DC2626', background: '#FEF2F2', borderTop: '1px solid #FECACA' }}>
+              {chatSendError}
+            </div>
+          ) : null}
           <div style={{ padding: '14px 18px', background: 'white', display: 'flex', gap: 10, alignItems: 'center', borderTop: '1px solid #F1F5F9' }}>
             <input style={{ flex: 1, border: 'none', background: '#F8FAFF', borderRadius: 14, padding: '11px 16px', outline: 'none', fontSize: 13, color: '#0F172A', fontFamily: 'DM Sans, sans-serif' }} placeholder="Type your message..." value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} />
-            <button onClick={handleSendMessage} disabled={!inputValue.trim() || isTyping} style={{ background: inputValue.trim() ? '#F54E25' : '#E9EDF7', width: 42, height: 42, borderRadius: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: inputValue.trim() ? '0 4px 12px rgba(245,78,37,0.3)' : 'none' }}>
-              <Send size={18} color="white" />
+            <button onClick={handleSendMessage} disabled={!inputValue.trim() || chatSending} aria-label="Send message" style={{ background: inputValue.trim() ? '#F54E25' : '#E9EDF7', width: 44, height: 44, minWidth: 44, borderRadius: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 0, boxShadow: inputValue.trim() ? '0 4px 12px rgba(245,78,37,0.3)' : 'none' }}>
+              <Send size={18} color="white" strokeWidth={2} style={{ width: 18, height: 18 }} />
             </button>
           </div>
         </div>
