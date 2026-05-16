@@ -29,10 +29,9 @@ const isCompactScreen = width <= 380;
 type PatientOpt = { id: string; name: string };
 
 const REASON_CATEGORIES = [
-  'Treatment program completed',
-  'Medical recommendation',
-  'Family request',
-  'Other',
+  'Family related',
+  'Moving to a different facility',
+  'Continue care at home',
 ] as const;
 
 function formatIsoDate(d: Date) {
@@ -49,7 +48,6 @@ export default function DischargeForm() {
   const [patients, setPatients] = useState<PatientOpt[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [reasonCategory, setReasonCategory] = useState('');
-  const [reasonCategoryOther, setReasonCategoryOther] = useState('');
   const [reasonDetails, setReasonDetails] = useState('');
   const [preferredDate, setPreferredDate] = useState(() => formatIsoDate(new Date()));
   const [pickupAuthorized, setPickupAuthorized] = useState('');
@@ -58,8 +56,6 @@ export default function DischargeForm() {
   const [escortRelation, setEscortRelation] = useState('');
   const [escortContact, setEscortContact] = useState('');
   const [destinationAfterDischarge, setDestinationAfterDischarge] = useState('');
-  const [followUpClinic, setFollowUpClinic] = useState('');
-  const [medicationPlan, setMedicationPlan] = useState('');
   const [belongingsChecklist, setBelongingsChecklist] = useState('');
   const [otherInfo, setOtherInfo] = useState('');
 
@@ -115,9 +111,6 @@ export default function DischargeForm() {
     const next: Record<string, string> = {};
     if (!selectedPatientId) next.selectedPatientId = 'Please select a patient.';
     if (!reasonCategory) next.reasonCategory = 'Please select a reason.';
-    if (reasonCategory === 'Other' && !reasonCategoryOther.trim()) {
-      next.reasonCategoryOther = 'Please specify the other reason.';
-    }
     if (!reasonDetails.trim() || reasonDetails.trim().length < 15) {
       next.reasonDetails = 'Reason details must be at least 15 characters.';
     }
@@ -134,12 +127,10 @@ export default function DischargeForm() {
     if (!selectedPatientId || !reasonCategory || !escortName.trim() || !escortContact.trim()) return false;
     if (!destinationAfterDischarge.trim()) return false;
     if (!reasonDetails.trim() || reasonDetails.trim().length < 15) return false;
-    if (reasonCategory === 'Other' && !reasonCategoryOther.trim()) return false;
     return true;
   }, [
     selectedPatientId,
     reasonCategory,
-    reasonCategoryOther,
     reasonDetails,
     escortName,
     escortContact,
@@ -179,16 +170,11 @@ export default function DischargeForm() {
         .maybeSingle();
 
       const bundledOtherInfo = [
-        reasonCategory === 'Other' && reasonCategoryOther?.trim()
-          ? `Other Reason Category: ${reasonCategoryOther.trim()}`
-          : '',
         otherInfo?.trim() ? `Additional Notes: ${otherInfo.trim()}` : '',
         escortName?.trim() ? `Authorized Escort: ${escortName.trim()}` : '',
         escortRelation?.trim() ? `Escort Relationship: ${escortRelation.trim()}` : '',
         escortContact?.trim() ? `Escort Contact: ${escortContact.trim()}` : '',
         destinationAfterDischarge?.trim() ? `Discharge Destination: ${destinationAfterDischarge.trim()}` : '',
-        followUpClinic?.trim() ? `Follow-up Clinic/Doctor: ${followUpClinic.trim()}` : '',
-        medicationPlan?.trim() ? `Medication Plan: ${medicationPlan.trim()}` : '',
         belongingsChecklist?.trim() ? `Belongings Checklist: ${belongingsChecklist.trim()}` : '',
       ]
         .filter(Boolean)
@@ -247,7 +233,6 @@ export default function DischargeForm() {
       Alert.alert('Success', 'Discharge request submitted and sent to the admin queue.');
       setSelectedPatientId('');
       setReasonCategory('');
-      setReasonCategoryOther('');
       setReasonDetails('');
       setPreferredDate(formatIsoDate(new Date()));
       setPickupAuthorized('');
@@ -256,8 +241,6 @@ export default function DischargeForm() {
       setEscortRelation('');
       setEscortContact('');
       setDestinationAfterDischarge('');
-      setFollowUpClinic('');
-      setMedicationPlan('');
       setBelongingsChecklist('');
       setOtherInfo('');
       setErrors({});
@@ -324,20 +307,6 @@ export default function DischargeForm() {
             </TouchableOpacity>
             {errors.reasonCategory ? <Text style={styles.errorSmall}>{errors.reasonCategory}</Text> : null}
           </View>
-
-          {reasonCategory === 'Other' ? (
-            <InputField
-              label="Specify Other Reason *"
-              placeholder="Type reason"
-              icon="create-outline"
-              value={reasonCategoryOther}
-              onChangeText={(t) => {
-                setReasonCategoryOther(t);
-                clearFieldError('reasonCategoryOther');
-              }}
-            />
-          ) : null}
-          {errors.reasonCategoryOther ? <Text style={styles.errorSmall}>{errors.reasonCategoryOther}</Text> : null}
 
           <View style={styles.inputWrapper}>
             <Text style={styles.label}>Preferred Discharge Date</Text>
@@ -408,22 +377,6 @@ export default function DischargeForm() {
               clearFieldError('destinationAfterDischarge');
             }}
             error={errors.destinationAfterDischarge}
-          />
-
-          <InputField
-            label="Follow-up Clinic / Doctor"
-            placeholder="Clinic or physician for follow-up"
-            icon="business-outline"
-            value={followUpClinic}
-            onChangeText={setFollowUpClinic}
-          />
-
-          <InputField
-            label="Medication Plan (Summary)"
-            placeholder="List medications, dosage, and reminders"
-            icon="medkit-outline"
-            value={medicationPlan}
-            onChangeText={setMedicationPlan}
           />
 
           <View style={styles.inputWrapper}>
@@ -502,7 +455,6 @@ export default function DischargeForm() {
                 style={styles.optionItem}
                 onPress={() => {
                   setReasonCategory(item);
-                  if (item !== 'Other') setReasonCategoryOther('');
                   clearFieldError('reasonCategory');
                   setReasonModalVisible(false);
                 }}
