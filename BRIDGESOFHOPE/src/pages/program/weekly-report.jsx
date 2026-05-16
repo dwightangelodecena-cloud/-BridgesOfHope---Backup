@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { LogOut, FileText, ChevronDown, Users, Calendar } from 'lucide-react';
+import { FileText, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
+import { ProgramSidebar, ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
@@ -662,68 +663,6 @@ const ProgramWeeklyReport = () => {
           overflow-x: hidden;
         }
 
-        /* ---- SIDEBAR (exact home.jsx) ---- */
-        .desktop-sidebar {
-          width: ${isExpanded ? '280px' : '110px'};
-          background: white;
-          border-right: 1px solid #F1F1F1;
-          display: flex;
-          flex-direction: column;
-          align-items: stretch;
-          padding: 25px 0 0;
-          z-index: 100;
-          transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          cursor: pointer;
-          position: fixed;
-          top: 0;
-          left: 0;
-          height: 100vh;
-          overflow: hidden;
-          box-sizing: border-box;
-        }
-
-        .sidebar-logo-container {
-          display: flex;
-          justify-content: center;
-          width: 100%;
-          margin-bottom: 28px;
-          align-self: center;
-        }
-
-        .wr-sidebar-nav {
-          width: 100%;
-          flex: 1;
-          min-height: 0;
-          overflow-y: auto;
-          overflow-x: hidden;
-          display: flex;
-          flex-direction: column;
-        }
-        .wr-sidebar-footer {
-          flex-shrink: 0;
-          width: 100%;
-          padding: 16px 0 20px;
-          margin-top: auto;
-          border-top: 1px solid #f1f5f9;
-        }
-
-        .sidebar-logo {
-          width: ${isExpanded ? '120px' : '70px'};
-          transition: width 0.3s ease;
-        }
-
-        .sidebar-nav-item {
-          display: flex;
-          align-items: center;
-          width: 100%;
-          padding: 0 ${isExpanded ? '28px' : '0'};
-          justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 14px;
-          margin-bottom: 6px;
-          min-height: 48px;
-          box-sizing: border-box;
-        }
-
         .sidebar-label {
           display: ${isExpanded ? 'block' : 'none'};
           font-weight: 600;
@@ -1332,36 +1271,13 @@ const ProgramWeeklyReport = () => {
         }
       `}</style>
 
-      {/* DESKTOP SIDEBAR */}
-      <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container">
-          <img src={logo} alt="Kalinga" className="sidebar-logo" />
-        </div>
+      <ProgramSidebar
+        isExpanded={isExpanded}
+        setIsExpanded={setIsExpanded}
+        navigate={navigate}
+        active="weekly"
+      />
 
-        <div className="wr-sidebar-nav">
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program'); }}>
-          <Users size={22} color="#707EAE" />
-          <span className="sidebar-label">Assigned residents</span>
-        </div>
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program-calendar'); }}>
-          <Calendar size={22} color="#707EAE" />
-          <span className="sidebar-label">Calendar</span>
-        </div>
-        <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
-          <div style={{ background: '#F54E25', color: 'white', padding: 12, borderRadius: 12, display: 'flex' }}>
-            <FileText size={22} />
-          </div>
-          <span className="sidebar-label" style={{ color: '#F54E25' }}>Weekly Report</span>
-        </div>
-        </div>
-
-        <div className="wr-sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" style={{ cursor: 'pointer' }} />
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
-          </div>
-        </div>
-      </aside>
 
       {/* MOBILE TOP BAR */}
       <div className="mobile-only mobile-top-bar">
@@ -1760,31 +1676,8 @@ const ProgramWeeklyReport = () => {
         </div>
       </main>
 
-      {/* MOBILE BOTTOM NAV */}
-      <div className="mobile-only mobile-bottom-nav">
-        <div className="mob-nav-item" onClick={() => navigate('/program')}>
-          <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
-            <Users size={20} color="#707EAE" />
-          </div>
-          <span>Assigned</span>
-        </div>
-        <div className="mob-nav-item" onClick={() => navigate('/program-calendar')}>
-          <div style={{ background: '#F4F7FE', padding: 10, borderRadius: 10, display: 'flex' }}>
-            <Calendar size={20} color="#707EAE" />
-          </div>
-          <span>Calendar</span>
-        </div>
-        <div className="mob-nav-item active">
-          <div style={{ background: '#F54E25', color: 'white', padding: 10, borderRadius: 10, display: 'flex' }}>
-            <FileText size={20} />
-          </div>
-          <span>Weekly</span>
-        </div>
-        <div className="mob-nav-item" onClick={() => navigate('/login')}>
-          <LogOut size={22} color="#F54E25" />
-          <span style={{ color: '#F54E25' }}>Logout</span>
-        </div>
-      </div>
+      <ProgramMobileBottomNav navigate={navigate} active="weekly" />
+
 
     </div>
   );

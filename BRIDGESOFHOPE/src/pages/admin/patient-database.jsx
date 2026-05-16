@@ -13,6 +13,7 @@ import BehaviorProgressBoard, {
   computeBehaviorBoardProgressPercent,
 } from '@/components/admin/BehaviorProgressBoard';
 import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
+import { ProgramSidebar, ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
 const ROOM_ASSIGNMENT_STORAGE_KEY = 'bh_patient_room_assignments_v1';
@@ -2275,6 +2276,15 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       `}</style>
 
       {/* SIDEBAR */}
+      {isProgram ? (
+        <ProgramSidebar
+          isExpanded={isExpanded}
+          setIsExpanded={setIsExpanded}
+          navigate={navigate}
+          active="residents"
+          onResidentsActivate={() => setSelectedPatient(null)}
+        />
+      ) : (
       <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="sidebar-logo-container">
           <img src={logoBH} alt="Kalinga" className="sidebar-logo" />
@@ -2299,23 +2309,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}>
               <FileText size={22} color="#707EAE" />
               <span className="sidebar-label">Medical Report</span>
-            </div>
-          </nav>
-        ) : isProgram ? (
-          <nav className="sidebar-nav-scroll" aria-label="Program navigation">
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
-              <div style={{ background: '#F54E25', color: '#fff', borderRadius: 12, padding: 10, display: 'flex' }}>
-                <Users size={22} color="white" />
-              </div>
-              <span className="sidebar-label" style={{ color: '#F54E25' }}>Assigned residents</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program-calendar'); }}>
-              <Calendar size={22} color="#707EAE" />
-              <span className="sidebar-label">Calendar</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program-weekly-report'); }}>
-              <FileText size={22} color="#707EAE" />
-              <span className="sidebar-label">Weekly Report</span>
             </div>
           </nav>
         ) : staffLimited ? (
@@ -2394,7 +2387,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         )}
 
         <div className="sidebar-footer">
-          {isProgram ? null : isNurse ? (
+          {isNurse ? (
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
               <User size={22} color="#707EAE" />
               <span className="sidebar-label">Profile</span>
@@ -2420,6 +2413,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           </div>
         </div>
       </aside>
+      )}
 
       {/* MOBILE TOP BAR */}
       <div className="db-mobile-only db-mobile-top-bar" style={{ padding: '0 20px', height: 64, alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F1F1' }}>
@@ -3559,6 +3553,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       </main>
 
       {/* MOBILE BOTTOM NAV */}
+      {isProgram ? (
+        <ProgramMobileBottomNav navigate={navigate} active="residents" />
+      ) : (
       <div className="db-mobile-only db-mobile-bottom-nav">
         {isNurse ? (
           <>
@@ -3591,31 +3588,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                 <User size={20} color="#A3AED0" />
               </div>
               <span>Profile</span>
-            </div>
-            <div className="mob-nav-item" onClick={() => navigate('/login')}>
-              <LogOut size={22} color="#F54E25" />
-              <span style={{ color: '#F54E25' }}>Logout</span>
-            </div>
-          </>
-        ) : isProgram ? (
-          <>
-            <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
-              <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
-                <Users size={20} color="white" />
-              </div>
-              <span style={{ color: '#F54E25' }}>Assigned</span>
-            </div>
-            <div className="mob-nav-item" onClick={() => navigate('/program-calendar')}>
-              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-                <Calendar size={20} color="#A3AED0" />
-              </div>
-              <span>Calendar</span>
-            </div>
-            <div className="mob-nav-item" onClick={() => navigate('/program-weekly-report')}>
-              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
-                <FileText size={20} color="#A3AED0" />
-              </div>
-              <span>Weekly</span>
             </div>
             <div className="mob-nav-item" onClick={() => navigate('/login')}>
               <LogOut size={22} color="#F54E25" />
@@ -3686,6 +3658,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           </>
         )}
       </div>
+      )}
 
       {weeklyReportModalOpen &&
         createPortal(

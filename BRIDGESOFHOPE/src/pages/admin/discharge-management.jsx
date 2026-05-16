@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   LayoutGrid,
   BookUser,
@@ -22,12 +22,13 @@ import {
   LayoutTemplate,
   Calendar,
   User,
-  FileText, MessageCircle,
+  FileText,
+  MessageCircle,
+  UserPlus,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { uiDischargeRequestFromRow } from '@/lib/dbMappers';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { BRANCH_KEYS, BRANCH_LABEL, computeTotalServiceCostPhp, formatPhp } from '@/lib/servicePricing';
 import {
@@ -39,6 +40,10 @@ import {
   patchWorkflowOverride,
   updateDischargeRecord,
 } from '@/lib/admissionDischargeStore';
+import {
+  isDischargeRowReadmitEligible,
+  readmitPatientFromDischarge,
+} from '@/lib/readmitPatient';
 
 const FILTER_OPTIONS = ['All Discharges', ...DISCHARGE_FINAL_STATUSES];
 
@@ -72,48 +77,8 @@ const toDateInput = (iso) => {
   }
 };
 
-function loadLocalFamilyDischargeRequestMap() {
-  try {
-    const raw = localStorage.getItem('bh_pending_discharges');
-    const arr = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(arr)) return {};
-    const sorted = [...arr].sort((a, b) => ts(b.created_at || b.id) - ts(a.created_at || a.id));
-    const map = {};
-    sorted.forEach((row) => {
-      const pid = row.patient_id != null ? String(row.patient_id) : null;
-      if (!pid || map[pid] != null) return;
-      let requestTime = '';
-      if (row.created_at) {
-        try {
-          requestTime = new Date(row.created_at).toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          });
-        } catch {
-          requestTime = String(row.created_at);
-        }
-      }
-      map[pid] = {
-        dischargeReasonCategory: row.reason_category || '',
-        dischargeReasonDetails: row.reason_details || '',
-        preferredDischargeDate: row.preferred_discharge_date || null,
-        pickupAuthorized: row.pickup_authorized || '',
-        followUpPhone: row.follow_up_phone || '',
-        dischargeOtherInfo: row.other_info || '',
-        requestTime,
-      };
-    });
-    return map;
-  } catch {
-    return {};
-  }
-}
-
-function initDischargeDetailForm(r, familyDischargeUi) {
-  const staff = r.assignedStaff && r.assignedStaff !== '—' ? r.assignedStaff : '';
+function initDischargeDetailForm(r) {
+  const staff = r.assignedStaff && r.assignedStaff !== '-' ? r.assignedStaff : '';
   return {
     ...r,
     _staff: staff,
@@ -126,7 +91,6 @@ function initDischargeDetailForm(r, familyDischargeUi) {
     _finalStatus: r.finalStatus,
     _patientName: r.patientName || '',
     _pricingNotes: r.pricingNotes || '',
-    _familyDischarge: familyDischargeUi || null,
     _familyMeetingHeld: Boolean(r.familyMeetingHeld),
     _familyMeetingDate: toDateInput(r.familyMeetingDate),
     _waiverAgainstAdviceSigned: Boolean(r.waiverAgainstAdviceSigned),
@@ -162,7 +126,7 @@ function enrichDischargeRowDisplayId(row, admissionList, patientById) {
   if (ar) {
     return { ...row, admissionDisplayId: computeAdmissionDisplayId(ar, pat || null) };
   }
-  /** Request row missing from DB — still derive ID from stored request UUID (same suffix as admission management). */
+  /** Request row missing from DB - still derive ID from stored request UUID (same suffix as admission management). */
   return {
     ...row,
     admissionDisplayId: computeAdmissionDisplayId(
@@ -193,7 +157,7 @@ function enrichDischargeRowsOffline(rows) {
   });
 }
 
-/** Keep Admission Management in sync: completed/discharged record → admission workflow "Completed" (clears stale "For Discharge"). */
+/** Keep Admission Management in sync: completed/discharged record -> admission workflow "Completed" (clears stale "For Discharge"). */
 function syncAdmissionWorkflowFromDischargeRow(r) {
   if (!r.admissionRequestId) return;
   if (r.finalStatus !== 'Completed' && r.finalStatus !== 'Discharged') return;
@@ -235,9 +199,7 @@ const DischargeManagement = () => {
   const [page, setPage] = useState(1);
 
   const [detailModal, setDetailModal] = useState(null);
-  /** Latest family discharge request per patient id (string), from DB or local pending queue — same fields as Request Management. */
-  const [familyDischargeByPatientId, setFamilyDischargeByPatientId] = useState({});
-
+  const [readmitBusyId, setReadmitBusyId] = useState(null);
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const filterDropdownRef = useRef(null);
@@ -263,7 +225,7 @@ const DischargeManagement = () => {
         admissionDisplayId,
         patientId: p.id,
         patientName: p.full_name || 'Resident',
-        assignedStaff: staffFromWorkflow || '—',
+        assignedStaff: staffFromWorkflow || '-',
         admissionDate: p.admitted_at,
         dischargeDate: p.discharged_at,
         finalStatus: 'Discharged',
@@ -283,33 +245,17 @@ const DischargeManagement = () => {
     try {
       const local = loadDischargeRecords();
       if (!isSupabaseConfigured()) {
-        setFamilyDischargeByPatientId(loadLocalFamilyDischargeRequestMap());
         const offline = enrichDischargeRowsOffline(local);
         syncAdmissionWorkflowFromRows(offline);
         setRows(offline);
         return;
       }
-      const [{ data: patients, error }, { data: admissions, error: admErr }, { data: drqRows, error: drqErr }] =
-        await Promise.all([
-          supabase.from('patients').select('*').not('discharged_at', 'is', null),
-          supabase.from('admission_requests').select('*'),
-          supabase
-            .from('discharge_requests')
-            .select('*, patients(full_name)')
-            .order('created_at', { ascending: false }),
-        ]);
+      const [{ data: patients, error }, { data: admissions, error: admErr }] = await Promise.all([
+        supabase.from('patients').select('*').not('discharged_at', 'is', null),
+        supabase.from('admission_requests').select('*'),
+      ]);
       if (error) throw error;
       if (admErr) console.warn('[discharge-management] admission_requests', admErr);
-      if (drqErr) console.warn('[discharge-management] discharge_requests', drqErr.message);
-
-      const famMap = {};
-      (drqRows || []).forEach((row) => {
-        const pid = row.patient_id != null ? String(row.patient_id) : null;
-        if (!pid || famMap[pid] != null) return;
-        const ui = uiDischargeRequestFromRow(row);
-        if (ui) famMap[pid] = ui;
-      });
-      setFamilyDischargeByPatientId({ ...loadLocalFamilyDischargeRequestMap(), ...famMap });
 
       const patientList = patients || [];
       const admissionList = admissions || [];
@@ -321,7 +267,6 @@ const DischargeManagement = () => {
     } catch (e) {
       console.error(e);
       setFormError(e.message || 'Failed to load discharge records.');
-      setFamilyDischargeByPatientId(loadLocalFamilyDischargeRequestMap());
       const fallback = enrichDischargeRowsOffline(loadDischargeRecords());
       syncAdmissionWorkflowFromRows(fallback);
       setRows(fallback);
@@ -428,7 +373,7 @@ const DischargeManagement = () => {
 
     updateDischargeRecord(detailModal.id, {
       patientName: String(detailModal._patientName || '').trim() || detailModal.patientName,
-      assignedStaff: String(detailModal._staff || '').trim() || '—',
+      assignedStaff: String(detailModal._staff || '').trim() || '-',
       admissionDate: admissionIso,
       dischargeDate: dischargeIso,
       finalStatus: detailModal._finalStatus,
@@ -491,6 +436,26 @@ const DischargeManagement = () => {
   const handleArchive = (r) => {
     if (r.source === 'history') return;
     updateDischargeRecord(r.id, { archived: true, finalStatus: 'Archived' });
+    persistLocal();
+  };
+
+  const handleReadmit = async (r) => {
+    if (!isDischargeRowReadmitEligible(r)) return;
+    const label = r.patientName || 'this resident';
+    const confirmed = window.confirm(
+      `Re-admit ${label}?\n\nThey will return to active resident lists, discharge will be cleared, and a new admission date will be set to today.`
+    );
+    if (!confirmed) return;
+
+    setReadmitBusyId(r.id);
+    setFormError('');
+    const result = await readmitPatientFromDischarge(r);
+    setReadmitBusyId(null);
+    if (!result.ok) {
+      setFormError(result.error || 'Re-admission failed.');
+      return;
+    }
+    if (detailModal?.id === r.id) setDetailModal(null);
     persistLocal();
   };
 
@@ -583,6 +548,8 @@ const DischargeManagement = () => {
         .db-view-btn, .db-edit-btn, .db-action-btn { border: none; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; display: inline-flex; align-items: center; gap: 4px; }
         .db-view-btn { background: #1B2559; color: white; }
         .db-edit-btn { background: #F54E25; color: white; }
+        .db-readmit-btn { background: #059669; color: white; }
+        .db-readmit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
         .db-action-btn { background: #E9EDF7; color: #1B2559; }
         .dm-row:hover { background: #F8FAFC; }
         .dm-th { position: sticky; top: 0; z-index: 1; }
@@ -715,7 +682,7 @@ const DischargeManagement = () => {
                   <input
                     className="db-search-input"
                     type="text"
-                    placeholder="Search patient ID (e.g. 2026-1234), patient, staff…"
+                    placeholder="Search patient ID (e.g. 2026-1234), patient, staff..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -852,12 +819,7 @@ const DischargeManagement = () => {
                               type="button"
                               className="db-view-btn"
                               onClick={() =>
-                                setDetailModal(
-                                  initDischargeDetailForm(
-                                    r,
-                                    r.patientId != null ? familyDischargeByPatientId[String(r.patientId)] : null
-                                  )
-                                )
+                                setDetailModal(initDischargeDetailForm(r))
                               }
                             >
                               <Eye size={12} /> View
@@ -866,12 +828,7 @@ const DischargeManagement = () => {
                               type="button"
                               className="db-edit-btn"
                               onClick={() =>
-                                setDetailModal(
-                                  initDischargeDetailForm(
-                                    r,
-                                    r.patientId != null ? familyDischargeByPatientId[String(r.patientId)] : null
-                                  )
-                                )
+                                setDetailModal(initDischargeDetailForm(r))
                               }
                             >
                               <Edit2 size={12} /> Edit
@@ -887,6 +844,16 @@ const DischargeManagement = () => {
                             <button type="button" className="db-action-btn" disabled={r.source === 'history'} onClick={() => handleArchive(r)}>
                               <Archive size={12} /> Archive
                             </button>
+                            {isDischargeRowReadmitEligible(r) ? (
+                              <button
+                                type="button"
+                                className="db-readmit-btn"
+                                disabled={readmitBusyId === r.id}
+                                onClick={() => void handleReadmit(r)}
+                              >
+                                <UserPlus size={12} /> {readmitBusyId === r.id ? 'Re-admitting…' : 'Re-admit'}
+                              </button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -898,7 +865,7 @@ const DischargeManagement = () => {
             {filtered.length > PAGE_SIZE && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, flexWrap: 'wrap', gap: 8 }}>
                 <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
-                  Showing {(pageSafe - 1) * PAGE_SIZE + 1}–{Math.min(pageSafe * PAGE_SIZE, filtered.length)} of {filtered.length}
+                  Showing {(pageSafe - 1) * PAGE_SIZE + 1}-{Math.min(pageSafe * PAGE_SIZE, filtered.length)} of {filtered.length}
                 </span>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button type="button" className="db-action-btn" disabled={pageSafe <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
@@ -968,92 +935,6 @@ const DischargeManagement = () => {
                   />
                 </label>
 
-                <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #EEF2FF', paddingTop: 16, marginTop: 4 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: '#1B2559', marginBottom: 6 }}>Family discharge request</div>
-                  <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14, lineHeight: 1.45 }}>
-                    Same data families submit under Request Management → Discharge. Structured columns come from the database;
-                    escort, destination, follow-up clinic, medication plan, and belongings are often bundled in{' '}
-                    <strong>Other information</strong> as saved by the portal.
-                  </p>
-                  {detailModal._familyDischarge ? (
-                    <div className="dm-family-request-grid">
-                      <label className="dm-modal-field">
-                        <span className="dm-modal-label">Reason category</span>
-                        <input
-                          className="dm-input"
-                          readOnly
-                          style={{ background: '#f8fafc' }}
-                          value={detailModal._familyDischarge.dischargeReasonCategory || '—'}
-                        />
-                      </label>
-                      <label className="dm-modal-field">
-                        <span className="dm-modal-label">Preferred discharge date</span>
-                        <input
-                          className="dm-input"
-                          readOnly
-                          style={{ background: '#f8fafc' }}
-                          value={formatDate(detailModal._familyDischarge.preferredDischargeDate)}
-                        />
-                      </label>
-                      <label className="dm-modal-field">
-                        <span className="dm-modal-label">Authorized pickup</span>
-                        <input
-                          className="dm-input"
-                          readOnly
-                          style={{ background: '#f8fafc' }}
-                          value={detailModal._familyDischarge.pickupAuthorized || '—'}
-                        />
-                      </label>
-                      <label className="dm-modal-field">
-                        <span className="dm-modal-label">Follow-up phone</span>
-                        <input
-                          className="dm-input"
-                          readOnly
-                          style={{ background: '#f8fafc' }}
-                          value={detailModal._familyDischarge.followUpPhone || '—'}
-                        />
-                      </label>
-                      <label className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
-                        <span className="dm-modal-label">Reason details</span>
-                        <textarea
-                          className="dm-input"
-                          readOnly
-                          rows={3}
-                          style={{ background: '#f8fafc', resize: 'vertical' }}
-                          value={detailModal._familyDischarge.dischargeReasonDetails || ''}
-                        />
-                      </label>
-                      <label className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
-                        <span className="dm-modal-label">Other information (escort, destination, clinic, meds, belongings, notes)</span>
-                        <textarea
-                          className="dm-input"
-                          readOnly
-                          rows={5}
-                          style={{ background: '#f8fafc', resize: 'vertical', whiteSpace: 'pre-wrap' }}
-                          value={detailModal._familyDischarge.dischargeOtherInfo || ''}
-                        />
-                      </label>
-                      {detailModal._familyDischarge.requestTime ? (
-                        <div className="dm-modal-field" style={{ gridColumn: '1 / -1' }}>
-                          <span className="dm-modal-label">Submitted</span>
-                          <div className="dm-input" style={{ background: '#f8fafc' }}>{detailModal._familyDischarge.requestTime}</div>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div
-                      className="dm-input"
-                      style={{
-                        background: '#f8fafc',
-                        color: '#64748b',
-                        fontSize: 13,
-                        gridColumn: '1 / -1',
-                      }}
-                    >
-                      No discharge request on file for this patient (no match on patient ID). If the family just submitted, try Refresh.
-                    </div>
-                  )}
-                </div>
 
                 <label className="dm-modal-field">
                   <span className="dm-modal-label">Assigned staff</span>
@@ -1267,14 +1148,24 @@ const DischargeManagement = () => {
                     disabled={historyReadOnly}
                     rows={3}
                     style={{ resize: 'vertical', minHeight: 72 }}
-                    placeholder="e.g. Admission fee + Imus monthly rate × months; adjustments, discounts, or internal notes."
+                    placeholder="e.g. Admission fee + Imus monthly rate Ã— months; adjustments, discounts, or internal notes."
                     value={detailModal._pricingNotes}
                     onChange={(e) => patch({ _pricingNotes: e.target.value })}
                   />
                 </label>
               </div>
-              <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
                 <button type="button" className="db-action-btn" onClick={() => setDetailModal(null)}>Close</button>
+                {isDischargeRowReadmitEligible(detailModal) ? (
+                  <button
+                    type="button"
+                    className="db-readmit-btn"
+                    disabled={readmitBusyId === detailModal.id}
+                    onClick={() => void handleReadmit(detailModal)}
+                  >
+                    <UserPlus size={16} /> {readmitBusyId === detailModal.id ? 'Re-admitting…' : 'Re-admit resident'}
+                  </button>
+                ) : null}
                 {!historyReadOnly && (
                   <button type="button" className="db-edit-btn" onClick={() => handleSaveDetail()}>Save changes</button>
                 )}

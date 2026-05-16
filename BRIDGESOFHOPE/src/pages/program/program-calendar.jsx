@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Users, FileText, LogOut,
   Calendar as CalendarIcon, ArrowLeft, ArrowRight,
@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
+import { ProgramSidebar, ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
   getAgendasForDay,
@@ -17,7 +18,7 @@ import {
   saveAgendaToCloud,
 } from '@/lib/nurseCalendarStorage';
 
-/* ── unchanged pure helpers ── */
+/*  unchanged pure helpers  */
 function toName(v) { return String(v||'').trim().toLowerCase(); }
 function getCandidateNames(user, profileName) {
   const emailLocal = String(user?.email||'').split('@')[0].replace(/[._-]+/g,' ').trim();
@@ -34,39 +35,8 @@ function newId() {
   });
 }
 
-/** Program workspace navigation — matches weekly report / assigned residents routes. */
-function ProgramSidebar({ isExpanded, setIsExpanded, navigate, active }) {
-  const item = (reactKey, iconEl, label, path, opts = {}) => {
-    const onClick = (e) => { e.stopPropagation(); navigate(path); };
-    const activeStyle = opts.isActive ? { background:'#F54E25', borderRadius:12, padding:10, display:'flex' } : {};
-    return (
-      <div key={reactKey} style={{ display:'flex', alignItems:'center', gap:14, minHeight:48, padding:isExpanded?'0 28px':0, justifyContent:isExpanded?'flex-start':'center', marginBottom:6, boxSizing:'border-box', cursor:'pointer' }} onClick={onClick}>
-        {opts.isActive ? <div style={activeStyle}>{iconEl}</div> : iconEl}
-        {isExpanded ? <span style={{ color:opts.isActive?'#F54E25':'#707EAE', fontWeight:700 }}>{label}</span> : null}
-      </div>
-    );
-  };
-  return (
-    <aside onClick={() => setIsExpanded(v => !v)} style={{ width:isExpanded?280:110, background:'#fff', borderRight:'1px solid #F1F1F1', display:'flex', flexDirection:'column', alignItems:'stretch', padding:'25px 0 0', transition:'width .3s cubic-bezier(0.4,0,0.2,1)', position:'fixed', top:0, left:0, height:'100vh', overflow:'hidden', boxSizing:'border-box', zIndex:50 }}>
-      <div style={{ width:'100%', display:'flex', justifyContent:'center', marginBottom:28, alignSelf:'center' }}>
-        <img src={logo} alt="Kalinga" style={{ width:isExpanded?120:70 }} />
-      </div>
-      <div style={{ width:'100%', flex:1, minHeight:0, overflowY:'auto', overflowX:'hidden', display:'flex', flexDirection:'column' }}>
-        {item('res', <Users size={22} color={active==='residents'?'#FFFFFF':'#707EAE'} />, 'Assigned residents', '/program', { isActive:active==='residents' })}
-        {item('cal', <CalendarIcon size={22} color={active==='calendar'?'#FFFFFF':'#707EAE'} />, 'Calendar', '/program-calendar', { isActive:active==='calendar' })}
-        {item('wr', <FileText size={22} color={active==='weekly'?'#FFFFFF':'#707EAE'} />, 'Weekly Report', '/program-weekly-report', { isActive:active==='weekly' })}
-      </div>
-      <div style={{ flexShrink:0, width:'100%', padding:'16px 0 20px', marginTop:'auto', borderTop:'1px solid #f1f5f9' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:14, minHeight:48, padding:isExpanded?'0 28px':0, justifyContent:isExpanded?'flex-start':'center', boxSizing:'border-box', cursor:'pointer' }} onClick={e => { e.stopPropagation(); navigate('/login'); }}>
-          <LogOut size={22} color="#F54E25" />
-          {isExpanded ? <span style={{ color:'#F54E25', fontWeight:700 }}>Logout</span> : null}
-        </div>
-      </div>
-    </aside>
-  );
-}
 
-/* ── design-only components ── */
+/*  design-only components  */
 function AgendaChip({ type }) {
   const cfg = type === 'resident'
     ? { label:'R', bg:'#ECFDF5', color:'#047857', border:'#A7F3D0' }
@@ -91,10 +61,10 @@ function SectionTitle({ icon: Icon, children, color = '#F54E25' }) {
   );
 }
 
-/* ══════════════════════════════════════════
+/* 
    MAIN PAGE
-══════════════════════════════════════════ */
-/** Calendar for program staff — same features as nurse calendar; residents scoped by case load manager. */
+ */
+/** Calendar for program staff - same features as nurse calendar; residents scoped by case load manager. */
 export default function ProgramCalendarPage() {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -114,7 +84,7 @@ export default function ProgramCalendarPage() {
 
   const refresh = useCallback(() => setTick(t => t+1), []);
 
-  /* ── all data effects UNCHANGED ── */
+  /*  all data effects UNCHANGED  */
   useEffect(() => {
     const onUpd = () => refresh();
     window.addEventListener('bh-nurse-calendar-update', onUpd);
@@ -189,7 +159,7 @@ export default function ProgramCalendarPage() {
   const submitAdd = async () => {
     setSaveError('');
     if (!userId || !addDate || !addKind) {
-      setSaveError(!userId ? 'Still loading your account — wait a moment and try again.' : 'Choose a type and date.');
+      setSaveError(!userId ? 'Still loading your account - wait a moment and try again.' : 'Choose a type and date.');
       return;
     }
     const desc = addDescription.trim();
@@ -210,7 +180,7 @@ export default function ProgramCalendarPage() {
     upsertAgenda(userId, addDate, base);
     const cloud = await saveAgendaToCloud(userId, addDate, base);
     if (!cloud.ok && !cloud.skipped) {
-      setSaveError('Saved on this device only. Check your connection or try again — cloud sync failed.');
+      setSaveError('Saved on this device only. Check your connection or try again - cloud sync failed.');
       refresh();
       return;
     }
@@ -272,12 +242,12 @@ export default function ProgramCalendarPage() {
         .kind-btn:hover { transform: translateY(-1px); }
       `}</style>
 
-      {/* ── SIDEBAR (100% unchanged) ── */}
+      {/*  SIDEBAR (100% unchanged)  */}
       <ProgramSidebar isExpanded={isExpanded} setIsExpanded={setIsExpanded} navigate={navigate} active="calendar" />
 
       <main style={{ flex:1, marginLeft:isExpanded?280:110, padding:'24px 28px 48px', transition:'margin-left .3s', background:'#F0F4FF', minHeight:'100vh', display:'flex', flexDirection:'column', boxSizing:'border-box' }}>
 
-        {/* ── HERO BANNER (matches nurse dashboard style, all content unchanged) ── */}
+        {/*  HERO BANNER (matches nurse dashboard style, all content unchanged)  */}
         <div style={{ background:'linear-gradient(135deg,#1E293B 0%,#1D2D50 60%,#312e81 100%)', borderRadius:22, padding:'24px 28px', marginBottom:20, boxShadow:'0 10px 40px rgba(15,23,42,0.18)', position:'relative', overflow:'hidden' }}>
           <div style={{ position:'absolute', top:-30, right:-30, width:140, height:140, borderRadius:'50%', background:'rgba(255,255,255,0.04)' }} />
           <div style={{ position:'absolute', bottom:-20, right:80, width:90, height:90, borderRadius:'50%', background:'rgba(255,255,255,0.05)' }} />
@@ -291,7 +261,7 @@ export default function ProgramCalendarPage() {
               </div>
               <h1 style={{ margin:0, color:'#fff', fontSize:26, fontWeight:900, letterSpacing:'-0.02em' }}>Calendar</h1>
               <p style={{ color:'rgba(255,255,255,0.55)', margin:'8px 0 0', fontSize:13, lineHeight:1.45, maxWidth:520 }}>
-                Your month at a glance — personal and resident agendas for your assigned case load, plus report deadlines from admin.
+                Your month at a glance - personal and resident agendas for your assigned case load, plus report deadlines from admin.
               </p>
               <div style={{ marginTop:14 }}>{legendPills}</div>
             </div>
@@ -322,7 +292,7 @@ export default function ProgramCalendarPage() {
           </div>
         </div>
 
-        {/* ── CALENDAR CARD ── */}
+        {/*  CALENDAR CARD  */}
         <div style={{ background:'#fff', border:'1px solid #E9EDF7', borderRadius:22, padding:'22px 24px', boxShadow:'0 4px 20px rgba(15,23,42,0.06)', flex:'0 0 auto' }}>
           {/* Month nav */}
           <div style={{ display:'grid', gridTemplateColumns:'auto 1fr auto', alignItems:'center', gap:12, marginBottom:22 }}>
@@ -342,7 +312,7 @@ export default function ProgramCalendarPage() {
           </div>
 
           <div className="nurse-cal-split">
-            {/* ── MAIN GRID ── */}
+            {/*  MAIN GRID  */}
             <div className="nurse-cal-split-main">
               {/* Weekday header */}
               <div style={{ background:'linear-gradient(135deg,#EEF2FF,#E0E7FF)', borderRadius:14, border:'1px solid #C7D2FE', padding:'10px 8px', marginBottom:10 }}>
@@ -368,7 +338,7 @@ export default function ProgramCalendarPage() {
                   const previews = agendas.slice(0, 2);
                   const emptyDay = !agendas.length && !dl.length;
                   return (
-                    <button key={cell.key} type="button" onClick={() => openDay(iso)} title={`${iso} — open day`}
+                    <button key={cell.key} type="button" onClick={() => openDay(iso)} title={`${iso} - open day`}
                       className="nurse-cal-day-cell"
                       style={{
                         borderRadius:14,
@@ -413,7 +383,7 @@ export default function ProgramCalendarPage() {
               </div>
             </div>
 
-            {/* ── DEADLINES SIDEBAR ── */}
+            {/*  DEADLINES SIDEBAR  */}
             <aside className="nurse-cal-split-aside" style={{ background:'#fff', border:'1px solid #E9EDF7', borderRadius:18, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 4px 20px rgba(15,23,42,0.06)', position:'sticky', top:24, alignSelf:'start', maxHeight:'min(420px,55vh)' }}>
               <div style={{ height:4, flexShrink:0, background:'linear-gradient(90deg,#F54E25,#EA580C)', borderRadius:'18px 18px 0 0' }} />
               <div style={{ padding:'16px 18px 12px', flexShrink:0 }}>
@@ -450,9 +420,9 @@ export default function ProgramCalendarPage() {
           </div>
         </div>
 
-        {/* ══════════════════════════════════
+        {/* 
             DAY POPOVER MODAL (improved design, unchanged logic)
-        ══════════════════════════════════ */}
+         */}
         {dayPopover && (
           <div role="dialog" aria-label="Day agendas" style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.5)', backdropFilter:'blur(10px)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={() => setDayPopover(null)}>
             <div onClick={e => e.stopPropagation()} style={{ width:'min(480px,100%)', maxHeight:'min(82vh,600px)', overflow:'auto', background:'#fff', borderRadius:24, boxShadow:'0 28px 70px rgba(15,23,42,0.22)', border:'1px solid #E9EDF7', display:'flex', flexDirection:'column' }}>
@@ -540,9 +510,9 @@ export default function ProgramCalendarPage() {
           </div>
         )}
 
-        {/* ══════════════════════════════════
+        {/* 
             ADD AGENDA MODAL (improved design, unchanged logic)
-        ══════════════════════════════════ */}
+         */}
         {addOpen && (
           <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.55)', backdropFilter:'blur(10px)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={() => { setAddOpen(false); setSaveError(''); }}>
             <div onClick={e => e.stopPropagation()} style={{ width:'min(500px,100%)', background:'#fff', borderRadius:24, boxShadow:'0 28px 70px rgba(15,23,42,0.25)', overflow:'hidden' }}>
@@ -554,7 +524,7 @@ export default function ProgramCalendarPage() {
                     <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:5 }}>New Entry</div>
                     <div style={{ fontSize:18, fontWeight:900, color:'#fff', letterSpacing:'-0.02em' }}>Add Agenda</div>
                     <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', marginTop:4 }}>
-                      {addDate ? new Date(addDate+'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '—'}
+                      {addDate ? new Date(addDate+'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '-'}
                     </div>
                   </div>
                   <button
@@ -611,14 +581,14 @@ export default function ProgramCalendarPage() {
                   <>
                     <button type="button" onClick={() => { setAddKind(null); setAddPatientId(''); }}
                       style={{ border:'none', background:'transparent', color:'#6366F1', fontWeight:800, fontSize:12, cursor:'pointer', marginBottom:16, display:'flex', alignItems:'center', gap:4, padding:0 }}>
-                      ← Change type
+                      {'← Change type'}
                     </button>
 
                     {addKind === 'resident' && (
                       <div style={{ marginBottom:14 }}>
                         <label style={{ fontSize:10, fontWeight:700, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.07em', display:'block', marginBottom:6 }}>Patient</label>
                         <select className="form-input" value={addPatientId} onChange={e => setAddPatientId(e.target.value)}>
-                          <option value="">Select assigned resident…</option>
+                          <option value="">Select assigned resident...</option>
                           {assigned.map(p => <option key={p.id} value={p.id}>{p.full_name || 'Resident'}</option>)}
                         </select>
                       </div>
@@ -627,7 +597,7 @@ export default function ProgramCalendarPage() {
                     <div style={{ marginBottom:16 }}>
                       <label style={{ fontSize:10, fontWeight:700, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.07em', display:'block', marginBottom:6 }}>Description</label>
                       <textarea className="form-input" value={addDescription} onChange={e => setAddDescription(e.target.value)} rows={4}
-                        placeholder={addKind==='resident' ? 'Plan or goal for this resident…' : 'What do you need to do?'}
+                        placeholder={addKind==='resident' ? 'Plan or goal for this resident...' : 'What do you need to do?'}
                         style={{ resize:'vertical' }} />
                     </div>
 
@@ -652,6 +622,8 @@ export default function ProgramCalendarPage() {
           </div>
         )}
       </main>
+
+      <ProgramMobileBottomNav navigate={navigate} active="calendar" />
     </div>
   );
 }

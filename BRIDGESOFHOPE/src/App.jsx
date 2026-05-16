@@ -42,6 +42,7 @@ import AdminAppointmentsPage from '@/pages/admin/admin-appointments';
 import AdminReportsPage from '@/pages/admin/admin-reports';
 import AdminMessagesPage from '@/pages/admin/admin-messages';
 import ProgramPage from '@/pages/program/program';
+import ProgramDischargeManagement from '@/pages/program/program-discharge';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
@@ -112,6 +113,7 @@ const ROUTE_TITLES = {
   '/nurseprofile': 'Nurse profile',
   '/nursechangepass': 'Nurse change password',
   '/program': 'Program',
+  '/program-discharge': 'Discharge management',
   '/admin-dashboard': 'Admin dashboard',
   '/patient-database': 'Resident database',
   '/admin-patient-database': 'Admin patient database',
@@ -317,6 +319,14 @@ function App() {
           element={
             <RoleGuard allowedRoles={['program']}>
               <ProgramPage />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/program-discharge"
+          element={
+            <RoleGuard allowedRoles={['program']}>
+              <ProgramDischargeManagement />
             </RoleGuard>
           }
         />

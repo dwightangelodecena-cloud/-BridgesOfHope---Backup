@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+﻿import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { LayoutGrid, BookUser, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope, LayoutTemplate, User, Calendar, FileText, MessageCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
@@ -145,11 +145,10 @@ const AdminDashboard = () => {
     };
     const p = parseJson('bh_patients', []);
     const a = parseJson('bh_pending_admissions', []);
-    const d = parseJson('bh_pending_discharges', []);
     const act = parseJson('bh_recent_activities', null);
     setPatients(Array.isArray(p) ? p : []);
     setPendingAdmissions(Array.isArray(a) ? a : []);
-    setPendingDischarges(Array.isArray(d) ? d : []);
+    setPendingDischarges([]);
     if (act && Array.isArray(act)) setRecentActivities(act);
     const ov = loadWorkflowOverrides();
     const forDischargeCount = Object.values(ov).filter((x) => x.workflowStatus === 'For Discharge' && !x.archived).length;
@@ -184,11 +183,6 @@ const AdminDashboard = () => {
       .select('*')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
-    const { data: d } = await supabase
-      .from('discharge_requests')
-      .select('*, patients(full_name)')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false });
     const { data: acts } = await supabase
       .from('activity_log')
       .select('id, title, description, icon_name, created_at')
@@ -197,7 +191,7 @@ const AdminDashboard = () => {
 
     setPatients((p || []).map((r) => uiPatientFromRow(r)).filter(Boolean));
     setPendingAdmissions((a || []).map((r) => uiAdmissionRequestFromRow(r)).filter(Boolean));
-    setPendingDischarges((d || []).map((r) => uiDischargeRequestFromRow(r)).filter(Boolean));
+    setPendingDischarges([]);
     setRecentActivities(
       (acts || []).map((row) => ({
         id: row.id,
@@ -1108,15 +1102,15 @@ const AdminDashboard = () => {
             <section className="dashboard-panel" aria-labelledby="dash-discharge-heading">
               <h2 id="dash-discharge-heading" className="dashboard-panel-title">Discharge</h2>
               <div className="metric-cards-container" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <div className="metric-card" onClick={() => setModalView(pendingDischarges.length > 0 ? 'discharges' : null)}>
+                <div className="metric-card" style={{ cursor: 'default', opacity: 0.92 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div className="metric-icon-box"><ArrowRightSquare size={24} /></div>
-                    <span className="metric-badge">Pending</span>
+                    <span className="metric-badge" style={{ background: '#EEF2FF', color: '#4338CA' }}>Program</span>
                   </div>
                   <div>
-                    <div className="metric-value">{pendingDischarges.length}</div>
-                    <div className="metric-title">Discharge requests</div>
-                    <div className="metric-subtitle">Click to review &amp; approve</div>
+                    <div className="metric-value">—</div>
+                    <div className="metric-title">Family discharge requests</div>
+                    <div className="metric-subtitle">Reviewed by assigned program staff</div>
                   </div>
                 </div>
 
