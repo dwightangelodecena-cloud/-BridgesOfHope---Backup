@@ -3,7 +3,7 @@ import { ArrowRightSquare, Users, X, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ProgramSidebar, ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { uiDischargeRequestFromRow } from '@/lib/dbMappers';
 import {
   approveFamilyDischargeRequest,
@@ -13,6 +13,11 @@ import {
   getProgramStaffIdentityNames,
   isAssignedToProgramStaff,
 } from '@/lib/programStaffIdentity';
+import {
+  dischargeTypeLabel,
+  TEMPORARY_LEAVE_OPTIONS,
+  temporaryLeaveLabel,
+} from '@/lib/dischargeRequestTypes';
 
 function parseLocalPending() {
   try {
@@ -35,6 +40,8 @@ export default function ProgramDischargeManagement() {
   const [decisionNote, setDecisionNote] = useState('');
   const [actionError, setActionError] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [selectedLeaveType, setSelectedLeaveType] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -68,27 +75,9 @@ export default function ProgramDischargeManagement() {
           .order('created_at', { ascending: false });
         if (drErr) throw drErr;
 
-        const patientIds = [
-          ...new Set((pendingRows || []).map((r) => r.patient_id).filter(Boolean)),
-        ];
-        let patientsById = new Map();
-        if (patientIds.length) {
-          const { data: patientRows } = await supabase
-            .from('patients')
-            .select('id, full_name, case_load_manager')
-            .in('id', patientIds);
-          patientsById = new Map((patientRows || []).map((p) => [p.id, p]));
-        }
-
-        const filtered = (pendingRows || []).filter((row) => {
-          const patient =
-            (typeof row.patients === 'object' && row.patients) ||
-            patientsById.get(row.patient_id);
-          return isAssignedToProgramStaff(patient, row.patient_id, names);
-        });
-        setRequests(
-          filtered.map((r) => uiDischargeRequestFromRow(r)).filter(Boolean)
-        );
+        // RLS (discharge_program_select_assigned_pending) already scopes to this program user.
+        const scopedRows = pendingRows || [];
+        setRequests(scopedRows.map((r) => uiDischargeRequestFromRow(r)).filter(Boolean));
       } else {
         let patientsById = new Map();
         try {
@@ -112,6 +101,7 @@ export default function ProgramDischargeManagement() {
                 patient_id: r.patient_id || r.patientId,
                 family_id: r.family_id,
                 created_at: r.created_at || r.createdAt,
+                discharge_type: r.dischargeType || r.discharge_type,
                 reason_category: r.dischargeReasonCategory || r.reason_category,
                 reason_details: r.dischargeReasonDetails || r.reason_details,
                 preferred_discharge_date: r.preferredDischargeDate,
@@ -129,6 +119,7 @@ export default function ProgramDischargeManagement() {
       }
     } catch (e) {
       console.warn('[program-discharge] load failed:', e);
+      setActionError(e?.message || 'Could not load discharge requests.');
       setRequests([]);
     } finally {
       setLoading(false);
@@ -142,14 +133,38 @@ export default function ProgramDischargeManagement() {
   useEffect(() => {
     const onRefresh = () => void loadData();
     window.addEventListener(APP_DATA_REFRESH, onRefresh);
-    return () => window.removeEventListener(APP_DATA_REFRESH, onRefresh);
+    const onStorage = (e) => {
+      if (e.key === APP_DATA_REFRESH) void loadData();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(APP_DATA_REFRESH, onRefresh);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return undefined;
+    const channel = supabase
+      .channel('program-discharge-requests')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'discharge_requests' },
+        () => void loadData()
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [loadData]);
 
   const pendingCount = requests.length;
 
   const openDecision = (req, mode) => {
-    setDecisionModal({ req, mode });
+    setSuccessMessage('');
+    setDecisionModal({ req, mode, step: 'comments' });
     setDecisionNote('');
+    setSelectedLeaveType('');
     setActionError('');
   };
 
@@ -157,14 +172,34 @@ export default function ProgramDischargeManagement() {
     if (actionBusy) return;
     setDecisionModal(null);
     setDecisionNote('');
+    setSelectedLeaveType('');
     setActionError('');
+  };
+
+  const proceedFromComments = () => {
+    if (!decisionModal?.req) return;
+    const note = decisionNote.trim();
+    if (!note) {
+      setActionError('Please enter your comments before continuing.');
+      return;
+    }
+    if (decisionModal.mode === 'decline') {
+      void submitDecision();
+      return;
+    }
+    setActionError('');
+    setDecisionModal((prev) => (prev ? { ...prev, step: 'duration' } : prev));
   };
 
   const submitDecision = async () => {
     if (!decisionModal?.req) return;
     const note = decisionNote.trim();
     if (!note) {
-      setActionError('Decision note is required.');
+      setActionError('Please enter your comments before confirming.');
+      return;
+    }
+    if (decisionModal.mode === 'approve' && !selectedLeaveType) {
+      setActionError('Select a temporary leave type.');
       return;
     }
     setActionBusy(true);
@@ -173,13 +208,26 @@ export default function ProgramDischargeManagement() {
       decisionModal.mode === 'approve'
         ? approveFamilyDischargeRequest
         : declineFamilyDischargeRequest;
-    const result = await fn(decisionModal.req, note);
+    const result = await fn(
+      decisionModal.req,
+      note,
+      decisionModal.mode === 'approve' ? { leaveTypeId: selectedLeaveType } : undefined
+    );
     setActionBusy(false);
     if (!result.ok) {
       setActionError(result.error || 'Action failed.');
       return;
     }
+    const mode = decisionModal.mode;
+    const residentName = decisionModal.req?.name || 'Resident';
+    const leaveLabel = temporaryLeaveLabel(selectedLeaveType);
     closeDecision();
+    setSuccessMessage(
+      mode === 'approve'
+        ? `${residentName} is temporarily discharged (${leaveLabel}).`
+        : `Temporary discharge request for ${residentName} was declined.`
+    );
+    refreshAppData();
     await loadData();
   };
 
@@ -187,7 +235,7 @@ export default function ProgramDischargeManagement() {
     if (!identityNames.length && isSupabaseConfigured()) {
       return 'Sign in as program staff with a profile name that matches your residents’ case load manager.';
     }
-    return 'No pending discharge requests for your assigned residents.';
+    return 'No pending temporary discharge requests. New family requests appear here when the resident’s Case Load Manager matches your program profile name.';
   }, [identityNames.length]);
 
   return (
@@ -307,6 +355,24 @@ export default function ProgramDischargeManagement() {
             boxShadow: '0 4px 20px rgba(15,23,42,0.06)',
           }}
         >
+          {successMessage ? (
+            <p
+              style={{
+                color: '#047857',
+                fontSize: 14,
+                margin: '0 0 12px',
+                padding: '12px 14px',
+                background: '#ECFDF5',
+                borderRadius: 12,
+                border: '1px solid #A7F3D0',
+              }}
+            >
+              {successMessage}
+            </p>
+          ) : null}
+          {actionError && !decisionModal ? (
+            <p style={{ color: '#DC2626', fontSize: 14, margin: '0 0 12px' }}>{actionError}</p>
+          ) : null}
           {loading ? (
             <p style={{ color: '#64748b', fontSize: 14 }}>Loading discharge requests…</p>
           ) : requests.length === 0 ? (
@@ -345,6 +411,7 @@ export default function ProgramDischargeManagement() {
                       </div>
                       <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>{req.requestTime || 'Pending'}</div>
                       <div style={{ marginTop: 12, fontSize: 13, color: '#475569', lineHeight: 1.55 }}>
+                        <div><strong>Type:</strong> {dischargeTypeLabel(req.dischargeType)}</div>
                         {req.familyNumber && <div>Family contact: {req.familyNumber}</div>}
                         {req.familyEmail && <div>Family email: {req.familyEmail}</div>}
                         {req.dischargeReasonDetails && (
@@ -439,42 +506,120 @@ export default function ProgramDischargeManagement() {
               background: '#fff',
               borderRadius: 18,
               padding: '24px 28px',
-              maxWidth: 440,
+              maxWidth: 480,
               width: '100%',
               boxShadow: '0 20px 60px rgba(15,23,42,0.2)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#1B2559' }}>
-                {decisionModal.mode === 'approve' ? 'Approve discharge' : 'Decline discharge'}
+                {decisionModal.step === 'duration'
+                  ? 'Select temporary leave type'
+                  : decisionModal.mode === 'approve'
+                    ? 'Confirm temporary discharge'
+                    : 'Decline temporary discharge request'}
               </h2>
               <button type="button" onClick={closeDecision} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>
                 <X size={22} color="#94A3B8" />
               </button>
             </div>
-            <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 12px' }}>
-              {decisionModal.req.name} — add a note for the family activity log.
-            </p>
-            <textarea
-              value={decisionNote}
-              onChange={(e) => setDecisionNote(e.target.value)}
-              rows={4}
-              placeholder="Decision note (required)"
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                borderRadius: 12,
-                border: '1px solid #E2E8F0',
-                padding: 12,
-                fontSize: 14,
-                resize: 'vertical',
-                fontFamily: 'inherit',
-              }}
-            />
+            <p style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 700, color: '#4338CA' }}>{decisionModal.req.name}</p>
+
+            {decisionModal.step === 'duration' ? (
+              <>
+                <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 14px', lineHeight: 1.55 }}>
+                  Choose how long this temporary discharge lasts.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {TEMPORARY_LEAVE_OPTIONS.map((opt) => {
+                    const selected = selectedLeaveType === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLeaveType(opt.id);
+                          setActionError('');
+                        }}
+                        style={{
+                          textAlign: 'left',
+                          padding: '14px 16px',
+                          borderRadius: 12,
+                          border: selected ? '2px solid #4338CA' : '1px solid #E2E8F0',
+                          background: selected ? '#EEF2FF' : '#FAFBFF',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                          fontSize: 14,
+                          color: '#1B2559',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 16px', lineHeight: 1.55 }}>
+                  {decisionModal.mode === 'approve' ? (
+                    <>
+                      Add your comments, then select the leave type (day pass or day off).
+                    </>
+                  ) : (
+                    <>Declining keeps the resident in active care. Your comments are shared with the family in the activity log.</>
+                  )}
+                </p>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1B2559', marginBottom: 8 }}>
+                  Comments <span style={{ color: '#DC2626' }}>*</span>
+                </label>
+                <textarea
+                  value={decisionNote}
+                  onChange={(e) => setDecisionNote(e.target.value)}
+                  rows={4}
+                  placeholder={
+                    decisionModal.mode === 'approve'
+                      ? 'e.g. Approved for family event; escort verified.'
+                      : 'e.g. Cannot approve at this time because…'
+                  }
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    borderRadius: 12,
+                    border: '1px solid #E2E8F0',
+                    padding: 12,
+                    fontSize: 14,
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    minHeight: 100,
+                  }}
+                />
+              </>
+            )}
             {actionError && (
               <p style={{ color: '#DC2626', fontSize: 13, margin: '10px 0 0' }}>{actionError}</p>
             )}
-            <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              {decisionModal.step === 'duration' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActionError('');
+                    setDecisionModal((prev) => (prev ? { ...prev, step: 'comments' } : prev));
+                  }}
+                  disabled={actionBusy}
+                  style={{
+                    padding: '10px 16px',
+                    borderRadius: 10,
+                    border: '1px solid #E2E8F0',
+                    background: '#fff',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Back
+                </button>
+              ) : (
               <button
                 type="button"
                 onClick={closeDecision}
@@ -490,21 +635,31 @@ export default function ProgramDischargeManagement() {
               >
                 Cancel
               </button>
+              )}
               <button
                 type="button"
-                onClick={() => void submitDecision()}
+                onClick={() => void (decisionModal.step === 'duration' ? submitDecision() : proceedFromComments())}
                 disabled={actionBusy}
                 style={{
                   padding: '10px 18px',
                   borderRadius: 10,
                   border: 'none',
-                  background: decisionModal.mode === 'approve' ? '#10B981' : '#BE123C',
+                  background:
+                    decisionModal.mode === 'approve' || decisionModal.step === 'duration'
+                      ? '#10B981'
+                      : '#BE123C',
                   color: '#fff',
                   fontWeight: 800,
                   cursor: actionBusy ? 'wait' : 'pointer',
                 }}
               >
-                {actionBusy ? 'Saving…' : 'Confirm'}
+                {actionBusy
+                  ? 'Saving…'
+                  : decisionModal.step === 'duration'
+                    ? 'Confirm temporary discharge'
+                    : decisionModal.mode === 'approve'
+                      ? 'Continue'
+                      : 'Confirm decline'}
               </button>
             </div>
           </div>

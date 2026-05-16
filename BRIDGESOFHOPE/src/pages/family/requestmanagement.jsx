@@ -21,6 +21,10 @@ import {
   clearAllFamilyNotifications,
 } from '@/lib/familyNotifications';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
+import {
+  FAMILY_DISCHARGE_TYPE,
+  FAMILY_TEMPORARY_REASON_CATEGORIES,
+} from '@/lib/dischargeRequestTypes';
 
 const Progress = () => {
   const navigate = useNavigate();
@@ -385,7 +389,7 @@ const Progress = () => {
       errs.escortContact = 'Please enter a phone number for the person who will pick them up.';
     }
     if (!dischargeForm.destinationAfterDischarge.trim()) {
-      errs.destinationAfterDischarge = 'Please tell us where they will go after discharge (for example home or another facility).';
+      errs.destinationAfterDischarge = 'Please tell us where they will stay during this temporary leave (for example your home).';
     }
     setDischargeErrors(errs);
     return Object.keys(errs).length === 0;
@@ -480,6 +484,7 @@ const Progress = () => {
         created_at: new Date().toISOString(),
         patient_id: selectedPatient.id,
         patient_name: selectedPatient.name,
+        discharge_type: FAMILY_DISCHARGE_TYPE,
         reason_category: dischargeForm.reasonCategory,
         reason_details: dischargeForm.reasonDetails.trim(),
         preferred_discharge_date: dischargeForm.preferredDate || null,
@@ -510,6 +515,7 @@ const Progress = () => {
         family_name: familyName,
         guardian_email: familyEmail,
         guardian_phone: familyPhone,
+        discharge_type: FAMILY_DISCHARGE_TYPE,
         reason_category: dischargeForm.reasonCategory,
         reason_details: dischargeForm.reasonDetails.trim(),
         preferred_discharge_date: dischargeForm.preferredDate || null,
@@ -537,7 +543,10 @@ const Progress = () => {
         setDischargeErrors({ submit: error.message });
         return;
       }
-      await appendActivityFeed(`Discharge request submitted for ${selectedPatient.name}. Awaiting admin review.`, { familyId: user.id });
+      await appendActivityFeed(
+        `Temporary discharge request submitted for ${selectedPatient.name}. Awaiting admin review.`,
+        { familyId: user.id }
+      );
       refreshAppData();
     }
     addProcessingNotification();
@@ -926,7 +935,7 @@ const Progress = () => {
             <div className="request-shell">
               <div className="tabs">
                 <button className={`tab-btn ${activeTab === 'admission' ? 'active' : ''}`} onClick={() => setActiveTab('admission')}>Admission Form</button>
-                <button className={`tab-btn ${activeTab === 'discharge' ? 'active' : ''}`} onClick={() => setActiveTab('discharge')}>Discharge request</button>
+                <button className={`tab-btn ${activeTab === 'discharge' ? 'active' : ''}`} onClick={() => setActiveTab('discharge')}>Temporary discharge</button>
               </div>
 
               {activeTab === 'admission' && (
@@ -1166,12 +1175,12 @@ const Progress = () => {
                   <div className="section-kicker"><TrendingUp size={13} /> Family / guardian request</div>
                   <div className="section-title-row">
                     <div>
-                      <div className="section-title-main">Request discharge for your family member</div>
+                      <div className="section-title-main">Request temporary discharge</div>
                       <div className="section-title-sub">
-                        Complete this as the family or guardian: who will pick them up, where they will go afterward, and why you are asking for discharge.
+                        Short-term leave only — your family member is expected to return to the facility. Who will pick them up, where they will stay, and why you need this leave.
                       </div>
                     </div>
-                    <div className="status-pill"><CheckCircle size={13} /> Staff will review after you submit</div>
+                    <div className="status-pill"><CheckCircle size={13} /> Temporary leave · staff will review</div>
                   </div>
                   <div className="quick-insights">
                     <div className="insight-card">
@@ -1199,12 +1208,12 @@ const Progress = () => {
                   </div>
                   {!patients.length && (
                     <div className="empty-patient">
-                      No one in your family is listed as admitted right now, so a discharge request cannot be submitted yet.
+                      No one in your family is listed as admitted right now, so a temporary discharge request cannot be submitted yet.
                     </div>
                   )}
                   {selectedPatientId && (
                     <div className="form-grid">
-                      <div className="field"><label>What best describes your reason? *</label><select value={dischargeForm.reasonCategory} onChange={(e) => setDischargeForm((p) => ({ ...p, reasonCategory: e.target.value, reasonCategoryOther: '' }))}><option value="">Choose one</option><option value="Family related">Family related</option><option value="Moving to a different facility">Moving to a different facility</option><option value="Continue care at home">Continue care at home</option></select>{dischargeErrors.reasonCategory && <div className="error">{dischargeErrors.reasonCategory}</div>}</div>
+                      <div className="field"><label>What best describes your reason? *</label><select value={dischargeForm.reasonCategory} onChange={(e) => setDischargeForm((p) => ({ ...p, reasonCategory: e.target.value, reasonCategoryOther: '' }))}><option value="">Choose one</option>{FAMILY_TEMPORARY_REASON_CATEGORIES.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select>{dischargeErrors.reasonCategory && <div className="error">{dischargeErrors.reasonCategory}</div>}</div>
                       {dischargeForm.reasonCategory === 'Other' && (
                         <div className="field full">
                           <label>Describe your reason *</label>
@@ -1216,13 +1225,13 @@ const Progress = () => {
                           {dischargeErrors.reasonCategoryOther && <div className="error">{dischargeErrors.reasonCategoryOther}</div>}
                         </div>
                       )}
-                      <div className="field"><label>Preferred discharge date (if you have one)</label><input type="date" value={dischargeForm.preferredDate} onChange={(e) => setDischargeForm((p) => ({ ...p, preferredDate: e.target.value }))} /></div>
+                      <div className="field"><label>Preferred start date of temporary leave</label><input type="date" value={dischargeForm.preferredDate} onChange={(e) => setDischargeForm((p) => ({ ...p, preferredDate: e.target.value }))} /></div>
                       <div className="field"><label>Who is allowed to pick them up?</label><input value={dischargeForm.pickupAuthorized} onChange={(e) => setDischargeForm((p) => ({ ...p, pickupAuthorized: e.target.value }))} placeholder="e.g. parent, spouse, sibling" /></div>
                       <div className="field"><label>Best phone number to reach you</label><input value={dischargeForm.followUpPhone} onChange={(e) => setDischargeForm((p) => ({ ...p, followUpPhone: e.target.value }))} placeholder="Your number for follow-up calls" type="tel" /></div>
                       <div className="field"><label>Name of person picking them up *</label><input value={dischargeForm.escortName} onChange={(e) => setDischargeForm((p) => ({ ...p, escortName: e.target.value }))} placeholder="Full name" />{dischargeErrors.escortName && <div className="error">{dischargeErrors.escortName}</div>}</div>
                       <div className="field"><label>That person&apos;s relationship to your family member</label><input value={dischargeForm.escortRelation} onChange={(e) => setDischargeForm((p) => ({ ...p, escortRelation: e.target.value }))} placeholder="e.g. mother, partner" /></div>
                       <div className="field"><label>Pickup person&apos;s phone number *</label><input value={dischargeForm.escortContact} onChange={(e) => setDischargeForm((p) => ({ ...p, escortContact: e.target.value }))} placeholder="Mobile or landline" type="tel" />{dischargeErrors.escortContact && <div className="error">{dischargeErrors.escortContact}</div>}</div>
-                      <div className="field full"><label>Where will they go after discharge? *</label><input value={dischargeForm.destinationAfterDischarge} onChange={(e) => setDischargeForm((p) => ({ ...p, destinationAfterDischarge: e.target.value }))} placeholder="Home address, a relative&apos;s home, or next facility — whatever applies" />{dischargeErrors.destinationAfterDischarge && <div className="error">{dischargeErrors.destinationAfterDischarge}</div>}</div>
+                      <div className="field full"><label>Where will they stay during this temporary leave? *</label><input value={dischargeForm.destinationAfterDischarge} onChange={(e) => setDischargeForm((p) => ({ ...p, destinationAfterDischarge: e.target.value }))} placeholder="Home address or a relative&apos;s home during the leave" />{dischargeErrors.destinationAfterDischarge && <div className="error">{dischargeErrors.destinationAfterDischarge}</div>}</div>
                       <div className="field full"><label>Important items going home</label><textarea value={dischargeForm.belongingsChecklist} onChange={(e) => setDischargeForm((p) => ({ ...p, belongingsChecklist: e.target.value }))} placeholder="Optional — clothing, IDs, papers, meds, or other things you want to make sure leave with them" /></div>
                       <div className="field full"><label>Tell us more about your request *</label><textarea value={dischargeForm.reasonDetails} onChange={(e) => setDischargeForm((p) => ({ ...p, reasonDetails: e.target.value }))} placeholder="Share a short explanation in your own words (timing, circumstances, anything staff should know)" />{dischargeErrors.reasonDetails && <div className="error">{dischargeErrors.reasonDetails}</div>}</div>
                       <div className="field full"><label>Anything else we should know?</label><textarea value={dischargeForm.otherInfo} onChange={(e) => setDischargeForm((p) => ({ ...p, otherInfo: e.target.value }))} placeholder="Optional" /></div>

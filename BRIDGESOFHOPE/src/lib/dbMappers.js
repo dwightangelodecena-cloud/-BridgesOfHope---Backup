@@ -78,6 +78,7 @@ export function uiDischargeRequestFromRow(r) {
     familyNumber: r.guardian_phone,
     familyEmail: r.guardian_email,
     patientNumber: r.guardian_phone,
+    dischargeType: r.discharge_type || null,
     dischargeReasonCategory: r.reason_category,
     dischargeReasonDetails: r.reason_details,
     preferredDischargeDate: r.preferred_discharge_date,

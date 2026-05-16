@@ -28,10 +28,13 @@ const isCompactScreen = width <= 380;
 
 type PatientOpt = { id: string; name: string };
 
+const FAMILY_DISCHARGE_TYPE = 'temporary';
+
 const REASON_CATEGORIES = [
-  'Family related',
-  'Moving to a different facility',
-  'Continue care at home',
+  'Family visit or event',
+  'Medical appointment (outside facility)',
+  'Family emergency',
+  'Other',
 ] as const;
 
 function formatIsoDate(d: Date) {
@@ -196,6 +199,7 @@ export default function DischargeForm() {
         family_name: familyName,
         guardian_email: familyEmail,
         guardian_phone: familyPhone,
+        discharge_type: FAMILY_DISCHARGE_TYPE,
         reason_category: reasonCategory,
         reason_details: reasonDetails.trim(),
         preferred_discharge_date: preferredDate.trim() || null,
@@ -226,11 +230,11 @@ export default function DischargeForm() {
       }
 
       await appendActivityFeed(
-        `Discharge request submitted for ${selectedPatient.name}. Awaiting admin review.`,
+        `Temporary discharge request submitted for ${selectedPatient.name}. Awaiting admin review.`,
         { familyId: user.id }
       );
 
-      Alert.alert('Success', 'Discharge request submitted and sent to the admin queue.');
+      Alert.alert('Success', 'Temporary discharge request submitted and sent to the admin queue.');
       setSelectedPatientId('');
       setReasonCategory('');
       setReasonDetails('');
@@ -271,8 +275,10 @@ export default function DischargeForm() {
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flexContainer}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <Text style={styles.formTitle}>Discharge Request Form</Text>
-          <Text style={styles.formSubtitle}>Submit discharge endorsement and follow-up details.</Text>
+          <Text style={styles.formTitle}>Temporary Discharge Request</Text>
+          <Text style={styles.formSubtitle}>
+            Short-term leave only. Your family member is expected to return to the facility after this leave.
+          </Text>
 
           <View style={styles.inputWrapper}>
             <Text style={styles.label}>Select Patient *</Text>
@@ -368,8 +374,8 @@ export default function DischargeForm() {
           />
 
           <InputField
-            label="Destination After Discharge *"
-            placeholder="Home address or receiving facility"
+            label="Where they will stay during leave *"
+            placeholder="Home address or a relative's home"
             icon="location-outline"
             value={destinationAfterDischarge}
             onChangeText={(t) => {

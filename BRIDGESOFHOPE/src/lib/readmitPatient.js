@@ -64,6 +64,10 @@ export async function readmitPatientFromDischarge(row) {
         discharged_at: null,
         admitted_at: now,
         clinical_status: 'Stable',
+        temporary_discharge_at: null,
+        temporary_discharge_expected_return: null,
+        temporary_discharge_until: null,
+        temporary_leave_type: null,
       })
       .eq('id', patientId)
       .select('id');

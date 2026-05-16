@@ -489,7 +489,7 @@ const PatientDetailsPage = () => {
                   </div>
                   <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Family Portal · Resident Overview</span>
                 </div>
-                <h1 style={{ margin: 0, color: '#fff', fontSize: 26, fontWeight: 900, letterSpacing: '-0.03em' }}>Assigned Residents</h1>
+                <h1 style={{ margin: 0, color: '#fff', fontSize: 26, fontWeight: 900, letterSpacing: '-0.03em' }}>Resident Details</h1>
                 <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>Monitor progress, vitals, and care updates in one place</p>
               </div>
             </div>

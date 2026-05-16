@@ -14,6 +14,8 @@ import {
 import { loadWorkflowOverrides, loadDischargeRecords } from '@/lib/admissionDischargeStore';
 import { approveAdmissionInDatabase } from '@/lib/approveAdmissionSupabase';
 import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
+import { dischargeTypeLabel, isTemporaryDischargeRequest } from '@/lib/dischargeRequestTypes';
+import { approveFamilyDischargeRequest } from '@/lib/dischargeRequestWorkflow';
 
 const AdminAnalyticsSection = lazy(() =>
   import('@/components/AdminAnalyticsSection').catch((err) => {
@@ -529,48 +531,11 @@ const AdminDashboard = () => {
         { familyId: req.family_id }
       );
     } else if (type === 'discharge') {
-      if (!req.dischargeRequestId || !req.patientId) {
-        return { ok: false, error: 'Missing discharge or patient id. Reload the dashboard and try again.' };
+      const dischargeResult = await approveFamilyDischargeRequest(req, note);
+      if (!dischargeResult.ok) return dischargeResult;
+      if (!isTemporaryDischargeRequest(req)) {
+        await addActivity('Resident discharged successfully', `${req.name} - Treatment completed`, 'check');
       }
-      const { data: dischargeUpdated, error: upReqErr } = await supabase
-        .from('discharge_requests')
-        .update({ status: 'approved', decided_at: decidedAt, decided_by: decidedBy })
-        .eq('id', req.dischargeRequestId)
-        .eq('status', 'pending')
-        .select('id');
-      if (upReqErr) {
-        console.error(upReqErr);
-        return { ok: false, error: upReqErr.message || 'Could not approve discharge request.' };
-      }
-      if (!dischargeUpdated?.length) {
-        return {
-          ok: false,
-          error:
-            'Could not approve discharge: no pending row updated, or your account lacks staff (admin/nurse) permission. Set user_metadata account_type to admin and sign in again.',
-        };
-      }
-      const patientId = req.patientId ?? req.id;
-      const { data: patUpdated, error: upPatErr } = await supabase
-        .from('patients')
-        .update({
-          discharged_at: decidedAt,
-          clinical_status: 'Stable',
-        })
-        .eq('id', patientId)
-        .select('id');
-      if (upPatErr) {
-        console.error(upPatErr);
-        return { ok: false, error: upPatErr.message || 'Could not update patient discharge.' };
-      }
-      if (!patUpdated?.length) {
-        return {
-          ok: false,
-          error:
-            'Resident record was not updated (wrong id or missing permission). Confirm the discharge request matches an active resident.',
-        };
-      }
-      await addActivity('Resident discharged successfully', `${req.name} - Treatment completed`, 'check');
-      await appendActivityFeed(`Discharge approved: ${req.name || 'Resident'} has been discharged. Note: ${note}`, { familyId: req.family_id });
     }
 
     refreshAppData();
@@ -1298,6 +1263,7 @@ const AdminDashboard = () => {
                     {req.dischargeReasonDetails && (
                       <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #E2E8F0' }}>
                         <div style={{ fontWeight: 700, color: '#1B2559', marginBottom: 4 }}>Discharge details</div>
+                        <div><strong>Type:</strong> {dischargeTypeLabel(req.dischargeType)}</div>
                         <div><strong>Category:</strong> {req.dischargeReasonCategory || '—'}</div>
                         <div><strong>Explanation:</strong> {req.dischargeReasonDetails}</div>
                         {req.preferredDischargeDate && (

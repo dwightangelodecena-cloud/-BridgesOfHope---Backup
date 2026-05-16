@@ -1,10 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, MessageCircle, LayoutTemplate, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveAccountRole } from '@/components/RoleGuard';
+import {
+  isPatientOnTemporaryLeave,
+  patientTemporaryDischargeStatusLabel,
+  temporaryLeaveLabel,
+} from '@/lib/dischargeRequestTypes';
+import { returnResidentFromTemporaryLeave } from '@/lib/dischargeRequestWorkflow';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import { fetchWeeklyReportRecommendation } from '@/lib/weeklyReportAi';
@@ -128,6 +134,7 @@ const COHORT_FILTER_OPTIONS = [
 const STATUS_FILTER_OPTIONS = [
   { value: 'All', label: 'All Status' },
   { value: 'Discharged', label: 'Discharged' },
+  { value: 'Temporarily discharged', label: 'Temporarily discharged' },
   ...CLINICAL_STATUS_OPTIONS.map((s) => ({ value: s, label: s })),
 ];
 
@@ -422,9 +429,20 @@ const renderAiContent = (text) => {
 const toUiPatient = (row) => {
   const prof = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
   const discharged = row.discharged_at != null && String(row.discharged_at).trim() !== '';
+  const onTemporaryLeave =
+    !discharged
+    && row.temporary_discharge_at != null
+    && String(row.temporary_discharge_at).trim() !== '';
   const rawCs = (row.clinical_status && String(row.clinical_status).trim()) || 'Stable';
   const clinicalNorm = CLINICAL_STATUS_OPTIONS.includes(rawCs) ? rawCs : 'Stable';
-  const overallStatus = discharged ? 'Discharged' : clinicalNorm;
+  const leaveLabel = onTemporaryLeave ? temporaryLeaveLabel(row.temporary_leave_type) : '';
+  const overallStatus = discharged
+    ? 'Discharged'
+    : onTemporaryLeave
+      ? leaveLabel
+        ? `Temporarily discharged · ${leaveLabel}`
+        : 'Temporarily discharged'
+      : clinicalNorm;
   return {
     id: row.id,
     admissionDisplayId: computeAdmissionDisplayId(
@@ -444,6 +462,10 @@ const toUiPatient = (row) => {
     familyName: prof?.full_name || 'N/A',
     familyId: row.family_id,
     dischargedAt: row.discharged_at,
+    temporaryDischargeAt: row.temporary_discharge_at || null,
+    temporaryDischargeUntil: row.temporary_discharge_until || null,
+    temporaryLeaveType: row.temporary_leave_type || null,
+    temporaryDischargeExpectedReturn: row.temporary_discharge_expected_return || null,
     stayDays: calculateStayDays(row.admitted_at, row.discharged_at),
     dateOfBirth: row.date_of_birth,
     roomCode: row.room_code || '',
@@ -472,6 +494,8 @@ const toUiPatient = (row) => {
 const clinicalStatusLabel = (patient) => {
   if (!patient) return 'Stable';
   if (patient.status === 'Discharged') return 'Discharged';
+  const temporaryLabel = patientTemporaryDischargeStatusLabel(patient);
+  if (temporaryLabel) return temporaryLabel;
   const s = patient.clinicalStatus || patient.status;
   return CLINICAL_STATUS_OPTIONS.includes(s) ? s : 'Stable';
 };
@@ -591,6 +615,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [residentReturnBusy, setResidentReturnBusy] = useState(false);
   const [patients, setPatients] = useState([]);
   const [search, setSearch] = useState('');
   const [sortSelectionId, setSortSelectionId] = useState('admission_closest');
@@ -939,6 +964,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   }, [patients]);
 
   const getStatusStyle = (status) => {
+    if (String(status || '').includes('Temporarily discharged')) {
+      return { background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' };
+    }
     switch (status) {
       case 'Improving':
         return { background: '#E6FFFA', color: '#1D7A68', border: '1px solid #B2F5EA' };
@@ -948,6 +976,8 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         return { background: '#FFF5F5', color: '#A61D24', border: '1px solid #FEB2B2' };
       case 'Discharged':
         return { background: '#F3F4F6', color: '#374151', border: '1px solid #E5E7EB' };
+      case 'Temporarily discharged':
+        return { background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' };
       default:
         return { background: '#F3F4F6', color: '#374151', border: '1px solid #E5E7EB' };
     }
@@ -1436,6 +1466,36 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     } finally {
       setRoomSaving(false);
     }
+  };
+
+  const handleResidentReturned = async () => {
+    if (!selectedPatient?.id || !isPatientOnTemporaryLeave(selectedPatient)) return;
+    const confirmed = window.confirm(
+      `Mark ${selectedPatient.name} as returned?\n\nThey will no longer be on temporary discharge and will show as active in care.`
+    );
+    if (!confirmed) return;
+    setFormError('');
+    setResidentReturnBusy(true);
+    const result = await returnResidentFromTemporaryLeave(selectedPatient);
+    setResidentReturnBusy(false);
+    if (!result.ok) {
+      setFormError(result.error || 'Could not mark resident as returned.');
+      return;
+    }
+    const clinicalNorm = selectedPatient.clinicalStatus || 'Stable';
+    const cleared = {
+      ...selectedPatient,
+      temporaryDischargeAt: null,
+      temporaryDischargeUntil: null,
+      temporaryDischargeExpectedReturn: null,
+      temporaryLeaveType: null,
+      status: clinicalNorm,
+    };
+    setSelectedPatient(cleared);
+    setPatients((prev) =>
+      prev.map((p) => (String(p.id) === String(selectedPatient.id) ? { ...p, ...cleared } : p))
+    );
+    refreshAppData();
   };
 
   const saveStaffAssignment = async () => {
@@ -2532,11 +2592,15 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               {/* Card 2: Status / bed / nurse (+ room assignment; staff assignment opens as overlay) */}
               <div className="info-card" style={{ flex: '1 1 0', minWidth: 0, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 0, position: 'relative', overflow: 'hidden' }}>
                 {(() => {
+                  const onTemporaryLeave = isPatientOnTemporaryLeave(selectedPatient);
+                  const temporaryStatusLabel = patientTemporaryDischargeStatusLabel(selectedPatient);
                   const trajectoryLabel =
-                    selectedPatient.status === 'Discharged' ? 'Discharged' : selectedPatient.clinicalStatus;
-                  const trajectoryStyle = getStatusStyle(
-                    selectedPatient.status === 'Discharged' ? 'Discharged' : selectedPatient.clinicalStatus
-                  );
+                    selectedPatient.status === 'Discharged'
+                      ? 'Discharged'
+                      : onTemporaryLeave
+                        ? temporaryStatusLabel || 'Temporarily discharged'
+                        : selectedPatient.clinicalStatus;
+                  const trajectoryStyle = getStatusStyle(trajectoryLabel);
                   const nurseNames = Object.values(weeklyReportsByWeek)
                     .map((r) => (r?.nurse_name && String(r.nurse_name).trim()) || '')
                     .filter(Boolean);
@@ -2598,6 +2662,59 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                           </p>
                         </div>
                       </div>
+                      {onTemporaryLeave ? (
+                        <div
+                          style={{
+                            borderTop: '1px solid #FDE68A',
+                            marginTop: 14,
+                            paddingTop: 14,
+                            background: '#FFFBEB',
+                            marginLeft: -20,
+                            marginRight: -20,
+                            paddingLeft: 20,
+                            paddingRight: 20,
+                            paddingBottom: 14,
+                            borderRadius: '0 0 12px 12px',
+                          }}
+                        >
+                          <p style={{ color: '#92400E', fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                            Temporary discharge
+                          </p>
+                          <p style={{ color: '#78350F', fontSize: 12, lineHeight: 1.5, margin: '0 0 10px' }}>
+                            {temporaryLeaveLabel(selectedPatient.temporaryLeaveType) || 'On leave from the facility'}
+                            {selectedPatient.temporaryDischargeExpectedReturn
+                              ? ` · Expected return: ${selectedPatient.temporaryDischargeExpectedReturn}`
+                              : ''}
+                            {selectedPatient.temporaryDischargeUntil
+                              ? ` · Until: ${new Date(selectedPatient.temporaryDischargeUntil).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                })}`
+                              : ''}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void handleResidentReturned()}
+                            disabled={residentReturnBusy}
+                            style={{
+                              width: '100%',
+                              padding: '10px 14px',
+                              borderRadius: 10,
+                              border: 'none',
+                              background: '#10B981',
+                              color: '#fff',
+                              fontWeight: 800,
+                              fontSize: 13,
+                              cursor: residentReturnBusy ? 'wait' : 'pointer',
+                            }}
+                          >
+                            {residentReturnBusy ? 'Saving…' : 'Resident returned'}
+                          </button>
+                        </div>
+                      ) : null}
                       {isAdminMode && selectedPatient.status !== 'Discharged' ? (
                         <div style={{ borderTop: '1px solid #F4F7FE', marginTop: 14, paddingTop: 14 }}>
                           <p style={{ color: '#475569', fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Room assignment (gender-segregated)</p>
