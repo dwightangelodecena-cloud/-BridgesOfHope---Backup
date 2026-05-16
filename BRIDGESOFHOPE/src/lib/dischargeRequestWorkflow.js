@@ -7,6 +7,7 @@ import {
   isTemporaryDischargeRequest,
   temporaryLeaveLabel,
 } from '@/lib/dischargeRequestTypes';
+import { markTemporaryLeaveReturnedOnRequest } from '@/lib/temporaryLeaveSync';
 
 async function resolveDecidedByUserId() {
   const {
@@ -193,13 +194,40 @@ export async function declineFamilyDischargeRequest(req, note) {
 export async function returnResidentFromTemporaryLeave(patient) {
   const patientId = patient?.id;
   if (!patientId) return { ok: false, error: 'Missing resident id.' };
-  if (!isPatientOnTemporaryLeave(patient)) {
+  const onLeave =
+    isPatientOnTemporaryLeave(patient)
+    || patient?.activeTemporaryDischargeRequestId
+    || patient?._temporaryLeaveFromRequest;
+  if (!onLeave) {
     return { ok: false, error: 'This resident is not on temporary discharge.' };
   }
 
   const displayName = patient.name || patient.full_name || 'Resident';
 
   if (!isSupabaseConfigured()) {
+    try {
+      const raw = localStorage.getItem('bh_patients');
+      const list = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(list)) {
+        const next = list.map((p) => {
+          if (String(p.id) !== String(patientId)) return p;
+          return {
+            ...p,
+            temporary_discharge_at: null,
+            temporary_discharge_until: null,
+            temporary_discharge_expected_return: null,
+            temporary_leave_type: null,
+            temporaryDischargeAt: null,
+            temporaryDischargeUntil: null,
+            temporaryDischargeExpectedReturn: null,
+            temporaryLeaveType: null,
+          };
+        });
+        localStorage.setItem('bh_patients', JSON.stringify(next));
+      }
+    } catch {
+      /* ignore */
+    }
     refreshAppData();
     return { ok: true };
   }
@@ -222,6 +250,8 @@ export async function returnResidentFromTemporaryLeave(patient) {
   if (!data?.length) {
     return { ok: false, error: 'Resident record was not updated.' };
   }
+
+  await markTemporaryLeaveReturnedOnRequest(patientId);
 
   await appendActivityFeed(`${displayName} has returned to the facility and is no longer on temporary discharge.`, {
     familyId: patient.family_id ?? patient.familyId,

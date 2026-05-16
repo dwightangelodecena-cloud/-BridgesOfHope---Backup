@@ -32,6 +32,28 @@ export function temporaryLeaveLabel(leaveTypeId) {
   return TEMPORARY_LEAVE_OPTIONS.find((o) => o.id === leaveTypeId)?.label || leaveTypeId || '';
 }
 
+/** Merge snake_case DB row fields onto a UI patient object for temporary-leave checks. */
+export function mergePatientTemporaryDischargeFields(patient, dbRow = null) {
+  if (!patient) return patient;
+  const src = dbRow && typeof dbRow === 'object' ? dbRow : {};
+  return {
+    ...patient,
+    familyId: patient.familyId ?? patient.family_id ?? src.family_id ?? null,
+    dischargedAt: patient.dischargedAt ?? patient.discharged_at ?? src.discharged_at ?? null,
+    temporaryDischargeAt:
+      patient.temporaryDischargeAt ?? patient.temporary_discharge_at ?? src.temporary_discharge_at ?? null,
+    temporaryDischargeUntil:
+      patient.temporaryDischargeUntil ?? patient.temporary_discharge_until ?? src.temporary_discharge_until ?? null,
+    temporaryDischargeExpectedReturn:
+      patient.temporaryDischargeExpectedReturn
+      ?? patient.temporary_discharge_expected_return
+      ?? src.temporary_discharge_expected_return
+      ?? null,
+    temporaryLeaveType:
+      patient.temporaryLeaveType ?? patient.temporary_leave_type ?? src.temporary_leave_type ?? null,
+  };
+}
+
 export function isPatientOnTemporaryLeave(patient) {
   if (!patient) return false;
   if (patient.status === 'Discharged' || patient.dischargedAt || patient.discharged_at) return false;

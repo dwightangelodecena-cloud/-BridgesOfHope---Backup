@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Home, User, LogOut, Calendar, BarChart3, ClipboardList, FileText, X,
   CheckCircle2, TrendingUp, Stethoscope,
@@ -9,7 +9,22 @@ import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { uiPatientFromRow } from '@/lib/dbMappers';
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
-import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
+import {
+  isPatientOnTemporaryLeave,
+  mergePatientTemporaryDischargeFields,
+  patientTemporaryDischargeStatusLabel,
+} from '@/lib/dischargeRequestTypes';
+import { returnResidentFromTemporaryLeave } from '@/lib/dischargeRequestWorkflow';
+import {
+  mergePatientWithRequestTemporaryLeave,
+  syncPatientTemporaryLeaveFromRequests,
+} from '@/lib/temporaryLeaveSync';
+import {
+  ResidentReturnedConfirmModal,
+  ResidentReturnedHeaderButton,
+  TemporaryDischargeCardBanner,
+} from '@/components/TemporaryDischargeNotice';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 
@@ -45,7 +60,14 @@ function ProgressRing({ pct = 0, size = 56, stroke = 5, color = '#F54E25' }) {
   );
 }
 
-function StatusPill({ progress, dischargedAt }) {
+function StatusPill({ progress, dischargedAt, onTemporaryLeave }) {
+  if (onTemporaryLeave) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>
+        Temporarily discharged
+      </span>
+    );
+  }
   if (dischargedAt) {
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: '#E2E8F0', color: '#475569', border: '1px solid #CBD5E1' }}>
@@ -84,9 +106,10 @@ function DataRow({ label, value }) {
   );
 }
 
-function SectionCard({ children, style = {} }) {
+function SectionCard({ children, style = {}, onTemporaryLeave = false, temporaryPatient = null }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #E9EDF7', borderRadius: 20, padding: '18px 20px', boxShadow: '0 4px 20px rgba(15,23,42,0.05)', ...style }}>
+    <div style={{ background: '#fff', border: '1px solid #E9EDF7', borderRadius: 20, padding: '18px 20px', boxShadow: '0 4px 20px rgba(15,23,42,0.05)', overflow: 'hidden', ...style }}>
+      {onTemporaryLeave ? <TemporaryDischargeCardBanner patient={temporaryPatient} variant="section" /> : null}
       {children}
     </div>
   );
@@ -115,6 +138,9 @@ const PatientDetailsPage = () => {
   const [weeklyReportsByPatient, setWeeklyReportsByPatient] = useState({});
   const [patientImages, setPatientImages] = useState({});
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [residentReturnBusy, setResidentReturnBusy] = useState(false);
+  const [showResidentReturnConfirm, setShowResidentReturnConfirm] = useState(false);
+  const [temporaryLeaveFromRequest, setTemporaryLeaveFromRequest] = useState(null);
   const fileInputRefs = useRef([]);
 
   useFamilyPatientProgressRealtime();
@@ -356,6 +382,84 @@ const PatientDetailsPage = () => {
   };
 
   const selectedPatientDetails = selectedPatient ? patientDetailsById[String(selectedPatient.id)] : null;
+  const selectedPatientCare = useMemo(() => {
+    if (!selectedPatient) return null;
+    const base = mergePatientTemporaryDischargeFields(selectedPatient, selectedPatientDetails);
+    return mergePatientWithRequestTemporaryLeave(base, temporaryLeaveFromRequest);
+  }, [selectedPatient, selectedPatientDetails, temporaryLeaveFromRequest]);
+  const onTemporaryLeave = isPatientOnTemporaryLeave(selectedPatientCare);
+
+  useEffect(() => {
+    if (!selectedPatient?.id || !isSupabaseConfigured()) {
+      setTemporaryLeaveFromRequest(null);
+      return undefined;
+    }
+    const patientId = String(selectedPatient.id);
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(patientId);
+    if (!isUuid) {
+      setTemporaryLeaveFromRequest(null);
+      return undefined;
+    }
+    let cancelled = false;
+    void (async () => {
+      const result = await syncPatientTemporaryLeaveFromRequests(patientId);
+      if (cancelled) return;
+      if (result.fields) {
+        setTemporaryLeaveFromRequest(result.fields);
+        if (result.synced) {
+          setPatientDetailsById((prev) => ({
+            ...prev,
+            [patientId]: { ...(prev[patientId] || {}), ...result.fields },
+          }));
+        }
+      } else {
+        setTemporaryLeaveFromRequest(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPatient?.id]);
+
+  const handleResidentReturned = async () => {
+    if (!selectedPatientCare?.id || !onTemporaryLeave) return;
+    setResidentReturnBusy(true);
+    const result = await returnResidentFromTemporaryLeave(selectedPatientCare);
+    setResidentReturnBusy(false);
+    if (!result.ok) {
+      window.alert(result.error || 'Could not mark resident as returned.');
+      return;
+    }
+    const cleared = {
+      ...selectedPatientCare,
+      temporaryDischargeAt: null,
+      temporaryDischargeUntil: null,
+      temporaryDischargeExpectedReturn: null,
+      temporaryLeaveType: null,
+      temporary_discharge_at: null,
+      temporary_discharge_until: null,
+      temporary_discharge_expected_return: null,
+      temporary_leave_type: null,
+    };
+    setTemporaryLeaveFromRequest(null);
+    setShowResidentReturnConfirm(false);
+    setSelectedPatient(cleared);
+    setPatientDetailsById((prev) => ({
+      ...prev,
+      [String(selectedPatientCare.id)]: {
+        ...(prev[String(selectedPatientCare.id)] || {}),
+        temporary_discharge_at: null,
+        temporary_discharge_until: null,
+        temporary_discharge_expected_return: null,
+        temporary_leave_type: null,
+      },
+    }));
+    setPatients((prev) =>
+      prev.map((p) => (String(p.id) === String(selectedPatientCare.id) ? { ...p, ...cleared } : p))
+    );
+    refreshAppData();
+  };
   const selectedReports = (() => {
     if (!selectedPatient) return [];
     const direct = weeklyReportsByPatient[String(selectedPatient.id)] || [];
@@ -394,6 +498,12 @@ const PatientDetailsPage = () => {
     return computeAdmissionDisplayId({ id: key, decided_at: admittedAt, created_at: createdAt }, { id: key, admitted_at: admittedAt });
   };
   const patientInitials = (name) => name ? String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') : '?';
+  const isResidentOnTemporaryLeave = (p) =>
+    isPatientOnTemporaryLeave(mergePatientTemporaryDischargeFields(p, patientDetailsById[String(p?.id)]));
+  const tempLeaveCardProps = {
+    onTemporaryLeave,
+    temporaryPatient: selectedPatientCare,
+  };
 
   /* ── RENDER ── */
   return (
@@ -557,7 +667,7 @@ const PatientDetailsPage = () => {
                             <span style={{ fontWeight: 800, color: '#0F172A', fontSize: 11 }}>{Number(p.progress)||0}%</span>
                           </div>
                         </td>
-                        <td><StatusPill progress={p.progress} dischargedAt={p.discharged_at || patientDetailsById[String(p.id)]?.discharged_at} /></td>
+                        <td><StatusPill progress={p.progress} dischargedAt={p.discharged_at || patientDetailsById[String(p.id)]?.discharged_at} onTemporaryLeave={isResidentOnTemporaryLeave(p)} /></td>
                         <td style={{ color: '#64748B' }}>{patientDetailsById[String(p.id)]?.primary_concern || p.reason || 'N/A'}</td>
                         <td style={{ color: '#64748B' }}>{patientDetailsById[String(p.id)]?.room_code || p.roomCode || 'Unassigned'}</td>
                         <td style={{ fontWeight: 800, color: '#0F172A' }}>{(weeklyReportsByPatient[String(p.id)] || []).length}</td>
@@ -609,7 +719,7 @@ const PatientDetailsPage = () => {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 900, fontSize: 16, color: '#0F172A', letterSpacing: '-0.01em' }}>{p.name}</span>
-                        <StatusPill progress={p.progress} dischargedAt={p.discharged_at || patientDetailsById[String(p.id)]?.discharged_at} />
+                        <StatusPill progress={p.progress} dischargedAt={p.discharged_at || patientDetailsById[String(p.id)]?.discharged_at} onTemporaryLeave={isResidentOnTemporaryLeave(p)} />
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 12, color: '#64748B' }}>Admitted <strong style={{ color: '#334155' }}>{p.date}</strong></span>
@@ -661,11 +771,22 @@ const PatientDetailsPage = () => {
                         <span style={{ color: 'rgba(253,164,175,0.95)', fontWeight: 700 }}>Discharged {formatDate(selectedPatientDetails?.discharged_at || selectedPatient.discharged_at)}</span>
                       </>
                     ) : null}
+                    {onTemporaryLeave ? (
+                      <>
+                        <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'inline-block' }} />
+                        <span style={{ color: '#FDE68A', fontWeight: 700 }}>{patientTemporaryDischargeStatusLabel(selectedPatientCare) || 'Temporarily discharged'}</span>
+                      </>
+                    ) : null}
                   </div>
                 </div>
-                <button type="button" onClick={() => setSelectedPatient(null)} style={{ width: 36, height: 36, borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                  <X size={16} />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                  {onTemporaryLeave ? (
+                    <ResidentReturnedHeaderButton compact busy={residentReturnBusy} onClick={() => setShowResidentReturnConfirm(true)} />
+                  ) : null}
+                  <button type="button" onClick={() => setSelectedPatient(null)} style={{ width: 36, height: 36, borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
               {/* Progress bar in header */}
               <div style={{ marginTop: 16, background: 'rgba(255,255,255,0.08)', borderRadius: 12, padding: '10px 14px', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -682,7 +803,7 @@ const PatientDetailsPage = () => {
             {/* Modal Body */}
             <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px 24px', background: '#F8FAFF' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 14 }}>
-                <SectionCard>
+                <SectionCard {...tempLeaveCardProps}>
                   <CardTitle icon={ClipboardList}>Patient Data</CardTitle>
                   {[
                     ['Patient Name', selectedPatient.name],
@@ -691,7 +812,11 @@ const PatientDetailsPage = () => {
                       ? [['Discharge Date', formatDate(selectedPatientDetails?.discharged_at || selectedPatient.discharged_at)]]
                       : []),
                     ['Progress', `${Number(selectedPatient.progress)||0}%`],
-                    ['Status', (selectedPatientDetails?.discharged_at || selectedPatient.discharged_at) ? 'Discharged' : patientStatusTone(selectedPatient.progress).label],
+                    ['Status', (selectedPatientDetails?.discharged_at || selectedPatient.discharged_at)
+                      ? 'Discharged'
+                      : onTemporaryLeave
+                        ? patientTemporaryDischargeStatusLabel(selectedPatientCare) || 'Temporarily discharged'
+                        : patientStatusTone(selectedPatient.progress).label],
                     ['Primary Concern', selectedPatientDetails?.primary_concern || selectedPatient.reason || 'N/A'],
                     ['Age', calculateAge(selectedPatientDetails?.date_of_birth || selectedPatient.dateOfBirth)],
                     ['Gender', selectedPatientDetails?.gender || selectedPatient.gender || 'N/A'],
@@ -703,6 +828,9 @@ const PatientDetailsPage = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
                 {/* Weekly Timeline */}
                 <SectionCard style={{ overflow: 'hidden', padding: 0 }}>
+                  {onTemporaryLeave ? (
+                    <TemporaryDischargeCardBanner patient={selectedPatientCare} variant="section" />
+                  ) : null}
                   <div style={{ padding: '14px 16px', borderBottom: '1px solid #F1F5F9' }}>
                     <CardTitle icon={FileText} style={{ marginBottom: 0 }}>Report Timeline</CardTitle>
                   </div>
@@ -724,7 +852,7 @@ const PatientDetailsPage = () => {
                   </table>
                 </SectionCard>
                 {/* Summary Table */}
-                <SectionCard>
+                <SectionCard {...tempLeaveCardProps}>
                   <CardTitle icon={Shield}>Care Summary</CardTitle>
                   {[
                     ['Patient Name', selectedPatient.name],
@@ -737,7 +865,7 @@ const PatientDetailsPage = () => {
                   ].map(([l, v]) => <DataRow key={l} label={l} value={String(v)} />)}
                 </SectionCard>
                 {/* Vitals */}
-                <SectionCard>
+                <SectionCard {...tempLeaveCardProps}>
                   <CardTitle icon={Stethoscope}>Vital Signs</CardTitle>
                   {[
                     ['Weight', resolveVital(latestSelectedReport?.vitals_weight, selectedPatientDetails?.current_weight, selectedPatientDetails?.weight_kg)],
@@ -753,7 +881,7 @@ const PatientDetailsPage = () => {
               </div>
 
               {/* Next Steps */}
-              <SectionCard>
+              <SectionCard {...tempLeaveCardProps}>
                 <CardTitle icon={CheckCircle2}>Recommended Next Steps</CardTitle>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                   {patientSummaryPayload(selectedPatient).goals.map((goal, i) => (
@@ -770,6 +898,14 @@ const PatientDetailsPage = () => {
           </div>
         </div>
       )}
+
+      <ResidentReturnedConfirmModal
+        open={showResidentReturnConfirm}
+        residentName={selectedPatientCare?.name || selectedPatient?.name || 'this resident'}
+        busy={residentReturnBusy}
+        onClose={() => !residentReturnBusy && setShowResidentReturnConfirm(false)}
+        onConfirm={() => void handleResidentReturned()}
+      />
 
       <FloatingChatHead />
     </div>

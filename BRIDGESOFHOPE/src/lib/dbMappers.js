@@ -22,6 +22,14 @@ export function uiPatientFromRow(p) {
     family_id: p.family_id,
     admitted_at: p.admitted_at,
     discharged_at: p.discharged_at,
+    temporary_discharge_at: p.temporary_discharge_at ?? null,
+    temporary_discharge_until: p.temporary_discharge_until ?? null,
+    temporary_discharge_expected_return: p.temporary_discharge_expected_return ?? null,
+    temporary_leave_type: p.temporary_leave_type ?? null,
+    temporaryDischargeAt: p.temporary_discharge_at ?? null,
+    temporaryDischargeUntil: p.temporary_discharge_until ?? null,
+    temporaryDischargeExpectedReturn: p.temporary_discharge_expected_return ?? null,
+    temporaryLeaveType: p.temporary_leave_type ?? null,
   };
 }
 
