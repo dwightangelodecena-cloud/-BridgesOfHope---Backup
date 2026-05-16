@@ -107,13 +107,10 @@ export function ResidentReturnedConfirmModal({
       onClick={busy ? undefined : onClose}
     >
       <div
+        className="app-modal-panel"
         style={{
-          width: '100%',
           maxWidth: 400,
-          background: '#fff',
-          borderRadius: 20,
           padding: '24px 24px 20px',
-          boxShadow: '0 24px 48px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(226, 232, 240, 0.9)',
           position: 'relative',
         }}
         onClick={(e) => e.stopPropagation()}
@@ -171,39 +168,20 @@ export function ResidentReturnedConfirmModal({
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <div className="app-modal-actions">
           <button
             type="button"
+            className="app-btn-secondary"
             disabled={busy}
             onClick={onClose}
-            style={{
-              padding: '10px 16px',
-              fontSize: 13,
-              fontWeight: 700,
-              color: '#475569',
-              background: '#F1F5F9',
-              border: '1px solid #E2E8F0',
-              borderRadius: 10,
-              cursor: busy ? 'not-allowed' : 'pointer',
-            }}
           >
             Cancel
           </button>
           <button
             type="button"
+            className="app-btn-primary-green"
             disabled={busy}
             onClick={onConfirm}
-            style={{
-              padding: '10px 18px',
-              fontSize: 13,
-              fontWeight: 800,
-              color: '#fff',
-              background: busy ? '#6EE7B7' : '#10B981',
-              border: 'none',
-              borderRadius: 10,
-              cursor: busy ? 'wait' : 'pointer',
-              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
-            }}
           >
             {busy ? 'Saving…' : 'Confirm return'}
           </button>

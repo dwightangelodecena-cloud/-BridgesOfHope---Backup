@@ -4,11 +4,9 @@
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
+  color-scheme: light;
+  color: #1b2559;
+  background-color: #f8f9fd;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -29,19 +27,15 @@ body {
   min-width: 320px;
   min-height: 100vh;
   font-family: inherit;
+  background-color: #f8f9fd;
+  color: #1b2559;
 }
 
-#root {
-  width: 100%;
-  min-height: 100vh;
-  font-family: inherit;
-}
-
-/* Full-width app shell — avoids a narrow, centered column (Vite default was flex + center on body). */
 #root {
   width: 100%;
   max-width: 100%;
   min-height: 100vh;
+  font-family: inherit;
 }
 
 h1 {
@@ -49,34 +43,175 @@ h1 {
   line-height: 1.1;
 }
 
-button {
+/* Neutral button base — app form buttons use explicit classes below */
+button:not(.app-btn-secondary):not(.app-btn-primary-green):not(.app-btn-primary-red):not(.app-leave-option) {
   border-radius: 8px;
   border: 1px solid transparent;
   padding: 0.6em 1.2em;
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: transparent;
+  color: inherit;
   cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+button:focus-visible {
+  outline: 2px solid #4338ca;
+  outline-offset: 2px;
+}
+
+/* Readable inputs on light UI (fixes dark native controls when OS uses dark mode) */
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']):not([type='color']),
+textarea,
+select {
+  background-color: #ffffff;
+  color: #0f172a;
+  color-scheme: light;
+  font-family: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+.app-field,
+.app-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: inherit;
+  color-scheme: light;
+}
+
+.app-textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.app-btn-secondary {
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.35;
+  min-height: 42px;
+  box-sizing: border-box;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.app-btn-primary-green {
+  padding: 11px 18px;
+  border-radius: 10px;
+  border: none !important;
+  background: #10b981 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1.35;
+  min-height: 42px;
+  box-sizing: border-box;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+}
+
+.app-btn-primary-red {
+  padding: 11px 18px;
+  border-radius: 10px;
+  border: none !important;
+  background: #be123c !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1.35;
+  min-height: 42px;
+  box-sizing: border-box;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(190, 18, 60, 0.25);
+}
+
+.app-btn-secondary:disabled,
+.app-btn-primary-green:disabled,
+.app-btn-primary-red:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+/* Temporary leave duration options (program discharge modal) */
+button.app-leave-option,
+.app-leave-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  color: #1b2559 !important;
+  -webkit-text-fill-color: #1b2559 !important;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.4;
+  font-family: inherit;
+  min-height: 48px;
+  box-sizing: border-box;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+button.app-leave-option--selected,
+.app-leave-option--selected {
+  border: 2px solid #4338ca !important;
+  background: #eef2ff !important;
+  color: #1b2559 !important;
+  -webkit-text-fill-color: #1b2559 !important;
+}
+
+/* Force light controls inside app modals (Windows dark mode / autofill) */
+.app-modal-panel {
+  color-scheme: light;
+  color: #1b2559;
+}
+
+.app-modal-panel textarea,
+.app-modal-panel input:not([type='checkbox']):not([type='radio']):not([type='hidden']),
+.app-modal-panel select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+  color-scheme: light;
+}
+
+.app-modal-panel textarea::placeholder {
+  color: #94a3b8 !important;
+  -webkit-text-fill-color: #94a3b8 !important;
+  opacity: 1;
+}
+
+.app-modal-panel .app-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
 }

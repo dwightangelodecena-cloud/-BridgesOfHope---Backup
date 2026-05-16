@@ -1365,6 +1365,7 @@ const AdminDashboard = () => {
                 <label style={{ fontSize: 13, fontWeight: 600, color: '#1B2559' }}>
                   Decision note (required)
                   <textarea
+                    className="app-textarea"
                     value={decisionNote}
                     onChange={(e) => setDecisionNote(e.target.value)}
                     placeholder="Write your decision justification..."
@@ -1372,12 +1373,17 @@ const AdminDashboard = () => {
                     style={{
                       width: '100%',
                       marginTop: 6,
-                      border: '1px solid #E2E8F0',
+                      resize: 'vertical',
+                      minHeight: 88,
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      border: '1px solid #cbd5e1',
                       borderRadius: 8,
                       padding: 10,
                       fontSize: 13,
-                      color: '#1B2559',
-                      resize: 'vertical',
+                      fontFamily: 'inherit',
+                      colorScheme: 'light',
+                      boxSizing: 'border-box',
                     }}
                   />
                 </label>

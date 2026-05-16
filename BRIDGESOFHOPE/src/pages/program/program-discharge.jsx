@@ -18,6 +18,7 @@ import {
   TEMPORARY_LEAVE_OPTIONS,
   temporaryLeaveLabel,
 } from '@/lib/dischargeRequestTypes';
+import { appModalPanelStyle } from '@/lib/appFormStyles';
 
 function parseLocalPending() {
   try {
@@ -502,14 +503,8 @@ export default function ProgramDischargeManagement() {
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
-            style={{
-              background: '#fff',
-              borderRadius: 18,
-              padding: '24px 28px',
-              maxWidth: 480,
-              width: '100%',
-              boxShadow: '0 20px 60px rgba(15,23,42,0.2)',
-            }}
+            className="app-modal-panel"
+            style={appModalPanelStyle}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#1B2559' }}>
@@ -537,20 +532,10 @@ export default function ProgramDischargeManagement() {
                       <button
                         key={opt.id}
                         type="button"
+                        className={`app-leave-option${selected ? ' app-leave-option--selected' : ''}`}
                         onClick={() => {
                           setSelectedLeaveType(opt.id);
                           setActionError('');
-                        }}
-                        style={{
-                          textAlign: 'left',
-                          padding: '14px 16px',
-                          borderRadius: 12,
-                          border: selected ? '2px solid #4338CA' : '1px solid #E2E8F0',
-                          background: selected ? '#EEF2FF' : '#FAFBFF',
-                          cursor: 'pointer',
-                          fontWeight: 700,
-                          fontSize: 14,
-                          color: '#1B2559',
                         }}
                       >
                         {opt.label}
@@ -574,6 +559,7 @@ export default function ProgramDischargeManagement() {
                   Comments <span style={{ color: '#DC2626' }}>*</span>
                 </label>
                 <textarea
+                  className="app-textarea"
                   value={decisionNote}
                   onChange={(e) => setDecisionNote(e.target.value)}
                   rows={4}
@@ -582,76 +568,44 @@ export default function ProgramDischargeManagement() {
                       ? 'e.g. Approved for family event; escort verified.'
                       : 'e.g. Cannot approve at this time because…'
                   }
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    borderRadius: 12,
-                    border: '1px solid #E2E8F0',
-                    padding: 12,
-                    fontSize: 14,
-                    resize: 'vertical',
-                    fontFamily: 'inherit',
-                    minHeight: 100,
-                  }}
                 />
               </>
             )}
             {actionError && (
               <p style={{ color: '#DC2626', fontSize: 13, margin: '10px 0 0' }}>{actionError}</p>
             )}
-            <div style={{ display: 'flex', gap: 10, marginTop: 18, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <div className="app-modal-actions">
               {decisionModal.step === 'duration' ? (
                 <button
                   type="button"
+                  className="app-btn-secondary"
                   onClick={() => {
                     setActionError('');
                     setDecisionModal((prev) => (prev ? { ...prev, step: 'comments' } : prev));
                   }}
                   disabled={actionBusy}
-                  style={{
-                    padding: '10px 16px',
-                    borderRadius: 10,
-                    border: '1px solid #E2E8F0',
-                    background: '#fff',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
                 >
                   Back
                 </button>
               ) : (
               <button
                 type="button"
+                className="app-btn-secondary"
                 onClick={closeDecision}
                 disabled={actionBusy}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: 10,
-                  border: '1px solid #E2E8F0',
-                  background: '#fff',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
               >
                 Cancel
               </button>
               )}
               <button
                 type="button"
+                className={
+                  decisionModal.mode === 'approve' || decisionModal.step === 'duration'
+                    ? 'app-btn-primary-green'
+                    : 'app-btn-primary-red'
+                }
                 onClick={() => void (decisionModal.step === 'duration' ? submitDecision() : proceedFromComments())}
                 disabled={actionBusy}
-                style={{
-                  padding: '10px 18px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background:
-                    decisionModal.mode === 'approve' || decisionModal.step === 'duration'
-                      ? '#10B981'
-                      : '#BE123C',
-                  color: '#fff',
-                  fontWeight: 800,
-                  cursor: actionBusy ? 'wait' : 'pointer',
-                }}
               >
                 {actionBusy
                   ? 'Saving…'
