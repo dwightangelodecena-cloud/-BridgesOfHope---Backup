@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Home, User, LogOut, Calendar, ClipboardList, BarChart3, TrendingUp,
+  Home, LogOut, Calendar, ClipboardList, BarChart3, TrendingUp,
   Bell, CheckCircle2, Clock, AlertCircle, ArrowLeft, ArrowRight,
   Info, Shield
 } from 'lucide-react';
@@ -9,25 +9,25 @@ import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
+import FamilyPageHeader from '@/components/family/FamilyPageHeader';
+import FamilySidebarProfileNav from '@/components/family/FamilySidebarProfileNav';
 import {
   loadVisitationSettings, loadVisitationSettingsShared,
   listVisitationRequestsByFamily, listVisitationRequestsAll,
   createVisitationRequest, replaceVisitationRequests,
   upsertVisitationRequest, normalizeVisitationStatus,
   isVisitationLocalDraftSuperseded,
+  getConfirmedVisitationMap,
+  getPendingVisitationDateSet,
+  formatVisitationWeekdayLong,
+  formatVisitationWeekdayShort,
 } from '@/lib/visitationAppointments';
-import {
-  loadFamilyNotifications,
-  saveFamilyNotifications,
-  FAMILY_NOTIFICATIONS_CHANGED,
-  notificationDisplayText,
-  clearAllFamilyNotifications,
-} from '@/lib/familyNotifications';
 
 /* ── unchanged pure helpers ── */
 function dedupeVisitationRequests(rows) {
   const map = new Map();
   for (const r of rows) {
+    if (!r) continue;
     const key = [String(r.familyId||''), String(r.patientId||''), String(r.patientName||'').trim(), String(r.preferredDate||''), String(r.preferredTime||'')].join('|');
     const prev = map.get(key);
     if (!prev) { map.set(key, r); continue; }
@@ -39,8 +39,15 @@ function visitationStatusSubtext(row) {
   const st = normalizeVisitationStatus(row.status);
   const adminReason = String(row.adminNote||'').trim();
   if (st === 'Declined') return 'Declined by the facility';
-  if (st === 'Approved' && row.confirmedDate) return `Confirmed: ${row.confirmedDate} ${row.confirmedTime||''}`.trim();
-  if (st === 'Rescheduled' && row.confirmedDate) { const base = `Rescheduled: ${row.confirmedDate} ${row.confirmedTime||''}`.trim(); return adminReason ? `${base} · Reason: ${adminReason}` : base; }
+  if (st === 'Approved' && row.confirmedDate) {
+    const day = formatVisitationWeekdayLong(row.confirmedDate);
+    return `Confirmed: ${day ? `${day}, ` : ''}${row.confirmedDate} ${row.confirmedTime || ''}`.trim();
+  }
+  if (st === 'Rescheduled' && row.confirmedDate) {
+    const day = formatVisitationWeekdayLong(row.confirmedDate);
+    const base = `Rescheduled: ${day ? `${day}, ` : ''}${row.confirmedDate} ${row.confirmedTime || ''}`.trim();
+    return adminReason ? `${base} · Reason: ${adminReason}` : base;
+  }
   return 'Waiting for admin decision';
 }
 
@@ -58,17 +65,11 @@ export default function FamilyAppointmentsPage() {
   const [patients, setPatients] = useState([]);
   const [familyUserId, setFamilyUserId] = useState('');
   const [familyName, setFamilyName] = useState('Family User');
-  const [userInitials, setUserInitials] = useState('FU');
-  const notificationsDesktopRef = useRef(null);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState([]);
   const [visitationSettings, setVisitationSettings] = useState(() => loadVisitationSettings());
   const [requests, setRequests] = useState([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [form, setForm] = useState({ patientId:'', patientName:'', preferredDate:'', preferredTime:'', note:'' });
-
-  const deriveInitials = (name) => String(name||'').split(' ').filter(Boolean).slice(0,2).map(p=>p[0]?.toUpperCase()||'').join('')||'FU';
 
   const WEEKDAY_TO_INDEX = { sunday:0,sun:0,monday:1,mon:1,tuesday:2,tue:2,tues:2,wednesday:3,wed:3,thursday:4,thu:4,thurs:4,friday:5,fri:5,saturday:6,sat:6 };
 
@@ -76,14 +77,14 @@ export default function FamilyAppointmentsPage() {
   useEffect(() => {
     let cancelled = false;
     const loadUserAndPatients = async () => {
-      if (!isSupabaseConfigured()) { const lp = JSON.parse(localStorage.getItem('bh_patients')||'[]'); if (!cancelled) { setFamilyUserId('local-family'); setFamilyName('Family User'); setUserInitials('FU'); setPatients(lp); } return; }
+      if (!isSupabaseConfigured()) { const lp = JSON.parse(localStorage.getItem('bh_patients')||'[]'); if (!cancelled) { setFamilyUserId('local-family'); setFamilyName('Family User'); setPatients(lp); } return; }
       const { data:{user} } = await supabase.auth.getUser();
       if (!user) return;
       let resolvedName = user.user_metadata?.full_name||[user.user_metadata?.first_name,user.user_metadata?.last_name].filter(Boolean).join(' ')||user.email||'Family User';
       const { data:profileRow } = await supabase.from('profiles').select('full_name').eq('id',user.id).maybeSingle();
       if (profileRow?.full_name) resolvedName = profileRow.full_name;
       const { data } = await supabase.from('patients').select('id,full_name').eq('family_id',user.id).is('discharged_at',null).order('admitted_at',{ascending:false});
-      if (!cancelled) { setFamilyUserId(user.id); setFamilyName(resolvedName); setUserInitials(deriveInitials(resolvedName)); setPatients((data||[]).map(r=>({id:r.id,name:r.full_name}))); }
+      if (!cancelled) { setFamilyUserId(user.id); setFamilyName(resolvedName); setPatients((data||[]).map(r=>({id:r.id,name:r.full_name}))); }
     };
     loadUserAndPatients();
     return () => { cancelled = true; };
@@ -93,7 +94,13 @@ export default function FamilyAppointmentsPage() {
     if (!familyUserId) return;
     const load = async () => {
       const latestSettings = await loadVisitationSettingsShared();
-      setVisitationSettings(latestSettings||loadVisitationSettings());
+      const base = loadVisitationSettings();
+      const latest = latestSettings || {};
+      setVisitationSettings({
+        days: Array.isArray(latest.days) && latest.days.length ? latest.days : base.days,
+        startTime: latest.startTime || base.startTime,
+        endTime: latest.endTime || base.endTime,
+      });
       const localRows = listVisitationRequestsByFamily(familyUserId);
       if (isSupabaseConfigured()) {
         const { data, error } = await supabase.from('visitation_requests').select('*').eq('family_id',familyUserId).order('created_at',{ascending:false});
@@ -150,29 +157,21 @@ export default function FamilyAppointmentsPage() {
 
   useEffect(()=>{ if(!timeSlots.length){if(form.preferredTime)setForm(p=>({...p,preferredTime:''}));return;} if(!form.preferredTime||!timeSlots.includes(form.preferredTime))setForm(p=>({...p,preferredTime:timeSlots[0]})); },[visitationSettings.startTime,visitationSettings.endTime]); // eslint-disable-line
 
-  useEffect(()=>{ if(!showNotifications)return; const onDoc=e=>{ if(!notificationsDesktopRef.current?.contains(e.target))setShowNotifications(false); }; document.addEventListener('mousedown',onDoc); return()=>document.removeEventListener('mousedown',onDoc); },[showNotifications]);
+  const confirmedByDate = useMemo(() => getConfirmedVisitationMap(requests), [requests]);
+  const pendingDates = useMemo(() => getPendingVisitationDateSet(requests), [requests]);
+  const goToCurrentMonth = useCallback(() => {
+    const n = new Date();
+    setCalendarMonth(new Date(n.getFullYear(), n.getMonth(), 1));
+  }, []);
+  const isViewingCurrentMonth =
+    calendarMonth.getFullYear() === today.getFullYear()
+    && calendarMonth.getMonth() === today.getMonth();
   useEffect(() => {
-    if (!familyUserId) return;
-    saveFamilyNotifications(notificationItems, familyUserId);
-  }, [notificationItems, familyUserId]);
-
-  useEffect(() => {
-    if (!familyUserId) {
-      setNotificationItems([]);
-      return undefined;
-    }
-    setNotificationItems(loadFamilyNotifications(familyUserId));
-    const reload = () => setNotificationItems(loadFamilyNotifications(familyUserId));
-    window.addEventListener('storage', reload);
-    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
-    return () => {
-      window.removeEventListener('storage', reload);
-      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
-    };
-  }, [familyUserId]);
-
-  const approvedCount=requests.filter(r=>normalizeVisitationStatus(r.status)==='Approved').length;
-  const pendingCount=requests.filter(r=>normalizeVisitationStatus(r.status)==='Requested').length;
+    goToCurrentMonth();
+  }, [goToCurrentMonth]);
+  const approvedCount = requests.filter((r) => normalizeVisitationStatus(r.status) === 'Approved').length;
+  const pendingCount = requests.filter((r) => normalizeVisitationStatus(r.status) === 'Requested').length;
+  const selectedDayLabel = form.preferredDate ? formatVisitationWeekdayLong(form.preferredDate) : '';
 
   return (
     <div style={{display:'flex',width:'100vw',height:'100vh',background:'#F0F4FF',fontFamily:"'DM Sans',-apple-system,sans-serif",overflow:'hidden'}}>
@@ -223,7 +222,7 @@ export default function FamilyAppointmentsPage() {
           <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/reports');}}><div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE"/></div><span className="sidebar-label">Reports</span></div>
         </div>
         <div className="sidebar-footer">
-          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/profile');}}><div className="sidebar-icon-wrap"><User size={22} color="#707EAE"/></div><span className="sidebar-label">Profile</span></div>
+          <FamilySidebarProfileNav isExpanded={isExpanded} />
           <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/login');}}><div className="sidebar-icon-wrap"><LogOut size={22} color="#F54E25"/></div><span className="sidebar-label" style={{color:'#F54E25'}}>Logout</span></div>
         </div>
       </aside>
@@ -231,35 +230,8 @@ export default function FamilyAppointmentsPage() {
       {/* ── MAIN ── */}
       <main style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
 
-        {/* Top Nav */}
-        <header style={{height:68,background:'#fff',display:'flex',alignItems:'center',padding:'0 28px',borderBottom:'1px solid #EAEFFB',boxShadow:'0 1px 12px rgba(15,23,42,.06)',zIndex:300,boxSizing:'border-box',flexShrink:0}}>
-          <span style={{color:'#F54E25',fontWeight:900,fontSize:18,letterSpacing:'-0.02em'}}>Appointments</span>
-          <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:12}}>
-            <div ref={notificationsDesktopRef} style={{position:'relative'}}>
-              <button type="button" className="ntf-trigger" onClick={()=>setShowNotifications(v=>!v)} aria-label="Notifications">
-                <Bell size={19} strokeWidth={2.2}/>
-              </button>
-              {showNotifications&&(
-                <div className="ntf-dropdown">
-                  <div className="ntf-dropdown-head">
-                    <div style={{display:'flex',alignItems:'center',gap:8,fontWeight:900,color:'#0F172A',fontSize:14,margin:0}}><Bell size={16} color="#F54E25"/> Notifications</div>
-                    {notificationItems.length>0?<button type="button" className="ntf-clear-all" onClick={(e)=>{e.stopPropagation();setNotificationItems(clearAllFamilyNotifications(familyUserId));}}>Clear all</button>:null}
-                  </div>
-                  {notificationItems.length===0?<p style={{color:'#94A3B8',fontSize:12,margin:0}}>No notifications.</p>:notificationItems.map((item,idx)=>(
-                    <div key={item.id||`n-${idx}`} style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:10,fontSize:12,color:'#334155'}}>
-                      <CheckCircle2 size={14} color="#6366F1" style={{flexShrink:0,marginTop:2}}/>
-                      <span style={{flex:1}}>{notificationDisplayText(item)}</span>
-                      <button type="button" style={{border:'none',background:'transparent',color:'#CBD5E1',cursor:'pointer',fontSize:16,padding:0}} aria-label="Remove notification" onClick={(e)=>{e.stopPropagation();setNotificationItems(p=>p.filter((row,i)=>(item.id?row.id!==item.id:i!==idx)));}}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button type="button" className="user-avatar" onClick={()=>navigate('/profile')} aria-label="Profile">{userInitials}</button>
-          </div>
-        </header>
+        <FamilyPageHeader title="Appointments" />
 
-        {/* Content */}
         <div className="scroll-area" style={{flex:1,overflowY:'auto',padding:'24px 28px 48px',background:'#F0F4FF'}}>
           <div style={{width:'100%',maxWidth:1560,margin:'0 auto',display:'grid',gap:20}}>
 
@@ -289,7 +261,7 @@ export default function FamilyAppointmentsPage() {
               <div style={{marginTop:16,display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.1)',borderRadius:12,padding:'10px 16px',flexWrap:'wrap'}}>
                 <Clock size={13} color="rgba(255,255,255,.45)"/>
                 <span style={{fontSize:11,color:'rgba(255,255,255,.45)',fontWeight:600}}>Fixed visitation schedule:</span>
-                <span style={{fontSize:11,color:'rgba(255,255,255,.8)',fontWeight:800}}>{visitationSettings.days.join(', ')} · {visitationSettings.startTime}–{visitationSettings.endTime}</span>
+                <span style={{fontSize:11,color:'rgba(255,255,255,.8)',fontWeight:800}}>{(visitationSettings.days||[]).join(', ')} · {visitationSettings.startTime}–{visitationSettings.endTime}</span>
               </div>
             </div>
 
@@ -319,6 +291,11 @@ export default function FamilyAppointmentsPage() {
                   <div>
                     <label style={{fontSize:10,fontWeight:700,color:'#94A3B8',textTransform:'uppercase',letterSpacing:'.07em',display:'block',marginBottom:6}}>Date</label>
                     <input type="date" className="fi" value={form.preferredDate} readOnly style={{background:'#F8FAFF',cursor:'default'}}/>
+                    {selectedDayLabel ? (
+                      <p style={{ margin: '6px 0 0', fontSize: 11, fontWeight: 800, color: '#166534' }}>
+                        Visit day: {selectedDayLabel}
+                      </p>
+                    ) : null}
                   </div>
                   <div>
                     <label style={{fontSize:10,fontWeight:700,color:'#94A3B8',textTransform:'uppercase',letterSpacing:'.07em',display:'block',marginBottom:6}}>Time Slot</label>
@@ -355,7 +332,12 @@ export default function FamilyAppointmentsPage() {
                         <ArrowLeft size={24} strokeWidth={2.5} color="#1e293b"/>
                       </span>
                     </button>
-                    <span style={{fontSize:16,fontWeight:900,color:'#0F172A',letterSpacing:'-0.02em',textAlign:'center'}}>{monthLabel}</span>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+                      <span style={{fontSize:16,fontWeight:900,color:'#0F172A',letterSpacing:'-0.02em',textAlign:'center'}}>{monthLabel}</span>
+                      {!isViewingCurrentMonth ? (
+                        <button type="button" className="cal-today-btn" onClick={goToCurrentMonth}>Today</button>
+                      ) : null}
+                    </div>
                     <button type="button" aria-label="Next month" onClick={()=>setCalendarMonth(p=>new Date(p.getFullYear(),p.getMonth()+1,1))}
                       style={{border:'1px solid #E2E8F0',background:'#fff',borderRadius:12,width:44,height:44,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 3px rgba(15,23,42,0.06)',flexShrink:0,overflow:'visible'}}>
                       <span style={{display:'flex',lineHeight:0}} aria-hidden>
@@ -374,8 +356,14 @@ export default function FamilyAppointmentsPage() {
                       const isBookable=isBookableDate(cell);
                       const isSel=cell.iso===form.preferredDate;
                       const isToday=cell.iso===todayIso;
+                      const dayVisits=confirmedByDate.get(cell.iso)||[];
+                      const hasVisit=dayVisits.length>0;
+                      const hasPending=pendingDates.has(cell.iso)&&!hasVisit;
+                      const visitTime=dayVisits[0]?.confirmedTime||'';
                       let bg='#fff',borderColor='#E9EDF7',textColor='#334155';
                       if(isSel){bg='linear-gradient(135deg,#F54E25,#EA580C)';borderColor='#EA580C';textColor='#fff';}
+                      else if(hasVisit){bg='#DCFCE7';borderColor='#22C55E';textColor='#166534';}
+                      else if(hasPending){bg='#FEF3C7';borderColor='#F59E0B';textColor='#92400E';}
                       else if(isHoliday){bg='#FFF1F2';borderColor='#FECDD3';textColor='#BE123C';}
                       else if(!isBookable){bg='#F8FAFC';borderColor='#F1F5F9';textColor='#CBD5E1';}
                       else{bg='#FFF7ED';borderColor='#FED7AA';textColor='#9A3412';}
@@ -383,18 +371,25 @@ export default function FamilyAppointmentsPage() {
                         <button key={`c-${idx}`} type="button" disabled={!isBookable} className={`cal-btn${isBookable?' bookable':''}`}
                           onClick={()=>{if(!isBookable)return;setForm(p=>({...p,preferredDate:cell.iso,preferredTime:p.preferredTime||(timeSlots[0]||'')}));setFormError('');}}
                           style={{background:bg,border:`${isSel||isToday?'2':'1'}px solid ${isSel?'#EA580C':isToday?'#6366F1':borderColor}`,color:textColor,boxShadow:isSel?'0 6px 16px rgba(245,78,37,.25)':isToday?'0 0 0 2px rgba(99,102,241,.15)':'0 1px 3px rgba(15,23,42,.04)'}}
-                          title={isHoliday?HOLIDAY_LABELS[mmdd]:!isBookable?'Not available':'Click to select'}>
+                          title={hasVisit?`Your visit: ${formatVisitationWeekdayLong(cell.iso)}${visitTime?` at ${visitTime}`:''}`:hasPending?`Pending request: ${formatVisitationWeekdayLong(cell.iso)}`:isHoliday?HOLIDAY_LABELS[mmdd]:!isBookable?'Not available':'Click to select'}>
                           <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:2}}>
                             <span style={{fontSize:13,fontWeight:900,lineHeight:1}}>{cell.dayNum}</span>
                             {isToday&&!isSel&&<span style={{fontSize:7,fontWeight:800,color:'#4338CA',background:'#E0E7FF',padding:'2px 5px',borderRadius:4,textTransform:'uppercase'}}>Today</span>}
+                            {hasVisit&&!isSel&&<span style={{fontSize:7,fontWeight:800,color:'#166534',background:'#BBF7D0',padding:'2px 5px',borderRadius:4,textTransform:'uppercase'}}>Visit</span>}
+                            {hasPending&&!isSel&&<span style={{fontSize:7,fontWeight:800,color:'#92400E',background:'#FDE68A',padding:'2px 5px',borderRadius:4,textTransform:'uppercase'}}>Pending</span>}
                           </div>
+                          {hasVisit&&!isSel&&(
+                            <span style={{fontSize:9,fontWeight:800,lineHeight:1.2,marginTop:2}}>
+                              {formatVisitationWeekdayShort(cell.iso)}{visitTime?` · ${visitTime}`:''}
+                            </span>
+                          )}
                           {isHoliday&&<span style={{width:5,height:5,borderRadius:'50%',background:'#F43F5E',display:'block',alignSelf:'flex-end',marginTop:'auto'}}/>}
                         </button>
                       );
                     })}
                   </div>
                   <div style={{marginTop:14,display:'flex',flexWrap:'wrap',gap:12}}>
-                    {[{label:'Available',bg:'#FFF7ED',border:'#F97316'},{label:'Holiday',bg:'#FFF1F2',border:'#F43F5E'},{label:'Unavailable',bg:'#F8FAFC',border:'#E2E8F0'}].map(l=>(
+                    {[{label:'Your visit',bg:'#DCFCE7',border:'#22C55E'},{label:'Pending request',bg:'#FEF3C7',border:'#F59E0B'},{label:'Available',bg:'#FFF7ED',border:'#F97316'},{label:'Holiday',bg:'#FFF1F2',border:'#F43F5E'},{label:'Unavailable',bg:'#F8FAFC',border:'#E2E8F0'}].map(l=>(
                       <span key={l.label} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:10,fontWeight:700,color:'#64748B'}}>
                         <span style={{width:8,height:8,borderRadius:3,background:l.bg,border:`1px solid ${l.border}`,display:'inline-block'}}/>
                         {l.label}
@@ -434,7 +429,10 @@ export default function FamilyAppointmentsPage() {
                                 <div style={{fontSize:13,fontWeight:800,color:'#0F172A',marginBottom:2}}>{row.patientName}</div>
                                 <div style={{display:'flex',alignItems:'center',gap:4,fontSize:11,color:'#64748B'}}>
                                   <Clock size={11} color="#94A3B8"/>
-                                  {(row.confirmedDate||row.preferredDate)} {(row.confirmedTime||row.preferredTime)}
+                                  {row.confirmedDate
+                                    ? `${formatVisitationWeekdayLong(row.confirmedDate)}, ${row.confirmedDate}`
+                                    : row.preferredDate}{' '}
+                                  {(row.confirmedTime||row.preferredTime)}
                                 </div>
                               </div>
                               <span style={{fontSize:10,fontWeight:800,borderRadius:999,padding:'3px 9px',flexShrink:0,background:stCfg.bg,color:stCfg.color,border:`1px solid ${stCfg.border}`}}>{st}</span>
@@ -477,7 +475,7 @@ export default function FamilyAppointmentsPage() {
                   <div style={{display:'flex',flexDirection:'column',gap:8}}>
                     <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
                       <span style={{color:'#6366F1',fontWeight:600}}>Visit Days</span>
-                      <span style={{fontWeight:800,color:'#0F172A'}}>{visitationSettings.days.join(', ')||'Not set'}</span>
+                      <span style={{fontWeight:800,color:'#0F172A'}}>{(visitationSettings.days||[]).join(', ')||'Not set'}</span>
                     </div>
                     <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
                       <span style={{color:'#6366F1',fontWeight:600}}>Start Time</span>

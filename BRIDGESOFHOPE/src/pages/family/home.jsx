@@ -7,7 +7,7 @@ import {
   fetchActivityFeedForCurrentUser,
   ACTIVITY_FEED_UPDATED,
 } from '@/lib/activityFeed';
-import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import {
   uiPatientFromRow,
   uiAdmissionRequestFromRow,
@@ -16,20 +16,16 @@ import {
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
 import {
   loadVisitationSettings,
-  listVisitationRequestsByFamily,
+  loadFamilyVisitationRequests,
   createVisitationRequest,
+  deleteVisitationRequestPermanent,
   normalizeVisitationStatus,
 } from '@/lib/visitationAppointments';
-import {
-  loadFamilyNotifications,
-  saveFamilyNotifications,
-  FAMILY_NOTIFICATIONS_CHANGED,
-  notificationDisplayText,
-  clearAllFamilyNotifications,
-} from '@/lib/familyNotifications';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
 import FamilyFeesInclusionsPanel from '@/components/family/FamilyFeesInclusionsPanel';
+import FamilyPageHeader from '@/components/family/FamilyPageHeader';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
+import { useFamilyUser } from '@/hooks/useFamilyUser';
 import { useSupportChat } from '@/hooks/useSupportChat';
 
 import logo from '@/assets/kalingalogo.png';
@@ -89,13 +85,11 @@ const HomeDashboard = () => {
   const [showServicesModal, setShowServicesModal] = useState(false);
   const [weeklyReportExpandedPatientId, setWeeklyReportExpandedPatientId] = useState(null);
   const [weeklyReportDetail, setWeeklyReportDetail] = useState(null);
-  const [displayName, setDisplayName] = useState('Family User');
-  const [userInitials, setUserInitials] = useState('FU');
-  const [familyUserId, setFamilyUserId] = useState('');
+  const { displayName, userId: familyUserId } = useFamilyUser();
   const [visitationSettings, setVisitationSettings] = useState(() => loadVisitationSettings());
   const [familyVisitationRequests, setFamilyVisitationRequests] = useState([]);
   const [visitationSaving, setVisitationSaving] = useState(false);
-  const [hiddenRequestKeys, setHiddenRequestKeys] = useState([]);
+  const [requestDeleteBusy, setRequestDeleteBusy] = useState(null);
   const [visitationForm, setVisitationForm] = useState({
     patientId: '', patientName: '', preferredDate: '', preferredTime: '', note: '',
   });
@@ -110,33 +104,6 @@ const HomeDashboard = () => {
   }, [messages, isChatOpen, chatSending]);
 
   useEffect(() => {
-    let isMounted = true;
-    const deriveInitials = (name) =>
-      name.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || 'FU';
-    const loadUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      const fallbackProfile = localStorage.getItem('bh_family_profile');
-      const fallbackName = fallbackProfile ? JSON.parse(fallbackProfile).fullName : null;
-      let resolvedName =
-        user?.user_metadata?.full_name ||
-        [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ') ||
-        fallbackName || 'Family User';
-      if (user?.id) {
-        const { data: profileRow } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
-        if (profileRow?.full_name) resolvedName = profileRow.full_name;
-      }
-      if (isMounted) {
-        setDisplayName(resolvedName);
-        setUserInitials(deriveInitials(resolvedName));
-        setFamilyUserId(user?.id || 'local-family');
-      }
-    };
-    loadUser();
-    return () => { isMounted = false; };
-  }, []);
-
-  useEffect(() => {
     if (location.state?.openServices) {
       setShowServicesModal(true);
       navigate('/home', { replace: true, state: {} });
@@ -145,16 +112,22 @@ const HomeDashboard = () => {
 
   useEffect(() => {
     if (!familyUserId) return;
-    const loadVisitation = () => {
+    let cancelled = false;
+    const loadVisitation = async () => {
       setVisitationSettings(loadVisitationSettings());
-      setFamilyVisitationRequests(listVisitationRequestsByFamily(familyUserId));
+      const rows = await loadFamilyVisitationRequests(familyUserId);
+      if (!cancelled) setFamilyVisitationRequests(rows);
     };
-    loadVisitation();
-    window.addEventListener('storage', loadVisitation);
-    window.addEventListener(APP_DATA_REFRESH, loadVisitation);
+    void loadVisitation();
+    const onRefresh = () => {
+      void loadVisitation();
+    };
+    window.addEventListener('storage', onRefresh);
+    window.addEventListener(APP_DATA_REFRESH, onRefresh);
     return () => {
-      window.removeEventListener('storage', loadVisitation);
-      window.removeEventListener(APP_DATA_REFRESH, loadVisitation);
+      cancelled = true;
+      window.removeEventListener('storage', onRefresh);
+      window.removeEventListener(APP_DATA_REFRESH, onRefresh);
     };
   }, [familyUserId]);
 
@@ -167,10 +140,6 @@ const HomeDashboard = () => {
 
   const [patientImages, setPatientImages] = useState({});
   const fileInputRefs = useRef([]);
-  const notificationsDesktopRef = useRef(null);
-  const notificationsMobileRef = useRef(null);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState([]);
   const [activityFeed, setActivityFeed] = useState([]);
   const [supabaseReadError, setSupabaseReadError] = useState(null);
   useFamilyPatientProgressRealtime();
@@ -219,7 +188,8 @@ const HomeDashboard = () => {
     try {
       createVisitationRequest({ familyId: familyUserId || 'local-family', familyName: displayName, patientId: visitationForm.patientId || '', patientName, preferredDate, preferredTime, note: String(visitationForm.note || '').trim() });
       setVisitationForm({ patientId: '', patientName: '', preferredDate: '', preferredTime: '', note: '' });
-      setFamilyVisitationRequests(listVisitationRequestsByFamily(familyUserId || 'local-family'));
+      const rows = await loadFamilyVisitationRequests(familyUserId || 'local-family');
+      setFamilyVisitationRequests(rows);
       window.dispatchEvent(new Event('storage'));
     } finally { setVisitationSaving(false); }
   };
@@ -238,7 +208,13 @@ const HomeDashboard = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { if (!cancelled) { setPatients([]); setPendingAdmissions([]); setPendingDischarges([]); setNurseWeeklyReportsByPatient({}); } const feed = await fetchActivityFeedForCurrentUser(); if (!cancelled) setActivityFeed(feed); return; }
       if (!cancelled) setSupabaseReadError(null);
-      const { data: pRows, error: pErr } = await supabase.from('patients').select('id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at').eq('family_id', user.id).order('admitted_at', { ascending: false });
+      const { data: pRows, error: pErr } = await supabase
+        .from('patients')
+        .select(
+          'id, full_name, admitted_at, created_at, progress_percent, progress_updated_at, clinical_status, primary_concern, family_id, discharged_at, case_load_manager, program_staff'
+        )
+        .eq('family_id', user.id)
+        .order('admitted_at', { ascending: false });
       const { data: allFamilyRows } = await supabase.from('patients').select('admitted_at, discharged_at').eq('family_id', user.id);
       if (cancelled) return;
       if (pErr) { console.warn('[home patients]', pErr.message); setPatients([]); } else { setPatients((pRows || []).map((r) => uiPatientFromRow(r)).filter(Boolean)); }
@@ -320,10 +296,76 @@ const HomeDashboard = () => {
     return match?.name || 'Unknown';
   };
   const requestTableRows = [
-    ...pendingAdmissions.map((row, idx) => ({ key: `admission-${row?.requestId || row?.id || idx}`, type: 'Admission', name: resolveRequestPatientName(row), status: row?.status || 'Pending', date: row?.createdAt || row?.created_at || '' })),
-    ...pendingDischarges.map((row, idx) => ({ key: `discharge-${row?.dischargeRequestId || row?.requestId || row?.id || idx}`, type: 'Discharge', name: resolveRequestPatientName(row), status: row?.status || 'Pending', date: row?.createdAt || row?.created_at || '' })),
-    ...familyVisitationRequests.map((row, idx) => ({ key: `appointment-${row?.id || idx}`, type: 'Appointment', name: resolveRequestPatientName(row), status: normalizeVisitationStatus(row?.status), date: row?.createdAt || row?.preferredDate || '' })),
-  ].filter((row) => !hiddenRequestKeys.includes(String(row.key)));
+    ...pendingAdmissions.map((row, idx) => ({
+      key: `admission-${row?.requestId || row?.id || idx}`,
+      type: 'Admission',
+      name: resolveRequestPatientName(row),
+      status: row?.status || 'Pending',
+      date: row?.createdAt || row?.created_at || '',
+      sourceId: row?.requestId || row?.id,
+    })),
+    ...pendingDischarges.map((row, idx) => ({
+      key: `discharge-${row?.dischargeRequestId || row?.requestId || row?.id || idx}`,
+      type: 'Discharge',
+      name: resolveRequestPatientName(row),
+      status: row?.status || 'Pending',
+      date: row?.createdAt || row?.created_at || '',
+      sourceId: row?.dischargeRequestId || row?.requestId || row?.id,
+    })),
+    ...familyVisitationRequests.map((row, idx) => ({
+      key: `appointment-${row?.id || idx}`,
+      type: 'Appointment',
+      name: resolveRequestPatientName(row),
+      status: normalizeVisitationStatus(row?.status),
+      date: row?.createdAt || row?.preferredDate || '',
+      sourceId: row?.id,
+    })),
+  ];
+
+  const removeRequestTrackerRow = async (row) => {
+    const key = String(row?.key || '');
+    if (!key || requestDeleteBusy) return;
+    if (!window.confirm(`Permanently remove this ${row.type} request for ${row.name}?`)) return;
+    setRequestDeleteBusy(key);
+    try {
+      if (key.startsWith('appointment-')) {
+        const id = key.slice('appointment-'.length);
+        const res = await deleteVisitationRequestPermanent(id);
+        if (!res.ok) {
+          window.alert(res.errorMessage || 'Could not delete appointment.');
+          return;
+        }
+        setFamilyVisitationRequests((prev) => prev.filter((r) => String(r.id) !== String(id)));
+      } else if (key.startsWith('admission-') && isSupabaseConfigured() && familyUserId) {
+        const id = key.slice('admission-'.length);
+        const { error } = await supabase
+          .from('admission_requests')
+          .delete()
+          .eq('id', id)
+          .eq('family_id', familyUserId);
+        if (error) {
+          window.alert(error.message || 'Could not delete admission request.');
+          return;
+        }
+        setPendingAdmissions((prev) => prev.filter((r) => String(r.requestId || r.id) !== String(id)));
+      } else if (key.startsWith('discharge-') && isSupabaseConfigured() && familyUserId) {
+        const id = key.slice('discharge-'.length);
+        const { error } = await supabase
+          .from('discharge_requests')
+          .delete()
+          .eq('id', id)
+          .eq('family_id', familyUserId);
+        if (error) {
+          window.alert(error.message || 'Could not delete discharge request.');
+          return;
+        }
+        setPendingDischarges((prev) => prev.filter((r) => String(r.dischargeRequestId || r.id) !== String(id)));
+      }
+      refreshAppData();
+    } finally {
+      setRequestDeleteBusy(null);
+    }
+  };
 
   const patientReportCount = (patientId) => Object.keys(nurseWeeklyReportsByPatient[String(patientId)] || {}).length;
   const patientStatus = (progress) => {
@@ -332,38 +374,6 @@ const HomeDashboard = () => {
     if (p >= 40) return { label: 'Recovering', color: '#92400E', bg: '#FEF3C7' };
     return { label: 'Needs Attention', color: '#991B1B', bg: '#FEE2E2' };
   };
-
-  useEffect(() => {
-    if (!showNotifications) return;
-    const onDoc = (e) => {
-      const t = e.target;
-      if (!notificationsDesktopRef.current?.contains(t) && !notificationsMobileRef.current?.contains(t)) setShowNotifications(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [showNotifications]);
-
-  const handleNotificationToggle = () => setShowNotifications((v) => !v);
-
-  useEffect(() => {
-    if (!familyUserId) return;
-    saveFamilyNotifications(notificationItems, familyUserId);
-  }, [notificationItems, familyUserId]);
-
-  useEffect(() => {
-    if (!familyUserId) {
-      setNotificationItems([]);
-      return undefined;
-    }
-    setNotificationItems(loadFamilyNotifications(familyUserId));
-    const reload = () => setNotificationItems(loadFamilyNotifications(familyUserId));
-    window.addEventListener('storage', reload);
-    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
-    return () => {
-      window.removeEventListener('storage', reload);
-      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
-    };
-  }, [familyUserId]);
 
   const [layoutCompact, setLayoutCompact] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 899px)').matches);
@@ -978,96 +988,7 @@ const HomeDashboard = () => {
       {/* ── MAIN VIEW ── */}
       <div className="main-view">
 
-        {/* ── Top Nav ── */}
-        <header className="top-nav">
-          <div className="top-nav-left">
-            <span className="view-title">Dashboard</span>
-            <span className="welcome-text">{greeting}, {displayName}</span>
-          </div>
-          <div className="top-nav-actions">
-            <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
-              <button type="button" className="notifications-trigger" aria-expanded={showNotifications} aria-label="Notifications" onClick={handleNotificationToggle}>
-                <Bell size={20} stroke="#fff" strokeWidth={2.25} aria-hidden />
-              </button>
-              {showNotifications && (
-                <div className="notifications-dropdown">
-                  <div className="notif-dropdown-head">
-                    <div className="panel-title" style={{ margin: 0 }}><Bell size={16} color="#F54E25" /> Notifications</div>
-                    {notificationItems.length > 0 ? (
-                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyUserId)); }}>Clear all</button>
-                    ) : null}
-                  </div>
-                  {notificationItems.length === 0 ? (
-                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 600 }}>No notifications.</div>
-                  ) : (
-                    notificationItems.map((item, idx) => (
-                      <div key={item.id || `n-${idx}`} className="interactive-row">
-                        <CheckCircle2 size={15} color="#6366F1" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span className="notif-row-text">{notificationDisplayText(item)}</span>
-                        <button
-                          type="button"
-                          className="notif-remove-btn"
-                          aria-label="Remove notification"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx)));
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-            <button type="button" className="user-avatar-top" onClick={() => navigate('/profile')} aria-label="Open profile" style={{ border: 'none', cursor: 'pointer' }}>{userInitials}</button>
-          </div>
-        </header>
-
-        {/* ── Mobile top bar ── */}
-        <div className="mobile-only mobile-top-bar">
-          <img src={logo} alt="Kalinga" style={{ width: 50 }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
-              <button type="button" className="notifications-trigger mobile-notifications-trigger" aria-expanded={showNotifications} aria-label="Notifications" onClick={handleNotificationToggle}>
-                <Bell size={18} stroke="#fff" strokeWidth={2.25} aria-hidden />
-              </button>
-              {showNotifications && (
-                <div className="notifications-dropdown mobile-notifications-dropdown">
-                  <div className="notif-dropdown-head">
-                    <div className="panel-title" style={{ margin: 0 }}><Bell size={16} color="#F54E25" /> Notifications</div>
-                    {notificationItems.length > 0 ? (
-                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyUserId)); }}>Clear all</button>
-                    ) : null}
-                  </div>
-                  {notificationItems.length === 0 ? (
-                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 600 }}>No notifications.</div>
-                  ) : (
-                    notificationItems.map((item, idx) => (
-                      <div key={(item.id || '') + String(idx)} className="interactive-row">
-                        <CheckCircle2 size={15} color="#6366F1" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span className="notif-row-text">{notificationDisplayText(item)}</span>
-                        <button
-                          type="button"
-                          className="notif-remove-btn"
-                          aria-label="Remove notification"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx)));
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-            <button type="button" onClick={() => navigate('/profile')} aria-label="Open profile" style={{ width: 34, height: 34, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, border: 'none', cursor: 'pointer' }}>{userInitials}</button>
-          </div>
-        </div>
+        <FamilyPageHeader title="Dashboard" subtitle={`${greeting}, ${displayName}`} />
 
         {/* ── Scroll content ── */}
         <div className="scroll-content" style={{ background: FAMILY_COLORS.background }}>
@@ -1267,7 +1188,15 @@ const HomeDashboard = () => {
                               <td style={{ fontWeight: 700, color: '#0F172A' }}>{r.name}</td>
                               <td className="request-status-cell">
                                 <span className="table-status-pill">{String(r.status || 'pending').toLowerCase()}</span>
-                                <button type="button" className="table-remove-btn" aria-label="Remove" onClick={() => setHiddenRequestKeys((prev) => [...prev, String(r.key)])}>×</button>
+                                <button
+                                  type="button"
+                                  className="table-remove-btn"
+                                  aria-label="Delete permanently"
+                                  disabled={requestDeleteBusy === String(r.key)}
+                                  onClick={() => void removeRequestTrackerRow(r)}
+                                >
+                                  ×
+                                </button>
                               </td>
                             </tr>
                           )) : <tr><td colSpan={3} style={{ color: '#94A3B8', textAlign: 'center', padding: '20px 14px' }}>No pending requests.</td></tr>}

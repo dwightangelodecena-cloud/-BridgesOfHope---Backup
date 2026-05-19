@@ -192,6 +192,31 @@ function emailForFamilyId(familyId, profileMap) {
   return String(prof.login_email || prof.email || '').trim();
 }
 
+/** Same eligibility as admin User Management (everyone except internal staff). */
+export function isMessagingRecipientProfile(profile) {
+  if (!profile?.id) return false;
+  const accountType = String(profile.account_type || profile.role || '')
+    .trim()
+    .toLowerCase();
+  if (!accountType) return true;
+  if (['admin', 'nurse', 'staff', 'program'].includes(accountType)) return false;
+  if (['case_manager', 'case_load_manager', 'case load manager'].includes(accountType)) {
+    return false;
+  }
+  return true;
+}
+
+function sortInboxThreads(threads) {
+  return [...threads].sort((a, b) => {
+    const aMs = a.lastAt ? new Date(a.lastAt).getTime() : 0;
+    const bMs = b.lastAt ? new Date(b.lastAt).getTime() : 0;
+    if (aMs !== bMs) return bMs - aMs;
+    return String(a.fullName || '').localeCompare(String(b.fullName || ''), undefined, {
+      sensitivity: 'base',
+    });
+  });
+}
+
 /** Ensure profiles row exists so legacy FK constraints do not block inserts. */
 async function ensureFamilyProfile(familyId) {
   if (!isSupabaseConfigured() || !familyId) return { ok: true };
@@ -326,6 +351,7 @@ export async function sendFamilyMessage(familyId, body) {
         'Message may not have saved. Run the support_messages migration on Supabase, or check RLS policies.',
     };
   }
+  notifyMessagingChanged();
   return { message: rowToUi(row) };
 }
 
@@ -383,6 +409,7 @@ export async function sendAdminMessage(familyId, body) {
 
   const row = Array.isArray(data) ? data[0] : null;
   if (!row) return { error: 'Message saved but could not be loaded.' };
+  notifyMessagingChanged();
   return { message: rowToUi(row) };
 }
 
@@ -501,13 +528,29 @@ export async function fetchAdminInboxThreads() {
 
   const { data: profiles, error: profErr } = await supabase
     .from('profiles')
-    .select('id, full_name, first_name, last_name, login_email, email, account_type');
+    .select('id, full_name, first_name, last_name, login_email, email, account_type, role')
+    .order('full_name', { ascending: true })
+    .limit(5000);
   if (profErr) console.warn('[supportMessaging] inbox profiles', profErr.message);
 
-  const familyProfiles = (profiles || []).filter(
-    (p) => String(p.account_type || '').trim().toLowerCase() === 'family'
-  );
-  for (const p of familyProfiles) {
+  const recipientProfiles = (profiles || []).filter(isMessagingRecipientProfile);
+
+  const { data: admissionRows, error: admErr } = await supabase
+    .from('admission_requests')
+    .select('family_id, guardian_email, guardian_full_name, created_at')
+    .not('family_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(3000);
+  if (admErr) console.warn('[supportMessaging] inbox admissions', admErr.message);
+
+  const admissionByFamily = new Map();
+  for (const row of admissionRows || []) {
+    const fid = String(row.family_id || '');
+    if (!fid || admissionByFamily.has(fid)) continue;
+    admissionByFamily.set(fid, row);
+  }
+
+  for (const p of recipientProfiles) {
     const fid = String(p.id);
     profileMap.set(fid, p);
     if (byFamily.has(fid)) {
@@ -526,7 +569,26 @@ export async function fetchAdminInboxThreads() {
     }
   }
 
-  return [...byFamily.values()].sort((a, b) => new Date(b.lastAt || 0) - new Date(a.lastAt || 0));
+  for (const [fid, adm] of admissionByFamily) {
+    if (byFamily.has(fid)) continue;
+    const stubName = String(adm.guardian_full_name || '').trim();
+    profileMap.set(fid, {
+      id: fid,
+      full_name: stubName || 'Family user',
+      login_email: adm.guardian_email,
+      email: adm.guardian_email,
+    });
+    byFamily.set(fid, {
+      familyId: fid,
+      fullName: stubName || displayNameForFamilyId(fid, profileMap),
+      email: String(adm.guardian_email || '').trim(),
+      lastMessage: '',
+      lastAt: '',
+      unreadCount: 0,
+    });
+  }
+
+  return sortInboxThreads([...byFamily.values()]);
 }
 
 async function fetchAdminInboxThreadsLocalOnly() {
@@ -556,7 +618,7 @@ async function fetchAdminInboxThreadsLocalOnly() {
     }
   }
 
-  return [...byFamily.values()].sort((a, b) => new Date(b.lastAt) - new Date(a.lastAt));
+  return sortInboxThreads([...byFamily.values()]);
 }
 
 export function subscribeSupportMessages(familyId, onChange) {

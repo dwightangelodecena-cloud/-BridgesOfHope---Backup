@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import {
   fetchAdminInboxThreads,
   fetchFamilyThread,
@@ -45,20 +47,31 @@ export default function AdminMessagesPage() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [threads, setThreads] = useState([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
+  const [threadsError, setThreadsError] = useState(null);
   const [search, setSearch] = useState('');
   const [selectedFamilyId, setSelectedFamilyId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState(null);
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
   const chatBodyRef = useRef(null);
   const refreshTimerRef = useRef(null);
 
   const loadThreads = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setThreadsLoading(true);
     try {
+      if (!isSupabaseConfigured()) {
+        setThreadsError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to use live messaging.');
+      } else {
+        setThreadsError(null);
+      }
       const rows = await fetchAdminInboxThreads();
       setThreads(rows);
+    } catch (err) {
+      console.warn('[admin-messages] loadThreads', err);
+      setThreadsError(err?.message || 'Could not load conversations.');
     } finally {
       if (!silent) setThreadsLoading(false);
     }
@@ -73,6 +86,9 @@ export default function AdminMessagesPage() {
     try {
       const rows = await fetchFamilyThread(familyId);
       setMessages(rows.filter((m) => m.id !== 'welcome'));
+      setMessagesError(null);
+    } catch (err) {
+      setMessagesError(err?.message || 'Could not load messages.');
     } finally {
       if (!silent) setMessagesLoading(false);
     }
@@ -149,20 +165,24 @@ export default function AdminMessagesPage() {
     );
   });
 
-  const selectedThread = threads.find((t) => t.familyId === selectedFamilyId);
+  const selectedThread = threads.find((t) => String(t.familyId) === String(selectedFamilyId));
 
   const handleSend = async () => {
     const text = inputValue.trim();
     if (!text || !selectedFamilyId || sending) return;
     setSending(true);
+    setSendError('');
     setInputValue('');
     const { message: saved, error } = await sendAdminMessage(selectedFamilyId, text);
     setSending(false);
     if (saved) {
       setMessages((prev) => [...prev, saved]);
       await loadThreads({ silent: true });
-    } else if (error) {
-      console.warn('[admin-messages] send failed:', error);
+    } else {
+      setInputValue(text);
+      const msg = error || 'Could not send message. Check Supabase connection and admin permissions.';
+      setSendError(msg);
+      console.warn('[admin-messages] send failed:', msg);
     }
   };
 
@@ -178,7 +198,7 @@ export default function AdminMessagesPage() {
         .sidebar-nav-item { display: flex; align-items: center; width: 100%; padding: 0 ${isExpanded ? '28px' : '0'}; justify-content: ${isExpanded ? 'flex-start' : 'center'}; gap: 14px; margin-bottom: 6px; min-height: 48px; cursor: pointer; }
         .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 600; font-size: 15px; color: #707EAE; }
         .icon-box { width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .icon-box.active { background: #FFF5F2; color: #F54E25; }
+        .icon-box.active { background: #F54E25; color: white; }
         .icon-box.inactive { background: transparent; color: #A3AED0; }
         .sidebar-footer { border-top: 1px solid #f1f5f9; padding: 16px 0 20px; }
         .am-main { margin-left: ${isExpanded ? '280px' : '110px'}; flex: 1; min-width: 0; min-height: 0; height: 100vh; padding: 16px 24px 20px; transition: margin-left 0.3s; color: #1B2559; display: flex; flex-direction: column; overflow: hidden; }
@@ -269,10 +289,7 @@ export default function AdminMessagesPage() {
             <div className="icon-box inactive"><Calendar size={22} /></div>
             <span className="sidebar-label">Appointments</span>
           </div>
-          <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
-            <div className="icon-box active"><MessageCircle size={22} /></div>
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Messages</span>
-          </div>
+          <AdminMessagesNavItem active onClick={(e) => e.stopPropagation()} />
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
             <div className="icon-box inactive"><FileText size={22} /></div>
             <span className="sidebar-label">Printable reports</span>
@@ -293,13 +310,28 @@ export default function AdminMessagesPage() {
       <main className="am-main">
         <header className="am-main-header">
           <h1>Messages</h1>
-          <p>Chat with family users — messages sent here appear in their support chat.</p>
+          <p>Chat with users — messages sent here appear in their support chat on web and mobile.</p>
+          {threadsError ? (
+            <p style={{ marginTop: 8, fontSize: 12, color: '#DC2626', fontWeight: 600 }}>{threadsError}</p>
+          ) : null}
+          {!isSupabaseConfigured() ? (
+            <p style={{ marginTop: 6, fontSize: 12, color: '#B45309', fontWeight: 600 }}>
+              Running in offline mode — messages are stored in this browser only until Supabase is configured.
+            </p>
+          ) : null}
         </header>
 
         <div className="msg-layout">
           <section className="msg-inbox" aria-label="Family conversations">
             <div className="msg-inbox-head">
-              <div style={{ fontWeight: 800, fontSize: 15, color: '#1B2559' }}>Family users</div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#1B2559' }}>
+                All users
+                {!threadsLoading && threads.length ? (
+                  <span style={{ fontWeight: 600, fontSize: 12, color: '#707EAE', marginLeft: 6 }}>
+                    ({threads.length})
+                  </span>
+                ) : null}
+              </div>
               <div className="msg-inbox-search">
                 <Search size={18} color="#A3AED0" />
                 <input
@@ -316,13 +348,15 @@ export default function AdminMessagesPage() {
                 <div style={{ padding: 20, fontSize: 13, color: '#A3AED0' }}>Loading…</div>
               )}
               {!threadsLoading && !filteredThreads.length && (
-                <div style={{ padding: 20, fontSize: 13, color: '#A3AED0' }}>No family users yet.</div>
+                <div style={{ padding: 20, fontSize: 13, color: '#A3AED0' }}>
+                  No users found. Add users in User Management or wait for family sign-ups.
+                </div>
               )}
               {filteredThreads.map((t) => (
                 <button
                   key={t.familyId}
                   type="button"
-                  className={`msg-thread-item${selectedFamilyId === t.familyId ? ' active' : ''}`}
+                  className={`msg-thread-item${String(selectedFamilyId) === String(t.familyId) ? ' active' : ''}`}
                   style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left' }}
                   onClick={() => handleSelectThread(t.familyId)}
                 >
@@ -358,6 +392,11 @@ export default function AdminMessagesPage() {
                   </div>
                 </header>
                 <div className="msg-chat-body" ref={chatBodyRef}>
+                  {messagesError ? (
+                    <div style={{ fontSize: 12, color: '#DC2626', padding: 8, background: '#FEF2F2', borderRadius: 8 }}>
+                      {messagesError}
+                    </div>
+                  ) : null}
                   {messagesLoading && !messages.length && (
                     <div style={{ fontSize: 12, color: '#A3AED0' }}>Loading messages…</div>
                   )}
@@ -380,12 +419,18 @@ export default function AdminMessagesPage() {
                     </div>
                   ))}
                 </div>
+                {sendError ? (
+                  <div style={{ padding: '8px 20px 0', fontSize: 12, color: '#DC2626', fontWeight: 600 }}>{sendError}</div>
+                ) : null}
                 <div className="msg-chat-input">
                   <input
                     type="text"
                     placeholder="Type a reply…"
                     value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
+                    onChange={(e) => {
+                      setInputValue(e.target.value);
+                      if (sendError) setSendError('');
+                    }}
                     onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
                     disabled={sending}
                   />

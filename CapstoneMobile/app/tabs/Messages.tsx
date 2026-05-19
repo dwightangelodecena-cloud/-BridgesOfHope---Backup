@@ -27,10 +27,11 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
-import {
-  loadFamilyNotificationsMobile,
-  saveFamilyNotificationsMobile,
-} from '../../lib/familyNotificationsMobile';
+import { notificationTextMobile } from '../../lib/familyNotificationsMobile';
+import { useFamilyNotificationsState } from '../../lib/useFamilyNotificationsMobile';
+import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
+import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
+import { supportWelcomeMessage, type SupportUiMessage } from '../../lib/supportMessagingMobile';
 
 const { width } = Dimensions.get('window');
 
@@ -123,30 +124,22 @@ function buildChatRows(messages: Message[]): ChatRow[] {
   return rows;
 }
 
-const demoBaseMs = Date.now() - 2.5 * 60 * 60 * 1000;
+function supportUiToMessage(row: SupportUiMessage): Message {
+  const ms = row.createdAt ? new Date(row.createdAt).getTime() : Date.now();
+  return {
+    id: String(row.id),
+    text: row.text,
+    sender: row.sender === 'user' ? 'user' : 'support',
+    createdAtMs: Number.isFinite(ms) ? ms : Date.now(),
+    showTime: false,
+  };
+}
 
-const initialSupportMessages: Message[] = [
-  {
-    id: '1',
-    text: 'Hello! How can we help you today?',
-    sender: 'support',
-    createdAtMs: demoBaseMs,
-    showTime: false,
-  },
-  {
-    id: '2',
-    text: "Hi! I'm having trouble accessing my account dashboard. Can you help?",
-    sender: 'user',
-    createdAtMs: demoBaseMs + 90 * 1000,
-  },
-  {
-    id: '3',
-    text: 'Thank you for your message! A member of our staff will respond to you soon. We appreciate your patience.',
-    sender: 'support',
-    createdAtMs: demoBaseMs + 3 * 60 * 1000,
-    showTime: false,
-  },
-];
+function supportRowsToMessages(rows: SupportUiMessage[]): Message[] {
+  const list = rows.filter((m) => m.id !== 'welcome').map(supportUiToMessage);
+  if (!list.length) return [supportUiToMessage(supportWelcomeMessage())];
+  return list;
+}
 
 type ThreadRow =
   | { id: string; kind: 'support'; title: string; subtitle: string }
@@ -175,15 +168,22 @@ export default function MessageScreen() {
   const [showArchivedOnly, setShowArchivedOnly] = useState(false);
   const [deletedByThread, setDeletedByThread] = useState<Record<string, boolean>>({});
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
-  const [displayName, setDisplayName] = useState('Family User');
-  const [userInitials, setUserInitials] = useState('FU');
+  const { userId: familyUserId, displayName, initials: userInitials } = useFamilyUserMobile();
+  const { notificationItems, setNotificationItems } = useFamilyNotificationsState(familyUserId);
+  const {
+    messages: supportChatMessages,
+    unreadCount: supportUnreadCount,
+    reload: reloadSupportChat,
+    sendMessage: sendSupportMessage,
+    refreshUnread: refreshSupportUnread,
+    markSupportAsRead,
+  } = useSupportChatMobile();
   const [patients, setPatients] = useState<UIPatient[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
 
-  const [messagesByThread, setMessagesByThread] = useState<Record<string, Message[]>>({
-    [SUPPORT_THREAD_ID]: initialSupportMessages,
-  });
+  const [messagesByThread, setMessagesByThread] = useState<Record<string, Message[]>>({});
+  const [supportSendError, setSupportSendError] = useState('');
+  const [supportSending, setSupportSending] = useState(false);
   /** Re-render relative times (~every 30s while chatting). */
   const [nowTick, setNowTick] = useState(() => Date.now());
   const bottomInsetPad = Math.max(insets.bottom, 8);
@@ -226,31 +226,20 @@ export default function MessageScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    saveFamilyNotificationsMobile(notificationItems);
-  }, [notificationItems]);
-
   const loadPatients = useCallback(async () => {
-    if (!isSupabaseConfigured()) {
+    if (!isSupabaseConfigured() || !familyUserId) {
       setPatients([]);
       setPatientsLoading(false);
       return;
     }
     setPatientsLoading(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user?.id) {
-        setPatients([]);
-        return;
-      }
       const { data, error } = await supabase
         .from('patients')
         .select(
           'id, full_name, admitted_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at'
         )
-        .eq('family_id', user.id)
+        .eq('family_id', familyUserId)
         .is('discharged_at', null)
         .order('admitted_at', { ascending: false });
 
@@ -268,54 +257,35 @@ export default function MessageScreen() {
     } finally {
       setPatientsLoading(false);
     }
-  }, []);
+  }, [familyUserId]);
 
   useFocusEffect(
     useCallback(() => {
       loadPatients();
-    }, [loadPatients])
+      void reloadSupportChat({ silent: true });
+    }, [loadPatients, reloadSupportChat])
   );
-
-  useEffect(() => {
-    let mounted = true;
-    const loadUser = async () => {
-      if (!isSupabaseConfigured()) return;
-      try {
-        const { data } = await supabase.auth.getUser();
-        const user = data?.user;
-        let resolved =
-          (user?.user_metadata?.full_name as string | undefined)?.trim() ||
-          [user?.user_metadata?.first_name, user?.user_metadata?.last_name]
-            .filter(Boolean)
-            .join(' ')
-            .trim() ||
-          'Family User';
-        if (user?.id) {
-          const { data: profileRow } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', user.id)
-            .maybeSingle();
-          if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
-        }
-        if (mounted) {
-          setDisplayName(resolved);
-          setUserInitials(deriveInitials(resolved));
-        }
-      } catch {
-        /* keep defaults */
-      }
-    };
-    loadUser();
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setNowTick(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    setMessagesByThread((prev) => ({
+      ...prev,
+      [SUPPORT_THREAD_ID]: supportRowsToMessages(supportChatMessages),
+    }));
+  }, [supportChatMessages]);
+
+  useEffect(() => {
+    setUnreadByThread((prev) => {
+      const next = { ...prev };
+      if (supportUnreadCount > 0) next[SUPPORT_THREAD_ID] = true;
+      else delete next[SUPPORT_THREAD_ID];
+      return next;
+    });
+  }, [supportUnreadCount]);
 
   const threadRows: ThreadRow[] = useMemo(() => {
     const supportMsgs = messagesByThread[SUPPORT_THREAD_ID] ?? [];
@@ -565,9 +535,20 @@ export default function MessageScreen() {
       return next;
     });
     setActiveThreadId(id);
+    if (id === SUPPORT_THREAD_ID) {
+      setSupportSendError('');
+      void markSupportAsRead();
+    }
     setMessagesByThread((prev) => {
-      if (prev[id]) return prev;
-      if (id === SUPPORT_THREAD_ID) return prev;
+      if (prev[id]?.length) return prev;
+      if (id === SUPPORT_THREAD_ID) {
+        return {
+          ...prev,
+          [SUPPORT_THREAD_ID]: prev[SUPPORT_THREAD_ID]?.length
+            ? prev[SUPPORT_THREAD_ID]
+            : [supportUiToMessage(supportWelcomeMessage())],
+        };
+      }
       return {
         ...prev,
         [id]: [
@@ -588,14 +569,34 @@ export default function MessageScreen() {
     );
   };
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!activeThreadId || inputText.trim().length === 0) return;
+
+    const text = inputText.trim();
+
+    if (activeThreadId === SUPPORT_THREAD_ID) {
+      if (!familyUserId || supportSending) return;
+      setSupportSendError('');
+      setSupportSending(true);
+      setInputText('');
+      pendingUserSendRef.current = true;
+      nearBottomRef.current = true;
+      scrollChatToBottom(false, { bypassLayoutSuppress: true, ignoreNearBottom: true });
+
+      const ok = await sendSupportMessage(text);
+      setSupportSending(false);
+      if (!ok) {
+        setSupportSendError('Could not send message. Check your connection and try again.');
+        setInputText(text);
+      }
+      return;
+    }
 
     const nowMs = Date.now();
     const messageId = `${nowMs}`;
     const newMessage: Message = {
       id: messageId,
-      text: inputText.trim(),
+      text,
       sender: 'user',
       createdAtMs: nowMs,
       receipt: 'sent',
@@ -915,11 +916,11 @@ export default function MessageScreen() {
             {notificationItems.length === 0 ? (
               <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
             ) : notificationItems.map((notif, idx) => (
-              <View key={`${notif}-${idx}`} style={styles.notificationsDropdownRow}>
+              <View key={`${notif.id}-${idx}`} style={styles.notificationsDropdownRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                <Text style={styles.notificationsDropdownText}>{notif}</Text>
+                <Text style={styles.notificationsDropdownText}>{notificationTextMobile(notif)}</Text>
                 <TouchableOpacity
-                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  onPress={() => setNotificationItems((prev) => prev.filter((r) => r.id !== notif.id))}
                   accessibilityRole="button"
                   accessibilityLabel="Remove notification"
                 >
@@ -1172,6 +1173,11 @@ export default function MessageScreen() {
 
             <View style={styles.inputDock}>
               <View style={{ paddingBottom: keyboardOpen ? 8 : bottomInsetPad }}>
+                {supportSendError ? (
+                  <Text style={{ paddingHorizontal: 16, paddingBottom: 6, fontSize: 12, color: '#DC2626', fontWeight: '600' }}>
+                    {supportSendError}
+                  </Text>
+                ) : null}
                 <View style={styles.inputAreaWrapper}>
                   <View style={styles.inputContainer}>
                     <TextInput

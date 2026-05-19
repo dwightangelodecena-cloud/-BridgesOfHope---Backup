@@ -10,7 +10,7 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,14 +24,15 @@ import {
   createVisitationRequestLocal,
   mergeRequestsFromSupabase,
   normalizeVisitationStatus,
-  visitationCalendarDateKeys,
+  getConfirmedVisitationMap,
+  getPendingVisitationDateSet,
+  formatVisitationWeekdayLong,
+  visitationStatusSubtext,
   upsertVisitationRequestAfterRemoteInsert,
   type VisitationRequestRow,
 } from '../../lib/visitationAppointmentsMobile';
-import {
-  loadFamilyNotificationsMobile,
-  saveFamilyNotificationsMobile,
-} from '../../lib/familyNotificationsMobile';
+import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
+import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
@@ -55,11 +56,26 @@ const WEEKDAY_TO_INDEX: Record<string, number> = {
   sat: 6,
 };
 
-const { width: screenWidth } = Dimensions.get('window');
-const CELL_GAP = 4;
-/** Scroll padding 32 + panel horizontal padding 32 */
-const CAL_INNER = Math.max(0, screenWidth - 64);
-const CELL = Math.max(36, Math.floor((CAL_INNER - CELL_GAP * 6) / 7));
+const CAL_GAP = 4;
+/** Horizontal padding: scroll 32 + panel 32 */
+const CAL_HORIZONTAL_PAD = 64;
+
+function useCalendarGridLayout() {
+  const { width: screenWidth } = useWindowDimensions();
+  return useMemo(() => {
+    const inner = Math.max(0, screenWidth - CAL_HORIZONTAL_PAD);
+    const cell = Math.max(30, Math.floor((inner - CAL_GAP * 6) / 7));
+    const gridWidth = cell * 7 + CAL_GAP * 6;
+    return { cell, gridWidth, gap: CAL_GAP };
+  }, [screenWidth]);
+}
+
+const STATUS_CFG: Record<string, { bg: string; color: string; border: string }> = {
+  Approved: { bg: '#DCFCE7', color: '#166534', border: '#BBF7D0' },
+  Declined: { bg: '#FEE2E2', color: '#991B1B', border: '#FECACA' },
+  Rescheduled: { bg: '#E0E7FF', color: '#3730A3', border: '#C7D2FE' },
+  Requested: { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' },
+};
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
@@ -92,12 +108,11 @@ function isoLocalDate(d: Date) {
 export default function AppointmentsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
-  const [userInitials, setUserInitials] = useState('FU');
-  const [firstName, setFirstName] = useState('Family');
+  const { cell: CELL, gridWidth: CAL_GRID_WIDTH, gap: CELL_GAP } = useCalendarGridLayout();
+  const { displayName } = useFamilyUserMobile();
+  const firstName = String(displayName || 'Family User').trim().split(/\s+/)[0] || 'Family';
   const [familyUserId, setFamilyUserId] = useState('');
-  const [familyName, setFamilyName] = useState('Family User');
+    const [familyName, setFamilyName] = useState('Family User');
   const [patients, setPatients] = useState<PatientOpt[]>([]);
   const [visitationSettings, setVisitationSettings] = useState(() => ({ days: ['Wednesday', 'Saturday'], startTime: '13:00', endTime: '17:00' }));
   const [requests, setRequests] = useState<VisitationRequestRow[]>([]);
@@ -141,13 +156,18 @@ export default function AppointmentsScreen() {
   const today = new Date();
   const todayIso = isoLocalDate(today);
 
-  const appointmentDates = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of requests) {
-      visitationCalendarDateKeys(r).forEach((d) => s.add(d));
-    }
-    return s;
-  }, [requests]);
+  const confirmedByDate = useMemo(() => getConfirmedVisitationMap(requests), [requests]);
+  const pendingDates = useMemo(() => getPendingVisitationDateSet(requests), [requests]);
+  const goToCurrentMonth = useCallback(() => {
+    const n = new Date();
+    setCalendarMonth(new Date(n.getFullYear(), n.getMonth(), 1));
+  }, []);
+  const isViewingCurrentMonth =
+    calendarMonth.getFullYear() === today.getFullYear()
+    && calendarMonth.getMonth() === today.getMonth();
+  const approvedCount = requests.filter((r) => normalizeVisitationStatus(r.status) === 'Approved').length;
+  const pendingCount = requests.filter((r) => normalizeVisitationStatus(r.status) === 'Requested').length;
+  const selectedDayLabel = form.preferredDate ? formatVisitationWeekdayLong(form.preferredDate) : '';
 
   const monthLabel = calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const monthStartDow = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay();
@@ -197,8 +217,6 @@ export default function AppointmentsScreen() {
     const display = (user.user_metadata?.full_name as string) || user.email || 'Family User';
     setFamilyUserId(user.id);
     setFamilyName(display);
-    setFirstName(String(display).trim().split(/\s+/)[0] || 'Family');
-
     const { data } = await supabase
       .from('patients')
       .select('id, full_name')
@@ -214,40 +232,12 @@ export default function AppointmentsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      goToCurrentMonth();
       void loadAll();
-    }, [loadAll])
+    }, [loadAll, goToCurrentMonth])
   );
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!isSupabaseConfigured()) return;
-      try {
-        const { data } = await supabase.auth.getUser();
-        const u = data?.user;
-        let resolved =
-          (u?.user_metadata?.full_name as string | undefined)?.trim() ||
-          [u?.user_metadata?.first_name, u?.user_metadata?.last_name].filter(Boolean).join(' ').trim() ||
-          'Family User';
-        if (u?.id) {
-          const { data: profileRow } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', u.id)
-            .maybeSingle();
-          if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
-        }
-        if (mounted) setUserInitials(deriveInitials(resolved));
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
+    useEffect(() => {
     if (!timeSlots.length) {
       setForm((prev) => (prev.preferredTime ? { ...prev, preferredTime: '' } : prev));
       return;
@@ -313,6 +303,15 @@ export default function AppointmentsScreen() {
         if (error) {
           console.warn('[visitation_requests insert]', error.message);
           Alert.alert('Saved locally', `Request saved on this device. Cloud sync: ${error.message}`);
+        } else {
+          const { data: remoteRow } = await supabase
+            .from('visitation_requests')
+            .select('*')
+            .eq('id', requestId)
+            .maybeSingle();
+          if (remoteRow) {
+            await upsertVisitationRequestAfterRemoteInsert(created.id, remoteRow as Record<string, unknown>);
+          }
         }
       }
 
@@ -324,54 +323,25 @@ export default function AppointmentsScreen() {
     }
   };
 
-  useEffect(() => {
-    saveFamilyNotificationsMobile(notificationItems);
-  }, [notificationItems]);
-
   return (
-    <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: '#F8F9FD' }]}>
-      <Modal visible={showNotifications} transparent animationType="fade" onRequestClose={() => setShowNotifications(false)}>
-        <View style={styles.notifRoot}>
-          <Pressable style={styles.notifBackdrop} onPress={() => setShowNotifications(false)} />
-          <View style={[styles.notifPanel, { top: insets.top + 52, right: 16 }]}>
-            <View style={styles.notifTitleRow}>
-              <Ionicons name="notifications" size={16} color="#F54E25" />
-              <Text style={styles.notifTitle}>Notifications</Text>
-            </View>
-            {notificationItems.length === 0 ? (
-              <Text style={[styles.notifText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
-            ) : notificationItems.map((t, idx) => (
-              <View key={`${t}-${idx}`} style={styles.notifRow}>
-                <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                <Text style={styles.notifText}>{t}</Text>
-                <TouchableOpacity
-                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Remove notification"
-                >
-                  <Text style={styles.notifDismiss}>×</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </View>
-      </Modal>
-
-      <View style={styles.topBar}>
-        <KalingaLogoMark size={44} />
-        <Text style={styles.topTitle}>Appointments</Text>
-        <View style={styles.topRight}>
-          <TouchableOpacity style={styles.circleBtn} onPress={() => setShowNotifications((v) => !v)}>
-            <Ionicons name="notifications" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.circleBtn} onPress={() => router.navigate(TAB_ROUTES.profile)}>
-            <Text style={styles.avatarTxt}>{userInitials}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+    <View style={[styles.screen, { backgroundColor: '#F8F9FD' }]}>
+      <FamilyMobilePageHeader title="Appointments" showLogo={false} />
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
         <Text style={styles.welcome}>Welcome Back, {firstName}</Text>
+
+        <View style={styles.statsRow}>
+          {[
+            { label: 'Total', val: requests.length, color: '#6366F1' },
+            { label: 'Approved', val: approvedCount, color: '#16A34A' },
+            { label: 'Pending', val: pendingCount, color: '#F97316' },
+          ].map((s) => (
+            <View key={s.label} style={styles.statCard}>
+              <Text style={styles.statLabel}>{s.label}</Text>
+              <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
+            </View>
+          ))}
+        </View>
 
         <View style={styles.panel}>
           <Text style={styles.sectionTitle}>Visitation hours</Text>
@@ -399,7 +369,7 @@ export default function AppointmentsScreen() {
           ) : null}
 
           <Text style={[styles.sectionTitle, { marginTop: 18 }]}>Calendar</Text>
-          <Text style={styles.muted}>Tap an open day for your visit. Dots show saved requests.</Text>
+          <Text style={styles.muted}>Tap an open day to request. Green dates show your confirmed visit day.</Text>
           <View style={styles.calHeader}>
             <TouchableOpacity
               onPress={() =>
@@ -410,7 +380,14 @@ export default function AppointmentsScreen() {
             >
               <Ionicons name="chevron-back" size={22} color="#1B2559" />
             </TouchableOpacity>
-            <Text style={styles.calMonthLabel}>{monthLabel}</Text>
+            <View style={styles.calMonthCenter}>
+              <Text style={styles.calMonthLabel}>{monthLabel}</Text>
+              {!isViewingCurrentMonth ? (
+                <TouchableOpacity onPress={goToCurrentMonth} style={styles.calTodayBtn} accessibilityRole="button">
+                  <Text style={styles.calTodayBtnTxt}>Today</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
             <TouchableOpacity
               onPress={() =>
                 setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))
@@ -421,64 +398,104 @@ export default function AppointmentsScreen() {
               <Ionicons name="chevron-forward" size={22} color="#1B2559" />
             </TouchableOpacity>
           </View>
-          <View style={styles.weekdayRow}>
+          <View style={[styles.weekdayRow, { width: CAL_GRID_WIDTH, gap: CELL_GAP }]}>
             {WEEKDAY_LABELS.map((d) => (
               <View key={d} style={[styles.weekdayCell, { width: CELL }]}>
                 <Text style={styles.weekdayTxt}>{d}</Text>
               </View>
             ))}
           </View>
-          <View style={styles.calGrid}>
+          <View style={[styles.calGrid, { width: CAL_GRID_WIDTH, gap: CELL_GAP }]}>
             {calendarCells.map((cell, idx) => {
               if (!cell) {
                 return <View key={`e-${idx}`} style={[styles.calCellEmpty, { width: CELL, height: CELL }]} />;
               }
               const { iso, dayNum, dayOfWeek } = cell;
+              const mmdd = iso.slice(5);
+              const isHoliday = Boolean(HOLIDAY_LABELS[mmdd]);
               const bookable = isBookableDate(iso, dayOfWeek);
               const selected = form.preferredDate === iso;
               const isToday = iso === todayIso;
-              const hasAppt = appointmentDates.has(iso);
+              const dayVisits = confirmedByDate.get(iso) || [];
+              const hasVisit = dayVisits.length > 0;
+              const hasPending = pendingDates.has(iso) && !hasVisit;
+              const visitTime = dayVisits[0]?.confirmedTime || '';
               return (
                 <TouchableOpacity
                   key={iso}
                   style={[
                     styles.calCell,
                     { width: CELL, height: CELL },
-                    !bookable && styles.calCellDisabled,
+                    !bookable && !hasVisit && !hasPending && styles.calCellDisabled,
+                    isHoliday && !hasVisit && !hasPending && !selected && styles.calCellHoliday,
+                    bookable && !hasVisit && !hasPending && !selected && styles.calCellBookable,
+                    hasPending && !selected && styles.calCellPending,
+                    hasVisit && !selected && styles.calCellVisit,
                     selected && styles.calCellSelected,
                     isToday && !selected && styles.calCellToday,
                   ]}
                   onPress={() => {
                     if (!bookable) {
-                      const reason = HOLIDAY_LABELS[iso.slice(5)]
-                        ? HOLIDAY_LABELS[iso.slice(5)]
+                      const reason = HOLIDAY_LABELS[mmdd]
+                        ? HOLIDAY_LABELS[mmdd]
                         : 'Not an available visitation day.';
                       Alert.alert('Date not available', reason);
                       return;
                     }
-                    setForm((f) => ({ ...f, preferredDate: iso }));
+                    setForm((f) => ({
+                      ...f,
+                      preferredDate: iso,
+                      preferredTime: f.preferredTime || timeSlots[0] || '',
+                    }));
+                    setFormError('');
                   }}
                   activeOpacity={0.85}
-                  accessibilityLabel={`${iso}${hasAppt ? ', has appointment' : ''}`}
+                  accessibilityLabel={
+                    hasVisit
+                      ? `Your visit on ${formatVisitationWeekdayLong(iso)}${visitTime ? ` at ${visitTime}` : ''}`
+                      : hasPending
+                        ? `Pending request on ${formatVisitationWeekdayLong(iso)}`
+                        : isToday
+                          ? `Today, ${iso}`
+                          : iso
+                  }
                 >
                   <Text
                     style={[
                       styles.calCellNum,
-                      !bookable && styles.calCellNumDisabled,
+                      !bookable && !hasVisit && !hasPending && styles.calCellNumDisabled,
                       selected && styles.calCellNumSelected,
+                      hasVisit && !selected && styles.calCellNumVisit,
+                      hasPending && !selected && styles.calCellNumPending,
                     ]}
                   >
                     {dayNum}
                   </Text>
-                  {hasAppt ? <View style={styles.calDot} /> : null}
                 </TouchableOpacity>
               );
             })}
+          </View>
+          <View style={styles.legendRow}>
+            {[
+              { label: 'Your visit', bg: '#DCFCE7', border: '#22C55E' },
+              { label: 'Pending request', bg: '#FEF3C7', border: '#F59E0B' },
+              { label: 'Available', bg: '#FFF7ED', border: '#F97316' },
+              { label: 'Holiday', bg: '#FFF1F2', border: '#F43F5E' },
+              { label: 'Unavailable', bg: '#F8FAFC', border: '#E2E8F0' },
+            ].map((l) => (
+              <View key={l.label} style={styles.legendItem}>
+                <View style={[styles.legendSwatch, { backgroundColor: l.bg, borderColor: l.border }]} />
+                <Text style={styles.legendTxt}>{l.label}</Text>
+              </View>
+            ))}
           </View>
           <Text style={styles.selectedDateLine}>
             Selected date:{' '}
             <Text style={styles.selectedDateValue}>{form.preferredDate || '—'}</Text>
           </Text>
+          {selectedDayLabel ? (
+            <Text style={styles.visitDayLine}>Visit day: {selectedDayLabel}</Text>
+          ) : null}
 
           <Text style={styles.label}>Preferred time</Text>
           <View style={styles.slotWrap}>
@@ -511,20 +528,42 @@ export default function AppointmentsScreen() {
         </View>
 
         <View style={[styles.panel, { marginTop: 14 }]}>
-          <Text style={styles.sectionTitle}>Your requests</Text>
+          <View style={styles.reqHeaderRow}>
+            <Text style={styles.sectionTitle}>Appointment status</Text>
+            <Text style={styles.reqTotal}>{requests.length} total</Text>
+          </View>
           {requests.length === 0 ? (
-            <Text style={styles.muted}>No visitation requests yet.</Text>
+            <Text style={styles.muted}>No visitation requests yet. Use the calendar to book your first slot.</Text>
           ) : (
-            requests.map((r) => (
-              <View key={r.id} style={styles.reqCard}>
-                <Text style={styles.reqName}>{r.patientName}</Text>
-                <Text style={styles.reqMeta}>
-                  {r.confirmedDate || r.preferredDate} · {r.confirmedTime || r.preferredTime}
-                </Text>
-                <Text style={styles.reqStatus}>{normalizeVisitationStatus(r.status)}</Text>
-                {r.note ? <Text style={styles.reqNote}>{r.note}</Text> : null}
-              </View>
-            ))
+            requests.map((r) => {
+              const st = normalizeVisitationStatus(r.status);
+              const stCfg = STATUS_CFG[st] || STATUS_CFG.Requested;
+              return (
+                <View key={r.id} style={styles.reqCard}>
+                  <View style={styles.reqCardTop}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.reqName}>{r.patientName}</Text>
+                      <Text style={styles.reqMeta}>
+                        {r.confirmedDate
+                          ? `${formatVisitationWeekdayLong(r.confirmedDate)}, ${r.confirmedDate}`
+                          : r.preferredDate}{' '}
+                        · {r.confirmedTime || r.preferredTime}
+                      </Text>
+                    </View>
+                    <View style={[styles.statusPill, { backgroundColor: stCfg.bg, borderColor: stCfg.border }]}>
+                      <Text style={[styles.statusPillTxt, { color: stCfg.color }]}>{st}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.reqSubtext}>{visitationStatusSubtext(r)}</Text>
+                  {st === 'Rescheduled' && String(r.adminNote || '').trim() ? (
+                    <View style={styles.adminNoteBox}>
+                      <Text style={styles.adminNoteTxt}>Admin: {r.adminNote}</Text>
+                    </View>
+                  ) : null}
+                  {r.note ? <Text style={styles.reqNote}>{r.note}</Text> : null}
+                </View>
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -577,6 +616,19 @@ const styles = StyleSheet.create({
   notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 16, paddingTop: 12 },
   welcome: { fontSize: 14, fontWeight: '600', color: '#1B2559', marginBottom: 12 },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  statLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase' },
+  statVal: { fontSize: 22, fontWeight: '900', marginTop: 4 },
   panel: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -594,11 +646,31 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   calNavBtn: { padding: 8, borderRadius: 10, backgroundColor: '#F1F5F9' },
+  calMonthCenter: { alignItems: 'center', gap: 4 },
   calMonthLabel: { fontSize: 16, fontWeight: '800', color: '#1B2559' },
-  weekdayRow: { flexDirection: 'row', flexWrap: 'wrap', gap: CELL_GAP, marginBottom: 4 },
+  calTodayBtn: {
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  calTodayBtnTxt: { fontSize: 11, fontWeight: '800', color: '#4338CA' },
+  weekdayRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
   weekdayCell: { alignItems: 'center', justifyContent: 'center' },
   weekdayTxt: { fontSize: 11, fontWeight: '700', color: '#94A3B8' },
-  calGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: CELL_GAP, marginTop: 4 },
+  calGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignSelf: 'center',
+    marginTop: 4,
+  },
   calCellEmpty: { backgroundColor: 'transparent' },
   calCell: {
     borderRadius: 10,
@@ -607,25 +679,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
-    position: 'relative',
-    paddingBottom: 6,
   },
   calCellDisabled: { backgroundColor: '#F8FAFC', borderColor: '#F1F5F9' },
-  calCellSelected: { borderColor: '#F54E25', backgroundColor: '#FFF7F4' },
-  calCellToday: { borderColor: '#94A3B8' },
-  calCellNum: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
+  calCellBookable: { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' },
+  calCellHoliday: { backgroundColor: '#FFF1F2', borderColor: '#FECDD3' },
+  calCellVisit: { backgroundColor: '#DCFCE7', borderColor: '#22C55E' },
+  calCellPending: { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' },
+  calCellSelected: { borderColor: '#F54E25', backgroundColor: '#FFF7F4', borderWidth: 2 },
+  calCellToday: { borderColor: '#6366F1', borderWidth: 2 },
+  calCellNum: { fontSize: 14, fontWeight: '800', color: '#1B2559' },
   calCellNumDisabled: { color: '#CBD5E1', fontWeight: '600' },
   calCellNumSelected: { color: '#F54E25' },
-  calDot: {
-    position: 'absolute',
-    bottom: 5,
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#3758D5',
-  },
+  calCellNumVisit: { color: '#166534' },
+  calCellNumPending: { color: '#92400E' },
+  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendSwatch: { width: 10, height: 10, borderRadius: 3, borderWidth: 1 },
+  legendTxt: { fontSize: 10, fontWeight: '700', color: '#64748B' },
   selectedDateLine: { marginTop: 12, fontSize: 13, color: '#64748B', fontWeight: '600' },
   selectedDateValue: { fontWeight: '800', color: '#1B2559' },
+  visitDayLine: { marginTop: 4, fontSize: 12, fontWeight: '800', color: '#166534' },
   label: { fontSize: 12, fontWeight: '700', color: '#475569', marginTop: 12, marginBottom: 6 },
   input: {
     borderWidth: 1,
@@ -672,6 +745,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryBtnTxt: { color: '#FFFFFF', fontWeight: '800', fontSize: 16 },
+  reqHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  reqTotal: { fontSize: 11, fontWeight: '700', color: '#94A3B8' },
   reqCard: {
     borderWidth: 1,
     borderColor: '#E9EDF7',
@@ -680,8 +760,24 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     backgroundColor: '#FBFDFF',
   },
+  reqCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   reqName: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
   reqMeta: { fontSize: 12, color: '#64748B', fontWeight: '600', marginTop: 4 },
-  reqStatus: { fontSize: 11, fontWeight: '800', color: '#3758D5', marginTop: 6 },
+  reqSubtext: { fontSize: 11, color: '#94A3B8', fontWeight: '600', marginTop: 8 },
+  statusPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  statusPillTxt: { fontSize: 10, fontWeight: '800' },
+  adminNoteBox: {
+    marginTop: 8,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  adminNoteTxt: { fontSize: 11, fontWeight: '700', color: '#3730A3' },
   reqNote: { fontSize: 12, color: '#475569', marginTop: 6 },
 });

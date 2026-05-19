@@ -11,7 +11,9 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  DeviceEventEmitter,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -21,8 +23,24 @@ import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
+import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
+import {
+  resolveFamilyProfileAvatarMobile,
+  uploadFamilyProfileAvatarToCloudMobile,
+  FAMILY_PROFILE_AVATAR_CHANGED,
+} from '../../lib/familyProfileAvatarMobile';
+import { invalidateFamilyUserCacheMobile } from '../../lib/useFamilyUserMobile';
 
 const TAGALOG_PREF_KEY = 'profile_translate_tagalog';
+
+function deriveInitials(name: string): string {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() || '').join('') || 'FU';
+}
 
 function joinAddressParts(row: {
   house_block_lot?: string | null;
@@ -118,6 +136,9 @@ export default function ProfileScreen() {
       setDraftFullName(name);
       setDraftPhone(phoneVal);
       setDraftAddress(addr);
+
+      const url = await resolveFamilyProfileAvatarMobile(user.id);
+      setProfileImageUri(url);
     } catch {
       /* keep defaults */
     } finally {
@@ -125,9 +146,34 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  const refreshAvatar = useCallback(async () => {
+    if (!isSupabaseConfigured()) return;
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth?.user?.id;
+    if (!uid) {
+      setProfileImageUri(null);
+      return;
+    }
+    const url = await resolveFamilyProfileAvatarMobile(uid);
+    setProfileImageUri(url);
+  }, []);
+
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshAvatar();
+    }, [refreshAvatar])
+  );
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(FAMILY_PROFILE_AVATAR_CHANGED, () => {
+      void refreshAvatar();
+    });
+    return () => sub.remove();
+  }, [refreshAvatar]);
 
   const handleEditToggle = () => {
     setDraftFullName(fullName);
@@ -184,6 +230,20 @@ export default function ProfileScreen() {
     }
   };
 
+  const applyProfilePhoto = async (uri: string) => {
+    setProfileImageUri(uri);
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id;
+      if (!uid) return;
+      const publicUrl = await uploadFamilyProfileAvatarToCloudMobile(uri, uid);
+      setProfileImageUri(publicUrl);
+      invalidateFamilyUserCacheMobile();
+    } catch (e) {
+      Alert.alert('Photo saved locally', String(e instanceof Error ? e.message : e));
+    }
+  };
+
   const pickImageFromLibrary = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) return;
@@ -195,7 +255,7 @@ export default function ProfileScreen() {
     });
     if (!result.canceled) {
       const uri = result.assets[0]?.uri;
-      if (uri) setProfileImageUri(uri);
+      if (uri) await applyProfilePhoto(uri);
     }
     setShowPhotoModal(false);
   };
@@ -210,7 +270,7 @@ export default function ProfileScreen() {
     });
     if (!result.canceled) {
       const uri = result.assets[0]?.uri;
-      if (uri) setProfileImageUri(uri);
+      if (uri) await applyProfilePhoto(uri);
     }
     setShowPhotoModal(false);
   };
@@ -231,14 +291,8 @@ export default function ProfileScreen() {
   };
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.navigate(TAB_ROUTES.home)} hitSlop={12}>
-          <Ionicons name="chevron-back" size={22} color="#1B2559" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <View style={{ width: 22 }} />
-      </View>
+    <View style={styles.screen}>
+      <FamilyMobilePageHeader title="Profile" showLogo={false} />
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
@@ -257,7 +311,9 @@ export default function ProfileScreen() {
               {profileImageUri ? (
                 <Image source={{ uri: profileImageUri }} style={styles.avatarImage} />
               ) : (
-                <Ionicons name="person" size={48} color="#FFFFFF" />
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarInitials}>{deriveInitials(fullName)}</Text>
+                </View>
               )}
             </View>
             <TouchableOpacity style={styles.avatarEditFab} onPress={() => setShowPhotoModal(true)}>
@@ -486,6 +542,19 @@ const styles = StyleSheet.create({
     width: 112,
     height: 112,
     borderRadius: 56,
+  },
+  avatarFallback: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: '#F54E25',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    color: '#FFFFFF',
+    fontSize: 36,
+    fontWeight: '800',
   },
   avatarEditFab: {
     position: 'absolute',

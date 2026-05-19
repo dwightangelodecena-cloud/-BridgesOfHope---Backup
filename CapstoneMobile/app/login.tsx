@@ -12,6 +12,8 @@ import {
   signInWithGoogleMobile,
 } from "../lib/googleAuth";
 
+const POST_SIGNUP_KEY = "bh_post_signup";
+
 export default function LoginScreen() {
   const REMEMBER_LOGIN_KEY = "bh_remembered_login_identifier_mobile";
   const [loginIdentifier, setLoginIdentifier] = useState("");
@@ -19,6 +21,7 @@ export default function LoginScreen() {
   const [hidePassword, setHidePassword] = useState(true);
   const [rememberMe, setRememberMe] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [signupNotice, setSignupNotice] = useState("");
 
   const [error, setError] = useState("");
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -59,6 +62,27 @@ export default function LoginScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const v = await AsyncStorage.getItem(POST_SIGNUP_KEY);
+        if (!mounted || !v) return;
+        if (v === "check_email") {
+          setSignupNotice("Check your email and confirm your account, then sign in below.");
+        } else if (v === "welcome") {
+          setSignupNotice("Account created. You can sign in now.");
+        }
+        await AsyncStorage.removeItem(POST_SIGNUP_KEY);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const showError = (message: string) => {
     setError(message);
     
@@ -80,6 +104,7 @@ export default function LoginScreen() {
   };
 
   const handleSignIn = async () => {
+    setSignupNotice("");
     if (!loginIdentifier.trim() || !password.trim()) {
       showError("Please fill in all fields before signing in.");
       return;
@@ -249,6 +274,12 @@ export default function LoginScreen() {
           resizeMode="contain"
         />
 
+        {signupNotice ? (
+          <View style={styles.signupNoticeBox}>
+            <Text style={styles.signupNoticeText}>{signupNotice}</Text>
+          </View>
+        ) : null}
+
         <Text style={styles.label}>Email Address or Contact Number</Text>
         <View style={styles.inputContainer}>
           <Ionicons name="person-outline" size={20} color="#888" style={styles.inputIcon} />
@@ -256,7 +287,10 @@ export default function LoginScreen() {
             placeholder="Email or 11-digit contact number"
             placeholderTextColor="#AAA"
             value={loginIdentifier}
-            onChangeText={setLoginIdentifier}
+            onChangeText={(t) => {
+              setSignupNotice("");
+              setLoginIdentifier(t);
+            }}
             style={styles.input}
             keyboardType="default"
             autoCapitalize="none"
@@ -273,7 +307,10 @@ export default function LoginScreen() {
             placeholderTextColor="#AAA"
             secureTextEntry={hidePassword}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(t) => {
+              setSignupNotice("");
+              setPassword(t);
+            }}
             style={styles.input}
             textContentType="password"
           />
@@ -384,6 +421,20 @@ const styles = StyleSheet.create({
     height: 120,
     alignSelf: "center",
     marginBottom: 40,
+  },
+  signupNoticeBox: {
+    backgroundColor: "#E0F2FE",
+    borderColor: "#BAE6FD",
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 20,
+  },
+  signupNoticeText: {
+    color: "#075985",
+    fontSize: 13,
+    textAlign: "center",
+    fontWeight: "600",
   },
   label: {
     fontSize: 14,

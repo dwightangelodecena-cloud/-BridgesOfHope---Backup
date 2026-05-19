@@ -45,6 +45,7 @@ import ProgramPage from '@/pages/program/program';
 import ProgramDischargeManagement from '@/pages/program/program-discharge';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
+import AppErrorBoundary from '@/components/AppErrorBoundary';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { runFamilyNotificationSync } from '@/lib/familyNotificationSync';
 
@@ -160,10 +161,11 @@ function RouteMeta() {
 
 function App() {
   return (
-    <Router>
-      <RouteMeta />
-      <FamilyNotificationSyncRunner />
-      <Routes>
+    <AppErrorBoundary>
+      <Router>
+        <RouteMeta />
+        <FamilyNotificationSyncRunner />
+        <Routes>
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
@@ -421,13 +423,14 @@ function App() {
         <Route
           path="/admin-messages"
           element={
-            <RoleGuard allowedRoles={['admin']}>
+            <RoleGuard allowedRoles={['admin', 'staff']}>
               <AdminMessagesPage />
             </RoleGuard>
           }
         />
-      </Routes>
-    </Router>
+        </Routes>
+      </Router>
+    </AppErrorBoundary>
   );
 }
 

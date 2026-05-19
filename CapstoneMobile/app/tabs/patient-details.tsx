@@ -21,10 +21,8 @@ import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/pat
 import { computeAdmissionDisplayId } from '../../lib/admissionDisplayId';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
-import {
-  loadFamilyNotificationsMobile,
-  saveFamilyNotificationsMobile,
-} from '../../lib/familyNotificationsMobile';
+import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
+import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 
 const WINDOW_H = Dimensions.get('window').height;
 
@@ -234,10 +232,8 @@ function MiniTableRow({ label, value }: { label: string; value: string }) {
 export default function PatientDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
-  const [userInitials, setUserInitials] = useState('FU');
-  const [displayName, setDisplayName] = useState('Family User');
+  const [familyUserId, setFamilyUserId] = useState('');
+  const { displayName } = useFamilyUserMobile();
   const [patients, setPatients] = useState<PatientListEntry[]>([]);
   const [patientDetailsById, setPatientDetailsById] = useState<Record<string, Record<string, unknown>>>({});
   const [weeklyReportsByPatient, setWeeklyReportsByPatient] = useState<Record<string, ReportRow[]>>({});
@@ -246,6 +242,7 @@ export default function PatientDetailsScreen() {
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured()) {
+      setFamilyUserId('');
       setPatients([]);
       setPatientDetailsById({});
       setWeeklyReportsByPatient({});
@@ -258,11 +255,14 @@ export default function PatientDetailsScreen() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user?.id) {
+        setFamilyUserId('');
         setPatients([]);
         setPatientDetailsById({});
         setWeeklyReportsByPatient({});
         return;
       }
+
+      setFamilyUserId(user.id);
 
       const safeSelect =
         'id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at, date_of_birth, gender, room_code';
@@ -472,6 +472,7 @@ export default function PatientDetailsScreen() {
       setPatients(dedupedPatients);
     } catch (e) {
       console.warn('[patient-details]', e);
+      setFamilyUserId('');
       setPatients([]);
       setPatientDetailsById({});
       setWeeklyReportsByPatient({});
@@ -481,42 +482,6 @@ export default function PatientDetailsScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => void load(), [load]));
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!isSupabaseConfigured()) return;
-      try {
-        const { data } = await supabase.auth.getUser();
-        const u = data?.user;
-        let resolved =
-          (u?.user_metadata?.full_name as string | undefined)?.trim() ||
-          [u?.user_metadata?.first_name, u?.user_metadata?.last_name].filter(Boolean).join(' ').trim() ||
-          'Family User';
-        if (u?.id) {
-          const { data: profileRow } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', u.id)
-            .maybeSingle();
-          if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
-        }
-        if (mounted) {
-          setDisplayName(resolved);
-          setUserInitials(deriveInitials(resolved));
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    saveFamilyNotificationsMobile(notificationItems);
-  }, [notificationItems]);
 
   const first = (displayName || 'Family User').trim().split(/\s+/)[0];
 
@@ -587,52 +552,12 @@ export default function PatientDetailsScreen() {
     selected != null ? patientSummaryPayload(selected, selectedPatientDetails, latestSelectedReport) : null;
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: '#F0F4FF' }]}>
-      <Modal visible={showNotifications} transparent animationType="fade" onRequestClose={() => setShowNotifications(false)}>
-        <View style={styles.notifRoot}>
-          <Pressable style={styles.notifBackdrop} onPress={() => setShowNotifications(false)} />
-          <View style={[styles.notifPanel, { top: insets.top + 52, right: 16 }]}>
-            <View style={styles.notifTitleRow}>
-              <Ionicons name="notifications" size={16} color="#F54E25" />
-              <Text style={styles.notifTitle}>Notifications</Text>
-            </View>
-            {notificationItems.length === 0 ? (
-              <Text style={[styles.notifText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
-            ) : (
-              notificationItems.map((t, idx) => (
-                <View key={`${t}-${idx}`} style={styles.notifRow}>
-                <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                <Text style={styles.notifText}>{t}</Text>
-                  <TouchableOpacity
-                    onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
-                    accessibilityRole="button"
-                    accessibilityLabel="Remove notification"
-                  >
-                    <Text style={styles.notifDismiss}>×</Text>
-                  </TouchableOpacity>
-              </View>
-              ))
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} accessibilityLabel="Back">
-          <Ionicons name="chevron-back" size={24} color="#1B2559" />
-        </TouchableOpacity>
-        <Text style={styles.topTitle} numberOfLines={1}>
-          Resident Details
-        </Text>
-        <View style={styles.topRight}>
-          <TouchableOpacity style={styles.circleBtn} onPress={() => setShowNotifications((v) => !v)}>
-            <Ionicons name="notifications" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.circleBtn} onPress={() => router.navigate(TAB_ROUTES.profile)}>
-            <Text style={styles.avatarTxt}>{userInitials}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+    <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
+      <FamilyMobilePageHeader
+        title="Resident Details"
+        subtitle={`${patients.length} resident${patients.length !== 1 ? 's' : ''}`}
+        showLogo={false}
+      />
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
         <Text style={styles.welcome}>Welcome Back, {first}</Text>

@@ -26,10 +26,8 @@ import {
   loadAddressDraft,
   saveAddressDraft,
 } from '../../lib/addressPersistence';
-import {
-  loadFamilyNotificationsMobile,
-  saveFamilyNotificationsMobile,
-} from '../../lib/familyNotificationsMobile';
+import { notificationTextMobile } from '../../lib/familyNotificationsMobile';
+import { useFamilyNotificationsState } from '../../lib/useFamilyNotificationsMobile';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
@@ -92,7 +90,8 @@ export default function AdmissionForm() {
   const [iosDraftBirthDate, setIosDraftBirthDate] = useState(() => new Date(2000, 0, 1));
   const [submitting, setSubmitting] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
+  const [familyUserId, setFamilyUserId] = useState('');
+  const { notificationItems, setNotificationItems } = useFamilyNotificationsState(familyUserId);
   const [displayName, setDisplayName] = useState('Family User');
   const [userInitials, setUserInitials] = useState('FU');
 
@@ -241,16 +240,20 @@ export default function AdmissionForm() {
   }, []);
 
   useEffect(() => {
-    saveFamilyNotificationsMobile(notificationItems);
-  }, [notificationItems]);
-
-  useEffect(() => {
     let mounted = true;
     const loadUser = async () => {
-      if (!isSupabaseConfigured()) return;
+      if (!isSupabaseConfigured()) {
+        setFamilyUserId('');
+        return;
+      }
       try {
         const { data } = await supabase.auth.getUser();
         const user = data?.user;
+        if (!user?.id) {
+          if (mounted) setFamilyUserId('');
+        } else if (mounted) {
+          setFamilyUserId(user.id);
+        }
         let resolved =
           (user?.user_metadata?.full_name as string | undefined)?.trim() ||
           [user?.user_metadata?.first_name, user?.user_metadata?.last_name]
@@ -271,6 +274,7 @@ export default function AdmissionForm() {
           setUserInitials(deriveInitials(resolved));
         }
       } catch {
+        if (mounted) setFamilyUserId('');
         /* keep default */
       }
     };
@@ -473,11 +477,11 @@ export default function AdmissionForm() {
             {notificationItems.length === 0 ? (
               <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
             ) : notificationItems.map((item, idx) => (
-              <View key={`${item}-${idx}`} style={styles.notificationsDropdownRow}>
+              <View key={`${item.id}-${idx}`} style={styles.notificationsDropdownRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                <Text style={styles.notificationsDropdownText}>{item}</Text>
+                <Text style={styles.notificationsDropdownText}>{notificationTextMobile(item)}</Text>
                 <TouchableOpacity
-                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  onPress={() => setNotificationItems((prev) => prev.filter((r) => r.id !== item.id))}
                   accessibilityRole="button"
                   accessibilityLabel="Remove notification"
                 >

@@ -11,13 +11,7 @@ import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { uiPatientFromRow } from '@/lib/dbMappers';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
-import {
-  loadFamilyNotifications,
-  saveFamilyNotifications,
-  FAMILY_NOTIFICATIONS_CHANGED,
-  notificationDisplayText,
-  clearAllFamilyNotifications,
-} from '@/lib/familyNotifications';
+import FamilyPageHeader from '@/components/family/FamilyPageHeader';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 
 /* ─── design-only helpers ─── */
@@ -62,12 +56,6 @@ export default function FamilyReportsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [firstName, setFirstName] = useState('Family');
-  const [userInitials, setUserInitials] = useState('FU');
-  const notificationsDesktopRef = useRef(null);
-  const notificationsMobileRef = useRef(null);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [familyNotifUserId, setFamilyNotifUserId] = useState('');
-  const [notificationItems, setNotificationItems] = useState([]);
 
   useFamilyPatientProgressRealtime();
 
@@ -85,7 +73,6 @@ export default function FamilyReportsPage() {
             setPatients([]);
             setWeeklyReportsByPatient({});
             setLoadError('Supabase is not configured.');
-            setFamilyNotifUserId('');
           }
           return;
         }
@@ -95,12 +82,10 @@ export default function FamilyReportsPage() {
             setPatients([]);
             setWeeklyReportsByPatient({});
             setLoadError('Please sign in to view reports.');
-            setFamilyNotifUserId('');
           }
           return;
         }
         const user = authData.user;
-        if (!cancelled) setFamilyNotifUserId(user.id);
         const displayName = user.user_metadata?.full_name || user.email || 'Family User';
         const nextFirstName = String(displayName).trim().split(/\s+/)[0] || 'Family';
         if (!cancelled) setFirstName(nextFirstName);
@@ -158,43 +143,6 @@ export default function FamilyReportsPage() {
 
   useEffect(() => { if (!selectedPatient) { setSelectedReportId(''); return; } const next = visibleReports[0]; setSelectedReportId(next?.id ? String(next.id) : ''); }, [selectedPatient, selectedWeek, visibleReports]);
   useEffect(() => { if (!patientId || !patients.length) return; const match = patients.find((p) => String(p.id) === String(patientId)); if (match) setSelectedPatient(match); }, [patientId, patients]);
-  useEffect(() => {
-    let isMounted = true;
-    const deriveInitials = (name) => name.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || 'FU';
-    const loadUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      const fallbackProfile = localStorage.getItem('bh_family_profile');
-      const fallbackName = fallbackProfile ? JSON.parse(fallbackProfile).fullName : null;
-      let resolvedName = user?.user_metadata?.full_name || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ') || fallbackName || 'Family User';
-      if (user?.id) { const { data: profileRow } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(); if (profileRow?.full_name) resolvedName = profileRow.full_name; }
-      if (isMounted) setUserInitials(deriveInitials(resolvedName));
-    };
-    loadUser();
-    return () => { isMounted = false; };
-  }, []);
-  useEffect(() => { if (!showNotifications) return; const onDoc = (e) => { if (!notificationsDesktopRef.current?.contains(e.target) && !notificationsMobileRef.current?.contains(e.target)) setShowNotifications(false); }; document.addEventListener('mousedown', onDoc); return () => document.removeEventListener('mousedown', onDoc); }, [showNotifications]);
-  const handleNotificationToggle = () => setShowNotifications((v) => !v);
-  useEffect(() => {
-    if (!familyNotifUserId) return;
-    saveFamilyNotifications(notificationItems, familyNotifUserId);
-  }, [notificationItems, familyNotifUserId]);
-
-  useEffect(() => {
-    if (!familyNotifUserId) {
-      setNotificationItems([]);
-      return undefined;
-    }
-    setNotificationItems(loadFamilyNotifications(familyNotifUserId));
-    const reload = () => setNotificationItems(loadFamilyNotifications(familyNotifUserId));
-    window.addEventListener('storage', reload);
-    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
-    return () => {
-      window.removeEventListener('storage', reload);
-      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
-    };
-  }, [familyNotifUserId]);
-
   /* derived */
   const patientInitials = (name) => name ? String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') : '?';
 
@@ -271,67 +219,7 @@ export default function FamilyReportsPage() {
       {/* ── MAIN ── */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* Top Nav */}
-        <header className="top-nav-desktop" style={{ height: 68, background: '#fff', display: 'flex', alignItems: 'center', padding: '0 28px', borderBottom: '1px solid #EAEFFB', boxShadow: '0 1px 12px rgba(15,23,42,0.06)', zIndex: 300, boxSizing: 'border-box', flexShrink: 0 }}>
-          <span style={{ color: '#F54E25', fontWeight: 900, fontSize: 18, letterSpacing: '-0.02em' }}>Weekly Reports</span>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
-              <button type="button" className="notifications-trigger" aria-expanded={showNotifications} aria-label="Notifications" onClick={handleNotificationToggle}>
-                <Bell size={19} stroke="#fff" strokeWidth={2.2} />
-              </button>
-              {showNotifications && (
-                <div className="notifications-dropdown">
-                  <div className="ntf-dropdown-head">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 900, color: '#0F172A', fontSize: 14, margin: 0 }}><Bell size={16} color="#F54E25" /> Notifications</div>
-                    {notificationItems.length > 0 ? (
-                      <button type="button" className="ntf-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyNotifUserId)); }}>Clear all</button>
-                    ) : null}
-                  </div>
-                  {notificationItems.length === 0 ? <div style={{ color: '#94A3B8', fontSize: 12 }}>No notifications.</div>
-                    : notificationItems.map((item, idx) => (
-                      <div key={item.id || `n-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10, fontSize: 12, color: '#334155' }}>
-                        <CheckCircle2 size={14} color="#6366F1" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span style={{ flex: 1 }}>{notificationDisplayText(item)}</span>
-                        <button type="button" aria-label="Remove notification" style={{ border: 'none', background: 'transparent', color: '#CBD5E1', cursor: 'pointer', fontSize: 16, padding: 0 }} onClick={(e) => { e.stopPropagation(); setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx))); }}>×</button>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-            <button type="button" className="user-avatar-top" onClick={() => navigate('/profile')} aria-label="Open profile">{userInitials}</button>
-          </div>
-        </header>
-
-        {/* Mobile Top Bar */}
-        <div className="mobile-top-bar" style={{ alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', height: 60, background: '#fff', borderBottom: '1px solid #F1F1F1' }}>
-          <img src={logo} alt="BH" style={{ width: 48 }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
-              <button type="button" className="notifications-trigger" onClick={handleNotificationToggle} style={{ width: 34, height: 34 }}>
-                <Bell size={17} stroke="#fff" strokeWidth={2.2} />
-              </button>
-              {showNotifications && (
-                <div className="notifications-dropdown" style={{ right: 0, left: 'auto', width: 'min(340px,calc(100vw - 40px))' }}>
-                  <div className="ntf-dropdown-head">
-                    <div style={{ fontWeight: 900, color: '#0F172A', fontSize: 14, margin: 0, display: 'flex', gap: 8, alignItems: 'center' }}><Bell size={16} color="#F54E25" /> Notifications</div>
-                    {notificationItems.length > 0 ? (
-                      <button type="button" className="ntf-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyNotifUserId)); }}>Clear all</button>
-                    ) : null}
-                  </div>
-                  {notificationItems.length === 0 ? <div style={{ color: '#94A3B8', fontSize: 12 }}>No notifications.</div>
-                    : notificationItems.map((item, idx) => (
-                    <div key={item.id || `m-${idx}`} style={{ display: 'flex', gap: 10, marginBottom: 10, fontSize: 12, color: '#334155' }}>
-                      <CheckCircle2 size={14} color="#6366F1" />
-                      <span style={{ flex: 1 }}>{notificationDisplayText(item)}</span>
-                      <button type="button" aria-label="Remove notification" style={{ border: 'none', background: 'transparent', color: '#CBD5E1', cursor: 'pointer', fontSize: 16, padding: 0 }} onClick={(e) => { e.stopPropagation(); setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx))); }}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button type="button" onClick={() => navigate('/profile')} style={{ width: 34, height: 34, background: '#F54E25', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12, border: 'none', cursor: 'pointer' }}>{userInitials}</button>
-          </div>
-        </div>
+        <FamilyPageHeader title="Weekly Reports" />
 
         {/* ── SCROLL CONTENT ── */}
         <div className="scroll-area" style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 48px', background: FAMILY_COLORS.background }}>

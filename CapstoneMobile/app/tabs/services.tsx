@@ -18,11 +18,8 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  loadFamilyNotificationsMobile,
-  saveFamilyNotificationsMobile,
-} from '../../lib/familyNotificationsMobile';
-
+import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
+import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 const { width } = Dimensions.get('window');
 
 function deriveInitials(name: string): string {
@@ -34,20 +31,26 @@ export default function ServicesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
-  const [displayName, setDisplayName] = useState('Family User');
-  const [userInitials, setUserInitials] = useState('FU');
+  const [familyUserId, setFamilyUserId] = useState('');
+  const { displayName } = useFamilyUserMobile();
   const [showAdmissionDetails, setShowAdmissionDetails] = useState(false);
   const [showMonthlySections, setShowMonthlySections] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     const loadUser = async () => {
-      if (!isSupabaseConfigured()) return;
+      if (!isSupabaseConfigured()) {
+        setFamilyUserId('');
+        return;
+      }
       try {
         const { data } = await supabase.auth.getUser();
         const user = data?.user;
+        if (!user?.id) {
+          setFamilyUserId('');
+        } else {
+          setFamilyUserId(user.id);
+        }
         let resolved =
           (user?.user_metadata?.full_name as string | undefined)?.trim() ||
           [user?.user_metadata?.first_name, user?.user_metadata?.last_name]
@@ -64,10 +67,10 @@ export default function ServicesScreen() {
           if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
         }
         if (mounted) {
-          setDisplayName(resolved);
-          setUserInitials(deriveInitials(resolved));
+          /* display name from useFamilyUserMobile */
         }
       } catch {
+        setFamilyUserId('');
         /* keep defaults */
       }
     };
@@ -77,68 +80,13 @@ export default function ServicesScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    saveFamilyNotificationsMobile(notificationItems);
-  }, [notificationItems]);
-
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <Modal
-        visible={showNotifications}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowNotifications(false)}
-      >
-        <View style={styles.notifModalRoot}>
-          <Pressable style={styles.notifModalBackdrop} onPress={() => setShowNotifications(false)} />
-          <View style={[styles.notificationsDropdown, { top: insets.top + 52, right: 16 }]}>
-            <View style={styles.notificationsDropdownTitleRow}>
-              <Ionicons name="notifications" size={16} color="#F54E25" />
-              <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
-            </View>
-            {notificationItems.length === 0 ? (
-              <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
-            ) : notificationItems.map((item, idx) => (
-              <View key={`${item}-${idx}`} style={styles.notificationsDropdownRow}>
-                <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                <Text style={styles.notificationsDropdownText}>{item}</Text>
-                <TouchableOpacity
-                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Remove notification"
-                >
-                  <Text style={styles.notificationDismiss}>×</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </View>
-      </Modal>
-
-      <View style={styles.header}>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerBrandTitle}>Services</Text>
-          <Text style={styles.headerWelcomeLine} numberOfLines={1}>
-            Welcome Back, {(displayName || 'Family User').trim().split(/\s+/)[0]}
-          </Text>
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.headerCircleBtn}
-            onPress={() => setShowNotifications((v) => !v)}
-            accessibilityLabel="Notifications"
-          >
-            <Ionicons name="notifications" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerCircleBtn}
-            onPress={() => router.navigate(TAB_ROUTES.profile)}
-            accessibilityLabel="Profile"
-          >
-            <Text style={styles.headerAvatarText}>{userInitials}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+    <View style={styles.screen}>
+      <FamilyMobilePageHeader
+        title="Services"
+        subtitle={`Welcome back, ${(displayName || 'Family User').trim().split(/\s+/)[0]}`}
+        showLogo={false}
+      />
 
       <ScrollView
         style={styles.bodyScroll}

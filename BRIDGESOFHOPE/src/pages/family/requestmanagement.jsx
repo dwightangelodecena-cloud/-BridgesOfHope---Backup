@@ -12,30 +12,23 @@ import { usePsgcAddressCascade } from '@/hooks/usePsgcAddressCascade';
 import { getAddressStorageKey, loadAddressDraft, saveAddressDraft, clearAddressDraft } from '@/lib/addressPersistence';
 import logo from '@/assets/kalingalogo.png';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
-import {
-  loadFamilyNotifications,
-  saveFamilyNotifications,
-  FAMILY_NOTIFICATIONS_CHANGED,
-  appendFamilyNotificationsIfNew,
-  notificationDisplayText,
-  clearAllFamilyNotifications,
-} from '@/lib/familyNotifications';
+import FamilyPageHeader from '@/components/family/FamilyPageHeader';
+import { appendFamilyNotificationsIfNew } from '@/lib/familyNotifications';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 import {
   FAMILY_DISCHARGE_TYPE,
   FAMILY_TEMPORARY_REASON_CATEGORIES,
 } from '@/lib/dischargeRequestTypes';
+import {
+  insertAdmissionRequest,
+  patchAdmissionRequestGender,
+} from '@/lib/admissionRequestInsert';
 
 const Progress = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [userInitials, setUserInitials] = useState('FU');
-  const [showNotifications, setShowNotifications] = useState(false);
   const [familyNotifUserId, setFamilyNotifUserId] = useState('');
-  const [notificationItems, setNotificationItems] = useState([]);
-  const notificationsDesktopRef = useRef(null);
-  const notificationsMobileRef = useRef(null);
   const patientBirthdayInputRef = useRef(null);
   const [patients, setPatients] = useState([]);
   const [activeTab, setActiveTab] = useState('admission');
@@ -258,31 +251,9 @@ const Progress = () => {
 
   useEffect(() => {
     let isMounted = true;
-    const deriveInitials = (name) =>
-      name
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part[0]?.toUpperCase() || '')
-        .join('') || 'FU';
     const loadUser = async () => {
       const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      const fallbackProfile = localStorage.getItem('bh_family_profile');
-      const fallbackName = fallbackProfile ? JSON.parse(fallbackProfile).fullName : null;
-      let resolvedName =
-        user?.user_metadata?.full_name ||
-        [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ') ||
-        fallbackName ||
-        'Family User';
-      if (user?.id) {
-        const { data: profileRow } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
-        if (profileRow?.full_name) resolvedName = profileRow.full_name;
-      }
-      if (isMounted) {
-        setUserInitials(deriveInitials(resolvedName));
-        setFamilyNotifUserId(user?.id || '');
-      }
+      if (isMounted) setFamilyNotifUserId(data?.user?.id || '');
     };
     loadUser();
     return () => {
@@ -290,45 +261,12 @@ const Progress = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!showNotifications) return;
-    const onDoc = (e) => {
-      const t = e.target;
-      const inDesktop = notificationsDesktopRef.current?.contains(t);
-      const inMobile = notificationsMobileRef.current?.contains(t);
-      if (!inDesktop && !inMobile) setShowNotifications(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [showNotifications]);
-
-  useEffect(() => {
-    if (!familyNotifUserId) return;
-    saveFamilyNotifications(notificationItems, familyNotifUserId);
-  }, [notificationItems, familyNotifUserId]);
-
-  useEffect(() => {
-    if (!familyNotifUserId) {
-      setNotificationItems([]);
-      return undefined;
-    }
-    setNotificationItems(loadFamilyNotifications(familyNotifUserId));
-    const reload = () => setNotificationItems(loadFamilyNotifications(familyNotifUserId));
-    window.addEventListener('storage', reload);
-    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
-    return () => {
-      window.removeEventListener('storage', reload);
-      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
-    };
-  }, [familyNotifUserId]);
-
   const addProcessingNotification = () => {
     if (!familyNotifUserId) return;
     appendFamilyNotificationsIfNew(
       [{ id: `local-processing-${Date.now()}`, text: 'Your request is being processed.' }],
       familyNotifUserId
     );
-    setNotificationItems(loadFamilyNotifications(familyNotifUserId));
   };
 
   const handleAdmissionChange = (e) => {
@@ -408,6 +346,7 @@ const Progress = () => {
       setAdmissionErrors({ submit: 'Please sign in to submit an admission request.' });
       return;
     }
+    const genderValue = admissionForm.patientGender.trim();
     const extendedRow = {
       family_id: user.id,
       guardian_full_name: admissionForm.fullName.trim(),
@@ -421,27 +360,39 @@ const Progress = () => {
       patient_last_name: admissionForm.patientLastName.trim(),
       patient_first_name: admissionForm.patientFirstName.trim(),
       patient_middle_name: admissionForm.patientMiddleName.trim(),
-      patient_gender: admissionForm.patientGender.trim(),
+      patient_gender: genderValue,
       patient_birth_date: admissionForm.patientBirthday,
       reason_for_admission: admissionForm.reasonForAdmission,
     };
-    let { error } = await supabase.from('admission_requests').insert(extendedRow);
-    if (error && /column|schema cache|does not exist|PGRST204/i.test(error.message)) {
-      const minimalRow = {
-        family_id: user.id,
-        guardian_full_name: admissionForm.fullName.trim(),
-        guardian_email: admissionForm.email.trim(),
-        guardian_phone: admissionForm.phoneNumber.trim(),
-        patient_name: getPatientFullName(),
-        patient_birth_date: admissionForm.patientBirthday,
-        reason_for_admission: admissionForm.reasonForAdmission,
-      };
-      ({ error } = await supabase.from('admission_requests').insert(minimalRow));
-    }
-    if (error) {
-      setAdmissionErrors({ submit: error.message || 'Could not submit request.' });
+    const coreRow = {
+      family_id: user.id,
+      guardian_full_name: admissionForm.fullName.trim(),
+      guardian_email: admissionForm.email.trim(),
+      guardian_phone: admissionForm.phoneNumber.trim(),
+      patient_name: getPatientFullName(),
+      patient_last_name: admissionForm.patientLastName.trim(),
+      patient_first_name: admissionForm.patientFirstName.trim(),
+      patient_middle_name: admissionForm.patientMiddleName.trim(),
+      patient_gender: genderValue,
+      patient_birth_date: admissionForm.patientBirthday,
+      reason_for_admission: admissionForm.reasonForAdmission,
+    };
+    const minimalRow = {
+      family_id: user.id,
+      guardian_full_name: admissionForm.fullName.trim(),
+      guardian_email: admissionForm.email.trim(),
+      guardian_phone: admissionForm.phoneNumber.trim(),
+      patient_name: getPatientFullName(),
+      patient_gender: genderValue,
+      patient_birth_date: admissionForm.patientBirthday,
+      reason_for_admission: admissionForm.reasonForAdmission,
+    };
+    const insertResult = await insertAdmissionRequest([extendedRow, coreRow, minimalRow]);
+    if (!insertResult.ok) {
+      setAdmissionErrors({ submit: insertResult.errorMessage });
       return;
     }
+    await patchAdmissionRequestGender(insertResult.id, genderValue);
     await appendActivityFeed(`Admission request submitted for ${getPatientFullName()}. Pending admin review.`, { familyId: user.id });
     refreshAppData();
     addProcessingNotification();
@@ -859,76 +810,7 @@ const Progress = () => {
       </aside>
 
       <main className="main-view">
-        <header className="top-nav">
-          <div className="top-nav-left">
-            <span className="view-title">
-              <span className="view-title-accent">Request</span>
-              <span className="view-title-rest"> Management</span>
-            </span>
-          </div>
-          <div className="top-nav-actions">
-            <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
-              <button type="button" className="notifications-trigger" aria-expanded={showNotifications} aria-label="Notifications" onClick={() => setShowNotifications((v) => !v)}>
-                <Bell size={20} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
-              </button>
-              {showNotifications && (
-                <div className="notifications-dropdown">
-                  <div className="notif-dropdown-head">
-                    <div className="notif-dropdown-title"><Bell size={16} color="#F54E25" /> Notifications</div>
-                    {notificationItems.length > 0 ? (
-                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyNotifUserId)); }}>Clear all</button>
-                    ) : null}
-                  </div>
-                  {notificationItems.length === 0 ? (
-                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
-                  ) : (
-                    notificationItems.map((item, idx) => (
-                      <div key={item.id || `n-${idx}`} className="notif-dropdown-row">
-                        <CheckCircle2 size={15} color="#2B31ED" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span>{notificationDisplayText(item)}</span>
-                        <button type="button" className="notif-remove-x" aria-label="Remove notification" onClick={(e) => { e.stopPropagation(); setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx))); }}>×</button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-            <button type="button" className="user-avatar-top" onClick={() => navigate('/profile')} aria-label="Open profile" style={{ border: 'none', cursor: 'pointer' }}>{userInitials}</button>
-          </div>
-        </header>
-
-        <div className="mobile-top-bar">
-          <img src={logo} alt="Kalinga" style={{ width: 48 }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
-              <button type="button" className="notifications-trigger" aria-expanded={showNotifications} aria-label="Notifications" onClick={() => setShowNotifications((v) => !v)}>
-                <Bell size={18} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
-              </button>
-              {showNotifications && (
-                <div className="notifications-dropdown">
-                  <div className="notif-dropdown-head">
-                    <div className="notif-dropdown-title"><Bell size={16} color="#F54E25" /> Notifications</div>
-                    {notificationItems.length > 0 ? (
-                      <button type="button" className="notif-clear-all" onClick={(e) => { e.stopPropagation(); setNotificationItems(clearAllFamilyNotifications(familyNotifUserId)); }}>Clear all</button>
-                    ) : null}
-                  </div>
-                  {notificationItems.length === 0 ? (
-                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
-                  ) : (
-                    notificationItems.map((item, idx) => (
-                      <div key={item.id || `m-${idx}`} className="notif-dropdown-row">
-                        <CheckCircle2 size={15} color="#2B31ED" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span>{notificationDisplayText(item)}</span>
-                        <button type="button" className="notif-remove-x" aria-label="Remove notification" onClick={(e) => { e.stopPropagation(); setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx))); }}>×</button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-            <button type="button" onClick={() => navigate('/profile')} aria-label="Open profile" style={{ width: 34, height: 34, background: '#F54E25', color: '#fff', borderRadius: '50%', border: 'none', fontWeight: 700 }}>{userInitials}</button>
-          </div>
-        </div>
+        <FamilyPageHeader title="Request Management" />
 
         <div className="content-area" style={{ background: FAMILY_COLORS.background }}>
           <div className="content-wrap">

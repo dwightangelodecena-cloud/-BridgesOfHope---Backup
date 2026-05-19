@@ -16,6 +16,7 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import AdminPredictiveAnalytics from '@/components/AdminPredictiveAnalytics';
 
 const PERIOD_OPTIONS = [
     { value: 'weekly', label: 'Weekly', days: 7 },
@@ -242,6 +243,24 @@ async function fetchAnalyticsFromSupabase() {
     return { patients, pendingAdmissions, admissionRequests, pendingDischarges, weeklyReports, declined };
 }
 
+/** Keep browser cache aligned with the last successful Supabase snapshot (avoids stale funnel on fetch errors). */
+function syncAnalyticsLocalCache(snap) {
+    try {
+        localStorage.setItem('bh_patients', JSON.stringify(snap.patients || []));
+        localStorage.setItem('bh_pending_admissions', JSON.stringify(snap.pendingAdmissions || []));
+        localStorage.setItem('bh_pending_discharges', JSON.stringify(snap.pendingDischarges || []));
+        localStorage.setItem(
+            'bh_declined_requests',
+            JSON.stringify((snap.declined || []).filter((r) => r.type !== 'discharge'))
+        );
+        if (Array.isArray(snap.weeklyReports)) {
+            localStorage.setItem('bh_nurse_weekly_reports', JSON.stringify(snap.weeklyReports));
+        }
+    } catch {
+        /* ignore quota / private mode */
+    }
+}
+
 export default function AdminAnalyticsSection() {
     const navigate = useNavigate();
     const [snapshot, setSnapshot] = useState({
@@ -254,9 +273,6 @@ export default function AdminAnalyticsSection() {
     });
     const [remoteLoading, setRemoteLoading] = useState(false);
     const [loadError, setLoadError] = useState(null);
-
-    /** Admission decisions from DB: approved vs declined in the selected reporting period (decided_at). */
-    const [admissionDecisionCounts, setAdmissionDecisionCounts] = useState({ approved: 0, declined: 0 });
 
     const [filterPeriod, setFilterPeriod] = useState('monthly');
     const [filterProgram, setFilterProgram] = useState('all');
@@ -305,6 +321,7 @@ export default function AdminAnalyticsSection() {
             setLoadError(null);
             try {
                 const snap = await fetchAnalyticsFromSupabase();
+                syncAnalyticsLocalCache(snap);
                 setSnapshot(snap);
             } catch (e) {
                 console.warn('[analytics]', e);
@@ -331,47 +348,6 @@ export default function AdminAnalyticsSection() {
             window.removeEventListener(APP_DATA_REFRESH, onRefresh);
         };
     }, [reloadSnapshot]);
-
-    useEffect(() => {
-        if (!isSupabaseConfigured()) {
-            setAdmissionDecisionCounts({ approved: 0, declined: 0 });
-            return;
-        }
-        let cancelled = false;
-        const days = PERIOD_OPTIONS.find((o) => o.value === filterPeriod)?.days ?? 30;
-        const sinceIso = new Date(Date.now() - days * 86400000).toISOString();
-
-        (async () => {
-            try {
-                const [apRes, decRes] = await Promise.all([
-                    supabase
-                        .from('admission_requests')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('status', 'approved')
-                        .gte('decided_at', sinceIso),
-                    supabase
-                        .from('admission_requests')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('status', 'declined')
-                        .gte('decided_at', sinceIso),
-                ]);
-                if (cancelled) return;
-                if (apRes.error) console.warn('[analytics] admission approved count', apRes.error);
-                if (decRes.error) console.warn('[analytics] admission declined count', decRes.error);
-                setAdmissionDecisionCounts({
-                    approved: apRes.error ? 0 : (apRes.count ?? 0),
-                    declined: decRes.error ? 0 : (decRes.count ?? 0),
-                });
-            } catch (e) {
-                console.warn('[analytics] admission decision counts', e);
-                if (!cancelled) setAdmissionDecisionCounts({ approved: 0, declined: 0 });
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [filterPeriod, remoteLoading]);
 
     const periodDays = PERIOD_OPTIONS.find((o) => o.value === filterPeriod)?.days ?? 30;
     const periodStartMs = Date.now() - periodDays * 86400000;
@@ -469,6 +445,15 @@ export default function AdminAnalyticsSection() {
         });
     }, [snapshot.declined, periodStartMs, filterProgram, filterGender, filterAge, filterTherapist, filterOutcome]);
 
+    /** Approved = residents admitted in period; declined = admission requests declined in period (matches funnel). */
+    const admissionDecisionCounts = useMemo(
+        () => ({
+            approved: filteredPatients.length,
+            declined: filteredDeclined.filter((r) => r.type !== 'discharge').length,
+        }),
+        [filteredPatients, filteredDeclined]
+    );
+
     const filteredPendingDischarges = useMemo(() => {
         return snapshot.pendingDischarges.filter((req) => {
             const reason = req.reason_category || req.reason_details || req.reason || '';
@@ -490,30 +475,6 @@ export default function AdminAnalyticsSection() {
             return true;
         });
     }, [snapshot.pendingDischarges, filterProgram, filterGender, filterAge, filterTherapist]);
-
-    const filteredAdmissionRequests = useMemo(() => {
-        return (snapshot.admissionRequests || []).filter((req) => {
-            const rt = requestTimeMs(req);
-            if (rt != null && rt < periodStartMs) return false;
-            const reason = req.reason_for_admission || req.reason || '';
-            if (!programMatchesFilter(mapProgramKey(reason), filterProgram)) return false;
-            if (filterGender !== 'all') {
-                const g = req.patient_gender || req.gender;
-                if (!g || String(g).toLowerCase() !== String(filterGender).toLowerCase()) return false;
-            }
-            if (filterAge !== 'all') {
-                const age = ageFromDob(req.patient_birth_date);
-                if (age == null) return false;
-                const b = ageBucket(age);
-                if (!b || b !== filterAge) return false;
-            }
-            if (filterTherapist !== 'all') {
-                const st = String(req.assigned_staff || req.assignedStaff || req.therapist || '').trim() || 'Unassigned';
-                if (st !== filterTherapist) return false;
-            }
-            return true;
-        });
-    }, [snapshot.admissionRequests, periodStartMs, filterProgram, filterGender, filterAge, filterTherapist]);
 
     const trendCohort = useMemo(
         () =>
@@ -545,13 +506,14 @@ export default function AdminAnalyticsSection() {
         return { total: total > 0 ? total : 0, approved, pending, declined };
     }, [filteredPatients, filteredPending, filteredDeclined]);
 
+    /** Funnel mirrors live pipeline metrics (patients + pending + declined admissions), not historical admission_requests rows. */
     const admissionFunnel = useMemo(() => {
-        const approved = filteredAdmissionRequests.filter((r) => String(r.status).toLowerCase() === 'approved').length;
-        const pending = filteredAdmissionRequests.filter((r) => String(r.status).toLowerCase() === 'pending').length;
-        const declined = filteredAdmissionRequests.filter((r) => String(r.status).toLowerCase() === 'declined').length;
+        const approved = filteredPatients.length;
+        const pending = filteredPending.length;
+        const declined = filteredDeclined.filter((r) => r.type !== 'discharge').length;
         const submitted = approved + pending + declined;
         return { submitted, approved, pending, declined };
-    }, [filteredAdmissionRequests]);
+    }, [filteredPatients, filteredPending, filteredDeclined]);
 
     const dischargeQueueAging = useMemo(() => {
         const now = Date.now();
@@ -2035,6 +1997,15 @@ export default function AdminAnalyticsSection() {
                         </div>
                     </div>
 
+                    <AdminPredictiveAnalytics
+                        patients={snapshot.patients}
+                        admissionRequests={snapshot.admissionRequests}
+                        pendingAdmissions={snapshot.pendingAdmissions}
+                        pendingDischarges={snapshot.pendingDischarges}
+                        weeklyReports={snapshot.weeklyReports}
+                        bedCapacity={BED_CAPACITY}
+                    />
+
                     <div className="stats-row">
                         <div className="stat-box stat-box--t1">
                             <div className="stat-label-s">Total Requests</div>
@@ -2113,8 +2084,13 @@ export default function AdminAnalyticsSection() {
                                     { key: 'pending', label: 'Pending', value: admissionFunnel.pending, gradient: 'linear-gradient(180deg, #38bdf8 0%, #0284c7 100%)' },
                                     { key: 'declined', label: 'Declined', value: admissionFunnel.declined, gradient: 'linear-gradient(180deg, #f87171 0%, #dc2626 100%)' },
                                 ].map((item) => {
-                                    const max = Math.max(1, admissionFunnel.submitted, admissionFunnel.approved, admissionFunnel.pending, admissionFunnel.declined);
-                                    const h = Math.max(8, Math.round((item.value / max) * 110));
+                                    const max = Math.max(
+                                        admissionFunnel.submitted,
+                                        admissionFunnel.approved,
+                                        admissionFunnel.pending,
+                                        admissionFunnel.declined
+                                    );
+                                    const h = max === 0 ? 0 : Math.max(8, Math.round((item.value / max) * 110));
                                     return (
                                         <div key={item.key} className="mini-bar-wrap">
                                             <div className="mini-bar-value">{item.value}</div>

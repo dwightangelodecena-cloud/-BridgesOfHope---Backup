@@ -20,11 +20,8 @@ import { uiPatientFromRow, type PatientRow } from '../../lib/patientMappers';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
-import {
-  loadFamilyNotificationsMobile,
-  saveFamilyNotificationsMobile,
-} from '../../lib/familyNotificationsMobile';
-
+import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
+import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 type PatientCard = {
   id: string;
   name: string;
@@ -126,8 +123,8 @@ export default function ReportsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
-  const [userInitials, setUserInitials] = useState('FU');
+  const [familyUserId, setFamilyUserId] = useState('');
+    const [userInitials, setUserInitials] = useState('FU');
   const [firstName, setFirstName] = useState('Family');
   const [selectedWeek, setSelectedWeek] = useState<string>('all');
   const [patients, setPatients] = useState<PatientCard[]>([]);
@@ -145,6 +142,7 @@ export default function ReportsScreen() {
       try {
         if (!isSupabaseConfigured()) {
           if (!cancelled) {
+            setFamilyUserId('');
             setPatients([]);
             setWeeklyReportsByPatient({});
             setLoadError('Supabase is not configured.');
@@ -154,6 +152,7 @@ export default function ReportsScreen() {
         const { data: authData, error: authError } = await supabase.auth.getUser();
         if (authError || !authData?.user) {
           if (!cancelled) {
+            setFamilyUserId('');
             setPatients([]);
             setWeeklyReportsByPatient({});
             setLoadError('Please sign in to view reports.');
@@ -161,6 +160,7 @@ export default function ReportsScreen() {
           return;
         }
         const user = authData.user;
+        if (!cancelled) setFamilyUserId(user.id);
         const displayName = (user.user_metadata?.full_name as string) || user.email || 'Family User';
         if (!cancelled) setFirstName(String(displayName).trim().split(/\s+/)[0] || 'Family');
 
@@ -244,6 +244,7 @@ export default function ReportsScreen() {
         }
       } catch (e: unknown) {
         if (!cancelled) {
+          setFamilyUserId('');
           setPatients([]);
           setWeeklyReportsByPatient({});
           setLoadError(e instanceof Error ? e.message : 'Unable to load reports right now.');
@@ -258,40 +259,7 @@ export default function ReportsScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    saveFamilyNotificationsMobile(notificationItems);
-  }, [notificationItems]);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!isSupabaseConfigured()) return;
-      try {
-        const { data } = await supabase.auth.getUser();
-        const u = data?.user;
-        let resolved =
-          (u?.user_metadata?.full_name as string | undefined)?.trim() ||
-          [u?.user_metadata?.first_name, u?.user_metadata?.last_name].filter(Boolean).join(' ').trim() ||
-          'Family User';
-        if (u?.id) {
-          const { data: profileRow } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', u.id)
-            .maybeSingle();
-          if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
-        }
-        if (mounted) setUserInitials(deriveInitials(resolved));
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const allReports = useMemo(
+    const allReports = useMemo(
     () => Object.values(weeklyReportsByPatient || {}).flat().filter(Boolean),
     [weeklyReportsByPatient]
   );
@@ -350,46 +318,8 @@ export default function ReportsScreen() {
   );
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: '#F0F4FF' }]}>
-      <Modal visible={showNotifications} transparent animationType="fade" onRequestClose={() => setShowNotifications(false)}>
-        <View style={styles.notifRoot}>
-          <Pressable style={styles.notifBackdrop} onPress={() => setShowNotifications(false)} />
-          <View style={[styles.notifPanel, { top: insets.top + 52, right: 16 }]}>
-            <View style={styles.notifTitleRow}>
-              <Ionicons name="notifications" size={16} color="#F54E25" />
-              <Text style={styles.notifTitle}>Notifications</Text>
-            </View>
-            {notificationItems.length === 0 ? (
-              <Text style={[styles.notifText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
-            ) : notificationItems.map((t, idx) => (
-              <View key={`${t}-${idx}`} style={styles.notifRow}>
-                <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                <Text style={styles.notifText}>{t}</Text>
-                <TouchableOpacity
-                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Remove notification"
-                >
-                  <Text style={styles.notifDismiss}>×</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </View>
-      </Modal>
-
-      <View style={styles.topBar}>
-        <KalingaLogoMark size={44} />
-        <Text style={styles.topTitle}>Reports</Text>
-        <View style={styles.topRight}>
-          <TouchableOpacity style={styles.circleBtn} onPress={() => setShowNotifications((v) => !v)}>
-            <Ionicons name="notifications" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.circleBtn} onPress={() => router.navigate(TAB_ROUTES.profile)}>
-            <Text style={styles.avatarTxt}>{userInitials}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+    <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
+      <FamilyMobilePageHeader title="Weekly Reports" showLogo={false} />
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
         <Text style={styles.welcome}>Welcome Back, {firstName}</Text>

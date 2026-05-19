@@ -1,10 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
+/* App-wide light theme — bundled for every user via main.jsx (not machine-local). */
+html {
+  color-scheme: light only;
+}
+
 :root {
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: light;
+  color-scheme: light only;
   color: #1b2559;
   background-color: #f8f9fd;
   font-synthesis: none;
@@ -36,6 +41,9 @@ body {
   max-width: 100%;
   min-height: 100vh;
   font-family: inherit;
+  color-scheme: light only;
+  background-color: #f8f9fd;
+  color: #1b2559;
 }
 
 h1 {
@@ -43,18 +51,10 @@ h1 {
   line-height: 1.1;
 }
 
-/* Neutral button base — app form buttons use explicit classes below */
-button:not(.app-btn-secondary):not(.app-btn-primary-green):not(.app-btn-primary-red):not(.app-leave-option) {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
+/* Minimal button base — do not override page/component button styles (auth, family, admin). */
+button {
   font-family: inherit;
-  background-color: transparent;
-  color: inherit;
   cursor: pointer;
-  transition: border-color 0.2s, background-color 0.2s;
 }
 
 button:focus-visible {
@@ -62,20 +62,329 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-/* Readable inputs on light UI (fixes dark native controls when OS uses dark mode) */
-input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']):not([type='color']),
+/* Family portal header — survives global resets and missing per-page style injection */
+button.notifications-trigger,
+button.ntf-trigger {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0 !important;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border-radius: 50% !important;
+  border: none !important;
+  background: #f54e25 !important;
+  color: #fff !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(245, 78, 37, 0.35);
+}
+
+button.notifications-trigger:hover,
+button.ntf-trigger:hover {
+  background: #e0421a !important;
+}
+
+button.notifications-trigger svg,
+button.ntf-trigger svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  stroke: #fff !important;
+  color: #fff !important;
+  flex-shrink: 0;
+}
+
+button.user-avatar-top,
+button.user-avatar {
+  border-radius: 50% !important;
+  border: none !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  background: linear-gradient(135deg, #f54e25, #ea580c) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(245, 78, 37, 0.3);
+  overflow: hidden;
+  padding: 0 !important;
+}
+
+button.user-avatar-top img,
+button.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.sidebar-profile-avatar,
+button.sidebar-profile-avatar {
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(245, 78, 37, 0.25);
+}
+
+.cal-today-btn {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #4338ca;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+}
+
+.cal-today-btn:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+/* ── Family portal: unified page header ── */
+.family-page-header {
+  height: 72px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  border-bottom: 1px solid #f1f5f9;
+  box-sizing: border-box;
+  z-index: 300;
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+}
+
+.family-page-header__left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.family-page-header__title {
+  color: #f54e25;
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.family-page-header__subtitle {
+  color: #64748b;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.family-page-header__actions,
+.family-mobile-top-bar__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.family-header-notif-wrap {
+  position: relative;
+}
+
+.family-notifications-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(360px, calc(100vw - 48px));
+  background: #fff;
+  border: 1px solid #e9edf7;
+  border-radius: 18px;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.14);
+  padding: 18px;
+  z-index: 400;
+}
+
+.family-notif-dropdown-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.family-notif-dropdown-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  color: #0f172a;
+  font-size: 14px;
+  margin: 0;
+}
+
+.family-notif-clear-all {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.family-notif-clear-all:hover {
+  color: #64748b;
+  background: #f1f5f9;
+}
+
+.family-notif-empty {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.family-notif-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.family-notif-row-text {
+  flex: 1;
+}
+
+.family-notif-remove-btn {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.family-notif-remove-btn:hover {
+  color: #ef4444;
+}
+
+.family-mobile-top-bar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 60px;
+  background: #fff;
+  border-bottom: 1px solid #f1f1f1;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.family-mobile-top-bar__logo {
+  width: 50px;
+  height: auto;
+}
+
+button.family-notifications-trigger--mobile {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+}
+
+button.family-notifications-trigger--mobile svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+@media (max-width: 899px) {
+  .family-page-header {
+    display: none !important;
+  }
+
+  .family-mobile-top-bar {
+    display: flex !important;
+  }
+}
+
+/*
+ * Readable inputs/selects for everyone (Windows/macOS dark mode, browser autofill).
+ * Applies to all routes — family, admin, nurse, program, auth.
+ */
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']):not([type='color']):not([type='button']):not([type='submit']):not([type='reset']),
 textarea,
 select {
   background-color: #ffffff;
   color: #0f172a;
-  color-scheme: light;
+  -webkit-text-fill-color: #0f172a;
+  color-scheme: light only;
   font-family: inherit;
+  border-color: #cbd5e1;
+}
+
+select option,
+select optgroup {
+  background-color: #ffffff;
+  color: #0f172a;
 }
 
 input::placeholder,
 textarea::placeholder {
   color: #94a3b8;
+  -webkit-text-fill-color: #94a3b8;
   opacity: 1;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-text-fill-color: #0f172a !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  caret-color: #0f172a;
+  transition: background-color 99999s ease-out 0s;
+}
+
+/* OS / browser prefers dark — still force light form controls app-wide */
+@media (prefers-color-scheme: dark) {
+  html,
+  body,
+  #root {
+    color-scheme: light only;
+    background-color: #f8f9fd;
+    color: #1b2559;
+  }
+
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']):not([type='color']):not([type='button']):not([type='submit']):not([type='reset']),
+  textarea,
+  select {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
+    color-scheme: light only;
+  }
+
+  select option,
+  select optgroup {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #94a3b8 !important;
+    -webkit-text-fill-color: #94a3b8 !important;
+  }
 }
 
 .app-field,
@@ -90,7 +399,7 @@ textarea::placeholder {
   font-size: 14px;
   line-height: 1.5;
   font-family: inherit;
-  color-scheme: light;
+  color-scheme: light only;
 }
 
 .app-textarea {
@@ -187,7 +496,7 @@ button.app-leave-option--selected,
 
 /* Force light controls inside app modals (Windows dark mode / autofill) */
 .app-modal-panel {
-  color-scheme: light;
+  color-scheme: light only;
   color: #1b2559;
 }
 
@@ -198,7 +507,7 @@ button.app-leave-option--selected,
   color: #0f172a !important;
   -webkit-text-fill-color: #0f172a !important;
   border: 1px solid #cbd5e1 !important;
-  color-scheme: light;
+  color-scheme: light only;
 }
 
 .app-modal-panel textarea::placeholder {
@@ -214,4 +523,37 @@ button.app-leave-option--selected,
   justify-content: flex-end;
   flex-wrap: wrap;
   align-items: center;
+}
+
+/* Admin sidebar — Messages: inactive uses .icon-box.inactive (gray outline); selected = orange tile + white icon */
+.icon-box.messages-nav-host {
+  position: relative;
+}
+.icon-box.messages-nav-selected {
+  background: #f54e25 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(245, 78, 37, 0.35);
+}
+.admin-msg-nav-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  border: 2px solid #fff;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.admin-msg-nav-label-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f54e25;
 }

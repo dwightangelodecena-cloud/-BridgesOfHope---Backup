@@ -109,7 +109,17 @@ function describeVisit(row) {
  * visitation status or resident progress meaningfully changes. First run seeds internal state
  * without flooding historical items.
  */
+let syncPromise = null;
+
 export async function runFamilyNotificationSync(userId) {
+  if (syncPromise) return syncPromise;
+  syncPromise = runFamilyNotificationSyncInner(userId).finally(() => {
+    syncPromise = null;
+  });
+  return syncPromise;
+}
+
+async function runFamilyNotificationSyncInner(userId) {
   if (!isSupabaseConfigured()) return;
   let uid = userId;
   if (!uid) {

@@ -26,6 +26,7 @@ import {
   TemporaryDischargeCardBanner,
 } from '@/components/TemporaryDischargeNotice';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
+import FamilyPageHeader from '@/components/family/FamilyPageHeader';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 
 /* ─── unchanged helpers ─── */
@@ -132,7 +133,6 @@ function CardTitle({ icon: Icon, children, color = '#F54E25' }) {
 const PatientDetailsPage = () => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [displayName, setDisplayName] = useState('Family User');
   const [patients, setPatients] = useState([]);
   const [patientDetailsById, setPatientDetailsById] = useState({});
   const [weeklyReportsByPatient, setWeeklyReportsByPatient] = useState({});
@@ -146,22 +146,6 @@ const PatientDetailsPage = () => {
   useFamilyPatientProgressRealtime();
 
   /* ── all data-loading useEffects UNCHANGED ── */
-  useEffect(() => {
-    let mounted = true;
-    const loadUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      const fallbackProfile = localStorage.getItem('bh_family_profile');
-      const fallbackName = fallbackProfile ? JSON.parse(fallbackProfile).fullName : null;
-      const name = user?.user_metadata?.full_name ||
-        [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ') ||
-        fallbackName || 'Family User';
-      if (mounted) setDisplayName(name);
-    };
-    loadUser();
-    return () => { mounted = false; };
-  }, []);
-
   useEffect(() => {
     let cancelled = false;
     const loadPatients = async () => {
@@ -572,18 +556,10 @@ const PatientDetailsPage = () => {
       {/* ── MAIN ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* Top Nav */}
-        <header style={{ height: 68, background: '#fff', display: 'flex', alignItems: 'center', padding: '0 28px', borderBottom: '1px solid #EAEFFB', boxShadow: '0 1px 12px rgba(15,23,42,0.06)', zIndex: 300, boxSizing: 'border-box', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ color: '#F54E25', fontWeight: 900, fontSize: 18, letterSpacing: '-0.02em' }}>Resident Details</span>
-            <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>· {patients.length} resident{patients.length !== 1 ? 's' : ''}</span>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button onClick={() => navigate('/profile')} style={{ width: 38, height: 38, background: 'linear-gradient(135deg,#F54E25,#EA580C)', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12, border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245,78,37,0.3)' }}>
-              {displayName.split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase() || 'FU'}
-            </button>
-          </div>
-        </header>
+        <FamilyPageHeader
+          title="Resident Details"
+          subtitle={`${patients.length} resident${patients.length !== 1 ? 's' : ''}`}
+        />
 
         <div className="scroll-content" style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 48px', background: '#F0F4FF' }}>
           <div style={{ width: '100%', maxWidth: 1560, margin: '0 auto', display: 'grid', gap: 20 }}>

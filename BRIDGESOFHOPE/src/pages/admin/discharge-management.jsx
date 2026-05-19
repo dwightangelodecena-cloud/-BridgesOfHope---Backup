@@ -27,6 +27,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
@@ -631,10 +632,7 @@ const DischargeManagement = () => {
             <div className="icon-box inactive"><Calendar size={22} /></div>
             <span className="sidebar-label">Appointments</span>
           </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }}>
-            <div className="icon-box inactive"><MessageCircle size={22} /></div>
-            <span className="sidebar-label">Messages</span>
-          </div>
+          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
             <div className="icon-box inactive"><FileText size={22} /></div>
             <span className="sidebar-label">Printable reports</span>

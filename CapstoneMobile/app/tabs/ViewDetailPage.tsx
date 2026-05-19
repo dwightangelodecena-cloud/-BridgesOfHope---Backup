@@ -20,10 +20,8 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
-import {
-  loadFamilyNotificationsMobile,
-  saveFamilyNotificationsMobile,
-} from '../../lib/familyNotificationsMobile';
+import { notificationTextMobile } from '../../lib/familyNotificationsMobile';
+import { useFamilyNotificationsState } from '../../lib/useFamilyNotificationsMobile';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
@@ -81,7 +79,8 @@ export default function ViewDetailsPage() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
+  const [familyUserId, setFamilyUserId] = useState('');
+  const { notificationItems, setNotificationItems } = useFamilyNotificationsState(familyUserId);
   const [displayName, setDisplayName] = useState('Family User');
   const [userInitials, setUserInitials] = useState('FU');
   const [loading, setLoading] = useState(true);
@@ -92,6 +91,7 @@ export default function ViewDetailsPage() {
 
   const loadData = useCallback(async () => {
     if (!isSupabaseConfigured()) {
+      setFamilyUserId('');
       setPatients([]);
       setReportsByPatient({});
       setLoading(false);
@@ -103,10 +103,13 @@ export default function ViewDetailsPage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user?.id) {
+        setFamilyUserId('');
         setPatients([]);
         setReportsByPatient({});
         return;
       }
+
+      setFamilyUserId(user.id);
 
       const { data: pRows, error: pErr } = await supabase
         .from('patients')
@@ -150,6 +153,7 @@ export default function ViewDetailsPage() {
       }
       setReportsByPatient(byPatient);
     } catch {
+      setFamilyUserId('');
       setPatients([]);
       setReportsByPatient({});
     } finally {
@@ -199,10 +203,6 @@ export default function ViewDetailsPage() {
     };
   }, []);
 
-  useEffect(() => {
-    saveFamilyNotificationsMobile(notificationItems);
-  }, [notificationItems]);
-
   const closeAndGoHome = () => {
     setExpandedPatientId(null);
     router.navigate(TAB_ROUTES.home);
@@ -243,11 +243,11 @@ export default function ViewDetailsPage() {
             {notificationItems.length === 0 ? (
               <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
             ) : notificationItems.map((item, idx) => (
-              <View key={`${item}-${idx}`} style={styles.notificationsDropdownRow}>
+              <View key={`${item.id}-${idx}`} style={styles.notificationsDropdownRow}>
                 <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                <Text style={styles.notificationsDropdownText}>{item}</Text>
+                <Text style={styles.notificationsDropdownText}>{notificationTextMobile(item)}</Text>
                 <TouchableOpacity
-                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
+                  onPress={() => setNotificationItems((prev) => prev.filter((r) => r.id !== item.id))}
                   accessibilityRole="button"
                   accessibilityLabel="Remove notification"
                 >

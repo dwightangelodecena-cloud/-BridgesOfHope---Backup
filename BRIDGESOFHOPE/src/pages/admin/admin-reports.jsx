@@ -15,6 +15,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
@@ -278,10 +279,7 @@ export default function AdminReportsPage() {
             <div className="icon-box inactive"><Calendar size={22} /></div>
             <span className="sidebar-label">Appointments</span>
           </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }}>
-            <div className="icon-box inactive"><MessageCircle size={22} /></div>
-            <span className="sidebar-label">Messages</span>
-          </div>
+          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
           <div className="sidebar-nav-item">
             <div className="icon-box active"><FileText size={22} /></div>
             <span className="sidebar-label" style={{ color: '#F54E25' }}>Printable reports</span>

@@ -43,6 +43,66 @@ export function normalizeVisitationStatus(raw: unknown): string {
   return 'Requested';
 }
 
+/** Pending request preferred dates (status Requested). */
+export function getPendingVisitationDateSet(rows: VisitationRequestRow[]): Set<string> {
+  const set = new Set<string>();
+  for (const row of rows || []) {
+    if (!row) continue;
+    if (normalizeVisitationStatus(row.status) !== 'Requested') continue;
+    const iso = String(row.preferredDate || '').trim();
+    if (iso) set.add(iso);
+  }
+  return set;
+}
+
+/** Confirmed family visits keyed by YYYY-MM-DD (Approved / Rescheduled with confirmed_date). */
+export function getConfirmedVisitationMap(
+  rows: VisitationRequestRow[]
+): Map<string, VisitationRequestRow[]> {
+  const map = new Map<string, VisitationRequestRow[]>();
+  for (const row of rows || []) {
+    if (!row) continue;
+    const st = normalizeVisitationStatus(row.status);
+    if (st !== 'Approved' && st !== 'Rescheduled') continue;
+    const iso = String(row.confirmedDate || '').trim();
+    if (!iso) continue;
+    const list = map.get(iso) || [];
+    list.push(row);
+    map.set(iso, list);
+  }
+  return map;
+}
+
+export function formatVisitationWeekdayLong(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'long' });
+}
+
+export function formatVisitationWeekdayShort(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'short' });
+}
+
+export function visitationStatusSubtext(row: VisitationRequestRow): string {
+  const st = normalizeVisitationStatus(row.status);
+  const adminReason = String(row.adminNote || '').trim();
+  if (st === 'Declined') return 'Declined by the facility';
+  if (st === 'Approved' && row.confirmedDate) {
+    const day = formatVisitationWeekdayLong(row.confirmedDate);
+    return `Confirmed: ${day ? `${day}, ` : ''}${row.confirmedDate} ${row.confirmedTime || ''}`.trim();
+  }
+  if (st === 'Rescheduled' && row.confirmedDate) {
+    const day = formatVisitationWeekdayLong(row.confirmedDate);
+    const base = `Rescheduled: ${day ? `${day}, ` : ''}${row.confirmedDate} ${row.confirmedTime || ''}`.trim();
+    return adminReason ? `${base} · Reason: ${adminReason}` : base;
+  }
+  return 'Waiting for admin decision';
+}
+
 /** Same logic as web: calendar dots use confirmed slot once visit is approved/rescheduled. */
 export function visitationCalendarDateKeys(row: VisitationRequestRow): string[] {
   const st = normalizeVisitationStatus(row.status);

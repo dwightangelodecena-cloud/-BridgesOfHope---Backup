@@ -22,11 +22,8 @@ import {
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
-import {
-  loadFamilyNotificationsMobile,
-  saveFamilyNotificationsMobile,
-} from '../../lib/familyNotificationsMobile';
-
+import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
+import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
   return parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('') || 'FU';
@@ -35,16 +32,15 @@ function deriveInitials(name: string): string {
 export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
-  const [displayName, setDisplayName] = useState('Family User');
-  const [userInitials, setUserInitials] = useState('FU');
+  const [familyUserId, setFamilyUserId] = useState('');
+  const { displayName } = useFamilyUserMobile();
   const [pendingAdmissions, setPendingAdmissions] = useState(0);
   const [pendingDischarges, setPendingDischarges] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const loadCounts = useCallback(async () => {
     if (!isSupabaseConfigured()) {
+      setFamilyUserId('');
       setPendingAdmissions(0);
       setPendingDischarges(0);
       setLoading(false);
@@ -56,10 +52,12 @@ export default function ProgressScreen() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user?.id) {
+        setFamilyUserId('');
         setPendingAdmissions(0);
         setPendingDischarges(0);
         return;
       }
+      setFamilyUserId(user.id);
       const [{ data: aRows }, { data: dRows }] = await Promise.all([
         supabase.from('admission_requests').select('id').eq('family_id', user.id).eq('status', 'pending'),
         supabase.from('discharge_requests').select('id').eq('family_id', user.id).eq('status', 'pending'),
@@ -69,6 +67,7 @@ export default function ProgressScreen() {
       setPendingAdmissions(ac);
       setPendingDischarges(dc);
     } catch {
+      setFamilyUserId('');
       setPendingAdmissions(0);
       setPendingDischarges(0);
     } finally {
@@ -82,102 +81,11 @@ export default function ProgressScreen() {
     }, [loadCounts])
   );
 
-  useEffect(() => {
-    let mounted = true;
-    const loadUser = async () => {
-      if (!isSupabaseConfigured()) return;
-      try {
-        const { data } = await supabase.auth.getUser();
-        const user = data?.user;
-        let resolved =
-          (user?.user_metadata?.full_name as string | undefined)?.trim() ||
-          [user?.user_metadata?.first_name, user?.user_metadata?.last_name]
-            .filter(Boolean)
-            .join(' ')
-            .trim() ||
-          'Family User';
-        if (user?.id) {
-          const { data: profileRow } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', user.id)
-            .maybeSingle();
-          if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
-        }
-        if (mounted) {
-          setDisplayName(resolved);
-          setUserInitials(deriveInitials(resolved));
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    loadUser();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    saveFamilyNotificationsMobile(notificationItems);
-  }, [notificationItems]);
-
   const first = (displayName || 'Family User').trim().split(/\s+/)[0];
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: '#F8F9FD' }]}>
-      <Modal
-        visible={showNotifications}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowNotifications(false)}
-      >
-        <View style={styles.notifModalRoot}>
-          <Pressable style={styles.notifModalBackdrop} onPress={() => setShowNotifications(false)} />
-          <View style={[styles.notificationsDropdown, { top: insets.top + 52, right: 16 }]}>
-            <View style={styles.notificationsDropdownTitleRow}>
-              <Ionicons name="notifications" size={16} color="#F54E25" />
-              <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
-            </View>
-            {notificationItems.length === 0 ? (
-              <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
-            ) : notificationItems.map((item, idx) => (
-              <View key={`${item}-${idx}`} style={styles.notificationsDropdownRow}>
-                <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                <Text style={styles.notificationsDropdownText}>{item}</Text>
-                <TouchableOpacity
-                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Remove notification"
-                >
-                  <Text style={styles.notificationDismiss}>×</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </View>
-      </Modal>
-
-      <View style={styles.mobileTopBar}>
-        <KalingaLogoMark size={40} />
-        <Text style={styles.topTitle}>Request Management</Text>
-        <View style={styles.mobileTopBarRight}>
-          <TouchableOpacity
-            style={styles.headerNotifyBtn}
-            onPress={() => setShowNotifications((v) => !v)}
-            accessibilityLabel="Notifications"
-          >
-            <Ionicons name="notifications" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerAvatar}
-            onPress={() => router.navigate(TAB_ROUTES.profile)}
-            accessibilityLabel="Profile"
-          >
-            <Text style={styles.headerAvatarText}>{userInitials}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+    <View style={[styles.screen, { backgroundColor: '#F8F9FD' }]}>
+      <FamilyMobilePageHeader title="Request Management" showLogo={false} />
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}

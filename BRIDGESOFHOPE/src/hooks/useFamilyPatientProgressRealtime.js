@@ -13,8 +13,14 @@ export function useFamilyPatientProgressRealtime() {
     let cancelled = false;
     const channelRef = { current: null };
 
+    let debounceTimer = null;
     const run = () => {
-      if (!cancelled) refreshAppData();
+      if (cancelled) return;
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => {
+        debounceTimer = null;
+        if (!cancelled) refreshAppData();
+      }, 600);
     };
 
     const onVis = () => {
@@ -46,6 +52,7 @@ export function useFamilyPatientProgressRealtime() {
 
     return () => {
       cancelled = true;
+      if (debounceTimer) window.clearTimeout(debounceTimer);
       document.removeEventListener('visibilitychange', onVis);
       if (channelRef.current) supabase.removeChannel(channelRef.current);
     };

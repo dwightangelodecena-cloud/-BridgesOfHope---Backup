@@ -2,8 +2,17 @@ import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
-const IDLE_MS = 3 * 60 * 1000;
+const DESKTOP_IDLE_MS = 3 * 60 * 1000;
+const MOBILE_IDLE_MS = 12 * 60 * 1000;
 const WARNING_SECONDS = 30;
+
+function idleTimeoutMs() {
+  if (typeof window === 'undefined') return DESKTOP_IDLE_MS;
+  const mobile =
+    window.matchMedia('(max-width: 899px)').matches ||
+    window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  return mobile ? MOBILE_IDLE_MS : DESKTOP_IDLE_MS;
+}
 
 /** Align with Supabase `is_staff()` JWT: user_metadata, then app_metadata. */
 export function getAccountTypeFromUser(user) {
@@ -122,7 +131,7 @@ export function RoleGuard({ children, allowedRoles }) {
 
     const armIdleTimer = () => {
       if (idleTimer) window.clearTimeout(idleTimer);
-      idleTimer = window.setTimeout(startIdleCountdown, IDLE_MS);
+      idleTimer = window.setTimeout(startIdleCountdown, idleTimeoutMs());
     };
 
     const onActivity = () => {

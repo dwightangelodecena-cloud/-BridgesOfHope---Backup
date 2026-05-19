@@ -24,14 +24,20 @@ import {
   FileText, MessageCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { BRANCH_KEYS, BRANCH_LABEL, formatPhp } from '@/lib/servicePricing';
+import { partitionProfilesForStaffAssignment } from '@/lib/staffAssignmentLists';
 import {
   ADMISSION_WORKFLOW_STATUSES,
   buildAdmissionRow,
   findPatientForAdmission,
+  isOrphanedAdmissionRequest,
+  removeWorkflowOverridesForRequestIds,
+  residentAdmissionDedupeKey,
+  splitDuplicateAdmissionRequests,
   loadWorkflowOverrides,
   patchWorkflowOverride,
   pushActivity,
@@ -41,6 +47,15 @@ import {
 } from '@/lib/admissionDischargeStore';
 import { approveAdmissionInDatabase } from '@/lib/approveAdmissionSupabase';
 import { appendActivityFeed } from '@/lib/activityFeed';
+import {
+  BUNK_LEVEL_OPTIONS,
+  GENDER_OPTIONS,
+  RISK_LEVEL_OPTIONS,
+  isSupabaseUuid,
+  normalizedRoomSegmentFromGender,
+  persistResidentPlacement,
+  validateBedPlacementPolicy,
+} from '@/lib/residentPlacement';
 import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
 import { verifyAdminApprovalPin } from '@/lib/adminApprovalPin';
 
@@ -67,84 +82,6 @@ const formatDate = (iso) => {
   }
 };
 
-/** Match staff-management role filters for assignment dropdowns. */
-const isProgramStaffAccountType = (account) => {
-  const a = String(account || '').toLowerCase();
-  return (
-    a.includes('program')
-    || a.includes('staff')
-    || a === 'clinic'
-    || a.includes('clinic')
-    || a === 'case_manager'
-    || a.includes('case_load')
-  );
-};
-
-const toTitleCase = (value) =>
-  String(value || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ');
-
-const normalizeMiddleInitial = (value) => String(value || '').trim().replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase();
-
-const composeProfileName = (firstName, lastName, middleInitial) =>
-  [toTitleCase(firstName), normalizeMiddleInitial(middleInitial), toTitleCase(lastName)].filter(Boolean).join(' ');
-
-/** Same resolution as staff-management `mapRowToStaff` so DB rows with only first/last name still appear. */
-const profileDisplayNameFromRow = (row) => {
-  const composed =
-    String(row?.full_name || row?.name || '').trim()
-    || composeProfileName(row?.first_name, row?.last_name, row?.middle_initial);
-  return composed.trim();
-};
-
-const partitionProfilesForAdmissionAssign = (profiles) => {
-  const nurses = [];
-  const program = [];
-  const seenN = new Set();
-  const seenP = new Set();
-  (profiles || []).forEach((row) => {
-    const name = profileDisplayNameFromRow(row);
-    if (!name) return;
-    const accountNorm = String(row?.account_type || row?.role || '').trim().toLowerCase();
-    if (accountNorm === 'family' || accountNorm === '') return;
-
-    const dept = String(row?.department || row?.role_label || '').trim().toLowerCase();
-    const isNurse =
-      accountNorm === 'nurse'
-      || accountNorm.includes('nurse')
-      || dept.includes('nurse');
-    const isProgramSide =
-      !isNurse
-      && accountNorm !== 'admin'
-      && (
-        accountNorm === 'program'
-        || accountNorm === 'staff'
-        || isProgramStaffAccountType(accountNorm)
-        || dept.includes('program')
-        || dept.includes('case load')
-      );
-
-    if (isNurse) {
-      if (!seenN.has(name)) {
-        seenN.add(name);
-        nurses.push(name);
-      }
-    } else if (isProgramSide) {
-      if (!seenP.has(name)) {
-        seenP.add(name);
-        program.push(name);
-      }
-    }
-  });
-  nurses.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  program.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  return { nurses, programStaff: program };
-};
-
 const ts = (iso) => {
   const t = new Date(iso || 0).getTime();
   return Number.isNaN(t) ? 0 : t;
@@ -165,11 +102,11 @@ function sortRows(rows, sortId) {
   return cp;
 }
 
-function isSupabasePatientId(id) {
-  return (
-    typeof id === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-  );
+/** Built UI row with no linked patient (stale after patients table was cleared). */
+function isOrphanedAdmissionRow(row) {
+  const st = String(row?.dbStatus || '').toLowerCase();
+  if (st === 'pending') return false;
+  return !row?.rawPatient;
 }
 
 const AdmissionManagement = () => {
@@ -227,10 +164,45 @@ const AdmissionManagement = () => {
         );
       } else {
         setAssignStaffLoadError('');
-        setAssignStaffLists(partitionProfilesForAdmissionAssign(profiles));
+        setAssignStaffLists(partitionProfilesForStaffAssignment(profiles));
       }
 
-      const list = (admissions || []).map((ar) => {
+      let admissionRows = admissions || [];
+      const orphanIds = admissionRows
+        .filter((ar) => isOrphanedAdmissionRequest(ar, patients || []))
+        .map((ar) => ar.id)
+        .filter(Boolean);
+      if (orphanIds.length > 0) {
+        const { error: delErr } = await supabase.from('admission_requests').delete().in('id', orphanIds);
+        if (delErr) {
+          console.warn('[admission-mgmt] orphan cleanup:', delErr.message);
+        } else {
+          removeWorkflowOverridesForRequestIds(orphanIds);
+          admissionRows = admissionRows.filter((ar) => !orphanIds.includes(ar.id));
+        }
+      }
+
+      const { keep: dedupedRows, duplicateIds } = splitDuplicateAdmissionRequests(
+        admissionRows,
+        patients || []
+      );
+      if (duplicateIds.length > 0) {
+        const { error: dupErr } = await supabase
+          .from('admission_requests')
+          .delete()
+          .in('id', duplicateIds);
+        if (dupErr) {
+          console.warn('[admission-mgmt] duplicate admission cleanup:', dupErr.message);
+          admissionRows = dedupedRows;
+        } else {
+          removeWorkflowOverridesForRequestIds(duplicateIds);
+          admissionRows = dedupedRows;
+        }
+      } else {
+        admissionRows = dedupedRows;
+      }
+
+      const list = admissionRows.map((ar) => {
         const patient = findPatientForAdmission(patients || [], ar);
         const o = overrides[ar.id];
         return buildAdmissionRow(ar, patient, o);
@@ -273,9 +245,22 @@ const AdmissionManagement = () => {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const seenResident = new Set();
     const base = rows.filter((r) => {
+      if (isOrphanedAdmissionRow(r)) return false;
       if (r.archived) return false;
       if (statusFilter !== 'All Admissions' && r.status !== statusFilter) return false;
+      const residentKey =
+        (r.patientId && `pid:${r.patientId}`)
+        || residentAdmissionDedupeKey({
+          family_id: r.familyId,
+          patient_name: r.patientName,
+          patient_birth_date: r.patientBirthDate,
+        });
+      if (residentKey) {
+        if (seenResident.has(residentKey)) return false;
+        seenResident.add(residentKey);
+      }
       if (!q) return true;
       return (
         String(r.admissionDisplayId).toLowerCase().includes(q) ||
@@ -310,8 +295,27 @@ const AdmissionManagement = () => {
     const e = editRow;
     const nurseTrim = e._editAssignedNurse?.trim() || '';
     const programTrim = e._editProgramStaff?.trim() || '';
+    const genderNorm = normalizedRoomSegmentFromGender(e._editGender) || String(e._editGender || '').trim();
+    const roomCode = String(e._editRoomCode || '').trim();
+    const genderSegment = normalizedRoomSegmentFromGender(genderNorm);
 
-    if (isSupabaseConfigured() && e.patientId && isSupabasePatientId(String(e.patientId))) {
+    if (roomCode && !genderSegment) {
+      setFormError('Set gender before saving a room assignment.');
+      return;
+    }
+    if (roomCode && genderSegment) {
+      const policyError = validateBedPlacementPolicy({
+        genderSegment,
+        riskLevel: e._editRiskLevel,
+        bunkLevel: e._editBunkLevel,
+      });
+      if (policyError) {
+        setFormError(policyError);
+        return;
+      }
+    }
+
+    if (isSupabaseConfigured() && e.patientId && isSupabaseUuid(String(e.patientId))) {
       setFormError('');
       try {
         const { error } = await supabase
@@ -322,6 +326,23 @@ const AdmissionManagement = () => {
           })
           .eq('id', e.patientId);
         if (error) throw error;
+
+        if (genderNorm || roomCode) {
+          const placement = await persistResidentPlacement({
+            patientId: e.patientId,
+            admissionRequestId: e.requestId,
+            gender: genderNorm || undefined,
+            roomCode: roomCode || undefined,
+            roomGenderSegment: genderSegment || undefined,
+            roomPlacementNote: String(e._editRoomNote || '').trim() || undefined,
+            riskLevel: e._editRiskLevel || undefined,
+            bunkLevel: e._editBunkLevel || undefined,
+          });
+          if (!placement.ok) {
+            setFormError(placement.errorMessage);
+            return;
+          }
+        }
       } catch (err) {
         console.error(err);
         setFormError(err?.message || 'Could not save nurse/program to the resident record (same fields as Resident Management).');
@@ -377,6 +398,25 @@ const AdmissionManagement = () => {
   const handleArchive = (r) => {
     persistOverride(r.requestId, { archived: true });
     pushActivity(`Admission ${r.admissionDisplayId}: archived`);
+  };
+
+  const handleDeleteAdmission = async (r) => {
+    if (!isSupabaseConfigured()) return;
+    const label = r.patientName || r.admissionDisplayId;
+    if (!window.confirm(`Remove admission record for ${label}? This deletes the row from Supabase (use after clearing demo data).`)) {
+      return;
+    }
+    setFormError('');
+    try {
+      const { error } = await supabase.from('admission_requests').delete().eq('id', r.requestId);
+      if (error) throw error;
+      pushActivity(`Admission ${r.admissionDisplayId}: removed from database`);
+      refreshAppData();
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      setFormError(err?.message || 'Could not delete admission record.');
+    }
   };
 
   const handleApproveDbPending = async (r) => {
@@ -606,10 +646,7 @@ const AdmissionManagement = () => {
             <div className="icon-box inactive"><Calendar size={22} /></div>
             <span className="sidebar-label">Appointments</span>
           </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }}>
-            <div className="icon-box inactive"><MessageCircle size={22} /></div>
-            <span className="sidebar-label">Messages</span>
-          </div>
+          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
             <div className="icon-box inactive"><FileText size={22} /></div>
             <span className="sidebar-label">Printable reports</span>
@@ -640,7 +677,7 @@ const AdmissionManagement = () => {
             Active and incoming patient admissions. Costs use fees from Services (admission fee + Imus monthly rate).
           </p>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
             <button className="db-action-btn" type="button" onClick={() => void loadData()} disabled={loading}>
               <RefreshCw size={13} /> {loading ? 'Refreshing...' : 'Refresh'}
             </button>
@@ -756,8 +793,8 @@ const AdmissionManagement = () => {
               <table className="am-data-table">
                 <thead>
                   <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['Resident ID', 'Resident', 'Reason / Concern', 'Nurse / Program', 'Type', 'Admission Date', 'Est. Cost', 'Status', 'Actions'].map((col, idx) => (
-                      <th className="am-th" key={col} style={{ padding: '10px 10px', borderRight: idx < 8 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                    {['Resident ID', 'Resident', 'Reason / Concern', 'Room', 'Nurse / Program', 'Type', 'Admission Date', 'Est. Cost', 'Status', 'Actions'].map((col, idx) => (
+                      <th className="am-th" key={col} style={{ padding: '10px 10px', borderRight: idx < 9 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>
                         {col}
                       </th>
                     ))}
@@ -766,17 +803,17 @@ const AdmissionManagement = () => {
                 <tbody>
                   {loading && (
                     <tr>
-                      <td colSpan={9} style={{ padding: 18, color: '#64748b' }}>Loading admissions…</td>
+                      <td colSpan={10} style={{ padding: 18, color: '#64748b' }}>Loading admissions…</td>
                     </tr>
                   )}
                   {!loading && !isSupabaseConfigured() && (
                     <tr>
-                      <td colSpan={9} style={{ padding: 18, color: '#64748b' }}>Connect Supabase to load admission requests.</td>
+                      <td colSpan={10} style={{ padding: 18, color: '#64748b' }}>Connect Supabase to load admission requests.</td>
                     </tr>
                   )}
                   {!loading && isSupabaseConfigured() && pageRows.length === 0 && (
                     <tr>
-                      <td colSpan={9} style={{ padding: 18, color: '#64748b' }}>No admissions match your search or filter.</td>
+                      <td colSpan={10} style={{ padding: 18, color: '#64748b' }}>No admissions match your search or filter.</td>
                     </tr>
                   )}
                   {!loading &&
@@ -790,6 +827,9 @@ const AdmissionManagement = () => {
                           </div>
                         </td>
                         <td style={{ padding: '9px 10px', maxWidth: 200, color: '#334155' }}>{r.reason}</td>
+                        <td style={{ padding: '9px 10px', color: '#334155', whiteSpace: 'nowrap' }}>
+                          {r.roomAssignment && r.roomAssignment !== '—' ? r.roomAssignment : '—'}
+                        </td>
                         <td style={{ padding: '9px 10px', color: '#707EAE' }}>
                           {(r.assignedNurse && r.assignedNurse !== '—') || (r.programStaff && r.programStaff !== '—') ? (
                             <div style={{ fontSize: 12, lineHeight: 1.4 }}>
@@ -835,6 +875,11 @@ const AdmissionManagement = () => {
                                   _editMonths: r.pricingDetail.monthsOfCare,
                                   _editIncAdm: r.pricingDetail.includeAdmissionFee,
                                   _editIncMo: r.pricingDetail.includeMonthly,
+                                  _editGender: r.patientGender || '',
+                                  _editRoomCode: r.roomCode || '',
+                                  _editRoomNote: r.roomPlacementNote || '',
+                                  _editRiskLevel: r.riskLevel || 'Low',
+                                  _editBunkLevel: r.bunkLevel || 'Bottom',
                                 })
                               }
                             >
@@ -846,6 +891,11 @@ const AdmissionManagement = () => {
                             <button type="button" className="db-action-btn" onClick={() => handleArchive(r)}>
                               <Trash2 size={12} /> Archive
                             </button>
+                            {isSupabaseConfigured() && isOrphanedAdmissionRow(r) ? (
+                              <button type="button" className="db-action-btn" onClick={() => void handleDeleteAdmission(r)} title="Delete admission request from Supabase">
+                                Delete
+                              </button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -893,7 +943,8 @@ const AdmissionManagement = () => {
               <div className="am-modal-field"><span className="am-modal-label">Resident ID</span><div className="am-input">{viewRow.admissionDisplayId}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Resident</span><div className="am-input">{viewRow.patientName}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Gender</span><div className="am-input">{viewRow.patientGender?.trim() ? viewRow.patientGender : 'Not specified'}</div></div>
-              <div className="am-modal-field"><span className="am-modal-label">Status</span><div className="am-input">{viewRow.status}</div></div>
+                            <div className="am-modal-field"><span className="am-modal-label">Room</span><div className="am-input">{viewRow.roomAssignment || '—'}</div></div>
+<div className="am-modal-field"><span className="am-modal-label">Status</span><div className="am-input">{viewRow.status}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Admission date</span><div className="am-input">{formatDate(viewRow.admissionDate)}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Assigned nurse</span><div className="am-input">{viewRow.assignedNurse}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Program staff</span><div className="am-input">{viewRow.programStaff}</div></div>
@@ -917,6 +968,60 @@ const AdmissionManagement = () => {
               <button type="button" className="db-action-btn" onClick={() => setEditRow(null)}><X size={16} /></button>
             </div>
             <div className="am-modal-body">
+              <label className="am-modal-field">
+                <span className="am-modal-label">Resident gender</span>
+                <select
+                  className="am-input"
+                  value={editRow._editGender || ''}
+                  onChange={(e) => setEditRow((p) => ({ ...p, _editGender: e.target.value }))}
+                >
+                  <option value="">Not specified</option>
+                  {GENDER_OPTIONS.map((g) => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="am-modal-field">
+                <span className="am-modal-label">Room code</span>
+                <input
+                  className="am-input"
+                  value={editRow._editRoomCode || ''}
+                  onChange={(e) => setEditRow((p) => ({ ...p, _editRoomCode: e.target.value }))}
+                  placeholder="e.g. Room 203"
+                />
+              </label>
+              <label className="am-modal-field">
+                <span className="am-modal-label">Risk level</span>
+                <select
+                  className="am-input"
+                  value={editRow._editRiskLevel || 'Low'}
+                  onChange={(e) => setEditRow((p) => ({ ...p, _editRiskLevel: e.target.value }))}
+                >
+                  {RISK_LEVEL_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="am-modal-field">
+                <span className="am-modal-label">Bunk</span>
+                <select
+                  className="am-input"
+                  value={editRow._editBunkLevel || 'Bottom'}
+                  onChange={(e) => setEditRow((p) => ({ ...p, _editBunkLevel: e.target.value }))}
+                >
+                  {BUNK_LEVEL_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt} bunk</option>
+                  ))}
+                </select>
+              </label>
+              <label className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
+                <span className="am-modal-label">Placement note</span>
+                <input
+                  className="am-input"
+                  value={editRow._editRoomNote || ''}
+                  onChange={(e) => setEditRow((p) => ({ ...p, _editRoomNote: e.target.value }))}
+                />
+              </label>
               <label className="am-modal-field">
                 <span className="am-modal-label">Assigned nurse</span>
                 <select

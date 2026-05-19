@@ -1,5 +1,6 @@
-﻿import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
-import { LayoutGrid, BookUser, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope, LayoutTemplate, User, Calendar, FileText, MessageCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import { LayoutGrid, BookUser, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope, LayoutTemplate, User, Calendar, FileText } from 'lucide-react';
+import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -949,10 +950,7 @@ const AdminDashboard = () => {
             <div className="icon-box inactive"><Calendar size={22} /></div>
             <span className="sidebar-label">Appointments</span>
           </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }}>
-            <div className="icon-box inactive"><MessageCircle size={22} /></div>
-            <span className="sidebar-label">Messages</span>
-          </div>
+          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
             <div className="icon-box inactive"><FileText size={22} /></div>
             <span className="sidebar-label">Printable reports</span>

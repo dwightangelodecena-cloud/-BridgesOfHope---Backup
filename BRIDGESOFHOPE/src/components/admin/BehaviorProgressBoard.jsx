@@ -100,6 +100,18 @@ export function computeBehaviorBoardProgressPercent(checked) {
   return Math.min(100, Math.round(sum * 100) / 100);
 }
 
+/** Unchecked ladder — used until program/nurse explicitly saves checks in the database. */
+export function emptyBehaviorChecks() {
+  /** @type {Record<number|string, boolean>} */
+  const next = {};
+  for (let i = 0; i < BEHAVIOR_CHECKLIST_ITEMS.length; i++) {
+    next[i] = false;
+  }
+  next.completion = false;
+  next.reintegration = false;
+  return next;
+}
+
 /** Checklist state for “all non-intervention tiles through `stageNumber` checked” (intervention tiles never checked). */
 export function buildBehaviorChecksForStage(stageNumber) {
   const normalizedStage = Math.max(1, Math.min(50, Number(stageNumber) || 1));

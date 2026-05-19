@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,64 +9,50 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-type Msg = { id: number; text: string; sender: 'bot' | 'user'; time: string };
+import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
 
 export function FamilyFloatingChat() {
   const insets = useSafeAreaInsets();
-  const [open, setOpen] = useState(false);
-  const [input, setInput] = useState('');
-  const [typing, setTyping] = useState(false);
-  const [messages, setMessages] = useState<Msg[]>([
-    { id: 1, text: 'Hello! How can I help you today?', sender: 'bot', time: '3:18 PM' },
-  ]);
+  const [input, setInput] = React.useState('');
   const scrollRef = useRef<ScrollView>(null);
-  const msgIdRef = useRef(2);
+  const {
+    messages,
+    loading,
+    sending,
+    sendError,
+    unreadCount,
+    isChatOpen,
+    setIsChatOpen,
+    sendMessage,
+  } = useSupportChatMobile();
 
   useEffect(() => {
-    if (!open) return;
+    if (!isChatOpen) return;
     const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
     return () => clearTimeout(t);
-  }, [messages, typing, open]);
+  }, [messages, sending, isChatOpen]);
 
-  const send = () => {
+  const send = async () => {
     const t = input.trim();
-    if (!t || typing) return;
-    const userMsg: Msg = {
-      id: msgIdRef.current++,
-      text: t,
-      sender: 'user',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setMessages((m) => [...m, userMsg]);
+    if (!t || sending) return;
     setInput('');
-    setTyping(true);
-    setTimeout(() => {
-      setTyping(false);
-      setMessages((m) => [
-        ...m,
-        {
-          id: msgIdRef.current++,
-          text: 'Thank you for reaching out to Bridges of Hope. How can I assist you with your recovery journey today?',
-          sender: 'bot',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
-    }, 1500);
+    const ok = await sendMessage(t);
+    if (!ok) setInput(t);
   };
 
   return (
     <>
-      <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
+      <Modal visible={isChatOpen} animationType="slide" transparent onRequestClose={() => setIsChatOpen(false)}>
         <KeyboardAvoidingView
           style={styles.modalRoot}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={insets.top}
         >
-          <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />
+          <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setIsChatOpen(false)} />
           <View style={[styles.sheet, { marginBottom: Math.max(insets.bottom, 12) + 72 }]}>
             <View style={styles.sheetHeader}>
               <View style={styles.sheetHeaderLeft}>
@@ -74,30 +60,39 @@ export function FamilyFloatingChat() {
                   <Ionicons name="chatbubble-ellipses" size={20} color="#FFFFFF" />
                 </View>
                 <View>
-                  <Text style={styles.sheetTitle}>Support AI</Text>
-                  <Text style={styles.sheetSub}>Active now</Text>
+                  <Text style={styles.sheetTitle}>Care team</Text>
+                  <Text style={styles.sheetSub}>Bridges of Hope support</Text>
                 </View>
               </View>
-              <TouchableOpacity onPress={() => setOpen(false)} hitSlop={12}>
+              <TouchableOpacity onPress={() => setIsChatOpen(false)} hitSlop={12}>
                 <Ionicons name="close" size={22} color="#A3AED0" />
               </TouchableOpacity>
             </View>
             <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={styles.bodyContent}>
-              {messages.map((msg) => (
-                <View
-                  key={msg.id}
-                  style={[styles.bubble, msg.sender === 'bot' ? styles.bubbleBot : styles.bubbleUser]}
-                >
-                  <Text style={styles.bubbleText}>{msg.text}</Text>
-                  <Text style={styles.bubbleTime}>{msg.time}</Text>
-                </View>
-              ))}
-              {typing ? (
+              {loading && messages.length <= 1 ? (
+                <ActivityIndicator color="#F54E25" style={{ marginVertical: 16 }} />
+              ) : null}
+              {messages.map((msg) => {
+                const isUser = msg.sender === 'user';
+                return (
+                  <View
+                    key={String(msg.id)}
+                    style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot]}
+                  >
+                    <Text style={styles.bubbleText}>{msg.text}</Text>
+                    {msg.time ? <Text style={styles.bubbleTime}>{msg.time}</Text> : null}
+                  </View>
+                );
+              })}
+              {sending ? (
                 <View style={styles.typing}>
-                  <Text style={styles.typingText}>…</Text>
+                  <ActivityIndicator size="small" color="#64748B" />
                 </View>
               ) : null}
             </ScrollView>
+            {sendError ? (
+              <Text style={styles.errorText}>{sendError}</Text>
+            ) : null}
             <View style={styles.inputRow}>
               <TextInput
                 style={styles.input}
@@ -107,11 +102,12 @@ export function FamilyFloatingChat() {
                 onChangeText={setInput}
                 onSubmitEditing={send}
                 returnKeyType="send"
+                editable={!sending}
               />
               <TouchableOpacity
-                style={[styles.sendBtn, (!input.trim() || typing) && styles.sendBtnDisabled]}
+                style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
                 onPress={send}
-                disabled={!input.trim() || typing}
+                disabled={!input.trim() || sending}
               >
                 <Ionicons name="send" size={18} color="#FFFFFF" />
               </TouchableOpacity>
@@ -122,11 +118,16 @@ export function FamilyFloatingChat() {
 
       <TouchableOpacity
         style={[styles.fab, { bottom: Math.max(insets.bottom, 10) + 64 }]}
-        onPress={() => setOpen((v) => !v)}
+        onPress={() => setIsChatOpen(!isChatOpen)}
         accessibilityRole="button"
-        accessibilityLabel={open ? 'Close chat' : 'Open chat support'}
+        accessibilityLabel={isChatOpen ? 'Close chat' : 'Open chat support'}
       >
-        <Ionicons name={open ? 'close' : 'chatbubble-ellipses'} size={26} color="#FFFFFF" />
+        <Ionicons name={isChatOpen ? 'close' : 'chatbubble-ellipses'} size={26} color="#FFFFFF" />
+        {!isChatOpen && unreadCount > 0 ? (
+          <View style={styles.fabBadge}>
+            <Text style={styles.fabBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+          </View>
+        ) : null}
       </TouchableOpacity>
     </>
   );
@@ -179,7 +180,7 @@ const styles = StyleSheet.create({
   },
   sheetSub: {
     fontSize: 11,
-    color: '#22C55E',
+    color: '#707EAE',
     fontWeight: '600',
   },
   body: {
@@ -223,9 +224,12 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     padding: 8,
   },
-  typingText: {
-    color: '#64748B',
-    fontSize: 20,
+  errorText: {
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    fontSize: 12,
+    color: '#DC2626',
+    fontWeight: '600',
   },
   inputRow: {
     flexDirection: 'row',
@@ -273,5 +277,24 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 12,
+  },
+  fabBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#DC2626',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  fabBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
 });

@@ -45,6 +45,48 @@ export function normalizeVisitationStatus(raw) {
   return 'Requested';
 }
 
+/** Pending request preferred dates (status Requested). */
+export function getPendingVisitationDateSet(rows) {
+  const set = new Set();
+  for (const row of rows || []) {
+    if (!row) continue;
+    if (normalizeVisitationStatus(row.status) !== 'Requested') continue;
+    const iso = String(row.preferredDate || '').trim();
+    if (iso) set.add(iso);
+  }
+  return set;
+}
+
+/** Confirmed family visits keyed by YYYY-MM-DD (Approved / Rescheduled with confirmed_date). */
+export function getConfirmedVisitationMap(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    if (!row) continue;
+    const st = normalizeVisitationStatus(row.status);
+    if (st !== 'Approved' && st !== 'Rescheduled') continue;
+    const iso = String(row.confirmedDate || '').trim();
+    if (!iso) continue;
+    const list = map.get(iso) || [];
+    list.push(row);
+    map.set(iso, list);
+  }
+  return map;
+}
+
+export function formatVisitationWeekdayLong(iso) {
+  if (!iso) return '';
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'long' });
+}
+
+export function formatVisitationWeekdayShort(iso) {
+  if (!iso) return '';
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'short' });
+}
+
 /** Dates on which this request should appear on admin/family calendars (one slot after confirmation). */
 export function visitationCalendarDateKeys(row) {
   const st = normalizeVisitationStatus(row?.status);
@@ -224,4 +266,69 @@ export function upsertVisitationRequest(row, options = {}) {
 export function replaceVisitationRequests(rows) {
   saveVisitationRequests(Array.isArray(rows) ? rows : []);
   return loadVisitationRequests();
+}
+
+function mapVisitationDbRow(r) {
+  return {
+    id: r.id,
+    familyId: r.family_id || '',
+    familyName: r.family_name || '',
+    patientId: r.patient_id || '',
+    patientName: r.patient_name || '',
+    preferredDate: r.preferred_date || '',
+    preferredTime: r.preferred_time || '',
+    note: r.note || '',
+    status: normalizeVisitationStatus(r.status),
+    confirmedDate: r.confirmed_date || '',
+    confirmedTime: r.confirmed_time || '',
+    adminNote: r.admin_note || '',
+    createdAt: r.created_at || '',
+    updatedAt: r.updated_at || '',
+  };
+}
+
+/** Family dashboard: merge Supabase rows with local cache for one family. */
+export async function loadFamilyVisitationRequests(familyId) {
+  const fid = String(familyId || '');
+  const localRows = listVisitationRequestsByFamily(fid);
+  if (!isSupabaseConfigured() || !fid) {
+    return localRows.map((r) => ({ ...r, status: normalizeVisitationStatus(r.status) }));
+  }
+  const { data, error } = await supabase
+    .from('visitation_requests')
+    .select('*')
+    .eq('family_id', fid)
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.warn('[visitation] loadFamilyVisitationRequests', error.message);
+    return localRows.map((r) => ({ ...r, status: normalizeVisitationStatus(r.status) }));
+  }
+  const fromDb = (data || []).map(mapVisitationDbRow);
+  const seen = new Set(fromDb.map((r) => String(r.id)));
+  const merged = [
+    ...fromDb,
+    ...localRows.filter((r) => !seen.has(String(r.id)) && !isVisitationLocalDraftSuperseded(r, fromDb)),
+  ];
+  merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const others = loadVisitationRequests().filter((r) => String(r.familyId || '') !== fid);
+  replaceVisitationRequests([...others, ...merged]);
+  return merged;
+}
+
+/** Remove from Supabase (when configured) and local cache. */
+export async function deleteVisitationRequestPermanent(id) {
+  const sid = String(id || '');
+  if (!sid) return { ok: false, errorMessage: 'Missing request id.' };
+  if (isSupabaseConfigured() && !sid.startsWith('visit_')) {
+    const { error } = await supabase.from('visitation_requests').delete().eq('id', sid);
+    if (error) return { ok: false, errorMessage: error.message || 'Could not delete appointment.' };
+  }
+  const next = loadVisitationRequests().filter((r) => String(r.id) !== sid);
+  saveVisitationRequests(next);
+  try {
+    window.dispatchEvent(new Event('storage'));
+  } catch {
+    /* ignore */
+  }
+  return { ok: true };
 }

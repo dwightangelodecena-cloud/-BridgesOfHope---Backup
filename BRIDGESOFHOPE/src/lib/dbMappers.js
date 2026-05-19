@@ -1,4 +1,5 @@
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
+import { displayProgressPercent } from '@/lib/residentPlacement';
 
 export function uiPatientFromRow(p) {
   if (!p) return null;
@@ -16,9 +17,17 @@ export function uiPatientFromRow(p) {
           year: 'numeric',
         })
       : '',
-    progress: p.progress_percent ?? 0,
+    progress_percent: p.progress_percent ?? 0,
+    progress: displayProgressPercent(p),
     status: p.clinical_status || '',
     reason: p.primary_concern || '',
+    concern: p.primary_concern || '',
+    case_load_manager: p.case_load_manager || '',
+    caseLoadManager: p.case_load_manager || '',
+    program_staff: p.program_staff || '',
+    programStaff: p.program_staff || '',
+    progress_updated_at: p.progress_updated_at ?? null,
+    progressUpdatedAt: p.progress_updated_at ?? null,
     family_id: p.family_id,
     admitted_at: p.admitted_at,
     discharged_at: p.discharged_at,
@@ -60,6 +69,8 @@ export function uiAdmissionRequestFromRow(r) {
     guardian_phone: r.guardian_phone,
     patient_birth_date: r.patient_birth_date,
     patient_gender: r.patient_gender,
+    patientGender: r.patient_gender,
+    rawAdmission: r,
   };
 }
 

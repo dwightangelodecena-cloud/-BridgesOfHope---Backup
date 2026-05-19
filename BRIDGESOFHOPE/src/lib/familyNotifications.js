@@ -2,6 +2,7 @@ const LEGACY_KEY = 'bh_family_notifications_v1';
 /** Pre–per-user bucket (shared across accounts on same browser). Migrated once into the active user’s v3 key. */
 const GLOBAL_V2_KEY = 'bh_family_notifications_v2';
 const PER_USER_PREFIX = 'bh_family_notifications_v3:';
+const MAX_NOTIFICATIONS = 80;
 
 export const FAMILY_NOTIFICATIONS_CHANGED = 'bh_family_notifications_changed';
 
@@ -89,9 +90,17 @@ export function saveFamilyNotifications(items, userId) {
   if (!key) return [];
   const normalized = (Array.isArray(items) ? items : [])
     .map((x, i) => normalizeNotificationItem(x, i))
-    .filter(Boolean);
-  localStorage.setItem(key, JSON.stringify(normalized));
-  dispatchChanged();
+    .filter(Boolean)
+    .slice(0, MAX_NOTIFICATIONS);
+  const serialized = JSON.stringify(normalized);
+  try {
+    const existing = localStorage.getItem(key);
+    if (existing === serialized) return normalized;
+    localStorage.setItem(key, serialized);
+    dispatchChanged();
+  } catch (e) {
+    console.warn('[familyNotifications] save failed (storage full?)', e);
+  }
   return normalized;
 }
 
@@ -116,8 +125,13 @@ export function appendFamilyNotificationsIfNew(entries, userId) {
     changed = true;
   }
   if (changed) {
-    localStorage.setItem(key, JSON.stringify(next));
-    dispatchChanged();
+    try {
+      const capped = next.slice(0, MAX_NOTIFICATIONS);
+      localStorage.setItem(key, JSON.stringify(capped));
+      dispatchChanged();
+    } catch (e) {
+      console.warn('[familyNotifications] append failed (storage full?)', e);
+    }
   }
   return changed ? next : cur;
 }
@@ -125,7 +139,9 @@ export function appendFamilyNotificationsIfNew(entries, userId) {
 export function clearAllFamilyNotifications(userId) {
   const key = notificationStorageKeyForUser(userId);
   if (!key) return [];
-  localStorage.setItem(key, JSON.stringify([]));
+  const empty = '[]';
+  if (localStorage.getItem(key) === empty) return [];
+  localStorage.setItem(key, empty);
   dispatchChanged();
   return [];
 }

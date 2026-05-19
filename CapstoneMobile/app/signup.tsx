@@ -14,6 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useTerms } from "../contexts/TermsContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatAuthError } from "../lib/authErrors";
 import { PsgcSearchableSelect } from "../components/PsgcSearchableSelect";
@@ -27,7 +28,25 @@ import {
 /** Mirrors BRIDGESOFHOPE/src/pages/auth/signup.jsx validation & user_metadata. */
 export default function SignupScreen() {
   const router = useRouter();
-  const { acceptTerms, setAcceptTerms } = useTerms();
+  const {
+    acceptTerms,
+    acceptPrivacy,
+    hasReadTerms,
+    hasReadPrivacy,
+    setAcceptTerms,
+    setAcceptPrivacy,
+  } = useTerms();
+
+  const canCreateAccount =
+    hasReadTerms && hasReadPrivacy && acceptTerms && acceptPrivacy;
+
+  useEffect(() => {
+    if (hasReadTerms) setAcceptTerms(true);
+  }, [hasReadTerms, setAcceptTerms]);
+
+  useEffect(() => {
+    if (hasReadPrivacy) setAcceptPrivacy(true);
+  }, [hasReadPrivacy, setAcceptPrivacy]);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -153,6 +172,7 @@ export default function SignupScreen() {
     password?: string;
     confirmPassword?: string;
     terms?: string;
+    privacy?: string;
   }>({});
 
   const handleContactNumberChange = (text: string) => {
@@ -244,8 +264,15 @@ export default function SignupScreen() {
     } else if (password !== confirmPassword) {
       errors.confirmPassword = "Passwords do not match";
     }
-    if (!acceptTerms) {
-      errors.terms = "You must agree to the terms";
+    if (!hasReadTerms) {
+      errors.terms = "Please read the Terms and Conditions of Use to the end.";
+    } else if (!acceptTerms) {
+      errors.terms = "You must agree to the Terms and Conditions of Use.";
+    }
+    if (!hasReadPrivacy) {
+      errors.privacy = "Please read the Privacy Policy to the end.";
+    } else if (!acceptPrivacy) {
+      errors.privacy = "You must agree to the Privacy Policy.";
     }
 
     setFieldErrors(errors);
@@ -278,54 +305,76 @@ export default function SignupScreen() {
     const addressLine = [hb, str, brgy, mun, prov].filter(Boolean).join(", ");
 
     setSubmitting(true);
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: {
-          first_name: first,
-          last_name: last,
-          middle_initial: middle.toUpperCase() || null,
-          full_name: fullName,
-          contact_number: contactNumber.trim(),
-          province: prov,
-          municipality: mun,
-          barangay: brgy,
-          street: str,
-          house_block_lot: hb,
-          address: addressLine,
-          account_type: "family",
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            first_name: first,
+            last_name: last,
+            middle_initial: middle.toUpperCase() || null,
+            full_name: fullName,
+            contact_number: contactNumber.trim(),
+            province: prov,
+            municipality: mun,
+            barangay: brgy,
+            street: str,
+            house_block_lot: hb,
+            address: addressLine,
+            account_type: "family",
+          },
         },
-      },
-    });
-    setSubmitting(false);
+      });
 
-    if (error) {
-      setFormError(formatAuthError(error));
-      return;
-    }
-
-    if (data.user?.id) {
-      const { error: profileError } = await supabase.from("profiles").upsert(
-        {
-          id: data.user.id,
-          full_name: fullName,
-          phone: contactNumber.trim(),
-          account_type: "family",
-          province: prov,
-          municipality: mun,
-          barangay: brgy,
-          street: str,
-          house_block_lot: hb,
-        },
-        { onConflict: "id" }
-      );
-      if (profileError) {
-        console.warn("[signup] profile upsert failed:", profileError.message);
+      if (error) {
+        setFormError(formatAuthError(error));
+        return;
       }
-    }
 
-    router.replace("/login");
+      if (!data.user) {
+        setFormError("Sign up did not complete. Please try again.");
+        return;
+      }
+
+      if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        setFormError("This email is already registered. Try signing in or use Forgot password.");
+        return;
+      }
+
+      if (data.user.id) {
+        const { error: profileError } = await supabase.from("profiles").upsert(
+          {
+            id: data.user.id,
+            full_name: fullName,
+            phone: contactNumber.trim(),
+            account_type: "family",
+            province: prov,
+            municipality: mun,
+            barangay: brgy,
+            street: str,
+            house_block_lot: hb,
+          },
+          { onConflict: "id" }
+        );
+        if (profileError) {
+          console.warn("[signup] profile upsert failed:", profileError.message);
+        }
+      }
+
+      const needsEmailConfirm = !data.session;
+      try {
+        await AsyncStorage.setItem(
+          "bh_post_signup",
+          needsEmailConfirm ? "check_email" : "welcome"
+        );
+      } catch {
+        /* non-blocking */
+      }
+      router.replace("/login");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const hasError = (key: keyof typeof fieldErrors) => !!fieldErrors[key];
@@ -755,43 +804,83 @@ export default function SignupScreen() {
               <Text style={styles.errorText}>{fieldErrors.confirmPassword}</Text>
             )}
 
-            <View style={styles.termsRow}>
-              <TouchableOpacity
-                style={[styles.checkbox, acceptTerms && styles.checkboxChecked]}
-                onPress={() => {
-                  setAcceptTerms(!acceptTerms);
-                  clearFieldError("terms");
-                }}
-              >
-                {acceptTerms && (
-                  <Ionicons name="checkmark" size={14} color="#fff" />
-                )}
-              </TouchableOpacity>
-              <View style={styles.termsRowText}>
-                <Text style={styles.termsText}>I agree to the </Text>
+            <View style={styles.termsAcceptList}>
+              <View style={styles.termsRow}>
                 <TouchableOpacity
-                  onPress={() => router.push("/privacypolicy")}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  style={[
+                    styles.checkbox,
+                    acceptTerms && styles.checkboxChecked,
+                    !hasReadTerms && styles.checkboxDisabled,
+                  ]}
+                  disabled={!hasReadTerms}
+                  onPress={() => {
+                    setAcceptTerms(!acceptTerms);
+                    clearFieldError("terms");
+                  }}
                 >
-                  <Text style={styles.linkText}>Privacy Policy</Text>
+                  {acceptTerms && (
+                    <Ionicons name="checkmark" size={14} color="#fff" />
+                  )}
                 </TouchableOpacity>
-                <Text style={styles.termsText}> and </Text>
-                <TouchableOpacity
-                  onPress={() => router.push("/privacypolicy")}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Text style={styles.linkText}>Terms</Text>
-                </TouchableOpacity>
+                <View style={styles.termsRowText}>
+                  <Text style={styles.termsText}>
+                    I have read and agree to the{" "}
+                    <Text
+                      style={styles.linkText}
+                      onPress={() => router.push("/terms")}
+                    >
+                      Terms and Conditions of Use
+                    </Text>
+                    {!hasReadTerms ? " (open and scroll to the end first)" : ""}
+                  </Text>
+                </View>
               </View>
+              {fieldErrors.terms ? (
+                <Text style={styles.errorText}>{fieldErrors.terms}</Text>
+              ) : null}
+
+              <View style={styles.termsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    acceptPrivacy && styles.checkboxChecked,
+                    !hasReadPrivacy && styles.checkboxDisabled,
+                  ]}
+                  disabled={!hasReadPrivacy}
+                  onPress={() => {
+                    setAcceptPrivacy(!acceptPrivacy);
+                    clearFieldError("privacy");
+                  }}
+                >
+                  {acceptPrivacy && (
+                    <Ionicons name="checkmark" size={14} color="#fff" />
+                  )}
+                </TouchableOpacity>
+                <View style={styles.termsRowText}>
+                  <Text style={styles.termsText}>
+                    I have read and agree to the{" "}
+                    <Text
+                      style={styles.linkText}
+                      onPress={() => router.push("/privacypolicy")}
+                    >
+                      Privacy Policy
+                    </Text>
+                    {!hasReadPrivacy ? " (open and scroll to the end first)" : ""}
+                  </Text>
+                </View>
+              </View>
+              {fieldErrors.privacy ? (
+                <Text style={styles.errorText}>{fieldErrors.privacy}</Text>
+              ) : null}
             </View>
-            {fieldErrors.terms && (
-              <Text style={styles.errorText}>{fieldErrors.terms}</Text>
-            )}
 
             <TouchableOpacity
-              style={[styles.createButton, submitting && { opacity: 0.7 }]}
+              style={[
+                styles.createButton,
+                (submitting || !canCreateAccount) && { opacity: 0.5 },
+              ]}
               onPress={handleCreateAccount}
-              disabled={submitting}
+              disabled={submitting || !canCreateAccount}
             >
               <Text style={styles.createButtonText}>
                 {submitting ? "Creating account…" : "Create Account"}
@@ -976,11 +1065,19 @@ const styles = StyleSheet.create({
   passwordInputContainer: {
     marginBottom: 6,
   },
-  termsRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  termsAcceptList: {
     marginTop: 8,
     marginBottom: 6,
+    gap: 4,
+    width: "100%",
+    alignSelf: "stretch",
+  },
+  termsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    alignSelf: "stretch",
+    width: "100%",
+    marginTop: 4,
   },
   checkbox: {
     width: 18,
@@ -997,11 +1094,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#F54E25",
     borderColor: "#F54E25",
   },
+  checkboxDisabled: {
+    opacity: 0.45,
+  },
   termsRowText: {
     flex: 1,
     flexDirection: "row",
     flexWrap: "wrap",
-    alignItems: "center",
+    alignItems: "flex-start",
   },
   termsText: {
     fontSize: 12,
@@ -1009,7 +1109,10 @@ const styles = StyleSheet.create({
   },
   linkText: {
     color: "#F54E25",
-    fontWeight: "600",
+    fontWeight: "700",
+    fontSize: 13,
+    textDecorationLine: "underline",
+    textDecorationStyle: "solid",
   },
   createButton: {
     marginTop: 24,

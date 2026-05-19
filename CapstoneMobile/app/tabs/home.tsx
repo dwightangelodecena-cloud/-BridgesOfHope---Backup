@@ -25,12 +25,12 @@ import {
 import { fetchActivityFeedForCurrentUser } from '../../lib/activityFeed';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
+import { FamilyMessageIcon } from '../../components/family/FamilyMessageIcon';
+import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  loadFamilyNotificationsMobile,
-  saveFamilyNotificationsMobile,
-} from '../../lib/familyNotificationsMobile';
+import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
+import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 import {
   listVisitationRequestsByFamily,
   mergeRequestsFromSupabase,
@@ -121,10 +121,8 @@ function patientStatus(progress: number) {
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationItems, setNotificationItems] = useState<string[]>(() => loadFamilyNotificationsMobile());
-  const [userInitials, setUserInitials] = useState('FU');
-  const [displayName, setDisplayName] = useState('Family User');
+  const { displayName } = useFamilyUserMobile();
+  const { unreadCount: supportUnreadCount } = useSupportChatMobile();
   const [patients, setPatients] = useState<UIPatient[]>([]);
   const [pendingAdmissions, setPendingAdmissions] = useState<PendingAdmission[]>([]);
   const [pendingDischarges, setPendingDischarges] = useState<PendingDischarge[]>([]);
@@ -284,48 +282,6 @@ export default function HomeScreen() {
     }, [loadDashboard])
   );
 
-  useEffect(() => {
-    let mounted = true;
-    const loadUser = async () => {
-      if (!isSupabaseConfigured()) return;
-      try {
-        const { data } = await supabase.auth.getUser();
-        const user = data?.user;
-        let resolved =
-          (user?.user_metadata?.full_name as string | undefined)?.trim() ||
-          [user?.user_metadata?.first_name, user?.user_metadata?.last_name]
-            .filter(Boolean)
-            .join(' ')
-            .trim() ||
-          'Family User';
-
-        if (user?.id) {
-          const { data: profileRow } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', user.id)
-            .maybeSingle();
-          if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
-        }
-
-        if (mounted) {
-          setDisplayName(resolved);
-          setUserInitials(deriveInitials(resolved));
-        }
-      } catch {
-        /* keep defaults */
-      }
-    };
-    loadUser();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    saveFamilyNotificationsMobile(notificationItems);
-  }, [notificationItems]);
-
   const reportsReceivedCount = Object.values(nurseWeeklyByPatient || {}).reduce(
     (count, patientWeeks) => count + Object.keys(patientWeeks || {}).length,
     0
@@ -470,60 +426,8 @@ export default function HomeScreen() {
   });
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: BG }]}>
-      <Modal
-        visible={showNotifications}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowNotifications(false)}
-      >
-        <View style={styles.notifModalRoot}>
-          <Pressable style={styles.notifModalBackdrop} onPress={() => setShowNotifications(false)} />
-          <View style={[styles.notificationsDropdown, { top: insets.top + 52, right: 16 }]}>
-            <View style={styles.notificationsDropdownTitleRow}>
-              <Ionicons name="notifications" size={16} color="#F54E25" />
-              <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
-            </View>
-            {notificationItems.length === 0 ? (
-              <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
-            ) : notificationItems.map((item, idx) => (
-              <View key={`${item}-${idx}`} style={styles.notificationsDropdownRow}>
-                <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                <Text style={styles.notificationsDropdownText}>{item}</Text>
-                <TouchableOpacity
-                  onPress={() => setNotificationItems((prev) => prev.filter((_, i) => i !== idx))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Remove notification"
-                >
-                  <Text style={styles.notificationDismiss}>×</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </View>
-      </Modal>
-
-      <View style={styles.mobileTopBar}>
-        <KalingaLogoMark size={44} />
-        <View style={styles.mobileTopBarRight}>
-          <TouchableOpacity
-            style={styles.headerNotifyBtn}
-            onPress={() => setShowNotifications((v) => !v)}
-            accessibilityRole="button"
-            accessibilityLabel="Notifications"
-          >
-            <Ionicons name="notifications" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerAvatar}
-            onPress={() => router.navigate(TAB_ROUTES.profile)}
-            accessibilityRole="button"
-            accessibilityLabel="Profile"
-          >
-            <Text style={styles.headerAvatarText}>{userInitials}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+    <View style={[styles.container, { backgroundColor: BG }]}>
+      <FamilyMobilePageHeader />
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
@@ -666,6 +570,28 @@ export default function HomeScreen() {
               <View style={[styles.actionBadge, { backgroundColor: '#EEF2FF' }]}>
                 <Text style={[styles.actionBadgeText, { color: '#3730A3' }]}>Care resources</Text>
               </View>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => router.navigate(TAB_ROUTES.messages)}
+            activeOpacity={0.9}
+          >
+            <FamilyMessageIcon size="md" badge={supportUnreadCount} />
+            <View style={styles.actionMain}>
+              <Text style={styles.actionTitle}>Messages</Text>
+              <Text style={styles.actionSubtitle}>Chat with the Bridges of Hope care team</Text>
+              {supportUnreadCount > 0 ? (
+                <View style={[styles.actionBadge, { backgroundColor: '#FEE2E2' }]}>
+                  <Text style={[styles.actionBadgeText, { color: '#DC2626' }]}>
+                    {supportUnreadCount} new {supportUnreadCount === 1 ? 'reply' : 'replies'}
+                  </Text>
+                </View>
+              ) : (
+                <View style={[styles.actionBadge, { backgroundColor: '#FFF1EB' }]}>
+                  <Text style={[styles.actionBadgeText, { color: '#C2410C' }]}>Support chat</Text>
+                </View>
+              )}
             </View>
           </TouchableOpacity>
         </View>
@@ -904,9 +830,12 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>Messages</Text>
-              <TouchableOpacity style={styles.openBtnGreen} onPress={() => router.navigate(TAB_ROUTES.messages)}>
-                <Text style={styles.openBtnText}>Open</Text>
+              <View style={styles.cleanListItemLeft}>
+                <FamilyMessageIcon size="sm" badge={supportUnreadCount} />
+                <Text style={styles.cleanTitle}>Messages</Text>
+              </View>
+              <TouchableOpacity style={styles.openBtnOrange} onPress={() => router.navigate(TAB_ROUTES.messages)}>
+                <Text style={[styles.openBtnText, { color: '#C2410C' }]}>Open</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.cleanListItem}>
@@ -1501,10 +1430,18 @@ const styles = StyleSheet.create({
   cleanListItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 10,
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
+  },
+  cleanListItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
   },
   cleanTitle: { color: '#1B2559', fontWeight: '700', fontSize: 13 },
   cleanDesc: { color: '#64748B', fontSize: 12, marginTop: 2 },

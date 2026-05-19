@@ -14,12 +14,16 @@ import {
   clearAddressDraft,
 } from '@/lib/addressPersistence';
 import { getPasswordStrengthChecks, getPasswordPolicyError, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
+import { PRIVACY_POLICY, TERMS_OF_USE } from '@/lib/legalDocuments';
+import LegalDocumentModal from '@/components/auth/LegalDocumentModal';
 
 const SignUp = () => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [legalModal, setLegalModal] = useState(null);
+  const [hasReadTerms, setHasReadTerms] = useState(false);
+  const [hasReadPrivacy, setHasReadPrivacy] = useState(false);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -36,7 +40,8 @@ const SignUp = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    agreeToTerms: false
+    agreeToTerms: false,
+    agreeToPrivacy: false,
   });
 
   const {
@@ -155,8 +160,30 @@ const SignUp = () => {
     formData.street,
   ]);
 
+  const canCreateAccount =
+    hasReadTerms
+    && hasReadPrivacy
+    && formData.agreeToTerms
+    && formData.agreeToPrivacy;
+
+  useEffect(() => {
+    if (hasReadTerms) {
+      setFormData((prev) => (prev.agreeToTerms ? prev : { ...prev, agreeToTerms: true }));
+    }
+  }, [hasReadTerms]);
+
+  useEffect(() => {
+    if (hasReadPrivacy) {
+      setFormData((prev) => (prev.agreeToPrivacy ? prev : { ...prev, agreeToPrivacy: true }));
+    }
+  }, [hasReadPrivacy]);
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (type === 'checkbox' && checked) {
+      if (name === 'agreeToTerms' && !hasReadTerms) return;
+      if (name === 'agreeToPrivacy' && !hasReadPrivacy) return;
+    }
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
@@ -196,7 +223,10 @@ const SignUp = () => {
     } else if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = "Passwords do not match";
     }
-    if (!formData.agreeToTerms) newErrors.agreeToTerms = "You must agree to the terms";
+    if (!hasReadTerms) newErrors.agreeToTerms = 'Please read the Terms and Conditions of Use to the end.';
+    else if (!formData.agreeToTerms) newErrors.agreeToTerms = 'You must agree to the Terms and Conditions of Use.';
+    if (!hasReadPrivacy) newErrors.agreeToPrivacy = 'Please read the Privacy Policy to the end.';
+    else if (!formData.agreeToPrivacy) newErrors.agreeToPrivacy = 'You must agree to the Privacy Policy.';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -496,14 +526,35 @@ const SignUp = () => {
         .input-icon { position: absolute; left: 18px; color: #94a3b8; }
         .eye-icon { position: absolute; right: 18px; cursor: pointer; color: #94a3b8; background: none; border: none; display: flex; align-items: center; }
 
+        .terms-accept-list {
+          margin: 20px 0 8px;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 12px;
+          width: 100%;
+          text-align: left;
+        }
+
         .terms-group {
           display: flex;
-          align-items: center;
-          justify-content: center;
+          align-items: flex-start;
+          justify-content: flex-start;
           gap: 10px;
-          margin: 25px 0 5px 0;
+          width: 100%;
           font-size: 0.9rem;
           color: #64748b;
+          text-align: left;
+        }
+
+        .terms-group--disabled input[type="checkbox"] {
+          opacity: 0.45;
+        }
+
+        .terms-group p {
+          margin: 0;
+          line-height: 1.45;
+          flex: 1;
         }
 
         .terms-group input[type="checkbox"] {
@@ -534,7 +585,129 @@ const SignUp = () => {
           transform: translate(-50%, -50%);
         }
 
-        .terms-group span { color: #F54E25; font-weight: 600; cursor: pointer; }
+        .terms-group span.link {
+          color: #F54E25;
+          font-weight: 700;
+          font-size: 0.95rem;
+          cursor: pointer;
+          text-decoration: underline;
+          text-decoration-thickness: 2px;
+          text-underline-offset: 3px;
+        }
+        .terms-group span.link:hover { color: #E04820; }
+        .terms-group input[type="checkbox"]:disabled { cursor: not-allowed; }
+
+        .legal-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 2000;
+          backdrop-filter: blur(2px);
+        }
+
+        .legal-modal-card {
+          background: #fff;
+          width: calc(100% - 32px);
+          max-width: min(850px, 100%);
+          max-height: 90vh;
+          border-radius: 24px;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 30px 60px rgba(0,0,0,0.2);
+          overflow: hidden;
+        }
+
+        .legal-modal-close {
+          position: absolute;
+          right: 20px;
+          top: 20px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          z-index: 2;
+        }
+
+        .legal-modal-header {
+          text-align: center;
+          padding: 36px 48px 12px;
+        }
+
+        .legal-modal-header h1 {
+          font-size: 1.5rem;
+          font-weight: 800;
+          margin: 0;
+          color: #000;
+        }
+
+        .legal-modal-header p {
+          margin: 6px 0 0;
+          color: #475569;
+          font-size: 0.95rem;
+        }
+
+        .legal-modal-body {
+          flex: 1;
+          overflow-y: auto;
+          padding: 12px 48px 20px;
+          scrollbar-width: thin;
+        }
+
+        .legal-modal-section {
+          margin-bottom: 20px;
+        }
+
+        .legal-modal-section h3 {
+          font-size: 0.95rem;
+          font-weight: 700;
+          margin: 0 0 8px;
+          color: #000;
+        }
+
+        .legal-modal-section p {
+          margin: 0;
+          color: #334155;
+          line-height: 1.5;
+          font-size: 0.9rem;
+        }
+
+        .legal-modal-footer-text {
+          margin-top: 16px;
+          font-weight: 500;
+          color: #334155;
+        }
+
+        .legal-modal-scroll-hint {
+          text-align: center;
+          color: #F54E25;
+          font-size: 0.85rem;
+          font-weight: 600;
+          margin: 16px 0 0;
+        }
+
+        .legal-modal-actions {
+          padding: 16px 48px 28px;
+        }
+
+        .legal-modal-confirm {
+          width: 100%;
+          background: #F54E25;
+          color: #fff;
+          border: none;
+          border-radius: 12px;
+          padding: 14px;
+          font-size: 1rem;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .legal-modal-confirm:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+        }
 
         .btn-primary {
           width: 100%;
@@ -946,11 +1119,55 @@ const SignUp = () => {
                 {errors.confirmPassword && <div className="error-message">{errors.confirmPassword}</div>}
               </div>
 
-              <div className="terms-group">
-                <input type="checkbox" name="agreeToTerms" checked={formData.agreeToTerms} onChange={handleChange} />
-                <p>I agree to the <span onClick={() => setShowTermsModal(true)}>Privacy Policy</span> and <span onClick={() => setShowTermsModal(true)}>Terms</span></p>
+              <div className="terms-accept-list">
+                <label className={`terms-group ${!hasReadTerms ? 'terms-group--disabled' : ''}`}>
+                  <input
+                    type="checkbox"
+                    name="agreeToTerms"
+                    checked={formData.agreeToTerms}
+                    onChange={handleChange}
+                    disabled={!hasReadTerms}
+                  />
+                  <p>
+                    I have read and agree to the{' '}
+                    <span
+                      className="link"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setLegalModal('terms')}
+                      onKeyDown={(e) => e.key === 'Enter' && setLegalModal('terms')}
+                    >
+                      Terms and Conditions of Use
+                    </span>
+                    {!hasReadTerms ? ' (open and scroll to the end first)' : ''}
+                  </p>
+                </label>
+                {errors.agreeToTerms && <div className="error-message">{errors.agreeToTerms}</div>}
+
+                <label className={`terms-group ${!hasReadPrivacy ? 'terms-group--disabled' : ''}`}>
+                  <input
+                    type="checkbox"
+                    name="agreeToPrivacy"
+                    checked={formData.agreeToPrivacy}
+                    onChange={handleChange}
+                    disabled={!hasReadPrivacy}
+                  />
+                  <p>
+                    I have read and agree to the{' '}
+                    <span
+                      className="link"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setLegalModal('privacy')}
+                      onKeyDown={(e) => e.key === 'Enter' && setLegalModal('privacy')}
+                    >
+                      Privacy Policy
+                    </span>
+                    {!hasReadPrivacy ? ' (open and scroll to the end first)' : ''}
+                  </p>
+                </label>
+                {errors.agreeToPrivacy && <div className="error-message">{errors.agreeToPrivacy}</div>}
               </div>
-              {errors.agreeToTerms && <div className="error-message" style={{ textAlign: 'center', marginBottom: '10px' }}>{errors.agreeToTerms}</div>}
 
               {formError && (
                 <div className="error-message" style={{ textAlign: 'center', marginBottom: '12px' }}>
@@ -958,7 +1175,7 @@ const SignUp = () => {
                 </div>
               )}
 
-              <button type="submit" className="btn-primary" disabled={submitting}>
+              <button type="submit" className="btn-primary" disabled={submitting || !canCreateAccount}>
                 {submitting ? 'Creating account…' : 'Create Account'}
               </button>
               <p className="login-prompt">Already have an account? <Link to="/login" style={{ textDecoration: 'none' }}><span>Sign In</span></Link></p>
@@ -967,105 +1184,28 @@ const SignUp = () => {
         </div>
       </div>
 
-      {showTermsModal && (
-        <div className="modal-overlay" onClick={() => setShowTermsModal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setShowTermsModal(false)}>
-              <X size={28} />
-            </button>
 
-            <div className="modal-content-area">
-              <div className="modal-header">
-                <h1>TERMS AND CONDITION OF USE</h1>
-                <p>Clinic Admission and Patient Management System</p>
-              </div>
+      <LegalDocumentModal
+        open={legalModal === 'terms'}
+        document={TERMS_OF_USE}
+        onClose={() => setLegalModal(null)}
+        onConfirmRead={() => {
+          setHasReadTerms(true);
+          setFormData((prev) => ({ ...prev, agreeToTerms: true }));
+        }}
+        confirmLabel="I have read the Terms and Conditions of Use"
+      />
+      <LegalDocumentModal
+        open={legalModal === 'privacy'}
+        document={PRIVACY_POLICY}
+        onClose={() => setLegalModal(null)}
+        onConfirmRead={() => {
+          setHasReadPrivacy(true);
+          setFormData((prev) => ({ ...prev, agreeToPrivacy: true }));
+        }}
+        confirmLabel="I have read the Privacy Policy"
+      />
 
-              <div className="terms-text-container">
-                <div className="terms-section">
-                  <h3>1. Acceptance of Terms</h3>
-                  <p>By accessing, registering, or using this application and web system (“the System”), you acknowledge that you have read, understood, and agreed to be bound by these Terms and Conditions. If you do not agree, you must discontinue use of the System immediately.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>2. Purpose of the System</h3>
-                  <p>The System is designed to facilitate admission processing, patient record management, scheduling, monitoring, and communication between the clinic, patients, and authorized guardians. The System supports administrative and informational functions only and does not replace professional medical judgment, diagnosis, or treatment.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>3. User Eligibility and Accounts</h3>
-                  <p>Users must provide accurate and complete information during registration and admission application. Guardians submitting applications on behalf of patients confirm they are legally authorized to provide the patient’s information. Users are responsible for maintaining the confidentiality of their login credentials and all activities performed under their account.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>4. Data Collection and Privacy</h3>
-                  <p>The System collects personal and health-related information necessary for admission processing, monitoring, and care coordination. By using the System, you consent to the storage and processing of submitted information within the secure clinic database. Access to records is restricted to authorized personnel only and handled in accordance with applicable data privacy regulations and institutional policies.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>5. Accuracy of Information</h3>
-                  <p>Users agree to provide truthful, current, and complete information. Submission of false, misleading, or incomplete data may result in delayed admission processing, suspension of account access, or rejection of applications.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>6. Communication and Notification</h3>
-                  <p>The System may send notifications regarding admission status, schedules, updates, and relevant announcements. These notifications are informational and should not be interpreted as medical advice or emergency instructions.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>7. System Availability</h3>
-                  <p>The clinic will make reasonable efforts to maintain continuous system availability. However, temporary interruptions may occur due to maintenance, updates, technical issues, or network conditions. The clinic is not liable for delays caused by such interruptions.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>8. Acceptable Use</h3>
-                  <p>Users agree not to misuse the System. Prohibited actions include unauthorized access, attempting to alter records without permission, uploading harmful content, sharing accounts, or interfering with system operations. Violations may result in account suspension and further action as permitted by law.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>9. Record Access and Confidentiality</h3>
-                  <p>Patient records are confidential and may only be accessed by authorized staff and the registered patient or guardian. Users agree not to share retrieved information with unauthorized individuals and to respect the privacy of all patients within the System.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>10. Limitation of Liability</h3>
-                  <p>The System is intended to support administrative processes. The clinic is not responsible for decisions made solely based on system information without consultation with qualified healthcare professionals. The System does not provide emergency medical services.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>11. Modifications to Terms</h3>
-                  <p>The clinic reserves the right to modify these Terms and Conditions at any time. Continued use of the System after updates indicates acceptance of the revised terms.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>12. Termination of Access</h3>
-                  <p>The clinic may suspend or terminate access if users violate these Terms, misuse the System, or compromise security or patient confidentiality.</p>
-                </div>
-
-                <div className="terms-section">
-                  <h3>13. Contact Information</h3>
-                  <p>For questions, corrections to records, or concerns regarding these Terms, users may contact the clinic administration through the official communication channels provided within the System.</p>
-                </div>
-
-                <p style={{ marginTop: '30px', fontWeight: '500' }}>
-                  By selecting <strong>“I Agree”</strong> or <strong>continuing to use the System</strong>, you confirm your acceptance of these Terms and Conditions.
-                </p>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button
-                className="btn-modal-agree"
-                onClick={() => {
-                  setFormData(prev => ({ ...prev, agreeToTerms: true }));
-                  setShowTermsModal(false);
-                }}
-              >
-                I agree to the Privacy Policy and Terms of Service
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

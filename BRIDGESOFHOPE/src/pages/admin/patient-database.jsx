@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, MessageCircle, LayoutTemplate, Calendar } from 'lucide-react';
+import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -22,14 +23,29 @@ import {
   TemporaryDischargeCardBanner,
 } from '@/components/TemporaryDischargeNotice';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
-import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
+import {
+  computeAdmissionDisplayId,
+  findAdmissionForPatient,
+  normBirthDateKey,
+} from '@/lib/admissionDischargeStore';
+import {
+  normalizedRoomSegmentFromGender,
+  persistResidentPlacement,
+  resolveResidentGender,
+  displayProgressPercent,
+  validateBedPlacementPolicy,
+} from '@/lib/residentPlacement';
 import { fetchWeeklyReportRecommendation } from '@/lib/weeklyReportAi';
 import BehaviorProgressBoard, {
-  buildBehaviorChecksForStage,
+  emptyBehaviorChecks,
   computeBehaviorBoardProgressPercent,
 } from '@/components/admin/BehaviorProgressBoard';
 import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
 import { ProgramSidebar, ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
+import {
+  partitionProfilesForStaffAssignment,
+  profileDisplayNameFromRow,
+} from '@/lib/staffAssignmentLists';
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
 const ROOM_ASSIGNMENT_STORAGE_KEY = 'bh_patient_room_assignments_v1';
@@ -70,13 +86,20 @@ function mergeNurseRecoveryLadderProgress(patients, ladderByPatientId) {
       ladder.checks && typeof ladder.checks === 'object' && !Array.isArray(ladder.checks) ? ladder.checks : {};
     const normalized = normalizeLadderChecksFromDb(rawChecks);
     const hasChecks = Object.keys(normalized).length > 0;
-    const checkedState = hasChecks ? normalized : buildBehaviorChecksForStage(pos);
-    const fromLadder = Math.min(
-      100,
-      Math.max(0, Math.round(Number(computeBehaviorBoardProgressPercent(checkedState)) || 0))
-    );
-    const fromColumn = Math.min(100, Math.max(0, Math.round(Number(p.progress) || 0)));
     const ladderUpdated = ladder.updated_at && String(ladder.updated_at).trim() !== '' ? ladder.updated_at : null;
+    /** 0% until nurse saves ladder checks or progress audit on the patient row (not a default ladder row). */
+    const nurseHasSaved =
+      Boolean(p.progressUpdatedAt && String(p.progressUpdatedAt).trim()) || hasChecks;
+    const fromColumn = Math.min(100, Math.max(0, Math.round(Number(p.progress) || 0)));
+    if (!nurseHasSaved) {
+      return { ...p, progress: 0 };
+    }
+    const fromLadder = hasChecks
+      ? Math.min(
+          100,
+          Math.max(0, Math.round(Number(computeBehaviorBoardProgressPercent(normalized)) || 0))
+        )
+      : 0;
     const ladderT = parseProgressTs(ladderUpdated);
     const patientT = parseProgressTs(p.progressUpdatedAt);
     let pct;
@@ -91,11 +114,13 @@ function mergeNurseRecoveryLadderProgress(patients, ladderByPatientId) {
       pct = Math.max(fromColumn, fromLadder);
       progressUpdatedAt = p.progressUpdatedAt || ladderUpdated;
     }
-    return {
+    const merged = {
       ...p,
       progress: pct,
+      progress_percent: pct,
       ...(progressUpdatedAt ? { progressUpdatedAt } : {}),
     };
+    return { ...merged, progress: displayProgressPercent(merged) };
   });
 }
 
@@ -106,17 +131,26 @@ function mergeLocalLadderProfilesProgress(patients) {
   return patients.map((p) => {
     const prof = profiles[String(p.id)];
     if (!prof || prof.currentPosition == null) return p;
-    const pos = Math.max(1, Math.min(50, Number(prof.currentPosition) || 1));
-    const pct = Math.min(
-      100,
-      Math.max(0, Math.round(Number(computeBehaviorBoardProgressPercent(buildBehaviorChecksForStage(pos))) || 0))
-    );
     const updatedAt = prof.updatedAt && String(prof.updatedAt).trim() !== '' ? prof.updatedAt : null;
-    return {
+    if (!updatedAt && !p.progressUpdatedAt) return { ...p, progress: 0 };
+    const localChecks =
+      prof.checks && typeof prof.checks === 'object' && !Array.isArray(prof.checks)
+        ? normalizeLadderChecksFromDb(prof.checks)
+        : {};
+    const hasLocalChecks = Object.keys(localChecks).length > 0;
+    const pct = hasLocalChecks
+      ? Math.min(
+          100,
+          Math.max(0, Math.round(Number(computeBehaviorBoardProgressPercent(localChecks)) || 0))
+        )
+      : 0;
+    const merged = {
       ...p,
       progress: pct,
+      progress_percent: pct,
       ...(updatedAt ? { progressUpdatedAt: updatedAt } : {}),
     };
+    return { ...merged, progress: displayProgressPercent(merged) };
   });
 }
 
@@ -124,16 +158,6 @@ function mergeLocalLadderProfilesProgress(patients) {
 const CLINICAL_STATUS_OPTIONS = ['Improving', 'Stable', 'Declining'];
 const RISK_LEVEL_OPTIONS = ['Low', 'Moderate', 'High', 'Highly Suicidal'];
 const BUNK_LEVEL_OPTIONS = ['Bottom', 'Middle', 'Top'];
-const INTERNAL_STAFF_ACCOUNT_TYPES = new Set([
-  'admin',
-  'nurse',
-  'staff',
-  'case_manager',
-  'case_load_manager',
-  'case manager',
-  'case load manager',
-]);
-
 const COHORT_FILTER_OPTIONS = [
   { value: 'all', label: 'All records' },
   { value: 'in_care', label: 'Active / in care' },
@@ -260,16 +284,6 @@ const normalizeBunkLevel = (raw) => {
   return 'Bottom';
 };
 
-const validateBedPlacementPolicy = ({ genderSegment, riskLevel, bunkLevel }) => {
-  if (!genderSegment) return 'Resident gender is required before saving room assignment.';
-  const normalizedRisk = normalizeRiskLevel(riskLevel);
-  const normalizedBunk = normalizeBunkLevel(bunkLevel);
-  if (normalizedRisk === 'Highly Suicidal' && normalizedBunk === 'Top') {
-    return 'Highly suicidal patients cannot be assigned to top bunk. Use bottom or middle bunk.';
-  }
-  return '';
-};
-
 const loadRoomAssignments = () => {
   try {
     const raw = localStorage.getItem(ROOM_ASSIGNMENT_STORAGE_KEY);
@@ -357,15 +371,8 @@ const applyProgressGovernanceOverrides = (patients) => {
   });
 };
 
-const normalizedRoomSegmentFromGender = (genderRaw) => {
-  const g = String(genderRaw || '').trim().toLowerCase();
-  if (g === 'male') return 'Male';
-  if (g === 'female') return 'Female';
-  return '';
-};
-
 const makePatientGenderFallbackKey = ({ name, familyId, birthDate }) => {
-  return `${String(name || '').trim().toLowerCase()}|${String(familyId || '')}|${String(birthDate || '')}`;
+  return `${String(name || '').trim().toLowerCase()}|${String(familyId || '')}|${normBirthDateKey(birthDate)}`;
 };
 
 const renderAiInline = (text, keyPrefix) => {
@@ -849,37 +856,47 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         });
       }
 
-      const { data: admissionRows, error: admErr } = await supabase
+      let admissionRows = null;
+      let admErr = null;
+      ({ data: admissionRows, error: admErr } = await supabase
         .from('admission_requests')
         .select('patient_name, family_id, patient_birth_date, patient_gender, created_at')
         .order('created_at', { ascending: false })
-        .limit(10000);
+        .limit(10000));
+      if (admErr && /patient_gender|column|schema cache|does not exist|PGRST204/i.test(admErr.message || '')) {
+        ({ data: admissionRows, error: admErr } = await supabase
+          .from('admission_requests')
+          .select('patient_name, family_id, patient_birth_date, created_at')
+          .order('created_at', { ascending: false })
+          .limit(10000));
+      }
       if (admErr) console.warn('[patient-db] admission gender fallback:', admErr.message);
 
-      const fallbackGenderMap = new Map();
+      const admissionByResidentKey = new Map();
       (admissionRows || []).forEach((r) => {
         const key = makePatientGenderFallbackKey({
           name: r.patient_name,
           familyId: r.family_id,
           birthDate: r.patient_birth_date,
         });
-        if (!key || fallbackGenderMap.has(key)) return;
-        if (normalizedRoomSegmentFromGender(r.patient_gender)) {
-          fallbackGenderMap.set(key, r.patient_gender);
-        }
+        if (!key || admissionByResidentKey.has(key)) return;
+        admissionByResidentKey.set(key, r);
       });
 
       const fromDb = (data || []).map((row) => {
         const ui = toUiPatient(row);
-        const normalized = normalizedRoomSegmentFromGender(ui.gender);
-        if (normalized) return ui;
         const key = makePatientGenderFallbackKey({
           name: ui.name,
           familyId: ui.familyId,
           birthDate: ui.dateOfBirth,
         });
-        const fallbackGender = fallbackGenderMap.get(key) || '';
-        return fallbackGender ? { ...ui, gender: fallbackGender } : ui;
+        const admission = key ? admissionByResidentKey.get(key) : null;
+        const genderResolved = resolveResidentGender(ui, admission);
+        return {
+          ...ui,
+          gender: genderResolved || ui.gender,
+          admissionGender: admission?.patient_gender || '',
+        };
       });
       if (fromDb.length > 0) {
         const merged = applyProgressGovernanceOverrides(
@@ -1245,7 +1262,13 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       const p = profiles[id];
       const pos = Math.max(1, Math.min(50, Number(p?.currentPosition) || 1));
       setRecoveryLadderPosition(pos);
-      setBehaviorChecklistChecked(buildBehaviorChecksForStage(pos));
+      const localChecks =
+        p?.checks && typeof p.checks === 'object' && !Array.isArray(p.checks)
+          ? normalizeLadderChecksFromDb(p.checks)
+          : null;
+      setBehaviorChecklistChecked(
+        localChecks && Object.keys(localChecks).length > 0 ? localChecks : emptyBehaviorChecks()
+      );
     };
 
     void (async () => {
@@ -1263,7 +1286,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           const normalized = normalizeLadderChecksFromDb(rawChecks);
           const hasChecks = Object.keys(normalized).length > 0;
           setRecoveryLadderPosition(pos);
-          setBehaviorChecklistChecked(hasChecks ? normalized : buildBehaviorChecksForStage(pos));
+          setBehaviorChecklistChecked(hasChecks ? normalized : emptyBehaviorChecks());
           return;
         }
       }
@@ -1282,165 +1305,151 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
 
   useEffect(() => {
     if (!selectedPatient) {
-      setRoomForm({ roomCode: '', roomGenderSegment: '', roomPlacementNote: '', riskLevel: 'Low', bunkLevel: 'Bottom' });
+      setRoomForm({
+        roomCode: '',
+        roomGenderSegment: '',
+        roomPlacementNote: '',
+        riskLevel: 'Low',
+        bunkLevel: 'Bottom',
+        residentGender: '',
+      });
       setStaffForm({ caseLoadManager: '', programStaff: '', medicalStaffNote: '' });
       return;
     }
-    const autoSegment = normalizedRoomSegmentFromGender(selectedPatient.gender);
-    setRoomForm({
-      roomCode: selectedPatient.roomCode || '',
-      roomGenderSegment: autoSegment || selectedPatient.roomGenderSegment || '',
-      roomPlacementNote: selectedPatient.roomPlacementNote || '',
-      riskLevel: normalizeRiskLevel(selectedPatient.riskLevel),
-      bunkLevel: normalizeBunkLevel(selectedPatient.bunkLevel),
-    });
+
     setStaffForm({
       caseLoadManager: selectedPatient.caseLoadManager || '',
       programStaff: selectedPatient.programStaff || '',
       medicalStaffNote: selectedPatient.medicalStaffNote || '',
     });
+
+    let cancelled = false;
+    const syncGenderFromAdmission = async (admissionGenderRaw, admissionRequestId) => {
+      const residentGender =
+        resolveResidentGender(selectedPatient, { patient_gender: admissionGenderRaw })
+        || resolveResidentGender(selectedPatient, null);
+      const autoSegment = residentGender || normalizedRoomSegmentFromGender(selectedPatient.roomGenderSegment);
+      setRoomForm({
+        roomCode: selectedPatient.roomCode || '',
+        roomGenderSegment: autoSegment || selectedPatient.roomGenderSegment || '',
+        roomPlacementNote: selectedPatient.roomPlacementNote || '',
+        riskLevel: normalizeRiskLevel(selectedPatient.riskLevel),
+        bunkLevel: normalizeBunkLevel(selectedPatient.bunkLevel),
+        residentGender: residentGender || '',
+      });
+      if (
+        !residentGender
+        || !isSupabaseConfigured()
+        || !isSupabasePatientId(selectedPatient.id)
+        || normalizedRoomSegmentFromGender(selectedPatient.gender)
+      ) {
+        return;
+      }
+      const res = await persistResidentPlacement({
+        patientId: selectedPatient.id,
+        admissionRequestId: admissionRequestId || null,
+        gender: residentGender,
+      });
+      if (res.ok) {
+        setSelectedPatient((prev) => (prev ? { ...prev, gender: residentGender, admissionGender: admissionGenderRaw } : prev));
+        setPatients((prev) =>
+          prev.map((p) => (String(p.id) === String(selectedPatient.id) ? { ...p, gender: residentGender } : p))
+        );
+      }
+    };
+
+    const cachedAdmissionGender = selectedPatient.admissionGender || '';
+    if (cachedAdmissionGender || normalizedRoomSegmentFromGender(selectedPatient.gender)) {
+      void syncGenderFromAdmission(cachedAdmissionGender, null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!isSupabaseConfigured() || !selectedPatient.familyId) {
+      void syncGenderFromAdmission('', null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      const { data: admRows } = await supabase
+        .from('admission_requests')
+        .select('id, patient_name, family_id, patient_birth_date, patient_gender, status, created_at')
+        .eq('family_id', selectedPatient.familyId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (cancelled) return;
+      const match = findAdmissionForPatient(selectedPatient, admRows || []);
+      await syncGenderFromAdmission(match?.patient_gender || '', match?.id || null);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedPatient]);
 
   useEffect(() => {
-    const isNurseAccount = (accountRaw) => String(accountRaw || '').trim().toLowerCase().includes('nurse');
-    const isStaffAccount = (accountRaw) => {
-      const account = String(accountRaw || '').trim().toLowerCase();
-      return account.includes('staff') || account === 'clinic' || account.includes('clinic') || account.includes('case');
-    };
-
-    const classifyByAccountAccess = (accountRaw, roleLabelRaw) => {
-      const roleLabel = String(roleLabelRaw || '').trim().toLowerCase();
-      const isNurse = isNurseAccount(accountRaw) || roleLabel.includes('nurse');
-      const isCaseLoad = (isStaffAccount(accountRaw) || roleLabel.includes('case load manager')) && !isNurse;
-      return { isCaseLoad, isNurse };
-    };
-
-    const fromLocalStaffDirectory = () => {
-      const clm = [];
-      const program = [];
+    const loadLocalStaffProfiles = () => {
       try {
         const raw = localStorage.getItem(LOCAL_STAFF_DIRECTORY_KEY);
         const list = raw ? JSON.parse(raw) : [];
-        (Array.isArray(list) ? list : []).forEach((row) => {
-          const name = String(row?.full_name || row?.name || '').trim();
-          const account = String(
-            row?.account_type
-            || row?.roleRaw
-            || row?.role
-            || row?.raw?.account_type
-            || row?.raw?.role
-            || ''
-          );
-          const roleLabel = String(
-            row?.roleLabel
-            || row?.role_label
-            || row?.department
-            || row?.raw?.department
-            || ''
-          );
-          const { isCaseLoad, isNurse } = classifyByAccountAccess(account, roleLabel);
-          if (!name) return;
-          const normalizedAccount = String(account || '').trim().toLowerCase();
-          const isInternal = INTERNAL_STAFF_ACCOUNT_TYPES.has(normalizedAccount) || isStaffAccount(normalizedAccount) || isCaseLoad || isNurse;
-          if (!isInternal) return;
-          if (isCaseLoad) upsertName(clm, name);
-          if (isNurse) upsertName(program, name);
-        });
+        return (Array.isArray(list) ? list : []).map((row) => ({
+          full_name: profileDisplayNameFromRow(row),
+          name: row?.name,
+          first_name: row?.first_name,
+          last_name: row?.last_name,
+          middle_initial: row?.middle_initial,
+          account_type: row?.account_type || row?.roleRaw || row?.role || row?.raw?.account_type || row?.raw?.role,
+          role: row?.role,
+          department: row?.department || row?.roleLabel || row?.role_label || row?.raw?.department,
+          role_label: row?.role_label,
+        }));
       } catch {
-        /* ignore */
+        return [];
       }
-      return { clm, program };
-    };
-
-    const fallbackFromPatients = () => {
-      const clm = [];
-      const program = [];
-      (patients || []).forEach((p) => {
-        upsertName(clm, p.caseLoadManager);
-        upsertName(program, p.programStaff);
-      });
-      const local = fromLocalStaffDirectory();
-      local.clm.forEach((n) => upsertName(clm, n));
-      local.program.forEach((n) => upsertName(program, n));
-      return {
-        caseLoadManagers: clm.sort((a, b) => a.localeCompare(b)),
-        programStaff: program.sort((a, b) => a.localeCompare(b)),
-      };
     };
 
     let cancelled = false;
     void (async () => {
-      if (!isSupabaseConfigured()) {
-        if (!cancelled) setStaffDirectory(fallbackFromPatients());
-        return;
+      let profiles = loadLocalStaffProfiles();
+      if (isSupabaseConfigured()) {
+        const { data, error } = await supabase.from('profiles').select('*');
+        if (cancelled) return;
+        if (!error && Array.isArray(data) && data.length) {
+          profiles = data;
+        }
       }
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*');
       if (cancelled) return;
-      const clm = [];
-      const program = [];
-      if (!error && Array.isArray(data)) {
-        data.forEach((row) => {
-          const name = String(row?.full_name || row?.name || '').trim();
-          const role = String(row?.account_type || row?.role || '').trim();
-          const roleLabel = String(row?.department || row?.role_label || '').trim();
-          const { isCaseLoad, isNurse } = classifyByAccountAccess(role, roleLabel);
-          const roleNorm = String(role || '').toLowerCase();
-          if (!name || (!INTERNAL_STAFF_ACCOUNT_TYPES.has(roleNorm) && !isStaffAccount(roleNorm) && !isNurseAccount(roleNorm))) return;
-          if (isCaseLoad) upsertName(clm, name);
-          if (isNurse) upsertName(program, name);
-        });
-      }
-      const fallback = fallbackFromPatients();
-      fallback.caseLoadManagers.forEach((n) => upsertName(clm, n));
-      fallback.programStaff.forEach((n) => upsertName(program, n));
-      // Emergency fallback: if categorization still yields nothing but we do have profiles,
-      // expose internal names so assignment is never blocked.
-      if (clm.length === 0 && Array.isArray(data)) {
-        data.forEach((row) => {
-          const name = String(row?.full_name || row?.name || '').trim();
-          const roleNorm = String(row?.account_type || row?.role || '').toLowerCase();
-          if (name && (INTERNAL_STAFF_ACCOUNT_TYPES.has(roleNorm) || roleNorm.includes('staff') || roleNorm.includes('case'))) {
-            upsertName(clm, name);
-          }
-        });
-      }
-      if (program.length === 0 && Array.isArray(data)) {
-        data.forEach((row) => {
-          const name = String(row?.full_name || row?.name || '').trim();
-          const roleNorm = String(row?.account_type || row?.role || '').toLowerCase();
-          if (name && roleNorm.includes('nurse')) upsertName(program, name);
-        });
-      }
+      const { nurses, programStaff } = partitionProfilesForStaffAssignment(profiles);
       setStaffDirectory({
-        caseLoadManagers: clm.sort((a, b) => a.localeCompare(b)),
-        programStaff: program.sort((a, b) => a.localeCompare(b)),
+        caseLoadManagers: programStaff,
+        programStaff: nurses,
       });
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [patients]);
+  }, []);
 
-  const clmOptions = useMemo(() => {
-    const list = [...(staffDirectory.caseLoadManagers || [])];
-    upsertName(list, staffForm.caseLoadManager);
-    return list.sort((a, b) => a.localeCompare(b));
-  }, [staffDirectory.caseLoadManagers, staffForm.caseLoadManager]);
+  const clmOptions = useMemo(
+    () => [...(staffDirectory.caseLoadManagers || [])].sort((a, b) => a.localeCompare(b)),
+    [staffDirectory.caseLoadManagers],
+  );
 
-  const programOptions = useMemo(() => {
-    const list = [...(staffDirectory.programStaff || [])];
-    upsertName(list, staffForm.programStaff);
-    return list.sort((a, b) => a.localeCompare(b));
-  }, [staffDirectory.programStaff, staffForm.programStaff]);
+  const nurseOptions = useMemo(
+    () => [...(staffDirectory.programStaff || [])].sort((a, b) => a.localeCompare(b)),
+    [staffDirectory.programStaff],
+  );
 
   const saveRoomAssignment = async () => {
     if (!selectedPatient?.id || isLimited) return;
-    const autoSegment = normalizedRoomSegmentFromGender(selectedPatient.gender);
+    const genderSource = roomForm.residentGender || selectedPatient.gender;
+    const autoSegment = normalizedRoomSegmentFromGender(genderSource);
     if (!autoSegment) {
-      setFormError('Resident gender is required before saving room assignment.');
+      setFormError('Gender must be set on the family admission request before saving room assignment.');
       return;
     }
     if (!roomForm.roomCode.trim()) {
@@ -1465,23 +1474,40 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       roomPlacementNote: roomForm.roomPlacementNote.trim(),
       riskLevel: normalizeRiskLevel(roomForm.riskLevel),
       bunkLevel: normalizeBunkLevel(roomForm.bunkLevel),
+      residentGender: autoSegment,
       updatedAt: new Date().toISOString(),
     };
 
     try {
+      let admissionRequestId = null;
+      if (isSupabaseConfigured() && selectedPatient.familyId) {
+        const { data: admRows } = await supabase
+          .from('admission_requests')
+          .select('id, patient_name, family_id, patient_birth_date, status, created_at')
+          .eq('family_id', selectedPatient.familyId)
+          .order('created_at', { ascending: false })
+          .limit(100);
+        const match = findAdmissionForPatient(
+          { family_id: selectedPatient.familyId, full_name: selectedPatient.name },
+          admRows || []
+        );
+        admissionRequestId = match?.id || null;
+      }
+
       if (isSupabaseConfigured() && isSupabasePatientId(selectedPatient.id)) {
-        const { error } = await supabase
-          .from('patients')
-          .update({
-            room_code: payload.roomCode,
-            room_gender_segment: payload.roomGenderSegment || null,
-            room_placement_note: payload.roomPlacementNote || null,
-            risk_level: payload.riskLevel || null,
-            bunk_level: payload.bunkLevel || null,
-          })
-          .eq('id', selectedPatient.id);
-        if (error) {
-          console.warn('[patient-db] room assignment db update skipped:', error.message);
+        const res = await persistResidentPlacement({
+          patientId: selectedPatient.id,
+          admissionRequestId,
+          gender: payload.residentGender,
+          roomCode: payload.roomCode,
+          roomGenderSegment: payload.roomGenderSegment,
+          roomPlacementNote: payload.roomPlacementNote,
+          riskLevel: payload.riskLevel,
+          bunkLevel: payload.bunkLevel,
+        });
+        if (!res.ok) {
+          setFormError(res.errorMessage);
+          return;
         }
       }
 
@@ -1493,6 +1519,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         String(p.id) === String(selectedPatient.id)
           ? {
               ...p,
+              gender: payload.residentGender,
               roomCode: payload.roomCode,
               roomGenderSegment: payload.roomGenderSegment,
               roomPlacementNote: payload.roomPlacementNote,
@@ -1505,6 +1532,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         prev
           ? {
               ...prev,
+              gender: payload.residentGender,
               roomCode: payload.roomCode,
               roomGenderSegment: payload.roomGenderSegment,
               roomPlacementNote: payload.roomPlacementNote,
@@ -2437,10 +2465,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               <div className="icon-box inactive"><Calendar size={22} /></div>
               <span className="sidebar-label">Appointments</span>
             </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }}>
-            <div className="icon-box inactive"><MessageCircle size={22} /></div>
-            <span className="sidebar-label">Messages</span>
-          </div>
+          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
               <div className="icon-box inactive"><FileText size={22} /></div>
               <span className="sidebar-label">Printable reports</span>
@@ -2489,10 +2514,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               <div className="icon-box inactive"><Calendar size={22} /></div>
               <span className="sidebar-label">Appointments</span>
             </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }}>
-            <div className="icon-box inactive"><MessageCircle size={22} /></div>
-            <span className="sidebar-label">Messages</span>
-          </div>
+          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
             <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
               <div className="icon-box inactive"><FileText size={22} /></div>
               <span className="sidebar-label">Printable reports</span>
@@ -2670,7 +2692,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                     .map((r) => (r?.nurse_name && String(r.nurse_name).trim()) || '')
                     .filter(Boolean);
                   const assignedNurseDisplay = latestAssignedNurse || nurseNames[0] || '—';
-                  const assignedProgramDisplay = String(selectedPatient?.caseLoadManager || '').trim() || '—';
+                  const assignedProgramDisplay = String(selectedPatient?.concern || '').trim() || '—';
                   return (
                     <>
                       <div className="view-card2-status-row" style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
@@ -2731,19 +2753,39 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                         <div style={{ borderTop: '1px solid #F4F7FE', marginTop: 14, paddingTop: 14 }}>
                           <p style={{ color: '#475569', fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Room assignment (gender-segregated)</p>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>Gender (from admission)</span>
+                              <input
+                                type="text"
+                                className="db-field-input"
+                                value={
+                                  normalizedRoomSegmentFromGender(roomForm.residentGender || selectedPatient.gender)
+                                  || 'Pending on admission request'
+                                }
+                                readOnly
+                              />
+                            </label>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>Room segment (auto)</span>
+                              <input
+                                type="text"
+                                className="db-field-input"
+                                value={
+                                  normalizedRoomSegmentFromGender(roomForm.residentGender || selectedPatient.gender)
+                                  || roomForm.roomGenderSegment
+                                  || 'N/A'
+                                }
+                                readOnly
+                              />
+                            </label>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8, marginBottom: 8 }}>
                             <input
                               type="text"
                               className="db-field-input"
                               value={roomForm.roomCode}
                               onChange={(e) => setRoomForm((prev) => ({ ...prev, roomCode: e.target.value }))}
                               placeholder="Room code (e.g., Room 203)"
-                            />
-                            <input
-                              type="text"
-                              className="db-field-input"
-                              value={normalizedRoomSegmentFromGender(selectedPatient.gender) || roomForm.roomGenderSegment || 'N/A'}
-                              readOnly
-                              placeholder="Room gender segment"
                             />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
@@ -2878,6 +2920,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                             onChange={(e) => setStaffForm((prev) => ({ ...prev, caseLoadManager: e.target.value }))}
                           >
                             <option value="">Select program…</option>
+                            {staffForm.caseLoadManager && !clmOptions.includes(staffForm.caseLoadManager) ? (
+                              <option value={staffForm.caseLoadManager}>{staffForm.caseLoadManager} (saved)</option>
+                            ) : null}
                             {clmOptions.map((name) => (
                               <option key={`clm_${name}`} value={name}>{name}</option>
                             ))}
@@ -2894,8 +2939,11 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                             onChange={(e) => setStaffForm((prev) => ({ ...prev, programStaff: e.target.value }))}
                           >
                             <option value="">Select nurse…</option>
-                            {programOptions.map((name) => (
-                              <option key={`prog_${name}`} value={name}>{name}</option>
+                            {staffForm.programStaff && !nurseOptions.includes(staffForm.programStaff) ? (
+                              <option value={staffForm.programStaff}>{staffForm.programStaff} (saved)</option>
+                            ) : null}
+                            {nurseOptions.map((name) => (
+                              <option key={`nurse_${name}`} value={name}>{name}</option>
                             ))}
                           </select>
                         </div>

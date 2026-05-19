@@ -9,10 +9,10 @@ import {
   LayoutTemplate,
   Calendar,
   FileText,
-  MessageCircle,
   User,
   LogOut,
 } from 'lucide-react';
+import { AdminMessagesNavItem } from './AdminMessagesNavItem';
 
 const NAV_ITEMS = [
   { path: '/admin-dashboard', label: 'Dashboard', Icon: LayoutGrid },
@@ -23,15 +23,31 @@ const NAV_ITEMS = [
   { path: '/admin-staff-management', label: 'Staff Management', Icon: Stethoscope },
   { path: '/admin-content-management', label: 'Content management', Icon: LayoutTemplate },
   { path: '/admin-appointments', label: 'Appointments', Icon: Calendar },
-  { path: '/admin-messages', label: 'Messages', Icon: MessageCircle },
+  { path: '/admin-messages', label: 'Messages', isMessages: true },
   { path: '/admin-reports', label: 'Printable reports', Icon: FileText },
 ];
 
 export function AdminSidebarNav({ activePath, navigate }) {
   return (
     <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
-      {NAV_ITEMS.map(({ path, label, Icon }) => {
+      {NAV_ITEMS.map(({ path, label, Icon, isMessages }) => {
         const active = activePath === path;
+        if (isMessages) {
+          return (
+            <AdminMessagesNavItem
+              key={path}
+              active={active}
+              onClick={
+                active
+                  ? (e) => e.stopPropagation()
+                  : (e) => {
+                      e.stopPropagation();
+                      navigate(path);
+                    }
+              }
+            />
+          );
+        }
         return (
           <div
             key={path}

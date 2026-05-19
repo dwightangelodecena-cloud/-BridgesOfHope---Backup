@@ -1,4 +1,5 @@
 import { computeTotalServiceCostPhp } from '@/lib/servicePricing';
+import { formatRoomAssignmentSummary, resolveDisplayGender } from '@/lib/residentPlacement';
 
 const WORKFLOW_KEY = 'bh_admission_workflow_overrides_v1';
 const DISCHARGE_KEY = 'bh_discharge_management_records_v1';
@@ -37,6 +38,27 @@ export function loadWorkflowOverrides() {
 
 export function saveWorkflowOverrides(map) {
   writeJson(WORKFLOW_KEY, map);
+}
+
+export function removeWorkflowOverridesForRequestIds(requestIds) {
+  const ids = (requestIds || []).filter(Boolean);
+  if (ids.length === 0) return;
+  const map = { ...loadWorkflowOverrides() };
+  let changed = false;
+  ids.forEach((id) => {
+    if (map[id]) {
+      delete map[id];
+      changed = true;
+    }
+  });
+  if (changed) saveWorkflowOverrides(map);
+}
+
+/** Approved/declined admission_requests with no matching patients row (e.g. after manual patient delete). */
+export function isOrphanedAdmissionRequest(admissionRow, patients) {
+  const st = String(admissionRow?.status || '').toLowerCase();
+  if (st === 'pending') return false;
+  return !findPatientForAdmission(patients || [], admissionRow);
 }
 
 export function patchWorkflowOverride(requestId, partial) {
@@ -99,10 +121,24 @@ function normName(s) {
     .replace(/\s+/g, ' ');
 }
 
+export function normBirthDateKey(birthDate) {
+  if (!birthDate) return '';
+  const s = String(birthDate).trim();
+  const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return s;
+}
+
 function patientMatchesAdmission(patient, admission) {
   if (!patient || !admission) return false;
   if (patient.family_id && admission.family_id && patient.family_id !== admission.family_id) return false;
-  return normName(patient.full_name) === normName(admission.patient_name);
+  if (normName(patient.full_name) !== normName(admission.patient_name)) return false;
+  const pDob = normBirthDateKey(patient.date_of_birth);
+  const aDob = normBirthDateKey(admission.patient_birth_date);
+  if (pDob && aDob && pDob !== aDob) return false;
+  return true;
 }
 
 export function findPatientForAdmission(patients, admission) {
@@ -112,10 +148,79 @@ export function findPatientForAdmission(patients, admission) {
   return list.find((p) => p.family_id === admission.family_id && normName(p.full_name) === normName(admission.patient_name));
 }
 
+/** Stable key for the same resident across multiple admission_requests rows. */
+export function residentAdmissionDedupeKey(admissionRow) {
+  const familyId = String(admissionRow?.family_id || '').trim();
+  const name = normName(admissionRow?.patient_name);
+  if (!familyId || !name) return '';
+  const dob = normBirthDateKey(admissionRow?.patient_birth_date);
+  return `${familyId}|${name}|${dob}`;
+}
+
+function admissionRequestRank(admissionRow, patients) {
+  const hasPatient = findPatientForAdmission(patients || [], admissionRow) ? 1 : 0;
+  const st = String(admissionRow?.status || '').toLowerCase();
+  let statusRank = 0;
+  if (st === 'approved') statusRank = 4;
+  else if (st === 'pending') statusRank = 3;
+  else if (st === 'declined') statusRank = 1;
+  const ts = Date.parse(admissionRow?.decided_at || admissionRow?.updated_at || admissionRow?.created_at || '') || 0;
+  return hasPatient * 1e15 + statusRank * 1e12 + ts;
+}
+
+/**
+ * Multiple admission_requests for one resident (re-submit, pending + approved, etc.)
+ * @returns {{ keep: object[], duplicateIds: string[] }}
+ */
+export function splitDuplicateAdmissionRequests(admissions, patients) {
+  const groups = new Map();
+  const keep = [];
+  const drop = [];
+
+  for (const ar of admissions || []) {
+    const key = residentAdmissionDedupeKey(ar);
+    if (!key) {
+      keep.push(ar);
+      continue;
+    }
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(ar);
+  }
+
+  for (const group of groups.values()) {
+    if (group.length <= 1) {
+      keep.push(group[0]);
+      continue;
+    }
+    const ranked = [...group].sort(
+      (a, b) => admissionRequestRank(b, patients) - admissionRequestRank(a, patients)
+    );
+    keep.push(ranked[0]);
+    drop.push(...ranked.slice(1));
+  }
+
+  return {
+    keep,
+    duplicateIds: drop.map((ar) => ar.id).filter(Boolean),
+  };
+}
+
+/** Normalize UI or DB patient shapes for admission pairing. */
+export function patientRowForAdmissionMatch(patientRow) {
+  if (!patientRow) return null;
+  return {
+    family_id: patientRow.family_id ?? patientRow.familyId ?? null,
+    full_name: patientRow.full_name ?? patientRow.name ?? '',
+    date_of_birth: patientRow.date_of_birth ?? patientRow.dateOfBirth ?? null,
+  };
+}
+
 /** Given one patient row and a list of admission_requests rows, return the matching request (same logic as admission management pairing). */
 export function findAdmissionForPatient(patientRow, admissionRows) {
   if (!patientRow || !Array.isArray(admissionRows) || admissionRows.length === 0) return null;
-  return admissionRows.find((ar) => findPatientForAdmission([patientRow], ar)) || null;
+  const normalized = patientRowForAdmissionMatch(patientRow);
+  if (!normalized) return null;
+  return admissionRows.find((ar) => findPatientForAdmission([normalized], ar)) || null;
 }
 
 /**
@@ -232,7 +337,13 @@ export function buildAdmissionRow(admissionRow, patientRow, override) {
     guardianEmail: admissionRow.guardian_email,
     guardianPhone: admissionRow.guardian_phone,
     patientBirthDate: admissionRow.patient_birth_date,
-    patientGender: admissionRow.patient_gender || patientRow?.gender || '',
+    patientGender: resolveDisplayGender(admissionRow, patientRow),
+    roomAssignment: formatRoomAssignmentSummary(patientRow),
+    roomCode: patientRow?.room_code || '',
+    roomGenderSegment: patientRow?.room_gender_segment || '',
+    roomPlacementNote: patientRow?.room_placement_note || '',
+    riskLevel: patientRow?.risk_level || '',
+    bunkLevel: patientRow?.bunk_level || '',
     dbStatus: admissionRow.status,
     archived: Boolean(o.archived),
     rawAdmission: admissionRow,

@@ -6,13 +6,14 @@ import { useAsyncData } from '@/hooks/useAsyncData';
 import { familyDataService } from '@/services/familyDataService';
 import { FAMILY_COLORS, StatusBadge, AuditLine, LoadingState, ErrorState } from '@/components/family/shared/ui';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
+import FamilyPageHeader from '@/components/family/FamilyPageHeader';
 import {
-  loadFamilyNotifications,
-  saveFamilyNotifications,
-  FAMILY_NOTIFICATIONS_CHANGED,
-  notificationDisplayText,
-  clearAllFamilyNotifications,
-} from '@/lib/familyNotifications';
+  loadFamilyProfileAvatar,
+  readImageFileAsDataUrl,
+  resolveFamilyProfileAvatar,
+  saveFamilyProfileAvatar,
+  uploadFamilyProfileAvatarToCloud,
+} from '@/lib/familyProfileAvatar';
 
 import logo from '@/assets/kalingalogo.png';
 
@@ -21,6 +22,7 @@ const Profile = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [profileImage, setProfileImage] = useState(null);
+  const [photoError, setPhotoError] = useState('');
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [notificationSounds, setNotificationSounds] = useState(false);
@@ -29,21 +31,22 @@ const Profile = () => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [saveNotice, setSaveNotice] = useState('');
   const [profileForm, setProfileForm] = useState(() => {
-    const saved = localStorage.getItem('bh_family_profile');
-    return saved ? JSON.parse(saved) : {
+    const defaults = {
       fullName: 'Family User',
       email: '',
       phone: '',
       address: 'Cavite, Philippines',
     };
+    try {
+      const saved = localStorage.getItem('bh_family_profile');
+      return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
+    } catch {
+      return defaults;
+    }
   });
   const [draftProfile, setDraftProfile] = useState(profileForm);
   const fileInputRef = useRef(null);
-  const notificationsDesktopRef = useRef(null);
-  const notificationsMobileRef = useRef(null);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [familyNotifUserId, setFamilyNotifUserId] = useState('');
-  const [notificationItems, setNotificationItems] = useState([]);
   const {
     data: profileSnapshot,
     loading: snapshotLoading,
@@ -51,11 +54,28 @@ const Profile = () => {
     refresh: refreshSnapshot,
   } = useAsyncData(async () => familyDataService.getProfileSnapshot(), []);
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setProfileImage(url);
+  const handleImageChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoError('');
+    try {
+      if (familyNotifUserId) {
+        const publicUrl = await uploadFamilyProfileAvatarToCloud(file, familyNotifUserId);
+        setProfileImage(publicUrl);
+      } else {
+        const dataUrl = await readImageFileAsDataUrl(file);
+        setProfileImage(dataUrl);
+      }
+    } catch (err) {
+      try {
+        const dataUrl = await readImageFileAsDataUrl(file);
+        setProfileImage(dataUrl);
+        if (familyNotifUserId) saveFamilyProfileAvatar(familyNotifUserId, dataUrl);
+      } catch (fallbackErr) {
+        setPhotoError(err?.message || fallbackErr?.message || 'Could not use that image.');
+      }
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -100,11 +120,14 @@ const Profile = () => {
       if (user.id) {
         const { data: profileRow } = await supabase
           .from('profiles')
-          .select('full_name, phone')
+          .select('full_name, phone, avatar_url')
           .eq('id', user.id)
           .maybeSingle();
         profileName = profileRow?.full_name || '';
         profilePhone = profileRow?.phone || '';
+        if (profileRow?.avatar_url && isMounted) {
+          setProfileImage(profileRow.avatar_url);
+        }
       }
 
       const resolved = {
@@ -129,36 +152,18 @@ const Profile = () => {
   }, []);
 
   useEffect(() => {
-    if (!showNotifications) return;
-    const onDoc = (e) => {
-      const t = e.target;
-      const inDesktop = notificationsDesktopRef.current?.contains(t);
-      const inMobile = notificationsMobileRef.current?.contains(t);
-      if (!inDesktop && !inMobile) setShowNotifications(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [showNotifications]);
-
-  const handleNotificationToggle = () => setShowNotifications((v) => !v);
-
-  useEffect(() => {
-    if (!familyNotifUserId) return;
-    saveFamilyNotifications(notificationItems, familyNotifUserId);
-  }, [notificationItems, familyNotifUserId]);
-
-  useEffect(() => {
     if (!familyNotifUserId) {
-      setNotificationItems([]);
+      setProfileImage(null);
       return undefined;
     }
-    setNotificationItems(loadFamilyNotifications(familyNotifUserId));
-    const reload = () => setNotificationItems(loadFamilyNotifications(familyNotifUserId));
-    window.addEventListener('storage', reload);
-    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    let cancelled = false;
+    const local = loadFamilyProfileAvatar(familyNotifUserId);
+    if (local) setProfileImage(local);
+    void resolveFamilyProfileAvatar(familyNotifUserId).then((url) => {
+      if (!cancelled && url) setProfileImage(url);
+    });
     return () => {
-      window.removeEventListener('storage', reload);
-      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+      cancelled = true;
     };
   }, [familyNotifUserId]);
 
@@ -865,147 +870,7 @@ const Profile = () => {
 
       <div className="main-view">
 
-        {/* DESKTOP TOP NAV — exact copy from home.jsx */}
-        <header className="top-nav">
-          <div className="top-nav-actions">
-            <div ref={notificationsDesktopRef} style={{ position: 'relative' }}>
-              <button
-                type="button"
-                className="notifications-trigger"
-                aria-expanded={showNotifications}
-                aria-label="Notifications"
-                onClick={handleNotificationToggle}
-              >
-                <Bell size={20} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
-              </button>
-              {showNotifications && (
-                <div className="notifications-dropdown">
-                  <div className="notif-dropdown-head">
-                    <div className="panel-title" style={{ marginBottom: 0 }}>
-                      <Bell size={16} color="#F54E25" /> Notifications
-                    </div>
-                    {notificationItems.length > 0 ? (
-                      <button
-                        type="button"
-                        className="notif-clear-all"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setNotificationItems(clearAllFamilyNotifications(familyNotifUserId));
-                        }}
-                      >
-                        Clear all
-                      </button>
-                    ) : null}
-                  </div>
-                  {notificationItems.length === 0 ? (
-                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
-                  ) : (
-                    notificationItems.map((item, idx) => (
-                      <div key={item.id || `n-${idx}`} className="interactive-row">
-                        <CheckCircle2 size={15} color="#2B31ED" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span className="notif-row-text">{notificationDisplayText(item)}</span>
-                        <button
-                          type="button"
-                          className="notif-remove-btn"
-                          aria-label="Remove notification"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx)));
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-            <button type="button" className="user-avatar-top" aria-label="Open profile" onClick={() => navigate('/profile')}>
-              {userInitials}
-            </button>
-          </div>
-        </header>
-
-        <div className="mobile-only mobile-top-bar">
-          <img src={logo} alt="Kalinga" style={{ width: 50 }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div ref={notificationsMobileRef} style={{ position: 'relative' }}>
-              <button
-                type="button"
-                className="notifications-trigger mobile-notifications-trigger"
-                aria-expanded={showNotifications}
-                aria-label="Notifications"
-                onClick={handleNotificationToggle}
-              >
-                <Bell size={18} stroke="#ffffff" strokeWidth={2.25} aria-hidden />
-              </button>
-              {showNotifications && (
-                <div className="notifications-dropdown mobile-notifications-dropdown">
-                  <div className="notif-dropdown-head">
-                    <div className="panel-title" style={{ marginBottom: 0 }}>
-                      <Bell size={16} color="#F54E25" /> Notifications
-                    </div>
-                    {notificationItems.length > 0 ? (
-                      <button
-                        type="button"
-                        className="notif-clear-all"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setNotificationItems(clearAllFamilyNotifications(familyNotifUserId));
-                        }}
-                      >
-                        Clear all
-                      </button>
-                    ) : null}
-                  </div>
-                  {notificationItems.length === 0 ? (
-                    <div style={{ color: '#94A3B8', fontSize: 12, fontWeight: 700 }}>No notifications.</div>
-                  ) : (
-                    notificationItems.map((item, idx) => (
-                      <div key={item.id || `m-${idx}`} className="interactive-row">
-                        <CheckCircle2 size={15} color="#2B31ED" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span className="notif-row-text">{notificationDisplayText(item)}</span>
-                        <button
-                          type="button"
-                          className="notif-remove-btn"
-                          aria-label="Remove notification"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setNotificationItems((prev) => prev.filter((row, i) => (item.id ? row.id !== item.id : i !== idx)));
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate('/profile')}
-              aria-label="Open profile"
-              style={{
-                width: 34,
-                height: 34,
-                background: '#F54E25',
-                color: 'white',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: '12px',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              {userInitials}
-            </button>
-          </div>
-        </div>
+        <FamilyPageHeader title="Profile" />
 
         <div className="scroll-content">
           <div className="profile-content-wrap">
@@ -1050,7 +915,8 @@ const Profile = () => {
                     </span>
                   </div>
                   <div className="photo-modal-item">Take Photo</div>
-                  <div className="photo-modal-item" onClick={() => { setShowPhotoModal(false); fileInputRef.current.click(); }}>From this PC</div>
+                  <div className="photo-modal-item" onClick={() => { setShowPhotoModal(false); fileInputRef.current?.click(); }}>From this PC</div>
+                  {photoError ? <div style={{ padding: '10px 16px', fontSize: 12, color: '#DC2626' }}>{photoError}</div> : null}
                 </div>
               </div>
             )}

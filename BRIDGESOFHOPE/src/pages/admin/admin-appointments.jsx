@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { LayoutGrid, BookUser, ClipboardList, ArrowRightSquare, Users, Stethoscope, LayoutTemplate, User, LogOut, Calendar, FileText, MessageCircle } from 'lucide-react';
+import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
 
@@ -992,10 +993,7 @@ export default function AdminAppointmentsPage() {
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}><div className="icon-box inactive"><Stethoscope size={22} /></div><span className="sidebar-label">Staff Management</span></div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div>
           <div className="sidebar-nav-item"><div className="icon-box active"><Calendar size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Appointments</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }}>
-            <div className="icon-box inactive"><MessageCircle size={22} /></div>
-            <span className="sidebar-label">Messages</span>
-          </div>
+          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}><div className="icon-box inactive"><FileText size={22} /></div><span className="sidebar-label">Printable reports</span></div>
         </nav>
         <div className="sidebar-footer">
