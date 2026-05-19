@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+﻿import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { LayoutGrid, BookUser, LogOut, CheckCircle2, Users, Clock, Bed, ArrowRightSquare, X, HelpCircle, ClipboardList, Stethoscope, LayoutTemplate, User, Calendar, FileText } from 'lucide-react';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { useNavigate, useLocation } from 'react-router-dom';
