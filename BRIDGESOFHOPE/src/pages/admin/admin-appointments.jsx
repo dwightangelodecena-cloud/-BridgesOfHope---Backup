@@ -34,7 +34,7 @@ import {
   replaceVisitationRequests,
   normalizeVisitationStatus,
   visitationCalendarDateKeys,
-  isVisitationLocalDraftSuperseded,
+  mergeVisitationRequestsAfterRemoteFetch,
 } from '@/lib/visitationAppointments';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -89,7 +89,7 @@ export default function AdminAppointmentsPage() {
           .from('visitation_requests')
           .select('*')
           .order('created_at', { ascending: false });
-        if (!error && data) {
+        if (!error && data != null) {
           const fromDb = (data || []).map((r) => ({
             id: r.id,
             familyId: r.family_id || '',
@@ -106,17 +106,7 @@ export default function AdminAppointmentsPage() {
             createdAt: r.created_at || '',
             updatedAt: r.updated_at || '',
           }));
-          const seen = new Set(fromDb.map((r) => String(r.id)));
-          const merged = [
-            ...fromDb,
-            ...localRows.filter(
-              (r) => !seen.has(String(r.id)) && !isVisitationLocalDraftSuperseded(r, fromDb),
-            ),
-          ].map((r) => ({
-            ...r,
-            status: normalizeVisitationStatus(r.status),
-          }));
-          merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+          const merged = mergeVisitationRequestsAfterRemoteFetch(fromDb, localRows);
           replaceVisitationRequests(merged);
           setQueue(merged);
           return;

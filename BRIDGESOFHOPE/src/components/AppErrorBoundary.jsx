@@ -60,6 +60,25 @@ export default class AppErrorBoundary extends React.Component {
               The app hit an unexpected error. This can happen on phones after long use or many taps.
               Reloading usually fixes it.
             </p>
+            {error?.message ? (
+              <pre
+                style={{
+                  margin: '0 0 18px',
+                  padding: 12,
+                  fontSize: 11,
+                  lineHeight: 1.45,
+                  color: '#991b1b',
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: 8,
+                  overflow: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {error.message}
+              </pre>
+            ) : null}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               <button
                 type="button"

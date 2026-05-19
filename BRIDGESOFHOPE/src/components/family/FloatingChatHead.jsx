@@ -40,9 +40,9 @@ export default function FloatingChatHead() {
 
           <div ref={chatBodyRef} className="family-chat-body">
             {loading && <div style={{ fontSize: 12, color: '#A3AED0', textAlign: 'center', padding: 8 }}>Loading messages…</div>}
-            {messages.map((msg) => (
+            {(messages || []).filter(Boolean).map((msg) => (
               <div
-                key={msg.id}
+                key={msg.id || `msg-${msg.createdAt || msg.time}`}
                 className={`family-msg-bubble ${msg.sender === 'staff' ? 'family-msg-received' : 'family-msg-sent'}`}
               >
                 {msg.text}

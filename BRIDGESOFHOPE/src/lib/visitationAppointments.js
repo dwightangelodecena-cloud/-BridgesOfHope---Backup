@@ -98,6 +98,50 @@ export function visitationCalendarDateKeys(row) {
   return [];
 }
 
+/** Local-only draft created before Supabase insert (`visit_*` ids). */
+export function isLocalVisitationDraft(row) {
+  return String(row?.id || '').startsWith('visit_');
+}
+
+/**
+ * After a successful Supabase read, remote rows are authoritative.
+ * Do not re-merge deleted DB rows from localStorage — only keep unsynced visit_* drafts.
+ */
+export function mergeVisitationRequestsAfterRemoteFetch(fromDbRows, localRows) {
+  const fromDb = (Array.isArray(fromDbRows) ? fromDbRows : []).map((r) => ({
+    ...r,
+    status: normalizeVisitationStatus(r.status),
+  }));
+  const local = Array.isArray(localRows) ? localRows : [];
+  const seen = new Set(fromDb.map((r) => String(r.id)));
+  const drafts = local.filter(
+    (r) =>
+      r &&
+      isLocalVisitationDraft(r) &&
+      !seen.has(String(r.id)) &&
+      !isVisitationLocalDraftSuperseded(r, fromDb)
+  );
+  const merged = [...fromDb, ...drafts];
+  merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  return merged;
+}
+
+/**
+ * Persist Supabase rows for one family and update localStorage (remote wins over stale cache).
+ * @returns {object[]} Rows for this family after sync
+ */
+export function replaceFamilyVisitationFromRemote(familyId, remoteRows) {
+  const fid = String(familyId || '');
+  const fromDb = (Array.isArray(remoteRows) ? remoteRows : [])
+    .map((r) => (r?.family_id != null ? mapVisitationDbRow(r) : sanitizeVisitationRow(r)))
+    .filter(Boolean);
+  const localRows = listVisitationRequestsByFamily(fid);
+  const merged = mergeVisitationRequestsAfterRemoteFetch(fromDb, localRows);
+  const others = loadVisitationRequests().filter((r) => String(r.familyId || '') !== fid);
+  replaceVisitationRequests([...others, ...merged]);
+  return merged;
+}
+
 /** True when a local `visit_*` draft row matches a row already stored in Supabase (same request, real id). */
 export function isVisitationLocalDraftSuperseded(localRow, fromDbRows) {
   if (!localRow || !Array.isArray(fromDbRows)) return false;
@@ -186,11 +230,32 @@ export async function saveVisitationSettingsShared(settings) {
   return resolved;
 }
 
+function sanitizeVisitationRow(row) {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    id: row.id != null ? String(row.id) : '',
+    familyId: row.familyId != null ? String(row.familyId) : '',
+    familyName: row.familyName != null ? String(row.familyName) : '',
+    patientId: row.patientId != null ? String(row.patientId) : '',
+    patientName: row.patientName != null ? String(row.patientName) : '',
+    preferredDate: row.preferredDate != null ? String(row.preferredDate) : '',
+    preferredTime: row.preferredTime != null ? String(row.preferredTime) : '',
+    note: row.note != null ? String(row.note) : '',
+    status: normalizeVisitationStatus(row.status),
+    confirmedDate: row.confirmedDate != null ? String(row.confirmedDate) : '',
+    confirmedTime: row.confirmedTime != null ? String(row.confirmedTime) : '',
+    adminNote: row.adminNote != null ? String(row.adminNote) : '',
+    createdAt: row.createdAt != null ? String(row.createdAt) : '',
+    updatedAt: row.updatedAt != null ? String(row.updatedAt) : '',
+  };
+}
+
 export function loadVisitationRequests() {
   try {
     const raw = localStorage.getItem(VISITATION_REQUESTS_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(sanitizeVisitationRow).filter(Boolean);
   } catch {
     return [];
   }
@@ -303,16 +368,7 @@ export async function loadFamilyVisitationRequests(familyId) {
     console.warn('[visitation] loadFamilyVisitationRequests', error.message);
     return localRows.map((r) => ({ ...r, status: normalizeVisitationStatus(r.status) }));
   }
-  const fromDb = (data || []).map(mapVisitationDbRow);
-  const seen = new Set(fromDb.map((r) => String(r.id)));
-  const merged = [
-    ...fromDb,
-    ...localRows.filter((r) => !seen.has(String(r.id)) && !isVisitationLocalDraftSuperseded(r, fromDb)),
-  ];
-  merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  const others = loadVisitationRequests().filter((r) => String(r.familyId || '') !== fid);
-  replaceVisitationRequests([...others, ...merged]);
-  return merged;
+  return replaceFamilyVisitationFromRemote(fid, data || []);
 }
 
 /** Remove from Supabase (when configured) and local cache. */

@@ -13,14 +13,14 @@ import FamilyPageHeader from '@/components/family/FamilyPageHeader';
 import FamilySidebarProfileNav from '@/components/family/FamilySidebarProfileNav';
 import {
   loadVisitationSettings, loadVisitationSettingsShared,
-  listVisitationRequestsByFamily, listVisitationRequestsAll,
+  listVisitationRequestsByFamily,
   createVisitationRequest, replaceVisitationRequests,
   upsertVisitationRequest, normalizeVisitationStatus,
-  isVisitationLocalDraftSuperseded,
   getConfirmedVisitationMap,
   getPendingVisitationDateSet,
   formatVisitationWeekdayLong,
   formatVisitationWeekdayShort,
+  replaceFamilyVisitationFromRemote,
 } from '@/lib/visitationAppointments';
 
 /* ── unchanged pure helpers ── */
@@ -36,6 +36,7 @@ function dedupeVisitationRequests(rows) {
   return Array.from(map.values());
 }
 function visitationStatusSubtext(row) {
+  if (!row) return '';
   const st = normalizeVisitationStatus(row.status);
   const adminReason = String(row.adminNote||'').trim();
   if (st === 'Declined') return 'Declined by the facility';
@@ -104,15 +105,10 @@ export default function FamilyAppointmentsPage() {
       const localRows = listVisitationRequestsByFamily(familyUserId);
       if (isSupabaseConfigured()) {
         const { data, error } = await supabase.from('visitation_requests').select('*').eq('family_id',familyUserId).order('created_at',{ascending:false});
-        if (!error && data) {
-          const fromDb = (data||[]).map(r=>({ id:r.id, familyId:r.family_id||'', familyName:r.family_name||'', patientId:r.patient_id||'', patientName:r.patient_name||'', preferredDate:r.preferred_date||'', preferredTime:r.preferred_time||'', note:r.note||'', status:normalizeVisitationStatus(r.status), confirmedDate:r.confirmed_date||'', confirmedTime:r.confirmed_time||'', adminNote:r.admin_note||'', createdAt:r.created_at||'', updatedAt:r.updated_at||'' }));
-          const seen = new Set(fromDb.map(r=>String(r.id)));
-          const merged = [...fromDb,...localRows.filter(r=>!seen.has(String(r.id))&&!isVisitationLocalDraftSuperseded(r,fromDb))];
-          merged.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
-          const deduped = dedupeVisitationRequests(merged.map(r=>({...r,status:normalizeVisitationStatus(r.status)})));
-          const others = listVisitationRequestsAll().filter(r=>String(r.familyId||'')!==String(familyUserId||''));
-          replaceVisitationRequests([...others,...deduped]);
-          setRequests(deduped.filter(r=>String(r.familyId||'')===String(familyUserId||'')));
+        if (!error && data != null) {
+          const synced = replaceFamilyVisitationFromRemote(familyUserId, data || []);
+          const deduped = dedupeVisitationRequests(synced);
+          setRequests(deduped);
           return;
         }
       }
@@ -179,7 +175,8 @@ export default function FamilyAppointmentsPage() {
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
         *,*::before,*::after{box-sizing:border-box;}
         button{font-family:inherit;}
-        .desktop-sidebar{width:${isExpanded?'280px':'110px'};background:#fff;border-right:1px solid #F1F1F1;display:flex;flex-direction:column;align-items:center;padding:25px 0 170px;z-index:100;transition:width .3s cubic-bezier(.4,0,.2,1);cursor:pointer;position:relative;}
+        .desktop-sidebar{width:${isExpanded?'280px':'110px'};height:100vh;flex-shrink:0;background:#fff;border-right:1px solid #F1F1F1;display:flex;flex-direction:column;align-items:center;padding:25px 0 170px;z-index:100;transition:width .3s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden;}
+        .sidebar-expand-hit{position:absolute;top:0;right:0;width:28px;height:100%;cursor:pointer;z-index:2;}
         .sidebar-logo-container{display:flex;justify-content:center;width:100%;margin-bottom:40px;}
         .sidebar-logo{width:${isExpanded?'120px':'70px'};transition:width .3s;}
         .sidebar-nav-item{display:flex;align-items:center;width:100%;padding:0 ${isExpanded?'35px':'0'};justify-content:${isExpanded?'flex-start':'center'};gap:20px;margin-bottom:25px;min-height:52px;box-sizing:border-box;border:2px solid transparent;border-radius:12px;}
@@ -187,7 +184,9 @@ export default function FamilyAppointmentsPage() {
         .sidebar-icon-wrap{padding:12px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
         .sidebar-label{display:${isExpanded?'block':'none'};font-weight:700;font-size:18px;line-height:1.2;color:#707EAE;max-width:140px;white-space:normal;overflow-wrap:anywhere;}
         .sidebar-primary{width:100%;}
-        .sidebar-footer{position:absolute;left:0;right:0;bottom:20px;width:100%;}
+        .sidebar-footer{position:absolute;left:0;right:0;bottom:20px;width:100%;background:#fff;z-index:3;}
+        .sidebar-profile-avatar.user-avatar-top{border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;background:linear-gradient(135deg,#F54E25,#EA580C);color:#fff;overflow:hidden;}
+        .sidebar-profile-avatar.user-avatar-top img{width:100%;height:100%;object-fit:cover;display:block;}
         .sidebar-footer .sidebar-nav-item{margin-bottom:0;}
         .sidebar-footer .sidebar-nav-item+.sidebar-nav-item{margin-top:14px;}
         .ntf-trigger{width:40px;height:40px;min-width:40px;padding:0;border-radius:50%;border:none;background:#F54E25;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 14px rgba(245,78,37,.35);}
@@ -212,7 +211,8 @@ export default function FamilyAppointmentsPage() {
       `}</style>
 
       {/* ── SIDEBAR (100% unchanged) ── */}
-      <aside className="desktop-sidebar" onClick={()=>setIsExpanded(!isExpanded)}>
+      <aside className="desktop-sidebar">
+        <div className="sidebar-expand-hit" onClick={() => setIsExpanded(!isExpanded)} aria-hidden />
         <div className="sidebar-logo-container"><img src={logo} alt="Kalinga" className="sidebar-logo"/></div>
         <div className="sidebar-primary">
           <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/home');}}><div className="sidebar-icon-wrap"><Home size={22} color="#707EAE"/></div><span className="sidebar-label">Dashboard</span></div>
@@ -419,7 +419,7 @@ export default function FamilyAppointmentsPage() {
                     </div>
                   ):(
                     <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                      {requests.map(row=>{
+                      {requests.filter(Boolean).map(row=>{
                         const st=normalizeVisitationStatus(row.status);
                         const stCfg=STATUS_CFG[st]||STATUS_CFG.Requested;
                         return(

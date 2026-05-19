@@ -114,8 +114,12 @@ export function visitationCalendarDateKeys(row: VisitationRequestRow): string[] 
   return [];
 }
 
+function isLocalVisitationDraft(row: VisitationRequestRow | null | undefined): boolean {
+  return String(row?.id || '').startsWith('visit_');
+}
+
 function isLocalDraftSuperseded(localRow: VisitationRequestRow, fromDb: VisitationRequestRow[]): boolean {
-  if (!String(localRow.id || '').startsWith('visit_')) return false;
+  if (!isLocalVisitationDraft(localRow)) return false;
   const lf = String(localRow.familyName || '');
   const lp = String(localRow.patientName || '');
   const ld = String(localRow.preferredDate || '');
@@ -298,7 +302,12 @@ export async function mergeRequestsFromSupabase(
   const seen = new Set(fromDb.map((r) => String(r.id)));
   const mergedFamily = [
     ...fromDb,
-    ...localRows.filter((r) => !seen.has(String(r.id)) && !isLocalDraftSuperseded(r, fromDb)),
+    ...localRows.filter(
+      (r) =>
+        isLocalVisitationDraft(r) &&
+        !seen.has(String(r.id)) &&
+        !isLocalDraftSuperseded(r, fromDb)
+    ),
   ].map((r) => ({
     ...r,
     status: normalizeVisitationStatus(r.status),
