@@ -24,10 +24,18 @@ import {
   ResidentReturnedConfirmModal,
   ResidentReturnedHeaderButton,
   TemporaryDischargeCardBanner,
+  TemporaryDischargeNotePanel,
 } from '@/components/TemporaryDischargeNotice';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
 import FamilyPageHeader from '@/components/family/FamilyPageHeader';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
+import {
+  canonicalPatientId,
+  fetchWeeklyReportsForPatientId,
+  isSupabasePatientId,
+  mergeReportsIntoByPatient,
+  resolveWeeklyReportsForPatient,
+} from '@/lib/familyWeeklyReports';
 
 /* ─── unchanged helpers ─── */
 const formatDate = (iso) => {
@@ -107,10 +115,16 @@ function DataRow({ label, value }) {
   );
 }
 
-function SectionCard({ children, style = {}, onTemporaryLeave = false, temporaryPatient = null }) {
+function SectionCard({ children, style = {}, onTemporaryLeave = false, temporaryPatient = null, temporaryLeaveRequestFields = null }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #E9EDF7', borderRadius: 20, padding: '18px 20px', boxShadow: '0 4px 20px rgba(15,23,42,0.05)', overflow: 'hidden', ...style }}>
-      {onTemporaryLeave ? <TemporaryDischargeCardBanner patient={temporaryPatient} variant="section" /> : null}
+      {onTemporaryLeave ? (
+        <TemporaryDischargeCardBanner
+          patient={temporaryPatient}
+          variant="section"
+          requestFields={temporaryLeaveRequestFields}
+        />
+      ) : null}
       {children}
     </div>
   );
@@ -141,6 +155,7 @@ const PatientDetailsPage = () => {
   const [residentReturnBusy, setResidentReturnBusy] = useState(false);
   const [showResidentReturnConfirm, setShowResidentReturnConfirm] = useState(false);
   const [temporaryLeaveFromRequest, setTemporaryLeaveFromRequest] = useState(null);
+  const [familyUserId, setFamilyUserId] = useState('');
   const fileInputRefs = useRef([]);
 
   useFamilyPatientProgressRealtime();
@@ -155,7 +170,8 @@ const PatientDetailsPage = () => {
         return;
       }
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { if (!cancelled) { setPatients([]); setPatientDetailsById({}); setWeeklyReportsByPatient({}); } return; }
+      if (!user) { if (!cancelled) { setPatients([]); setPatientDetailsById({}); setWeeklyReportsByPatient({}); setFamilyUserId(''); } return; }
+      if (!cancelled) setFamilyUserId(user.id);
 
       const fetchPatientsRows = async () => {
         const safeSelect = 'id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at';
@@ -230,7 +246,34 @@ const PatientDetailsPage = () => {
           const details = {};
           for (const row of rows || []) details[String(row.id)] = row;
           const activeRows = (rows && rows.length) ? rows : await fetchPatientsFromApprovedAdmissions();
-          const ids = (activeRows || []).map((r) => r.id).filter(Boolean);
+          const detailsForIds = {};
+          for (const row of rows || []) detailsForIds[String(row.id)] = row;
+          let ids = [
+            ...new Set(
+              [
+                ...(activeRows || []).map((r) => r.id),
+                ...(mappedPatients.length ? mappedPatients : []).map((p) =>
+                  canonicalPatientId(p, detailsForIds)
+                ),
+              ]
+                .filter(Boolean)
+                .filter(isSupabasePatientId)
+            ),
+          ];
+          try {
+            const { data: familyIdRows } = await supabase
+              .from('patients')
+              .select('id')
+              .eq('family_id', user.id);
+            ids = [
+              ...new Set([
+                ...ids,
+                ...(familyIdRows || []).map((r) => r.id).filter(isSupabasePatientId),
+              ]),
+            ];
+          } catch {
+            /* ignore */
+          }
           if (ids.length) {
             const { data: detailRows } = await supabase.from('patients').select('*').in('id', ids);
             if ((detailRows || []).length) {
@@ -387,7 +430,10 @@ const PatientDetailsPage = () => {
     }
     let cancelled = false;
     void (async () => {
-      const result = await syncPatientTemporaryLeaveFromRequests(patientId);
+      const result = await syncPatientTemporaryLeaveFromRequests(patientId, {
+        familyId: familyUserId,
+        patientName: selectedPatient?.name,
+      });
       if (cancelled) return;
       if (result.fields) {
         setTemporaryLeaveFromRequest(result.fields);
@@ -404,7 +450,30 @@ const PatientDetailsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedPatient?.id]);
+  }, [selectedPatient?.id, selectedPatient?.name, familyUserId]);
+
+  useEffect(() => {
+    const patient = selectedPatientCare || selectedPatient;
+    if (!patient || !isSupabaseConfigured()) return undefined;
+    const listId = String(patient.id || '');
+    const pid = canonicalPatientId(patient, patientDetailsById);
+    if (!isSupabasePatientId(pid)) return undefined;
+
+    const existing = resolveWeeklyReportsForPatient(patient, weeklyReportsByPatient, patientDetailsById);
+    if (existing.length) return undefined;
+
+    let cancelled = false;
+    void (async () => {
+      const rows = await fetchWeeklyReportsForPatientId(pid);
+      if (cancelled || !rows?.length) return;
+      setWeeklyReportsByPatient((prev) =>
+        mergeReportsIntoByPatient(prev, pid, rows, listId !== pid ? listId : null)
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPatient?.id, selectedPatient?.name, onTemporaryLeave, patientDetailsById]);
 
   const handleResidentReturned = async () => {
     if (!selectedPatientCare?.id || !onTemporaryLeave) return;
@@ -444,34 +513,28 @@ const PatientDetailsPage = () => {
     );
     refreshAppData();
   };
-  const selectedReports = (() => {
-    if (!selectedPatient) return [];
-    const direct = weeklyReportsByPatient[String(selectedPatient.id)] || [];
-    if (direct.length) return direct;
-    try {
-      const raw = localStorage.getItem('bh_nurse_weekly_reports');
-      const localAll = raw ? JSON.parse(raw) : {};
-      const targetName = String(selectedPatient.name || '').trim().toLowerCase();
-      if (!targetName) return [];
-      const fallbackRows = [];
-      Object.entries(localAll || {}).forEach(([pid, weeks]) => {
-        if (!weeks || typeof weeks !== 'object') return;
-        Object.entries(weeks).forEach(([weekNum, entry]) => {
-          const entryName = String(entry?.patientName || '').trim().toLowerCase();
-          if (entryName !== targetName) return;
-          fallbackRows.push({ id: `local-name-${pid}-${weekNum}`, patient_id: pid, week_number: Number(weekNum), submitted_at: entry?.submittedAt ?? null, created_at: entry?.submittedAt ?? null, nurse_name: entry?.nurseName ?? entry?.nurse_name ?? '', report_date: entry?.reportDate ?? entry?.report_date ?? '', vitals_weight: entry?.vitalsWeight ?? entry?.vitals_weight ?? '', vitals_height: entry?.vitalsHeight ?? entry?.vitals_height ?? '', vitals_bp: entry?.vitalsBp ?? entry?.vitals_bp ?? '', vitals_pr: entry?.vitalsPr ?? entry?.vitals_pr ?? '', vitals_rr: entry?.vitalsRr ?? entry?.vitals_rr ?? '', vitals_temperature: entry?.vitalsTemperature ?? entry?.vitals_temperature ?? '', vitals_bmi: entry?.vitalsBmi ?? entry?.vitals_bmi ?? '', vitals_spo2: entry?.vitalsSpo2 ?? entry?.vitals_spo2 ?? '' });
-        });
-      });
-      return fallbackRows.sort((a, b) => (Number(a.week_number) || 0) - (Number(b.week_number) || 0));
-    } catch { return []; }
-  })();
+  const reportsForPatient = useMemo(
+    () => (patient) =>
+      resolveWeeklyReportsForPatient(patient, weeklyReportsByPatient, patientDetailsById),
+    [weeklyReportsByPatient, patientDetailsById]
+  );
+
+  const selectedReports = useMemo(
+    () => reportsForPatient(selectedPatientCare || selectedPatient),
+    [reportsForPatient, selectedPatientCare, selectedPatient]
+  );
 
   const latestSelectedReport = [...selectedReports].sort((a, b) => new Date(b.submitted_at || b.created_at || 0).getTime() - new Date(a.submitted_at || a.created_at || 0).getTime())[0] || null;
   const latestWeeklyReports = Object.entries(weeklyReportsByPatient || {}).flatMap(([patientId, rows]) =>
     (rows || []).map((row) => ({ patientId, week: row.week_number || '-', submittedAt: row.submitted_at || row.created_at || null, nurseName: row.nurse_name || 'Assigned Nurse' }))
   ).sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()).slice(0, 4);
 
-  const assignedNurseDisplay = latestSelectedReport?.nurse_name || selectedPatientDetails?.program_staff || selectedPatientDetails?.medical_staff_note || 'N/A';
+  const assignedNurseDisplay =
+    latestSelectedReport?.nurse_name ||
+    selectedPatientDetails?.program_staff ||
+    'N/A';
+  const assignedProgramStaffDisplay =
+    selectedPatientDetails?.case_load_manager || 'N/A';
   const resolveVital = (reportVal, ...fallbacks) => { const first = [reportVal, ...fallbacks].find((v) => String(v ?? '').trim() !== ''); return String(first ?? '').trim() || '—'; };
   const formatResidentDisplayId = (patientId) => {
     const key = String(patientId || '');
@@ -487,6 +550,7 @@ const PatientDetailsPage = () => {
   const tempLeaveCardProps = {
     onTemporaryLeave,
     temporaryPatient: selectedPatientCare,
+    temporaryLeaveRequestFields: temporaryLeaveFromRequest,
   };
 
   /* ── RENDER ── */
@@ -646,12 +710,12 @@ const PatientDetailsPage = () => {
                         <td><StatusPill progress={p.progress} dischargedAt={p.discharged_at || patientDetailsById[String(p.id)]?.discharged_at} onTemporaryLeave={isResidentOnTemporaryLeave(p)} /></td>
                         <td style={{ color: '#64748B' }}>{patientDetailsById[String(p.id)]?.primary_concern || p.reason || 'N/A'}</td>
                         <td style={{ color: '#64748B' }}>{patientDetailsById[String(p.id)]?.room_code || p.roomCode || 'Unassigned'}</td>
-                        <td style={{ fontWeight: 800, color: '#0F172A' }}>{(weeklyReportsByPatient[String(p.id)] || []).length}</td>
+                        <td style={{ fontWeight: 800, color: '#0F172A' }}>{reportsForPatient(p).length}</td>
                         <td>
                           <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 999,
-                            background: (weeklyReportsByPatient[String(p.id)]||[]).length ? '#ECFDF5' : '#F1F5F9',
-                            color: (weeklyReportsByPatient[String(p.id)]||[]).length ? '#065F46' : '#94A3B8' }}>
-                            {(weeklyReportsByPatient[String(p.id)] || []).length ? 'Available' : 'Waiting'}
+                            background: reportsForPatient(p).length ? '#ECFDF5' : '#F1F5F9',
+                            color: reportsForPatient(p).length ? '#065F46' : '#94A3B8' }}>
+                            {reportsForPatient(p).length ? 'Available' : 'Waiting'}
                           </span>
                         </td>
                       </tr>
@@ -678,7 +742,7 @@ const PatientDetailsPage = () => {
               patients.map((p, i) => {
                 const tone = patientStatusTone(p.progress);
                 const progress = Number(p.progress) || 0;
-                const reportCount = (weeklyReportsByPatient[String(p.id)] || []).length;
+                const reportCount = reportsForPatient(p).length;
                 return (
                   <div key={p.id || i} className="patient-row-card" onClick={() => setSelectedPatient(p)}
                     style={{ background: '#fff', border: '1px solid #E9EDF7', borderRadius: 22, padding: '20px 24px', display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: '16px 20px', alignItems: 'center', cursor: 'pointer', boxShadow: '0 4px 20px rgba(15,23,42,0.05)' }}>
@@ -778,6 +842,12 @@ const PatientDetailsPage = () => {
 
             {/* Modal Body */}
             <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px 24px', background: '#F8FAFF' }}>
+              {onTemporaryLeave ? (
+                <TemporaryDischargeNotePanel
+                  patient={selectedPatientCare}
+                  requestFields={temporaryLeaveFromRequest}
+                />
+              ) : null}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 14 }}>
                 <SectionCard {...tempLeaveCardProps}>
                   <CardTitle icon={ClipboardList}>Patient Data</CardTitle>
@@ -803,13 +873,8 @@ const PatientDetailsPage = () => {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
                 {/* Weekly Timeline */}
-                <SectionCard style={{ overflow: 'hidden', padding: 0 }}>
-                  {onTemporaryLeave ? (
-                    <TemporaryDischargeCardBanner patient={selectedPatientCare} variant="section" />
-                  ) : null}
-                  <div style={{ padding: '14px 16px', borderBottom: '1px solid #F1F5F9' }}>
-                    <CardTitle icon={FileText} style={{ marginBottom: 0 }}>Report Timeline</CardTitle>
-                  </div>
+                <SectionCard {...tempLeaveCardProps}>
+                  <CardTitle icon={FileText}>Report Timeline</CardTitle>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead><tr>
                       <th style={{ textAlign: 'left', padding: '8px 16px', background: '#F8FAFF', color: '#94A3B8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', borderBottom: '1px solid #F1F5F9' }}>Week</th>
@@ -836,7 +901,7 @@ const PatientDetailsPage = () => {
                     ['Progress', `${Number(selectedPatient.progress)||0}%`],
                     ['Room Assignment', selectedPatientDetails?.room_code || selectedPatient.roomCode || 'Unassigned'],
                     ['Nurse', assignedNurseDisplay],
-                    ['Program Staff', selectedPatientDetails?.program_staff || 'N/A'],
+                    ['Program Staff', assignedProgramStaffDisplay],
                     ['Reports Submitted', selectedReports.length],
                   ].map(([l, v]) => <DataRow key={l} label={l} value={String(v)} />)}
                 </SectionCard>

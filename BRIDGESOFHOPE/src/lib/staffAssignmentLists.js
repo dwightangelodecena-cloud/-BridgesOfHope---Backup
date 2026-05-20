@@ -86,3 +86,13 @@ export const partitionProfilesForStaffAssignment = (profiles) => {
   programStaff.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   return { nurses, programStaff };
 };
+
+/** patients.case_load_manager — program / case-load staff (not the nurse). */
+export function residentProgramStaffName(row) {
+  return String(row?.case_load_manager ?? row?.caseLoadManager ?? '').trim();
+}
+
+/** patients.program_staff — assigned nurse (legacy column name). */
+export function residentNurseName(row) {
+  return String(row?.program_staff ?? row?.programStaff ?? '').trim();
+}

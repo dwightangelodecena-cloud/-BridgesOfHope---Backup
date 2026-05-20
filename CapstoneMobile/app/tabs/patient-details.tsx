@@ -9,6 +9,7 @@ import {
   Pressable,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,30 @@ import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
+import {
+  canonicalPatientId,
+  fetchWeeklyReportsForPatientId,
+  isSupabasePatientId,
+  mergeReportsIntoByPatient,
+  resolveWeeklyReportsForPatient,
+} from '../../lib/familyWeeklyReportsMobile';
+import {
+  isPatientOnTemporaryLeave,
+  mergePatientTemporaryDischargeFields,
+  patientTemporaryDischargeStatusLabel,
+} from '../../lib/dischargeRequestTypesMobile';
+import {
+  mergePatientWithRequestTemporaryLeave,
+  syncPatientTemporaryLeaveFromRequests,
+  type TemporaryLeaveFields,
+} from '../../lib/temporaryLeaveSyncMobile';
+import { returnResidentFromTemporaryLeave } from '../../lib/returnResidentFromTemporaryLeaveMobile';
+import {
+  ResidentReturnedConfirmModal,
+  ResidentReturnedHeaderButton,
+  TemporaryDischargeCardBanner,
+  TemporaryDischargeNotePanel,
+} from '../../components/family/TemporaryDischargeNoticeMobile';
 
 const WINDOW_H = Dimensions.get('window').height;
 
@@ -229,6 +254,33 @@ function MiniTableRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function DetailCardSection({
+  children,
+  onTemporaryLeave = false,
+  temporaryPatient = null,
+  temporaryLeaveRequestFields = null,
+}: {
+  children: React.ReactNode;
+  onTemporaryLeave?: boolean;
+  temporaryPatient?: Record<string, unknown> | null;
+  temporaryLeaveRequestFields?: Record<string, unknown> | null;
+}) {
+  if (onTemporaryLeave) {
+    return (
+      <View style={[styles.detailCard, styles.detailCardWithLeaveBanner]}>
+        <TemporaryDischargeCardBanner
+          patient={temporaryPatient}
+          variant="section"
+          requestFields={temporaryLeaveRequestFields}
+        />
+        <View style={styles.detailCardBody}>{children}</View>
+      </View>
+    );
+  }
+
+  return <View style={styles.detailCard}>{children}</View>;
+}
+
 export default function PatientDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -239,6 +291,11 @@ export default function PatientDetailsScreen() {
   const [weeklyReportsByPatient, setWeeklyReportsByPatient] = useState<Record<string, ReportRow[]>>({});
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<PatientListEntry | null>(null);
+  const [temporaryLeaveFromRequest, setTemporaryLeaveFromRequest] = useState<TemporaryLeaveFields | null>(
+    null
+  );
+  const [residentReturnBusy, setResidentReturnBusy] = useState(false);
+  const [showResidentReturnConfirm, setShowResidentReturnConfirm] = useState(false);
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured()) {
@@ -265,7 +322,7 @@ export default function PatientDetailsScreen() {
       setFamilyUserId(user.id);
 
       const safeSelect =
-        'id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at, date_of_birth, gender, room_code';
+        'id, full_name, admitted_at, created_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at, temporary_discharge_at, temporary_discharge_until, temporary_discharge_expected_return, temporary_leave_type, date_of_birth, gender, room_code, case_load_manager, program_staff, medical_staff_note';
 
       const mapApprovedAdmissionsToPatients = async (): Promise<{
         list: PatientListEntry[];
@@ -282,9 +339,8 @@ export default function PatientDetailsScreen() {
         const detailsByName: Record<string, Record<string, unknown>> = {};
         if (names.length) {
           const { data: matchedRows } = await supabase
-        .from('patients')
+            .from('patients')
             .select('*')
-            .is('discharged_at', null)
             .in('full_name', names)
             .order('admitted_at', { ascending: false });
           (matchedRows || []).forEach((row) => {
@@ -345,9 +401,8 @@ export default function PatientDetailsScreen() {
         const { data: matchedRows, error: queryError } = await supabase
           .from('patients')
           .select(safeSelect)
-        .is('discharged_at', null)
           .in('full_name', names)
-        .order('admitted_at', { ascending: false });
+          .order('admitted_at', { ascending: false });
         if (queryError) return [];
         return (matchedRows || []) as Record<string, unknown>[];
       };
@@ -356,7 +411,6 @@ export default function PatientDetailsScreen() {
         .from('patients')
         .select(safeSelect)
         .eq('family_id', user.id)
-        .is('discharged_at', null)
         .order('admitted_at', { ascending: false });
 
       let list: PatientListEntry[] = [];
@@ -432,7 +486,29 @@ export default function PatientDetailsScreen() {
         setPatientDetailsById(details);
       }
 
-      const reportIds = list.map((p) => p.id).filter((id) => !String(id).startsWith('admission-'));
+      let reportIds = [
+        ...new Set(
+          list
+            .map((p) => canonicalPatientId(p, details))
+            .filter((id) => isSupabasePatientId(id))
+        ),
+      ];
+      try {
+        const { data: familyIdRows } = await supabase
+          .from('patients')
+          .select('id')
+          .eq('family_id', user.id);
+        reportIds = [
+          ...new Set([
+            ...reportIds,
+            ...(familyIdRows || [])
+              .map((r) => r.id)
+              .filter((id): id is string => isSupabasePatientId(id)),
+          ]),
+        ];
+      } catch {
+        /* ignore */
+      }
       let byPatient: Record<string, ReportRow[]> = {};
 
       if (reportIds.length) {
@@ -458,6 +534,13 @@ export default function PatientDetailsScreen() {
             if (!byPatient[key]) byPatient[key] = [];
             byPatient[key].push(row);
           }
+          list.forEach((p) => {
+            const listId = String(p.id);
+            const pid = canonicalPatientId(p, details);
+            if (pid && byPatient[pid] && listId !== pid && !byPatient[listId]) {
+              byPatient[listId] = byPatient[pid];
+            }
+          });
         }
       }
 
@@ -470,6 +553,20 @@ export default function PatientDetailsScreen() {
 
       setWeeklyReportsByPatient(dedupedByPatient);
       setPatients(dedupedPatients);
+
+      for (const pid of mergedIds) {
+        if (!isSupabasePatientId(pid)) continue;
+        void syncPatientTemporaryLeaveFromRequests(pid, {
+          familyId: familyUserId,
+          patientName: patients.find((p) => canonicalPatientId(p, details) === pid)?.name,
+        }).then((result) => {
+          if (!result.ok || !result.fields) return;
+          setPatientDetailsById((prev) => ({
+            ...prev,
+            [pid]: { ...(prev[pid] || {}), ...result.fields },
+          }));
+        });
+      }
     } catch (e) {
       console.warn('[patient-details]', e);
       setFamilyUserId('');
@@ -485,6 +582,12 @@ export default function PatientDetailsScreen() {
 
   const first = (displayName || 'Family User').trim().split(/\s+/)[0];
 
+  const reportsForPatient = useCallback(
+    (patient: PatientListEntry | null | undefined) =>
+      resolveWeeklyReportsForPatient(patient, weeklyReportsByPatient, patientDetailsById),
+    [weeklyReportsByPatient, patientDetailsById]
+  );
+
   const totalReportsSubmitted = useMemo(
     () => Object.values(weeklyReportsByPatient).reduce((acc, rows) => acc + (rows?.length || 0), 0),
     [weeklyReportsByPatient]
@@ -494,8 +597,8 @@ export default function PatientDetailsScreen() {
     return Math.round(patients.reduce((s, p) => s + (Number(p.progress) || 0), 0) / patients.length);
   }, [patients]);
   const patientsWithReportsCount = useMemo(
-    () => patients.filter((p) => (weeklyReportsByPatient[String(p.id)] || []).length > 0).length,
-    [patients, weeklyReportsByPatient]
+    () => patients.filter((p) => reportsForPatient(p).length > 0).length,
+    [patients, reportsForPatient]
   );
   const pendingReviewCount = useMemo(
     () => Math.max(0, patients.length - patientsWithReportsCount),
@@ -534,8 +637,125 @@ export default function PatientDetailsScreen() {
     [patientDetailsById, patients]
   );
 
+  useEffect(() => {
+    if (!selected || !isSupabaseConfigured()) return undefined;
+    const listId = String(selected.id);
+    const pid = canonicalPatientId(selected, patientDetailsById);
+    if (!isSupabasePatientId(pid)) return undefined;
+    const existing = resolveWeeklyReportsForPatient(selected, weeklyReportsByPatient, patientDetailsById);
+    if (existing.length) return undefined;
+
+    let cancelled = false;
+    void (async () => {
+      const rows = await fetchWeeklyReportsForPatientId(pid);
+      if (cancelled || !rows?.length) return;
+      setWeeklyReportsByPatient((prev) =>
+        mergeReportsIntoByPatient(prev, pid, rows as ReportRow[], listId !== pid ? listId : null)
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, selected?.name, patientDetailsById]);
+
+  useEffect(() => {
+    if (!selected?.id || !isSupabaseConfigured()) {
+      setTemporaryLeaveFromRequest(null);
+      return undefined;
+    }
+    const patientId = canonicalPatientId(selected, patientDetailsById);
+    if (!isSupabasePatientId(patientId)) {
+      setTemporaryLeaveFromRequest(null);
+      return undefined;
+    }
+    let cancelled = false;
+    void (async () => {
+      const result = await syncPatientTemporaryLeaveFromRequests(patientId, {
+        familyId: familyUserId,
+        patientName: selected?.name,
+      });
+      if (cancelled) return;
+      if (result.fields) {
+        setTemporaryLeaveFromRequest(result.fields);
+        setPatientDetailsById((prev) => ({
+          ...prev,
+          [patientId]: { ...(prev[patientId] || {}), ...result.fields },
+          ...(String(selected.id) !== patientId
+            ? { [String(selected.id)]: { ...(prev[String(selected.id)] || {}), ...result.fields } }
+            : {}),
+        }));
+      } else {
+        setTemporaryLeaveFromRequest(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, selected?.name, familyUserId, patientDetailsById]);
+
   const selectedPatientDetails = selected ? patientDetailsById[String(selected.id)] : null;
-  const selectedReports = selected ? weeklyReportsByPatient[String(selected.id)] || [] : [];
+  const selectedPatientCare = useMemo(() => {
+    if (!selected) return null;
+    const base = mergePatientTemporaryDischargeFields(
+      selected as Record<string, unknown>,
+      selectedPatientDetails
+    );
+    return mergePatientWithRequestTemporaryLeave(base, temporaryLeaveFromRequest) as PatientListEntry;
+  }, [selected, selectedPatientDetails, temporaryLeaveFromRequest]);
+  const onTemporaryLeave = isPatientOnTemporaryLeave(
+    (selectedPatientCare || selected) as Record<string, unknown>
+  );
+  const tempLeaveStatusLabel = patientTemporaryDischargeStatusLabel(
+    (selectedPatientCare || selected) as Record<string, unknown>
+  );
+
+  const isResidentOnTemporaryLeave = useCallback(
+    (p: PatientListEntry) =>
+      isPatientOnTemporaryLeave(
+        mergePatientTemporaryDischargeFields(
+          p as Record<string, unknown>,
+          patientDetailsById[String(p.id)]
+        )
+      ),
+    [patientDetailsById]
+  );
+
+  const handleResidentReturned = async () => {
+    if (!selectedPatientCare?.id || !onTemporaryLeave) return;
+    setResidentReturnBusy(true);
+    const result = await returnResidentFromTemporaryLeave(
+      selectedPatientCare as Record<string, unknown>
+    );
+    setResidentReturnBusy(false);
+    if (!result.ok) {
+      Alert.alert('Could not update', result.error || 'Could not mark resident as returned.');
+      return;
+    }
+    const cleared = {
+      temporaryDischargeAt: null,
+      temporaryDischargeUntil: null,
+      temporaryDischargeExpectedReturn: null,
+      temporaryLeaveType: null,
+      temporary_discharge_at: null,
+      temporary_discharge_until: null,
+      temporary_discharge_expected_return: null,
+      temporary_leave_type: null,
+    };
+    setTemporaryLeaveFromRequest(null);
+    setShowResidentReturnConfirm(false);
+    const careId = String(selectedPatientCare.id);
+    setSelected((prev) => (prev ? { ...prev, ...cleared } : prev));
+    setPatientDetailsById((prev) => ({
+      ...prev,
+      [careId]: { ...(prev[careId] || {}), ...cleared },
+    }));
+    setPatients((prev) =>
+      prev.map((p) => (String(p.id) === careId ? { ...p, ...cleared } : p))
+    );
+    void load();
+  };
+
+  const selectedReports = reportsForPatient(selectedPatientCare || selected);
   const latestSelectedReport = [...selectedReports].sort(
     (a, b) =>
       new Date(String(b.submitted_at || b.created_at || 0)).getTime() -
@@ -545,11 +765,21 @@ export default function PatientDetailsScreen() {
   const assignedNurseDisplay =
     String(latestSelectedReport?.nurse_name || '') ||
     String(selectedPatientDetails?.program_staff || '') ||
-    String(selectedPatientDetails?.medical_staff_note || '') ||
     'N/A';
+  const assignedProgramStaffDisplay =
+    String(selectedPatientDetails?.case_load_manager || '') || 'N/A';
 
   const detailSummaryForModal =
-    selected != null ? patientSummaryPayload(selected, selectedPatientDetails, latestSelectedReport) : null;
+    selected != null
+      ? patientSummaryPayload(
+          (selectedPatientCare || selected) as PatientListEntry,
+          selectedPatientDetails,
+          latestSelectedReport
+        )
+      : null;
+  const modalStatusLabel = onTemporaryLeave
+    ? tempLeaveStatusLabel || 'Temporarily discharged'
+    : detailSummaryForModal?.status || patientStatusTone(Number(selected?.progress) || 0).label;
 
   return (
     <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
@@ -669,10 +899,13 @@ export default function PatientDetailsScreen() {
               <Text style={styles.dirMeta}>{patients.length} entries</Text>
             </View>
             {patients.map((p, idx) => {
-              const tone = patientStatusTone(p.progress);
+              const onTempLeave = isResidentOnTemporaryLeave(p);
+              const tone = onTempLeave
+                ? { label: 'On leave', bg: '#FEF3C7', color: '#92400E' }
+                : patientStatusTone(p.progress);
               const room = patientDetailsById[String(p.id)]?.room_code || p.roomCode || 'Unassigned';
               const concern = String(patientDetailsById[String(p.id)]?.primary_concern || p.reason || 'N/A');
-              const reportCount = (weeklyReportsByPatient[String(p.id)] || []).length;
+              const reportCount = reportsForPatient(p).length;
               const prog = Number(p.progress) || 0;
               return (
                 <TouchableOpacity
@@ -759,12 +992,40 @@ export default function PatientDetailsScreen() {
                     <Text style={styles.modalHeroMeta}>
                       Admitted {selected.date || 'N/A'} · Progress: {Number(selected.progress) || 0}% ·{' '}
                       {selectedReports.length} reports
+                      {onTemporaryLeave ? (
+                        <Text style={styles.modalHeroTempLeave}>
+                          {' '}
+                          · {tempLeaveStatusLabel || 'Temporarily discharged'}
+                        </Text>
+                      ) : null}
                     </Text>
+                    {onTemporaryLeave ? (
+                      <TemporaryDischargeCardBanner
+                        patient={selectedPatientCare as Record<string, unknown>}
+                        variant="hero"
+                        requestFields={temporaryLeaveFromRequest}
+                      />
+                    ) : null}
                   </View>
-                  <TouchableOpacity onPress={() => setSelected(null)} hitSlop={12} accessibilityLabel="Close">
-                    <Ionicons name="close" size={22} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
+                  <View style={styles.modalHeroActions}>
+                    {onTemporaryLeave ? (
+                      <ResidentReturnedHeaderButton
+                        busy={residentReturnBusy}
+                        onPress={() => setShowResidentReturnConfirm(true)}
+                      />
+                    ) : null}
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSelected(null);
+                        setTemporaryLeaveFromRequest(null);
+                      }}
+                      hitSlop={12}
+                      accessibilityLabel="Close"
+                    >
+                      <Ionicons name="close" size={22} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
                 <View style={styles.modalHeroProgressWrap}>
                   <View style={styles.modalHeroProgressLabels}>
                     <Text style={styles.modalHeroProgressLbl}>Recovery Progress</Text>
@@ -787,17 +1048,29 @@ export default function PatientDetailsScreen() {
                 contentContainerStyle={[styles.detailScroll, { paddingBottom: insets.bottom + 24 }]}
                 keyboardShouldPersistTaps="handled"
               >
-                <View style={styles.detailCard}>
+                {onTemporaryLeave ? (
+                  <TemporaryDischargeNotePanel
+                    patient={selectedPatientCare as Record<string, unknown>}
+                    requestFields={temporaryLeaveFromRequest}
+                  />
+                ) : null}
+                <DetailCardSection
+                  onTemporaryLeave={onTemporaryLeave}
+                  temporaryPatient={selectedPatientCare as Record<string, unknown>}
+                  temporaryLeaveRequestFields={temporaryLeaveFromRequest}
+                >
                   <View style={styles.detailCardTitleRow}>
                     <Ionicons name="heart" size={16} color="#F54E25" />
                     <Text style={styles.detailCardTitle}>Patient summary</Text>
                   </View>
                   <Text style={styles.summaryPara}>{detailSummaryForModal.summary}</Text>
                   {(() => {
-                    const st = patientStatusTone(Number(selected.progress) || 0);
+                    const st = onTemporaryLeave
+                      ? { bg: '#FEF3C7', color: '#92400E' }
+                      : patientStatusTone(Number(selected.progress) || 0);
                     return (
                       <View style={[styles.statusChip, { alignSelf: 'flex-start', backgroundColor: st.bg }]}>
-                        <Text style={[styles.statusChipTxt, { color: st.color }]}>{detailSummaryForModal.status}</Text>
+                        <Text style={[styles.statusChipTxt, { color: st.color }]}>{modalStatusLabel}</Text>
                       </View>
                     );
                   })()}
@@ -820,9 +1093,13 @@ export default function PatientDetailsScreen() {
                       </View>
                     ))}
                   </View>
-                </View>
+                </DetailCardSection>
 
-                <View style={styles.detailCard}>
+                <DetailCardSection
+                  onTemporaryLeave={onTemporaryLeave}
+                  temporaryPatient={selectedPatientCare as Record<string, unknown>}
+                  temporaryLeaveRequestFields={temporaryLeaveFromRequest}
+                >
                   <View style={styles.detailCardTitleRow}>
                     <Ionicons name="list" size={16} color="#F54E25" />
                     <Text style={styles.detailCardTitle}>Patient data</Text>
@@ -830,7 +1107,7 @@ export default function PatientDetailsScreen() {
                   <MiniTableRow label="Patient name" value={selected.name} />
                   <MiniTableRow label="Admission date" value={selected.date || 'N/A'} />
                   <MiniTableRow label="Progress" value={`${selected.progress}%`} />
-                  <MiniTableRow label="Status" value={patientStatusTone(selected.progress).label} />
+                  <MiniTableRow label="Status" value={modalStatusLabel} />
                   <MiniTableRow
                     label="Primary concern"
                     value={String(selectedPatientDetails?.primary_concern || selected.reason || 'N/A')}
@@ -850,12 +1127,16 @@ export default function PatientDetailsScreen() {
                     value={String(selectedPatientDetails?.gender || selected.gender || 'N/A')}
                   />
                   <MiniTableRow label="Reports submitted" value={String(selectedReports.length)} />
-                </View>
+                </DetailCardSection>
 
-                <View style={styles.detailCard}>
+                <DetailCardSection
+                  onTemporaryLeave={onTemporaryLeave}
+                  temporaryPatient={selectedPatientCare as Record<string, unknown>}
+                  temporaryLeaveRequestFields={temporaryLeaveFromRequest}
+                >
                   <View style={styles.detailCardTitleRow}>
                     <Ionicons name="calendar" size={16} color="#F54E25" />
-                    <Text style={styles.detailCardTitle}>Weekly report timeline</Text>
+                    <Text style={styles.detailCardTitle}>Report timeline</Text>
                   </View>
                   {selectedReports.length ? (
                     selectedReports.map((row, idx) => (
@@ -870,25 +1151,30 @@ export default function PatientDetailsScreen() {
                       </View>
                     ))
                   ) : (
-                    <Text style={styles.mutedCenter}>No weekly reports submitted yet.</Text>
+                    <Text style={styles.mutedCenter}>No reports yet.</Text>
                   )}
-                </View>
+                </DetailCardSection>
 
-                <View style={styles.detailCard}>
+                <DetailCardSection
+                  onTemporaryLeave={onTemporaryLeave}
+                  temporaryPatient={selectedPatientCare as Record<string, unknown>}
+                  temporaryLeaveRequestFields={temporaryLeaveFromRequest}
+                >
                   <View style={styles.detailCardTitleRow}>
                     <Ionicons name="clipboard" size={16} color="#F54E25" />
                     <Text style={styles.detailCardTitle}>Care team & placement</Text>
                   </View>
                   <MiniTableRow label="Room assignment" value={String(selectedPatientDetails?.room_code || selected.roomCode || 'Unassigned')} />
                   <MiniTableRow label="Nurse" value={assignedNurseDisplay} />
-                  <MiniTableRow
-                    label="Program staff"
-                    value={String(selectedPatientDetails?.program_staff || 'N/A')}
-                  />
+                  <MiniTableRow label="Program staff" value={assignedProgramStaffDisplay} />
                   <MiniTableRow label="Reports submitted" value={String(selectedReports.length)} />
-                </View>
+                </DetailCardSection>
 
-                <View style={styles.detailCard}>
+                <DetailCardSection
+                  onTemporaryLeave={onTemporaryLeave}
+                  temporaryPatient={selectedPatientCare as Record<string, unknown>}
+                  temporaryLeaveRequestFields={temporaryLeaveFromRequest}
+                >
                   <View style={styles.detailCardTitleRow}>
                     <Ionicons name="pulse" size={16} color="#F54E25" />
                     <Text style={styles.detailCardTitle}>Vital signs (latest weekly report)</Text>
@@ -949,9 +1235,13 @@ export default function PatientDetailsScreen() {
                       selectedPatientDetails?.oxygen_saturation
                     )}
                   />
-                </View>
+                </DetailCardSection>
 
-                <View style={styles.detailCard}>
+                <DetailCardSection
+                  onTemporaryLeave={onTemporaryLeave}
+                  temporaryPatient={selectedPatientCare as Record<string, unknown>}
+                  temporaryLeaveRequestFields={temporaryLeaveFromRequest}
+                >
                   <View style={styles.detailCardTitleRow}>
                     <Ionicons name="checkmark-circle" size={16} color="#F54E25" />
                     <Text style={styles.detailCardTitle}>Recommended next steps</Text>
@@ -964,7 +1254,7 @@ export default function PatientDetailsScreen() {
                       <Text style={styles.goalCardTxt}>{goal}</Text>
                     </View>
                   ))}
-                </View>
+                </DetailCardSection>
 
                 <View style={styles.actionRow}>
               <TouchableOpacity
@@ -998,6 +1288,14 @@ export default function PatientDetailsScreen() {
           ) : null}
         </View>
       </Modal>
+
+      <ResidentReturnedConfirmModal
+        open={showResidentReturnConfirm}
+        residentName={selectedPatientCare?.name || selected?.name || 'this resident'}
+        busy={residentReturnBusy}
+        onClose={() => setShowResidentReturnConfirm(false)}
+        onConfirm={() => void handleResidentReturned()}
+      />
 
       <FamilyWebMobileNav active="patientDetails" />
       <FamilyFloatingChat />
@@ -1160,6 +1458,8 @@ const styles = StyleSheet.create({
   viewDetailsCtaTxt: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
   modalHero: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18 },
   modalHeroTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  modalHeroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  modalHeroTempLeave: { color: '#FDE68A', fontWeight: '700' },
   modalHeroKicker: {
     fontSize: 10,
     color: 'rgba(255,255,255,0.4)',
@@ -1303,6 +1603,17 @@ const styles = StyleSheet.create({
     borderColor: '#E6EDF9',
     padding: 14,
     marginBottom: 12,
+  },
+  detailCardWithLeaveBanner: {
+    paddingTop: 0,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+    overflow: 'hidden',
+  },
+  detailCardBody: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
   },
   detailCardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   detailCardTitle: { fontSize: 14, fontWeight: '800', color: '#1B2559' },

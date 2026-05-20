@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, MessageCircle, LayoutTemplate, Calendar } from 'lucide-react';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
@@ -2688,11 +2688,10 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                         ? temporaryStatusLabel || 'Temporarily discharged'
                         : selectedPatientCare.clinicalStatus;
                   const trajectoryStyle = getStatusStyle(trajectoryLabel);
-                  const nurseNames = Object.values(weeklyReportsByWeek)
-                    .map((r) => (r?.nurse_name && String(r.nurse_name).trim()) || '')
-                    .filter(Boolean);
-                  const assignedNurseDisplay = latestAssignedNurse || nurseNames[0] || '—';
-                  const assignedProgramDisplay = String(selectedPatient?.concern || '').trim() || '—';
+                  const assignedNurseDisplay =
+                    String(selectedPatient?.programStaff || latestAssignedNurse || '').trim() || '—';
+                  const assignedProgramDisplay =
+                    String(selectedPatient?.caseLoadManager || '').trim() || '—';
                   return (
                     <>
                       <div className="view-card2-status-row" style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>

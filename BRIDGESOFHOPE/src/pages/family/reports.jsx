@@ -13,6 +13,7 @@ import { FAMILY_COLORS } from '@/components/family/shared/ui';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
 import FamilyPageHeader from '@/components/family/FamilyPageHeader';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
+import { isSupabasePatientId, resolveWeeklyReportsForPatient } from '@/lib/familyWeeklyReports';
 
 /* ─── design-only helpers ─── */
 function ProgressBar({ value = 0, color = '#F54E25', height = 6 }) {
@@ -117,11 +118,40 @@ export default function FamilyReportsPage() {
             discharged_at: row.discharged_at ?? mapped?.discharged_at ?? null,
           };
         });
-        const ids = rows.map((r) => r.id).filter(Boolean);
+        let ids = rows.map((r) => r.id).filter(isSupabasePatientId);
+        try {
+          const { data: familyIdRows } = await supabase.from('patients').select('id').eq('family_id', user.id);
+          ids = [...new Set([...ids, ...(familyIdRows || []).map((r) => r.id).filter(isSupabasePatientId)])];
+        } catch {
+          /* ignore */
+        }
         const byPatient = {};
         if (ids.length) {
-          const { data: reportRows, error: reportErr } = await supabase.from('weekly_reports').select('*').in('patient_id', ids).order('week_number', { ascending: true });
-          if (!reportErr && reportRows) { for (const row of reportRows) { const key = String(row.patient_id); if (!byPatient[key]) byPatient[key] = []; byPatient[key].push(row); } }
+          let reportRows = null;
+          const direct = await supabase.from('weekly_reports').select('*').in('patient_id', ids).order('week_number', { ascending: true });
+          reportRows = direct.data || null;
+          if (direct.error || !(reportRows || []).length) {
+            const rpc = await supabase.rpc('bh_family_weekly_reports');
+            if (!rpc.error && rpc.data) {
+              const idSet = new Set(ids.map((x) => String(x)));
+              reportRows = (rpc.data || []).filter((row) => idSet.has(String(row.patient_id)));
+            }
+          }
+          if (reportRows) {
+            for (const row of reportRows) {
+              const key = String(row.patient_id);
+              if (!byPatient[key]) byPatient[key] = [];
+              byPatient[key].push(row);
+            }
+            mappedPatients.forEach((p) => {
+              const listId = String(p.id);
+              if (byPatient[listId]) return;
+              const match = rows.find(
+                (r) => String(r.full_name || '').trim().toLowerCase() === String(p.name || '').trim().toLowerCase()
+              );
+              if (match && byPatient[String(match.id)]) byPatient[listId] = byPatient[String(match.id)];
+            });
+          }
         }
         if (!cancelled) {
           setPatients(mappedPatients); setWeeklyReportsByPatient(byPatient);
@@ -135,9 +165,30 @@ export default function FamilyReportsPage() {
     return () => { cancelled = true; window.removeEventListener('storage', loadData); window.removeEventListener(APP_DATA_REFRESH, loadData); };
   }, []);
 
+  const patientDetailsById = useMemo(() => {
+    const m = {};
+    patients.forEach((p) => {
+      m[String(p.id)] = { id: p.id, full_name: p.name };
+    });
+    return m;
+  }, [patients]);
+
+  const reportsForPatient = useMemo(
+    () => (patient) => resolveWeeklyReportsForPatient(patient, weeklyReportsByPatient, patientDetailsById),
+    [weeklyReportsByPatient, patientDetailsById]
+  );
+
   const allReports = useMemo(() => Object.values(weeklyReportsByPatient || {}).flat().filter(Boolean), [weeklyReportsByPatient]);
   const availableWeeks = useMemo(() => { const set = new Set(); for (const row of allReports) { if (row.week_number !== null && row.week_number !== undefined && row.week_number !== '') set.add(Number(row.week_number)); } return Array.from(set).filter((n) => !Number.isNaN(n)).sort((a, b) => a - b); }, [allReports]);
-  const selectedPatientReports = useMemo(() => { if (!selectedPatient) return []; const rows = weeklyReportsByPatient[String(selectedPatient.id)] || []; return [...rows].sort((a, b) => { const aw = Number(a.week_number) || 0, bw = Number(b.week_number) || 0; if (aw !== bw) return bw - aw; return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(); }); }, [selectedPatient, weeklyReportsByPatient]);
+  const selectedPatientReports = useMemo(() => {
+    if (!selectedPatient) return [];
+    return [...reportsForPatient(selectedPatient)].sort((a, b) => {
+      const aw = Number(a.week_number) || 0;
+      const bw = Number(b.week_number) || 0;
+      if (aw !== bw) return bw - aw;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+  }, [selectedPatient, reportsForPatient]);
   const visibleReports = useMemo(() => selectedWeek === 'all' ? selectedPatientReports : selectedPatientReports.filter((r) => String(r.week_number) === String(selectedWeek)), [selectedPatientReports, selectedWeek]);
   const weeklyReport = visibleReports.find((r) => String(r.id) === String(selectedReportId)) || visibleReports[0] || null;
 
@@ -278,7 +329,7 @@ export default function FamilyReportsPage() {
 
               <div className="patient-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
                 {patients.map((p) => {
-                  const reportCount = (weeklyReportsByPatient[String(p.id)] || []).length;
+                  const reportCount = reportsForPatient(p).length;
                   const progress = Number(p.progress) || 0;
                   const isActive = selectedPatient && String(selectedPatient.id) === String(p.id);
                   const isDischarged = Boolean(p.discharged_at);

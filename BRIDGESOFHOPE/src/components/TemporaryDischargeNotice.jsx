@@ -1,7 +1,8 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { UserCheck, X } from 'lucide-react';
+import { UserCheck, X, FileText } from 'lucide-react';
 import { temporaryLeaveLabel } from '@/lib/dischargeRequestTypes';
+import { temporaryLeaveNoteLines } from '@/lib/temporaryLeaveDisplay';
 
 const bannerStyle = {
   margin: '-22px -22px 14px',
@@ -54,8 +55,9 @@ const bannerStyleLarge = {
 };
 
 /** Amber strip shown at the top of resident detail cards while on temporary leave. */
-export function TemporaryDischargeCardBanner({ patient, variant = 'default' }) {
+export function TemporaryDischargeCardBanner({ patient, variant = 'default', requestFields = null }) {
   const leave = temporaryLeaveLabel(patient?.temporaryLeaveType ?? patient?.temporary_leave_type);
+  const { dayLabel } = temporaryLeaveNoteLines(patient, requestFields);
   const style =
     variant === 'compact'
       ? bannerStyleCompact
@@ -64,13 +66,93 @@ export function TemporaryDischargeCardBanner({ patient, variant = 'default' }) {
         : variant === 'large'
           ? bannerStyleLarge
           : bannerStyle;
+  const metaLine = [leave, dayLabel].filter(Boolean).join(' · ');
+
   return (
     <div role="status" style={style} aria-live="polite">
-      Temporarily discharged
-      {leave ? (
-        <span style={{ fontWeight: 600, textTransform: 'none', marginLeft: 6, color: '#78350F' }}>
-          · {leave}
-        </span>
+      <div style={{ lineHeight: 1.45 }}>Temporarily discharged</div>
+      {metaLine ? (
+        <div style={{ marginTop: 4, fontWeight: 600, textTransform: 'none', color: '#78350F', lineHeight: 1.45 }}>
+          {metaLine}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Program / family notes from the approved temporary discharge request. */
+export function TemporaryDischargeNotePanel({ patient, requestFields = null }) {
+  const { programNote, familyReason, otherInfo, expectedReturn, dayLabel, leaveLabel } =
+    temporaryLeaveNoteLines(patient, requestFields);
+  const hasContent = programNote || familyReason || otherInfo || expectedReturn;
+  if (!hasContent && !dayLabel) return null;
+
+  return (
+    <div
+      role="region"
+      aria-label="Temporary discharge details"
+      style={{
+        background: '#FFFBEB',
+        border: '1px solid #FDE68A',
+        borderRadius: 16,
+        padding: '14px 16px',
+        marginBottom: 14,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: '#FEF3C7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <FileText size={14} color="#B45309" aria-hidden />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: '#92400E' }}>Temporary discharge note</div>
+          <div style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>
+            {[leaveLabel, dayLabel].filter(Boolean).join(' · ')}
+          </div>
+        </div>
+      </div>
+      {programNote ? (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#A16207', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+            Program note
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: '#78350F', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{programNote}</p>
+        </div>
+      ) : null}
+      {familyReason ? (
+        <div style={{ marginBottom: otherInfo || expectedReturn ? 10 : 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#A16207', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+            Family request reason
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: '#78350F', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{familyReason}</p>
+        </div>
+      ) : null}
+      {otherInfo ? (
+        <div style={{ marginBottom: expectedReturn ? 10 : 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#A16207', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+            Additional details
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: '#78350F', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{otherInfo}</p>
+        </div>
+      ) : null}
+      {expectedReturn ? (
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E' }}>
+          Expected return: {String(expectedReturn).slice(0, 10)}
+        </div>
+      ) : null}
+      {!programNote && !familyReason && !otherInfo ? (
+        <p style={{ margin: 0, fontSize: 12, color: '#B45309' }}>
+          No written note was recorded for this temporary discharge.
+        </p>
       ) : null}
     </div>
   );
