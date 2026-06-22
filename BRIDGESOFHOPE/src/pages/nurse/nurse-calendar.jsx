@@ -16,6 +16,7 @@ import {
   hydrateNurseAgendasFromSupabase,
   saveAgendaToCloud,
 } from '@/lib/nurseCalendarStorage';
+import { isPastIsoDate } from '@/lib/bookingDates';
 
 /* ── unchanged pure helpers ── */
 function toName(v) { return String(v||'').trim().toLowerCase(); }
@@ -191,6 +192,10 @@ export default function NurseCalendarPage() {
     setSaveError('');
     if (!userId || !addDate || !addKind) {
       setSaveError(!userId ? 'Still loading your account — wait a moment and try again.' : 'Choose a type and date.');
+      return;
+    }
+    if (isPastIsoDate(addDate)) {
+      setSaveError('You cannot add calendar items on past dates.');
       return;
     }
     const desc = addDescription.trim();

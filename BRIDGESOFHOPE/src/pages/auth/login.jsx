@@ -656,7 +656,7 @@ const Login = () => {
 
               <p className="signup-prompt">
                 Don't have an account?
-                <Link to="/signup" style={{ textDecoration: 'none' }}>
+                <Link to="/consent" style={{ textDecoration: 'none' }}>
                   <span>Sign Up</span>
                 </Link>
               </p>

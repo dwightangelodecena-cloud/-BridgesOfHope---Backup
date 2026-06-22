@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 import LandingPage from '@/landingpage'; // Using @ for src/
 import Login from '@/pages/auth/login';
 import SignUp from '@/pages/auth/signup';
+import SignupConsent from '@/pages/auth/consent';
 import ForgotPassword from '@/pages/auth/forgot';
 import Verify from '@/pages/auth/verify';
 import NewPass from '@/pages/auth/newpass';
@@ -95,6 +96,7 @@ const ROUTE_TITLES = {
   '/': 'Home',
   '/home': 'Home',
   '/login': 'Login',
+  '/consent': 'Consent',
   '/signup': 'Sign up',
   '/forgot': 'Forgot password',
   '/verify': 'Verify',
@@ -169,6 +171,7 @@ function App() {
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/consent" element={<SignupConsent />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/forgot" element={<ForgotPassword />} />
         <Route path="/verify" element={<Verify />} />

@@ -58,6 +58,15 @@ import {
 } from '@/lib/residentPlacement';
 import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
 import { verifyAdminApprovalPin } from '@/lib/adminApprovalPin';
+import {
+  admissionStatusLabel,
+  admissionStatusPillClass,
+  canApproveAdmission,
+  canScheduleMeeting,
+  canMarkMeetingComplete,
+  parseAttachedFiles,
+} from '@/lib/admissionWorkflow';
+import { appendFamilyNotificationsIfNew } from '@/lib/familyNotifications';
 
 const FILTER_OPTIONS = ['All Admissions', ...ADMISSION_WORKFLOW_STATUSES];
 
@@ -135,6 +144,11 @@ const AdmissionManagement = () => {
   const [twoFAModalOpen, setTwoFAModalOpen] = useState(false);
   const [tfaError, setTfaError] = useState('');
   const [tfaLoading, setTfaLoading] = useState(false);
+  const [meetingRow, setMeetingRow] = useState(null);
+  const [meetingDate, setMeetingDate] = useState('');
+  const [meetingTime, setMeetingTime] = useState('09:00');
+  const [docNotesRow, setDocNotesRow] = useState(null);
+  const [docNotesText, setDocNotesText] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -420,7 +434,14 @@ const AdmissionManagement = () => {
   };
 
   const handleApproveDbPending = async (r) => {
-    if (!isSupabaseConfigured() || String(r.dbStatus || '').toLowerCase() !== 'pending') return false;
+    if (!isSupabaseConfigured()) return false;
+    const st = String(r.dbStatus || '').toLowerCase();
+    if (!canApproveAdmission(r) && !['pending', 'processing', 'in_review'].includes(st)) return false;
+    if (!canApproveAdmission(r)) {
+      setFormError('Cannot approve: complete the family meeting and required documents first.');
+      setTimeout(() => setFormError(''), 8000);
+      return false;
+    }
     setApprovingId(r.requestId);
     setFormError('');
     try {
@@ -444,7 +465,7 @@ const AdmissionManagement = () => {
   };
 
   const openApprove2FA = (r) => {
-    if (!isSupabaseConfigured() || String(r.dbStatus || '').toLowerCase() !== 'pending') return;
+    if (!isSupabaseConfigured() || !canApproveAdmission(r)) return;
     pendingApproveRowRef.current = r;
     setTfaError('');
     setTwoFAModalOpen(true);
@@ -481,13 +502,125 @@ const AdmissionManagement = () => {
     }
   };
 
+  const scheduleMeeting = async () => {
+    if (!meetingRow?.requestId || !meetingDate) {
+      setFormError('Choose a meeting date.');
+      return;
+    }
+    setFormError('');
+    const { error } = await supabase
+      .from('admission_requests')
+      .update({
+        meeting_date: meetingDate,
+        meeting_time: meetingTime || null,
+        meeting_scheduled_at: new Date().toISOString(),
+        status: 'processing',
+      })
+      .eq('id', meetingRow.requestId);
+    if (error) {
+      setFormError(error.message);
+      return;
+    }
+    if (meetingRow.familyId) {
+      appendFamilyNotificationsIfNew(
+        [{
+          id: `adm-meeting-${meetingRow.requestId}`,
+          text: `Meeting requested: please meet with Bridges of Hope on ${meetingDate}${meetingTime ? ` at ${meetingTime}` : ''} regarding ${meetingRow.patientName}'s admission.`,
+        }],
+        meetingRow.familyId
+      );
+    }
+    pushActivity(`Admission ${meetingRow.admissionDisplayId}: meeting scheduled`);
+    setMeetingRow(null);
+    refreshAppData();
+    await loadData();
+  };
+
+  const markMeetingComplete = async (r, moveToReview = true) => {
+    const patch = {
+      meeting_completed: true,
+      status: moveToReview ? 'in_review' : 'processing',
+      documents_complete: false,
+    };
+    const { error } = await supabase.from('admission_requests').update(patch).eq('id', r.requestId);
+    if (error) {
+      setFormError(error.message);
+      return;
+    }
+    if (r.familyId && moveToReview) {
+      appendFamilyNotificationsIfNew(
+        [{
+          id: `adm-review-${r.requestId}`,
+          text: `After your meeting, please complete required documents for ${r.patientName}'s admission request.`,
+        }],
+        r.familyId
+      );
+    }
+    pushActivity(`Admission ${r.admissionDisplayId}: meeting completed`);
+    refreshAppData();
+    await loadData();
+  };
+
+  const saveDocumentReview = async () => {
+    if (!docNotesRow?.requestId) return;
+    const complete = Boolean(docNotesRow._markDocsComplete);
+    const { error } = await supabase
+      .from('admission_requests')
+      .update({
+        required_document_notes: complete ? docNotesRow.requiredDocumentNotes || null : docNotesText.trim() || null,
+        documents_complete: complete,
+        status: 'in_review',
+      })
+      .eq('id', docNotesRow.requestId);
+    if (error) {
+      setFormError(error.message);
+      return;
+    }
+    if (docNotesRow.familyId && !complete && docNotesText.trim()) {
+      appendFamilyNotificationsIfNew(
+        [{
+          id: `adm-docs-needed-${docNotesRow.requestId}`,
+          text: `Please upload required documents for ${docNotesRow.patientName}: ${docNotesText.trim()}`,
+        }],
+        docNotesRow.familyId
+      );
+    }
+    setDocNotesRow(null);
+    setDocNotesText('');
+    refreshAppData();
+    await loadData();
+  };
+
+  const rejectAdmission = async (r) => {
+    if (!window.confirm(`Reject admission request for ${r.patientName}?`)) return;
+    const { error } = await supabase
+      .from('admission_requests')
+      .update({ status: 'declined', decided_at: new Date().toISOString() })
+      .eq('id', r.requestId);
+    if (error) {
+      setFormError(error.message);
+      return;
+    }
+    if (r.familyId) {
+      appendFamilyNotificationsIfNew(
+        [{ id: `adm-reject-${r.requestId}`, text: `Admission request for ${r.patientName} was rejected.` }],
+        r.familyId
+      );
+    }
+    pushActivity(`Admission ${r.admissionDisplayId}: rejected`);
+    refreshAppData();
+    await loadData();
+  };
+
   const statusPillClass = (status) => {
-    if (status === 'Ongoing' || status === 'Approved') return 'am-pill--ok';
-    if (status === 'Pending') return 'am-pill--pending';
-    if (status === 'For Discharge') return 'am-pill--warn';
-    if (status === 'Cancelled') return 'am-pill--bad';
-    if (status === 'Completed') return 'am-pill--muted';
-    return 'am-pill--muted';
+    const key = String(status || '').toLowerCase();
+    if (key === 'ongoing' || key === 'approved' || key === 'accepted') return 'am-pill--ok';
+    if (key === 'processing' || key === 'pending') return 'am-pill--pending';
+    if (key === 'in review' || key === 'in_review') return 'am-pill--warn';
+    if (key === 'for discharge') return 'am-pill--warn';
+    if (key === 'cancelled' || key === 'rejected') return 'am-pill--bad';
+    if (key === 'completed') return 'am-pill--muted';
+    return admissionStatusPillClass(key) || 'am-pill--muted';
   };
 
   return (
@@ -848,7 +981,54 @@ const AdmissionManagement = () => {
                         </td>
                         <td style={{ padding: '9px 10px' }}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            {isSupabaseConfigured() && String(r.dbStatus || '').toLowerCase() === 'pending' && (
+                            {isSupabaseConfigured() && canScheduleMeeting(r) && (
+                              <button
+                                type="button"
+                                className="db-action-btn"
+                                title="Schedule family meeting before approval"
+                                onClick={() => {
+                                  setMeetingRow(r);
+                                  setMeetingDate('');
+                                  setMeetingTime('09:00');
+                                }}
+                              >
+                                Call for Meeting
+                              </button>
+                            )}
+                            {isSupabaseConfigured() && canMarkMeetingComplete(r) && (
+                              <button
+                                type="button"
+                                className="db-action-btn"
+                                onClick={() => void markMeetingComplete(r, true)}
+                              >
+                                Meeting Done
+                              </button>
+                            )}
+                            {isSupabaseConfigured() && String(r.dbStatus || '').toLowerCase() === 'in_review' && (
+                              <button
+                                type="button"
+                                className="db-action-btn"
+                                onClick={() => {
+                                  setDocNotesRow({ ...r, _markDocsComplete: false });
+                                  setDocNotesText(r.requiredDocumentNotes || '');
+                                }}
+                              >
+                                Request Docs
+                              </button>
+                            )}
+                            {isSupabaseConfigured() && String(r.dbStatus || '').toLowerCase() === 'in_review' && (
+                              <button
+                                type="button"
+                                className="db-action-btn"
+                                onClick={() => {
+                                  setDocNotesRow({ ...r, _markDocsComplete: true });
+                                  setDocNotesText('');
+                                }}
+                              >
+                                Docs Complete
+                              </button>
+                            )}
+                            {isSupabaseConfigured() && canApproveAdmission(r) && (
                               <button
                                 type="button"
                                 className="db-edit-btn"
@@ -856,7 +1036,12 @@ const AdmissionManagement = () => {
                                 disabled={approvingId === r.requestId}
                                 onClick={() => openApprove2FA(r)}
                               >
-                                {approvingId === r.requestId ? '…' : 'Approve'}
+                                {approvingId === r.requestId ? '…' : 'Accept'}
+                              </button>
+                            )}
+                            {isSupabaseConfigured() && !['approved', 'accepted', 'declined', 'rejected'].includes(String(r.dbStatus || '').toLowerCase()) && (
+                              <button type="button" className="db-action-btn" onClick={() => void rejectAdmission(r)}>
+                                Reject
                               </button>
                             )}
                             <button type="button" className="db-view-btn" onClick={() => setViewRow(r)}>
@@ -950,6 +1135,32 @@ const AdmissionManagement = () => {
               <div className="am-modal-field"><span className="am-modal-label">Program staff</span><div className="am-input">{viewRow.programStaff}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Admission type</span><div className="am-input">{viewRow.admissionType}</div></div>
               <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}><span className="am-modal-label">Reason / concern</span><div className="am-input">{viewRow.reason}</div></div>
+              {viewRow.formData && (
+                <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="am-modal-label">Submitted form</span>
+                  <div className="am-input" style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                    {Object.entries(viewRow.formData).map(([k, v]) => `${k}: ${v}`).join('\n')}
+                  </div>
+                </div>
+              )}
+              {parseAttachedFiles(viewRow.attachedFiles).length > 0 && (
+                <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="am-modal-label">Attached files</span>
+                  <div className="am-input">
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {parseAttachedFiles(viewRow.attachedFiles).map((f) => (
+                        <li key={f.path || f.name}>{f.name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+              {(viewRow.meetingDate || viewRow.meetingTime) && (
+                <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="am-modal-label">Scheduled meeting</span>
+                  <div className="am-input">{[viewRow.meetingDate, viewRow.meetingTime].filter(Boolean).join(' at ')}</div>
+                </div>
+              )}
               <div className="am-modal-field"><span className="am-modal-label">Location (monthly rate)</span><div className="am-input">{BRANCH_LABEL[viewRow.pricingDetail.branch] || 'Imus Branch'}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Months of care (estimate)</span><div className="am-input">{viewRow.pricingDetail.monthsOfCare}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Estimated total</span><div className="am-input" style={{ fontWeight: 800, color: '#05CD99' }}>{formatPhp(viewRow.estimatedCost)}</div></div>
@@ -1088,6 +1299,64 @@ const AdmissionManagement = () => {
             <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="db-action-btn" onClick={() => setEditRow(null)}>Cancel</button>
               <button type="button" className="db-edit-btn" onClick={() => void handleSaveEdit()}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {meetingRow && (
+        <div className="am-modal-backdrop" onClick={() => setMeetingRow(null)}>
+          <div className="am-modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="am-modal-head">
+              <div style={{ fontSize: 18, fontWeight: 800 }}>Schedule family meeting</div>
+              <button type="button" className="db-action-btn" onClick={() => setMeetingRow(null)}><X size={16} /></button>
+            </div>
+            <div className="am-modal-body" style={{ gridTemplateColumns: '1fr' }}>
+              <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+                Set when the family member should visit BOH regarding <strong>{meetingRow.patientName}</strong>.
+              </p>
+              <label className="am-modal-field">
+                <span className="am-modal-label">Meeting date</span>
+                <input className="am-input" type="date" value={meetingDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setMeetingDate(e.target.value)} />
+              </label>
+              <label className="am-modal-field">
+                <span className="am-modal-label">Meeting time</span>
+                <input className="am-input" type="time" value={meetingTime} onChange={(e) => setMeetingTime(e.target.value)} />
+              </label>
+            </div>
+            <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="db-action-btn" onClick={() => setMeetingRow(null)}>Cancel</button>
+              <button type="button" className="db-edit-btn" onClick={() => void scheduleMeeting()}>Send meeting request</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {docNotesRow && (
+        <div className="am-modal-backdrop" onClick={() => setDocNotesRow(null)}>
+          <div className="am-modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="am-modal-head">
+              <div style={{ fontSize: 18, fontWeight: 800 }}>
+                {docNotesRow._markDocsComplete ? 'Mark documents complete' : 'Request missing documents'}
+              </div>
+              <button type="button" className="db-action-btn" onClick={() => setDocNotesRow(null)}><X size={16} /></button>
+            </div>
+            <div className="am-modal-body" style={{ gridTemplateColumns: '1fr' }}>
+              {!docNotesRow._markDocsComplete && (
+                <label className="am-modal-field">
+                  <span className="am-modal-label">What documents are needed?</span>
+                  <textarea className="am-input" rows={4} value={docNotesText} onChange={(e) => setDocNotesText(e.target.value)} placeholder="List IDs, medical records, etc." />
+                </label>
+              )}
+              {docNotesRow._markDocsComplete && (
+                <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+                  Confirm all required documents are on file for <strong>{docNotesRow.patientName}</strong> before accepting admission.
+                </p>
+              )}
+            </div>
+            <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="db-action-btn" onClick={() => setDocNotesRow(null)}>Cancel</button>
+              <button type="button" className="db-edit-btn" onClick={() => void saveDocumentReview()}>Save</button>
             </div>
           </div>
         </div>

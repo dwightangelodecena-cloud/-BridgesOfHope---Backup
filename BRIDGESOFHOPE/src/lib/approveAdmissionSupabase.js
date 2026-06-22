@@ -70,7 +70,7 @@ export async function approveAdmissionInDatabase(req) {
     .from('admission_requests')
     .update(admissionPatch)
     .eq('id', admissionId)
-    .eq('status', 'pending')
+    .in('status', ['pending', 'processing', 'in_review'])
     .select('id');
 
   if (upErr) {
@@ -78,10 +78,23 @@ export async function approveAdmissionInDatabase(req) {
   }
 
   if (!admissionUpdated?.length) {
+    const st = String(dbAdmission?.status || '').toLowerCase();
+    if (st === 'in_review' && !dbAdmission?.documents_complete) {
+      return {
+        ok: false,
+        errorMessage: 'Cannot admit: required documents are not complete. Ask the family to upload missing files first.',
+      };
+    }
+    if ((st === 'processing' || st === 'pending') && !dbAdmission?.meeting_completed) {
+      return {
+        ok: false,
+        errorMessage: 'Cannot admit yet: schedule and complete the family meeting first.',
+      };
+    }
     return {
       ok: false,
       errorMessage:
-        'Could not approve: no pending row was updated. Often this means your login does not have staff rights (JWT missing account_type admin/nurse). In Supabase → Authentication → Users → your admin user → set User Metadata: { "account_type": "admin" }, then log out and log back in. Or the request was already approved.',
+        'Could not approve: no eligible row was updated. Often this means your login does not have staff rights (JWT missing account_type admin/nurse). In Supabase → Authentication → Users → your admin user → set User Metadata: { "account_type": "admin" }, then log out and log back in. Or the request was already approved.',
     };
   }
 

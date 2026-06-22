@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Home, TrendingUp, User, LogOut, MessageCircle, X, Send, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown, ClipboardList, BarChart3, Heart, Activity, AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, MessageCircle, X, Send, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown, ClipboardList, BookUser, Heart, Activity, AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
@@ -957,11 +957,11 @@ const HomeDashboard = () => {
             <span className="sidebar-label">Dashboard</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}>
-            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div>
+            <div className="sidebar-icon-wrap"><BookUser size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Resident Details</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div>
+            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Request Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
@@ -969,7 +969,7 @@ const HomeDashboard = () => {
             <span className="sidebar-label">Appointments</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
-            <div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE" /></div>
+            <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Reports</span>
           </div>
         </div>

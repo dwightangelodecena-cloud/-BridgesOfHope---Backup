@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Home, User, LogOut, Bell, CheckCircle2, CheckCircle, Mail, Phone, Calendar, ClipboardList, MapPin, Building2, Hash, BarChart3, TrendingUp } from 'lucide-react';
+import { Home, User, LogOut, Bell, CheckCircle2, CheckCircle, Calendar, ClipboardList, BookUser, FileText, Paperclip, Upload } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -23,6 +23,8 @@ import {
   insertAdmissionRequest,
   patchAdmissionRequestGender,
 } from '@/lib/admissionRequestInsert';
+import { uploadAdmissionDocuments } from '@/lib/admissionDocumentUpload';
+import { admissionStatusLabel, parseAttachedFiles } from '@/lib/admissionWorkflow';
 
 const Progress = () => {
   const navigate = useNavigate();
@@ -40,13 +42,6 @@ const Progress = () => {
   useFamilyPatientProgressRealtime();
 
   const [admissionForm, setAdmissionForm] = useState({
-    fullName: '',
-    email: '',
-    phoneNumber: '',
-    province: '',
-    municipalityCity: '',
-    street: '',
-    barangay: '',
     patientLastName: '',
     patientFirstName: '',
     patientMiddleName: '',
@@ -55,6 +50,12 @@ const Progress = () => {
     reasonForAdmission: '',
     agreeToTerms: false,
   });
+  const [attachedFiles, setAttachedFiles] = useState([]);
+  const [submittedAdmissions, setSubmittedAdmissions] = useState([]);
+  const [guardianProfile, setGuardianProfile] = useState({ fullName: '', email: '', phone: '' });
+  const [supplementalUploadId, setSupplementalUploadId] = useState('');
+  const fileInputRef = useRef(null);
+  const supplementalFileRef = useRef(null);
   const [admissionErrors, setAdmissionErrors] = useState({});
 
   const [dischargeForm, setDischargeForm] = useState({
@@ -98,13 +99,6 @@ const Progress = () => {
   });
   const psgcStorageKey = getAddressStorageKey('request_management_admission');
   const admissionRequiredFields = [
-    { key: 'fullName', label: 'Full Name' },
-    { key: 'email', label: 'Email Address' },
-    { key: 'phoneNumber', label: 'Phone Number' },
-    { key: 'province', label: 'Province' },
-    { key: 'municipalityCity', label: 'Municipality/City' },
-    { key: 'barangay', label: 'Barangay' },
-    { key: 'street', label: 'Street' },
     { key: 'patientLastName', label: 'Resident Last Name' },
     { key: 'patientFirstName', label: 'Resident First Name' },
     { key: 'patientGender', label: 'Resident Gender' },
@@ -253,7 +247,36 @@ const Progress = () => {
     let isMounted = true;
     const loadUser = async () => {
       const { data } = await supabase.auth.getUser();
-      if (isMounted) setFamilyNotifUserId(data?.user?.id || '');
+      const user = data?.user;
+      if (!user) return;
+      if (isMounted) setFamilyNotifUserId(user.id || '');
+      const metaName =
+        user.user_metadata?.full_name
+        || [user.user_metadata?.first_name, user.user_metadata?.last_name].filter(Boolean).join(' ');
+      let fullName = metaName || '';
+      let phone = user.user_metadata?.contact_number || '';
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (profileRow?.full_name) fullName = profileRow.full_name;
+      if (profileRow?.phone) phone = profileRow.phone;
+      if (isMounted) {
+        setGuardianProfile({
+          fullName: fullName || 'Family User',
+          email: user.email || '',
+          phone: phone || '',
+        });
+      }
+      if (isSupabaseConfigured()) {
+        const { data: rows } = await supabase
+          .from('admission_requests')
+          .select('*')
+          .eq('family_id', user.id)
+          .order('created_at', { ascending: false });
+        if (isMounted) setSubmittedAdmissions(rows || []);
+      }
     };
     loadUser();
     return () => {
@@ -292,19 +315,12 @@ const Progress = () => {
 
   const validateAdmission = () => {
     const errs = {};
-    if (!admissionForm.fullName.trim()) errs.fullName = 'Full name is required.';
-    if (!admissionForm.email.trim()) errs.email = 'Email is required.';
-    else if (!/\S+@\S+\.\S+/.test(admissionForm.email)) errs.email = 'Invalid email format.';
-    if (!admissionForm.phoneNumber.trim()) errs.phoneNumber = 'Phone number is required.';
-    if (!admissionForm.province.trim()) errs.province = 'Province is required.';
-    if (!admissionForm.municipalityCity.trim()) errs.municipalityCity = 'Municipality/City is required.';
-    if (!admissionForm.street.trim()) errs.street = 'Street is required.';
-    if (!admissionForm.barangay.trim()) errs.barangay = 'Barangay is required.';
     if (!admissionForm.patientLastName.trim()) errs.patientLastName = 'Resident last name is required.';
     if (!admissionForm.patientFirstName.trim()) errs.patientFirstName = 'Resident first name is required.';
     if (!admissionForm.patientGender.trim()) errs.patientGender = 'Resident gender is required.';
     if (!admissionForm.patientBirthday) errs.patientBirthday = 'Resident birthday is required.';
     if (!admissionForm.reasonForAdmission) errs.reasonForAdmission = 'Please select a reason.';
+    if (!attachedFiles.length) errs.attachedFiles = 'Please attach at least one necessary document.';
     if (!admissionForm.agreeToTerms) errs.agreeToTerms = 'You must agree to the terms.';
     setAdmissionErrors(errs);
     return Object.keys(errs).length === 0;
@@ -347,15 +363,24 @@ const Progress = () => {
       return;
     }
     const genderValue = admissionForm.patientGender.trim();
+    const formSnapshot = {
+      patientLastName: admissionForm.patientLastName.trim(),
+      patientFirstName: admissionForm.patientFirstName.trim(),
+      patientMiddleName: admissionForm.patientMiddleName.trim(),
+      patientGender: genderValue,
+      patientBirthday: admissionForm.patientBirthday,
+      reasonForAdmission: admissionForm.reasonForAdmission,
+    };
+    const uploadResult = await uploadAdmissionDocuments(attachedFiles, user.id, 'pending');
+    if (!uploadResult.ok) {
+      setAdmissionErrors({ submit: uploadResult.errorMessage });
+      return;
+    }
     const extendedRow = {
       family_id: user.id,
-      guardian_full_name: admissionForm.fullName.trim(),
-      guardian_email: admissionForm.email.trim(),
-      guardian_phone: admissionForm.phoneNumber.trim(),
-      guardian_province: admissionForm.province.trim(),
-      guardian_municipality_city: admissionForm.municipalityCity.trim(),
-      guardian_street: admissionForm.street.trim(),
-      guardian_barangay: admissionForm.barangay.trim(),
+      guardian_full_name: guardianProfile.fullName.trim(),
+      guardian_email: guardianProfile.email.trim(),
+      guardian_phone: guardianProfile.phone.trim(),
       patient_name: getPatientFullName(),
       patient_last_name: admissionForm.patientLastName.trim(),
       patient_first_name: admissionForm.patientFirstName.trim(),
@@ -363,12 +388,15 @@ const Progress = () => {
       patient_gender: genderValue,
       patient_birth_date: admissionForm.patientBirthday,
       reason_for_admission: admissionForm.reasonForAdmission,
+      status: 'processing',
+      form_data: formSnapshot,
+      attached_files: uploadResult.files,
     };
     const coreRow = {
       family_id: user.id,
-      guardian_full_name: admissionForm.fullName.trim(),
-      guardian_email: admissionForm.email.trim(),
-      guardian_phone: admissionForm.phoneNumber.trim(),
+      guardian_full_name: guardianProfile.fullName.trim(),
+      guardian_email: guardianProfile.email.trim(),
+      guardian_phone: guardianProfile.phone.trim(),
       patient_name: getPatientFullName(),
       patient_last_name: admissionForm.patientLastName.trim(),
       patient_first_name: admissionForm.patientFirstName.trim(),
@@ -376,16 +404,18 @@ const Progress = () => {
       patient_gender: genderValue,
       patient_birth_date: admissionForm.patientBirthday,
       reason_for_admission: admissionForm.reasonForAdmission,
+      status: 'processing',
     };
     const minimalRow = {
       family_id: user.id,
-      guardian_full_name: admissionForm.fullName.trim(),
-      guardian_email: admissionForm.email.trim(),
-      guardian_phone: admissionForm.phoneNumber.trim(),
+      guardian_full_name: guardianProfile.fullName.trim(),
+      guardian_email: guardianProfile.email.trim(),
+      guardian_phone: guardianProfile.phone.trim(),
       patient_name: getPatientFullName(),
       patient_gender: genderValue,
       patient_birth_date: admissionForm.patientBirthday,
       reason_for_admission: admissionForm.reasonForAdmission,
+      status: 'processing',
     };
     const insertResult = await insertAdmissionRequest([extendedRow, coreRow, minimalRow]);
     if (!insertResult.ok) {
@@ -393,17 +423,25 @@ const Progress = () => {
       return;
     }
     await patchAdmissionRequestGender(insertResult.id, genderValue);
+    if (uploadResult.files.length) {
+      await supabase
+        .from('admission_requests')
+        .update({ attached_files: uploadResult.files, form_data: formSnapshot })
+        .eq('id', insertResult.id);
+    }
     await appendActivityFeed(`Admission request submitted for ${getPatientFullName()}. Pending admin review.`, { familyId: user.id });
     refreshAppData();
-    addProcessingNotification();
+    appendFamilyNotificationsIfNew(
+      [{ id: `adm-processing-${insertResult.id}`, text: `Admission request for ${getPatientFullName()} is being processed.` }],
+      user.id
+    );
+    const { data: rows } = await supabase
+      .from('admission_requests')
+      .select('*')
+      .eq('family_id', user.id)
+      .order('created_at', { ascending: false });
+    setSubmittedAdmissions(rows || []);
     setAdmissionForm({
-      fullName: '',
-      email: '',
-      phoneNumber: '',
-      province: '',
-      municipalityCity: '',
-      street: '',
-      barangay: '',
       patientLastName: '',
       patientFirstName: '',
       patientMiddleName: '',
@@ -412,7 +450,36 @@ const Progress = () => {
       reasonForAdmission: '',
       agreeToTerms: false,
     });
+    setAttachedFiles([]);
     setSuccessModal({ open: true, message: 'Admission request submitted successfully.' });
+  };
+
+  const uploadSupplementalDocuments = async (requestId) => {
+    const input = supplementalFileRef.current;
+    const files = input?.files;
+    if (!requestId || !files?.length) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const uploadResult = await uploadAdmissionDocuments(Array.from(files), user.id, requestId);
+    if (!uploadResult.ok) {
+      setAdmissionErrors({ submit: uploadResult.errorMessage });
+      return;
+    }
+    const existing = submittedAdmissions.find((r) => r.id === requestId);
+    const merged = [...parseAttachedFiles(existing?.attached_files), ...uploadResult.files];
+    await supabase.from('admission_requests').update({ attached_files: merged }).eq('id', requestId);
+    const { data: rows } = await supabase
+      .from('admission_requests')
+      .select('*')
+      .eq('family_id', user.id)
+      .order('created_at', { ascending: false });
+    setSubmittedAdmissions(rows || []);
+    setSupplementalUploadId('');
+    if (input) input.value = '';
+    appendFamilyNotificationsIfNew(
+      [{ id: `adm-docs-${requestId}-${Date.now()}`, text: 'Additional documents uploaded for your admission request.' }],
+      user.id
+    );
   };
 
   const submitDischarge = async () => {
@@ -789,17 +856,17 @@ const Progress = () => {
             <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}>
-            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Patient Details</span>
+            <div className="sidebar-icon-wrap"><BookUser size={22} color="#707EAE" /></div><span className="sidebar-label">Resident Details</span>
           </div>
           <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
+            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
             <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Appointments</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
-            <div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE" /></div>
+            <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Reports</span>
           </div>
         </div>
@@ -826,7 +893,7 @@ const Progress = () => {
                   <div className="section-title-row">
                     <div>
                       <div className="section-title-main">Admission Request Form</div>
-                      <div className="section-title-sub">Provide guardian and patient details for review.</div>
+                      <div className="section-title-sub">Patient details only — your profile is used for guardian contact.</div>
                     </div>
                     <div className="status-pill"><CheckCircle size={13} /> Admin review required</div>
                   </div>
@@ -868,102 +935,44 @@ const Progress = () => {
                     ))}
                   </div>
                   <div className="form-grid">
-                    <div className="field">
-                      <label>Full Name *</label>
-                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="fullName" placeholder="Your full name" value={admissionForm.fullName} onChange={handleAdmissionChange} /></div>
-                      {admissionErrors.fullName && <div className="error">{admissionErrors.fullName}</div>}
-                    </div>
-                    <div className="field">
-                      <label>Email Address *</label>
-                      <div className="input-wrapper"><Mail className="input-icon" size={18} /><input name="email" type="email" placeholder="Email address" value={admissionForm.email} onChange={handleAdmissionChange} /></div>
-                      {admissionErrors.email && <div className="error">{admissionErrors.email}</div>}
-                    </div>
-                    <div className="field">
-                      <label>Phone Number *</label>
-                      <div className="input-wrapper"><Phone className="input-icon" size={18} /><input name="phoneNumber" placeholder="Contact number" value={admissionForm.phoneNumber} onChange={handleAdmissionChange} /></div>
-                      {admissionErrors.phoneNumber && <div className="error">{admissionErrors.phoneNumber}</div>}
-                    </div>
-
                     <div className="field full">
-                      <AddressFormSection
-                        title="Guardian Address"
-                        fetchError={fetchError}
-                        onDismissError={() => setFetchError('')}
-                        restoredHint={addressRestored ? 'We restored your last address on this device. Review before submitting.' : null}
-                      >
-                        <PsgcSearchableSelect
-                          label="Province"
-                          Icon={MapPin}
-                          options={provinceOptions}
-                          valueName={admissionForm.province}
-                          onSelect={(opt) => {
-                            void onProvinceSelected(opt, setAdmissionForm);
-                            if (admissionErrors.province) setAdmissionErrors((prev) => ({ ...prev, province: '' }));
+                      <label>Attach Necessary Files *</label>
+                      <div style={{ border: '1px dashed #CBD5E1', borderRadius: 12, padding: 14, background: '#F8FAFF' }}>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files || []);
+                            setAttachedFiles(files);
+                            if (admissionErrors.attachedFiles) {
+                              setAdmissionErrors((prev) => ({ ...prev, attachedFiles: '' }));
+                            }
                           }}
-                          onClear={() => {
-                            onProvinceCleared(setAdmissionForm);
-                            setAdmissionErrors((prev) => ({ ...prev, province: '', municipalityCity: '', barangay: '', street: '' }));
-                          }}
-                          disabled={loadingProvinces}
-                          loading={loadingProvinces}
-                          hasError={!!admissionErrors.province}
-                          errorText={admissionErrors.province || ''}
-                          placeholder={loadingProvinces ? 'Loading provinces…' : 'Choose Province'}
-                          emptyText="No province matched. Try another spelling."
                         />
-                        <PsgcSearchableSelect
-                          label="City / Municipality"
-                          Icon={Building2}
-                          options={cityOptions}
-                          valueName={admissionForm.municipalityCity}
-                          onSelect={(opt) => {
-                            void onCitySelected(opt, setAdmissionForm);
-                            if (admissionErrors.municipalityCity) setAdmissionErrors((prev) => ({ ...prev, municipalityCity: '' }));
-                          }}
-                          onClear={() => {
-                            onCityCleared(setAdmissionForm);
-                            setAdmissionErrors((prev) => ({ ...prev, municipalityCity: '', barangay: '' }));
-                          }}
-                          disabled={!admissionForm.province.trim() || loadingCities}
-                          loading={loadingCities}
-                          hasError={!!admissionErrors.municipalityCity}
-                          errorText={admissionErrors.municipalityCity || ''}
-                          placeholder={!admissionForm.province.trim() ? 'Choose Province First' : loadingCities ? 'Loading cities…' : 'Choose City / Municipality'}
-                          emptyText={loadingCities ? 'Loading…' : 'No match in this province.'}
-                        />
-                        <div className="addr-sec__full">
-                          <PsgcSearchableSelect
-                            label="Barangay"
-                            Icon={Hash}
-                            options={barangayOptions}
-                            valueName={admissionForm.barangay}
-                            onSelect={(opt) => {
-                              onBarangaySelected(opt, setAdmissionForm);
-                              if (admissionErrors.barangay) setAdmissionErrors((prev) => ({ ...prev, barangay: '' }));
-                            }}
-                            onClear={() => {
-                              onBarangayCleared(setAdmissionForm);
-                              setAdmissionErrors((prev) => ({ ...prev, barangay: '' }));
-                            }}
-                            disabled={!admissionForm.municipalityCity.trim() || loadingBarangays}
-                            loading={loadingBarangays}
-                            hasError={!!admissionErrors.barangay}
-                            errorText={admissionErrors.barangay || ''}
-                            placeholder={!admissionForm.municipalityCity.trim() ? 'Choose City First' : loadingBarangays ? 'Loading barangays…' : 'Choose Barangay'}
-                            emptyText={loadingBarangays ? 'Loading…' : 'No barangay matched.'}
-                          />
-                        </div>
-                        <div className="addr-sec__full">
-                          <StreetAddressInput
-                            label="Street / Building Line"
-                            description="Block, lot, street, building, or subdivision (not in the lists above)."
-                            placeholder="Enter block, lot, street, or building (e.g. Blk 2 Lot 15)"
-                            value={admissionForm.street}
-                            onChange={handleAdmissionChange}
-                            errorText={admissionErrors.street || ''}
-                          />
-                        </div>
-                      </AddressFormSection>
+                        <button
+                          type="button"
+                          className="primary-btn"
+                          style={{ width: 'auto', padding: '10px 16px', margin: 0, boxShadow: 'none' }}
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Upload size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                          Choose files
+                        </button>
+                        {attachedFiles.length > 0 && (
+                          <ul style={{ margin: '10px 0 0', paddingLeft: 18, fontSize: '0.82rem', color: '#475569' }}>
+                            {attachedFiles.map((f) => (
+                              <li key={`${f.name}-${f.size}`}><Paperclip size={12} style={{ display: 'inline', marginRight: 4 }} />{f.name}</li>
+                            ))}
+                          </ul>
+                        )}
+                        <p style={{ margin: '8px 0 0', fontSize: '0.78rem', color: '#94a3b8' }}>
+                          Upload IDs, medical records, or other required documents (PDF, images, Word — max 10 MB each).
+                        </p>
+                      </div>
+                      {admissionErrors.attachedFiles && <div className="error">{admissionErrors.attachedFiles}</div>}
                     </div>
 
                     <div className="field">
@@ -1049,6 +1058,74 @@ const Progress = () => {
                     {admissionErrors.agreeToTerms && <div className="error full">{admissionErrors.agreeToTerms}</div>}
                     {admissionErrors.submit && <div className="error full">{admissionErrors.submit}</div>}
                   </div>
+
+                  {submittedAdmissions.length > 0 && (
+                    <div className="meta-card" style={{ marginTop: 16 }}>
+                      <div style={{ fontWeight: 800, color: '#1B2559', marginBottom: 10 }}>Submitted Admission Requests</div>
+                      {submittedAdmissions.map((row) => {
+                        const formData = row.form_data || {};
+                        const files = parseAttachedFiles(row.attached_files);
+                        const st = admissionStatusLabel(row.status);
+                        const inReview = String(row.status).toLowerCase() === 'in_review';
+                        return (
+                          <div key={row.id} style={{ border: '1px solid #E9EDF7', borderRadius: 12, padding: 12, marginBottom: 10, background: '#fff' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                              <strong style={{ color: '#1B2559' }}>{row.patient_name}</strong>
+                              <span className="status-pill">{st}</span>
+                            </div>
+                            {row.meeting_date && (
+                              <p style={{ fontSize: '0.8rem', color: '#92400e', marginBottom: 6 }}>
+                                Meeting with BOH: {row.meeting_date}{row.meeting_time ? ` at ${row.meeting_time}` : ''}
+                              </p>
+                            )}
+                            {row.required_document_notes && inReview && (
+                              <p style={{ fontSize: '0.8rem', color: '#b45309', marginBottom: 6 }}>
+                                Required: {row.required_document_notes}
+                              </p>
+                            )}
+                            <div style={{ fontSize: '0.8rem', color: '#475569', lineHeight: 1.5 }}>
+                              <div>Reason: {formData.reasonForAdmission || row.reason_for_admission}</div>
+                              <div>Gender: {formData.patientGender || row.patient_gender || '—'}</div>
+                              <div>Birthday: {formData.patientBirthday || row.patient_birth_date || '—'}</div>
+                            </div>
+                            {files.length > 0 && (
+                              <div style={{ marginTop: 8, fontSize: '0.78rem' }}>
+                                <strong>Attached files:</strong>
+                                <ul style={{ margin: '4px 0 0', paddingLeft: 16 }}>
+                                  {files.map((f) => (
+                                    <li key={f.path || f.name}>{f.name}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {inReview && !row.documents_complete && (
+                              <div style={{ marginTop: 10 }}>
+                                <input
+                                  ref={supplementalUploadId === row.id ? supplementalFileRef : null}
+                                  type="file"
+                                  multiple
+                                  accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                                  style={{ display: 'none' }}
+                                  onChange={() => void uploadSupplementalDocuments(row.id)}
+                                />
+                                <button
+                                  type="button"
+                                  className="primary-btn"
+                                  style={{ width: 'auto', padding: '8px 14px', fontSize: '0.82rem', boxShadow: 'none' }}
+                                  onClick={() => {
+                                    setSupplementalUploadId(row.id);
+                                    setTimeout(() => supplementalFileRef.current?.click(), 0);
+                                  }}
+                                >
+                                  Upload missing documents
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1130,6 +1207,7 @@ const Progress = () => {
 
         <nav className="mobile-bottom-nav">
           <Home size={24} color="#A3AED0" onClick={() => navigate('/home')} />
+          <BookUser size={24} color="#A3AED0" onClick={() => navigate('/patient-details')} />
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} onClick={() => navigate('/progress')}>
             <ClipboardList size={24} color="#F54E25" />
             <span style={{ fontSize: '10px', fontWeight: 700, color: '#F54E25' }}>Requests</span>
@@ -1148,7 +1226,7 @@ const Progress = () => {
             onClick={() => navigate('/reports')}
             style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
-            <BarChart3 size={24} color="#A3AED0" />
+            <FileText size={24} color="#A3AED0" />
           </button>
           <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
           <LogOut size={24} color="#A3AED0" onClick={() => navigate('/login')} />

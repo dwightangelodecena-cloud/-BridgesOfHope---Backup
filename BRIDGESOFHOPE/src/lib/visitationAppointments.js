@@ -286,6 +286,7 @@ export function createVisitationRequest(payload) {
     patientName: payload.patientName || '',
     preferredDate: payload.preferredDate || '',
     preferredTime: payload.preferredTime || '',
+    appointmentReason: payload.appointmentReason || '',
     note: payload.note || '',
     status: 'Requested',
     confirmedDate: '',

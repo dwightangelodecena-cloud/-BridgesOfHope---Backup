@@ -1,11 +1,16 @@
 import { computeTotalServiceCostPhp } from '@/lib/servicePricing';
 import { formatRoomAssignmentSummary, resolveDisplayGender } from '@/lib/residentPlacement';
+import { admissionStatusLabel } from '@/lib/admissionWorkflow';
 
 const WORKFLOW_KEY = 'bh_admission_workflow_overrides_v1';
 const DISCHARGE_KEY = 'bh_discharge_management_records_v1';
 const ACTIVITY_KEY = 'bh_admission_mgmt_activity_v1';
 
 export const ADMISSION_WORKFLOW_STATUSES = [
+  'Processing',
+  'In Review',
+  'Accepted',
+  'Rejected',
   'Pending',
   'Approved',
   'Ongoing',
@@ -228,14 +233,15 @@ export function findAdmissionForPatient(patientRow, admissionRows) {
  */
 export function deriveWorkflowStatusFromDb(admissionRow, patientRow) {
   const st = String(admissionRow?.status || '').toLowerCase();
-  if (st === 'declined') return 'Cancelled';
-  if (st === 'pending') return 'Pending';
-  if (st === 'approved') {
+  if (st === 'declined' || st === 'rejected') return 'Rejected';
+  if (st === 'processing' || st === 'pending') return 'Processing';
+  if (st === 'in_review') return 'In Review';
+  if (st === 'approved' || st === 'accepted') {
     if (patientRow && !patientRow.discharged_at) return 'Ongoing';
     if (patientRow?.discharged_at) return 'Completed';
-    return 'Approved';
+    return 'Accepted';
   }
-  return 'Pending';
+  return admissionStatusLabel(st);
 }
 
 /** Stable 6-digit tracking suffix derived from UUID (same request always maps to same digits). */
@@ -345,6 +351,14 @@ export function buildAdmissionRow(admissionRow, patientRow, override) {
     riskLevel: patientRow?.risk_level || '',
     bunkLevel: patientRow?.bunk_level || '',
     dbStatus: admissionRow.status,
+    formData: admissionRow.form_data || null,
+    attachedFiles: Array.isArray(admissionRow.attached_files) ? admissionRow.attached_files : [],
+    meetingDate: admissionRow.meeting_date || null,
+    meetingTime: admissionRow.meeting_time || null,
+    meetingScheduledAt: admissionRow.meeting_scheduled_at || null,
+    meetingCompleted: Boolean(admissionRow.meeting_completed),
+    documentsComplete: Boolean(admissionRow.documents_complete),
+    requiredDocumentNotes: admissionRow.required_document_notes || '',
     archived: Boolean(o.archived),
     rawAdmission: admissionRow,
     rawPatient: patientRow || null,

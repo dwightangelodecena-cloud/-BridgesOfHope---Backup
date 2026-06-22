@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, TrendingUp, User, LogOut, Pencil, X, ChevronRight, Calendar, ClipboardList, BarChart3, Bell, CheckCircle2 } from 'lucide-react';
+import { Home, User, LogOut, Pencil, X, ChevronRight, Calendar, BookUser, ClipboardList, FileText, Bell, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAsyncData } from '@/hooks/useAsyncData';
@@ -94,7 +94,27 @@ const Profile = () => {
     setIsEditingProfile(false);
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
+    setSaveNotice('');
+    const payload = {
+      full_name: draftProfile.fullName?.trim() || 'Family User',
+      phone: draftProfile.phone?.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.id) {
+      const { error } = await supabase.from('profiles').update(payload).eq('id', user.id);
+      if (error) {
+        setSaveNotice(`Could not save profile: ${error.message}`);
+        return;
+      }
+      await supabase.auth.updateUser({
+        data: {
+          full_name: payload.full_name,
+          contact_number: payload.phone,
+        },
+      });
+    }
     setProfileForm(draftProfile);
     localStorage.setItem('bh_family_profile', JSON.stringify(draftProfile));
     setIsEditingProfile(false);
@@ -838,12 +858,12 @@ const Profile = () => {
           </div>
 
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}>
-            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div>
-            <span className="sidebar-label">Patient Details</span>
+            <div className="sidebar-icon-wrap"><BookUser size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Resident Details</span>
           </div>
 
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-            <div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE" /></div>
+            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Request Management</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
@@ -851,7 +871,7 @@ const Profile = () => {
             <span className="sidebar-label">Appointments</span>
           </div>
           <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
-            <div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE" /></div>
+            <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Reports</span>
           </div>
         </div>
@@ -1042,8 +1062,8 @@ const Profile = () => {
         {/* MOBILE BOTTOM NAV — exact copy from home.jsx */}
         <div className="mobile-only mobile-bottom-nav">
           <Home size={24} color="#A3AED0" onClick={() => navigate('/home')} />
-          <TrendingUp size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
-          <BarChart3 size={24} color="#A3AED0" onClick={() => navigate('/reports')} />
+          <ClipboardList size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
+          <FileText size={24} color="#A3AED0" onClick={() => navigate('/reports')} />
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} onClick={() => navigate('/profile')}>
             <User size={24} color="#F54E25" />
             <span style={{ fontSize: '10px', fontWeight: 700, color: '#F54E25' }}>Profile</span>

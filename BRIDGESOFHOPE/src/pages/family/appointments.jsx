@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Home, LogOut, Calendar, ClipboardList, BarChart3, TrendingUp,
+  Home, LogOut, Calendar, BookUser, ClipboardList, FileText,
   Bell, CheckCircle2, Clock, AlertCircle, ArrowLeft, ArrowRight,
   Info, Shield
 } from 'lucide-react';
@@ -22,6 +22,7 @@ import {
   formatVisitationWeekdayShort,
   replaceFamilyVisitationFromRemote,
 } from '@/lib/visitationAppointments';
+import { isPastIsoDate } from '@/lib/bookingDates';
 
 /* ── unchanged pure helpers ── */
 function dedupeVisitationRequests(rows) {
@@ -70,7 +71,7 @@ export default function FamilyAppointmentsPage() {
   const [requests, setRequests] = useState([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  const [form, setForm] = useState({ patientId:'', patientName:'', preferredDate:'', preferredTime:'', note:'' });
+  const [form, setForm] = useState({ patientId:'', patientName:'', preferredDate:'', preferredTime:'', appointmentReason:'', note:'' });
 
   const WEEKDAY_TO_INDEX = { sunday:0,sun:0,monday:1,mon:1,tuesday:2,tue:2,tues:2,wednesday:3,wed:3,thursday:4,thu:4,thurs:4,friday:5,fri:5,saturday:6,sat:6 };
 
@@ -121,19 +122,21 @@ export default function FamilyAppointmentsPage() {
 
   const submitRequest = () => {
     if (!form.patientName||!form.preferredDate||!form.preferredTime) { setFormError('Please select patient, date, and time before requesting.'); return; }
+    if (!String(form.appointmentReason || '').trim()) { setFormError('Please enter a reason for this appointment.'); return; }
+    if (isPastIsoDate(form.preferredDate)) { setFormError('You cannot book appointments on past dates.'); return; }
     const selectedDate = new Date(`${form.preferredDate}T00:00:00`);
     const dateKey = form.preferredDate.slice(5);
     if ((!allowedWeekdays.length||!allowedWeekdays.includes(selectedDate.getDay()))||HOLIDAY_LABELS[dateKey]) { setFormError('Please choose an available date based on the admin schedule.'); return; }
     if (!timeSlots.includes(form.preferredTime)) { setFormError('Please choose an available time based on the admin schedule.'); return; }
     setFormError(''); setSaving(true);
     try {
-      const created = createVisitationRequest({ familyId:familyUserId||'local-family', familyName, patientId:form.patientId, patientName:form.patientName, preferredDate:form.preferredDate, preferredTime:form.preferredTime, note:form.note });
+      const created = createVisitationRequest({ familyId:familyUserId||'local-family', familyName, patientId:form.patientId, patientName:form.patientName, preferredDate:form.preferredDate, preferredTime:form.preferredTime, appointmentReason:form.appointmentReason.trim(), note:form.note });
       if (isSupabaseConfigured()) {
         const looksUuid = v => typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
         const requestId = typeof globalThis.crypto?.randomUUID==='function' ? globalThis.crypto.randomUUID() : created.id;
-        void supabase.from('visitation_requests').insert({ id:requestId, family_id:looksUuid(created.familyId)?created.familyId:null, family_name:created.familyName||null, patient_id:looksUuid(created.patientId)?created.patientId:null, patient_name:created.patientName||null, preferred_date:created.preferredDate||null, preferred_time:created.preferredTime||null, note:created.note||null, status:created.status||'Requested', confirmed_date:null, confirmed_time:null, admin_note:null }).select('*').single().then(({data,error})=>{ if(error){console.warn('[insert]',error.message);setFormError(`Saved locally only: ${error.message}`);return;} if(!data)return; upsertVisitationRequest({id:data.id,familyId:data.family_id||'',familyName:data.family_name||'',patientId:data.patient_id||'',patientName:data.patient_name||'',preferredDate:data.preferred_date||'',preferredTime:data.preferred_time||'',note:data.note||'',status:normalizeVisitationStatus(data.status),confirmedDate:data.confirmed_date||'',confirmedTime:data.confirmed_time||'',adminNote:data.admin_note||'',createdAt:data.created_at||'',updatedAt:data.updated_at||''},{dropLocalIds:[created.id]}); window.dispatchEvent(new Event('storage')); window.dispatchEvent(new Event(APP_DATA_REFRESH)); });
+        void supabase.from('visitation_requests').insert({ id:requestId, family_id:looksUuid(created.familyId)?created.familyId:null, family_name:created.familyName||null, patient_id:looksUuid(created.patientId)?created.patientId:null, patient_name:created.patientName||null, preferred_date:created.preferredDate||null, preferred_time:created.preferredTime||null, appointment_reason:created.appointmentReason||null, note:created.note||null, status:created.status||'Requested', confirmed_date:null, confirmed_time:null, admin_note:null }).select('*').single().then(({data,error})=>{ if(error){console.warn('[insert]',error.message);setFormError(`Saved locally only: ${error.message}`);return;} if(!data)return; upsertVisitationRequest({id:data.id,familyId:data.family_id||'',familyName:data.family_name||'',patientId:data.patient_id||'',patientName:data.patient_name||'',preferredDate:data.preferred_date||'',preferredTime:data.preferred_time||'',appointmentReason:data.appointment_reason||'',note:data.note||'',status:normalizeVisitationStatus(data.status),confirmedDate:data.confirmed_date||'',confirmedTime:data.confirmed_time||'',adminNote:data.admin_note||'',createdAt:data.created_at||'',updatedAt:data.updated_at||''},{dropLocalIds:[created.id]}); window.dispatchEvent(new Event('storage')); window.dispatchEvent(new Event(APP_DATA_REFRESH)); });
       }
-      setForm({patientId:'',patientName:'',preferredDate:'',preferredTime:'',note:''});
+      setForm({patientId:'',patientName:'',preferredDate:'',preferredTime:'',appointmentReason:'',note:''});
       setRequests(listVisitationRequestsByFamily(familyUserId||'local-family'));
       window.dispatchEvent(new Event('storage')); window.dispatchEvent(new Event(APP_DATA_REFRESH));
     } finally { setSaving(false); }
@@ -149,7 +152,7 @@ export default function FamilyAppointmentsPage() {
   const HOLIDAY_LABELS={'01-01':"New Year's Day",'04-09':'Araw ng Kagitingan','06-12':'Independence Day','08-21':'Ninoy Aquino Day','11-01':"All Saints' Day",'11-30':'Bonifacio Day','12-25':'Christmas Day','12-30':'Rizal Day'};
   const allowedWeekdays=(visitationSettings.days||[]).map(d=>WEEKDAY_TO_INDEX[String(d||'').trim().toLowerCase()]).filter(v=>Number.isInteger(v));
   const timeSlots=(()=>{ const [sh='13',sm='00']=String(visitationSettings.startTime||'13:00').split(':'); const [eh='17',em='00']=String(visitationSettings.endTime||'17:00').split(':'); const sMin=Number(sh)*60+Number(sm),eMin=Number(eh)*60+Number(em); if(!Number.isFinite(sMin)||!Number.isFinite(eMin)||eMin<=sMin)return[]; const sl=[]; for(let m=sMin;m<=eMin;m+=30){sl.push(`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`);} return sl; })();
-  const isBookableDate = cell => { if(!cell)return false; const mmdd=cell.iso.slice(5); if(HOLIDAY_LABELS[mmdd])return false; if(!allowedWeekdays.length)return true; return allowedWeekdays.includes(cell.dayOfWeek); };
+  const isBookableDate = cell => { if(!cell)return false; if(isPastIsoDate(cell.iso))return false; const mmdd=cell.iso.slice(5); if(HOLIDAY_LABELS[mmdd])return false; if(!allowedWeekdays.length)return true; return allowedWeekdays.includes(cell.dayOfWeek); };
 
   useEffect(()=>{ if(!timeSlots.length){if(form.preferredTime)setForm(p=>({...p,preferredTime:''}));return;} if(!form.preferredTime||!timeSlots.includes(form.preferredTime))setForm(p=>({...p,preferredTime:timeSlots[0]})); },[visitationSettings.startTime,visitationSettings.endTime]); // eslint-disable-line
 
@@ -216,10 +219,10 @@ export default function FamilyAppointmentsPage() {
         <div className="sidebar-logo-container"><img src={logo} alt="Kalinga" className="sidebar-logo"/></div>
         <div className="sidebar-primary">
           <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/home');}}><div className="sidebar-icon-wrap"><Home size={22} color="#707EAE"/></div><span className="sidebar-label">Dashboard</span></div>
-          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/patient-details');}}><div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE"/></div><span className="sidebar-label">Patient Details</span></div>
-          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/progress');}}><div className="sidebar-icon-wrap"><TrendingUp size={22} color="#707EAE"/></div><span className="sidebar-label">Request Management</span></div>
+          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/patient-details');}}><div className="sidebar-icon-wrap"><BookUser size={22} color="#707EAE"/></div><span className="sidebar-label">Resident Details</span></div>
+          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/progress');}}><div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE"/></div><span className="sidebar-label">Request Management</span></div>
           <div className="sidebar-nav-item sidebar-nav-active" onClick={e=>e.stopPropagation()}><div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE"/></div><span className="sidebar-label">Appointments</span></div>
-          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/reports');}}><div className="sidebar-icon-wrap"><BarChart3 size={22} color="#707EAE"/></div><span className="sidebar-label">Reports</span></div>
+          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/reports');}}><div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE"/></div><span className="sidebar-label">Reports</span></div>
         </div>
         <div className="sidebar-footer">
           <FamilySidebarProfileNav isExpanded={isExpanded} />
@@ -281,6 +284,10 @@ export default function FamilyAppointmentsPage() {
 
                 {/* Form fields */}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:14}}>
+                  <div style={{gridColumn:'1 / -1'}}>
+                    <label style={{fontSize:10,fontWeight:700,color:'#94A3B8',textTransform:'uppercase',letterSpacing:'.07em',display:'block',marginBottom:6}}>Reason for Appointment *</label>
+                    <input className="fi" type="text" value={form.appointmentReason} onChange={e=>setForm(p=>({...p,appointmentReason:e.target.value}))} placeholder="e.g. Family visit, follow-up discussion…"/>
+                  </div>
                   <div>
                     <label style={{fontSize:10,fontWeight:700,color:'#94A3B8',textTransform:'uppercase',letterSpacing:'.07em',display:'block',marginBottom:6}}>Resident</label>
                     <select className="fi" value={form.patientId} onChange={e=>{const s=patients.find(p=>String(p.id)===String(e.target.value));setForm(p=>({...p,patientId:e.target.value,patientName:s?.name||''}));}}>

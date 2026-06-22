@@ -74,12 +74,24 @@ function visitSignature(row) {
   ].join('|');
 }
 
-function describeAdmission(name, status) {
+function describeAdmission(name, status, row) {
   const st = normStatus(status);
   const who = name ? ` for ${name}` : '';
-  if (st === 'approved') return `Admission request${who}: approved by the facility.`;
-  if (st === 'declined' || st === 'rejected') return `Admission request${who}: declined by the facility.`;
-  if (st === 'pending') return `Admission request${who}: received and pending admin review.`;
+  if (st === 'approved' || st === 'accepted') return `Admission request${who}: accepted by the facility.`;
+  if (st === 'declined' || st === 'rejected') return `Admission request${who}: rejected by the facility.`;
+  if (st === 'in_review') {
+    const notes = String(row?.required_document_notes || '').trim();
+    return notes
+      ? `Admission request${who}: in review — please upload required documents (${notes}).`
+      : `Admission request${who}: in review — please complete required documents.`;
+  }
+  if (st === 'processing' || st === 'pending') {
+    if (row?.meeting_date) {
+      const when = [row.meeting_date, row.meeting_time].filter(Boolean).join(' at ');
+      return `Admission request${who}: meeting scheduled with Bridges of Hope on ${when}.`;
+    }
+    return `Admission request${who}: received and is being processed.`;
+  }
   return `Admission request${who}: status updated to ${String(status || 'Updated').trim()}.`;
 }
 
@@ -175,12 +187,12 @@ async function runFamilyNotificationSyncInner(userId) {
     if (prev === undefined) {
       toAdd.push({
         id: `auto-admission-${id}-${sig}`,
-        text: describeAdmission(row.patient_name, row.status),
+        text: describeAdmission(row.patient_name, row.status, row),
       });
     } else if (prev !== sig) {
       toAdd.push({
         id: `auto-admission-${id}-${sig}`,
-        text: describeAdmission(row.patient_name, row.status),
+        text: describeAdmission(row.patient_name, row.status, row),
       });
     }
     next.admission[id] = sig;

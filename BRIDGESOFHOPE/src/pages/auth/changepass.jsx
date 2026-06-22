@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Mail, X, CheckCircle, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { formatAuthError } from '@/lib/authErrors';
 
 const ChangePass = () => {
   const navigate = useNavigate();
@@ -9,6 +11,7 @@ const ChangePass = () => {
   const [formData, setFormData] = useState({ email: '' });
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const isValidEmail = /\S+@\S+\.\S+/.test(formData.email);
 
@@ -18,6 +21,7 @@ const ChangePass = () => {
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
+    if (formError) setFormError('');
   };
 
   const validateForm = () => {
@@ -28,14 +32,38 @@ const ChangePass = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      setIsLoading(true);
-      setTimeout(() => {
-        setIsLoading(false);
-        navigate('/verify', { state: { from: 'changepass' } });
-      }, 800);
+    setFormError('');
+    if (!validateForm()) return;
+
+    if (!isSupabaseConfigured()) {
+      setFormError('Password reset is unavailable: Supabase is not configured.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const email = formData.email.trim().toLowerCase();
+      const redirectTo = `${window.location.origin}/newpass`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) {
+        const otpFallback = await supabase.auth.signInWithOtp({
+          email,
+          options: { shouldCreateUser: false },
+        });
+        if (otpFallback.error) {
+          setFormError(formatAuthError(error));
+          return;
+        }
+        localStorage.setItem('bh_recovery_email', email);
+        navigate('/verify', { state: { from: 'changepass', email } });
+        return;
+      }
+      localStorage.setItem('bh_recovery_email', email);
+      navigate('/verify', { state: { from: 'changepass', email } });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -272,7 +300,7 @@ const ChangePass = () => {
             </div>
 
             <h2 className="card-title">Change Password</h2>
-            <p className="card-subtitle">Enter your email address and we'll send you a verification code</p>
+            <p className="card-subtitle">Enter your email address and we'll send you a verification link or code</p>
 
             <form onSubmit={handleSubmit}>
               <div className="form-group">
@@ -299,6 +327,12 @@ const ChangePass = () => {
                   </div>
                 )}
               </div>
+
+              {formError && (
+                <div className="error-message" style={{ justifyContent: 'center', marginBottom: 12 }}>
+                  {formError}
+                </div>
+              )}
 
               <button type="submit" className="btn-primary" disabled={isLoading}>
                 {isLoading ? (

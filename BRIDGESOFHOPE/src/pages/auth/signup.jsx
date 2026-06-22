@@ -14,11 +14,17 @@ import {
   clearAddressDraft,
 } from '@/lib/addressPersistence';
 import { getPasswordStrengthChecks, getPasswordPolicyError, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
-import { PRIVACY_POLICY, TERMS_OF_USE } from '@/lib/legalDocuments';
+import { PRIVACY_POLICY, TERMS_OF_USE, SIGNUP_CONSENT_STORAGE_KEY } from '@/lib/legalDocuments';
 import LegalDocumentModal from '@/components/auth/LegalDocumentModal';
 
 const SignUp = () => {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!sessionStorage.getItem(SIGNUP_CONSENT_STORAGE_KEY)) {
+      navigate('/consent', { replace: true });
+    }
+  }, [navigate]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [legalModal, setLegalModal] = useState(null);
