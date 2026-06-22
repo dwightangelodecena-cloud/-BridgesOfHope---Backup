@@ -21,6 +21,10 @@ import {
 } from '@/lib/admissionRequestInsert';
 import { uploadAdmissionDocuments } from '@/lib/admissionDocumentUpload';
 import { admissionStatusLabel, parseAttachedFiles } from '@/lib/admissionWorkflow';
+import {
+  fetchFamilyAdmissionRequests,
+  visibleFamilyAdmissionRequests,
+} from '@/lib/familyAdmissionRequests';
 
 const Progress = () => {
   const navigate = useNavigate();
@@ -48,6 +52,7 @@ const Progress = () => {
   });
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [submittedAdmissions, setSubmittedAdmissions] = useState([]);
+  const [familyUserId, setFamilyUserId] = useState('');
   const [guardianProfile, setGuardianProfile] = useState({ fullName: '', email: '', phone: '' });
   const [supplementalUploadId, setSupplementalUploadId] = useState('');
   const fileInputRef = useRef(null);
@@ -79,6 +84,7 @@ const Progress = () => {
   const admissionCompletedFields = admissionRequiredFields.filter((field) => String(admissionForm[field.key]).trim()).length;
   const admissionProgressPercent = Math.round((admissionCompletedFields / admissionRequiredFields.length) * 100);
   const selectedPatient = patients.find((p) => String(p.id) === String(selectedPatientId));
+  const visibleSubmittedAdmissions = visibleFamilyAdmissionRequests(submittedAdmissions, familyUserId);
 
   const getPatientFullName = (form = admissionForm) =>
     [form.patientFirstName, form.patientMiddleName, form.patientLastName]
@@ -132,12 +138,20 @@ const Progress = () => {
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    const loadUser = async () => {
+    let cancelled = false;
+    const loadUserAndAdmissions = async () => {
       const { data } = await supabase.auth.getUser();
       const user = data?.user;
-      if (!user) return;
-      if (isMounted) setFamilyNotifUserId(user.id || '');
+      if (!user?.id) {
+        if (!cancelled) {
+          setFamilyUserId('');
+          setSubmittedAdmissions([]);
+        }
+        return;
+      }
+      if (cancelled) return;
+      setFamilyNotifUserId(user.id);
+      setFamilyUserId(user.id);
       const metaName =
         user.user_metadata?.full_name
         || [user.user_metadata?.first_name, user.user_metadata?.last_name].filter(Boolean).join(' ');
@@ -150,25 +164,22 @@ const Progress = () => {
         .maybeSingle();
       if (profileRow?.full_name) fullName = profileRow.full_name;
       if (profileRow?.phone) phone = profileRow.phone;
-      if (isMounted) {
-        setGuardianProfile({
-          fullName: fullName || 'Family User',
-          email: user.email || '',
-          phone: phone || '',
-        });
-      }
+      if (cancelled) return;
+      setGuardianProfile({
+        fullName: fullName || 'Family User',
+        email: user.email || '',
+        phone: phone || '',
+      });
       if (isSupabaseConfigured()) {
-        const { data: rows } = await supabase
-          .from('admission_requests')
-          .select('*')
-          .eq('family_id', user.id)
-          .order('created_at', { ascending: false });
-        if (isMounted) setSubmittedAdmissions(rows || []);
+        const rows = await fetchFamilyAdmissionRequests(user.id);
+        if (!cancelled) setSubmittedAdmissions(rows);
       }
     };
-    loadUser();
+    loadUserAndAdmissions();
+    window.addEventListener(APP_DATA_REFRESH, loadUserAndAdmissions);
     return () => {
-      isMounted = false;
+      cancelled = true;
+      window.removeEventListener(APP_DATA_REFRESH, loadUserAndAdmissions);
     };
   }, []);
 
@@ -323,12 +334,8 @@ const Progress = () => {
       [{ id: `adm-processing-${insertResult.id}`, text: `Admission request for ${getPatientFullName()} is being processed.` }],
       user.id
     );
-    const { data: rows } = await supabase
-      .from('admission_requests')
-      .select('*')
-      .eq('family_id', user.id)
-      .order('created_at', { ascending: false });
-    setSubmittedAdmissions(rows || []);
+    const rows = await fetchFamilyAdmissionRequests(user.id);
+    setSubmittedAdmissions(rows);
     setAdmissionForm({
       patientLastName: '',
       patientFirstName: '',
@@ -356,12 +363,8 @@ const Progress = () => {
     const existing = submittedAdmissions.find((r) => r.id === requestId);
     const merged = [...parseAttachedFiles(existing?.attached_files), ...uploadResult.files];
     await supabase.from('admission_requests').update({ attached_files: merged }).eq('id', requestId);
-    const { data: rows } = await supabase
-      .from('admission_requests')
-      .select('*')
-      .eq('family_id', user.id)
-      .order('created_at', { ascending: false });
-    setSubmittedAdmissions(rows || []);
+    const rows = await fetchFamilyAdmissionRequests(user.id);
+    setSubmittedAdmissions(rows);
     setSupplementalUploadId('');
     if (input) input.value = '';
     appendFamilyNotificationsIfNew(
@@ -947,10 +950,10 @@ const Progress = () => {
                     {admissionErrors.submit && <div className="error full">{admissionErrors.submit}</div>}
                   </div>
 
-                  {submittedAdmissions.length > 0 && (
+                  {visibleSubmittedAdmissions.length > 0 && (
                     <div className="meta-card" style={{ marginTop: 16 }}>
                       <div style={{ fontWeight: 800, color: '#1B2559', marginBottom: 10 }}>Submitted Admission Requests</div>
-                      {submittedAdmissions.map((row) => {
+                      {visibleSubmittedAdmissions.map((row) => {
                         const formData = row.form_data || {};
                         const files = parseAttachedFiles(row.attached_files);
                         const st = admissionStatusLabel(row.status);

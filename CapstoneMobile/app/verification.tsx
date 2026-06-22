@@ -125,7 +125,7 @@ export default function VerificationScreen() {
   };
 
   const handleGoToSignup = () => {
-    router.push("/signup");
+    router.push("/consent" as never);
   };
 
   const handleGoogle = async () => {

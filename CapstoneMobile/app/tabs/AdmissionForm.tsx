@@ -19,14 +19,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { appendActivityFeed } from '../../lib/activityFeed';
-import { PsgcSearchableSelect } from '../../components/PsgcSearchableSelect';
-import { usePsgcAddressCascade } from '../../hooks/usePsgcAddressCascade';
 import {
-  getAddressStorageKey,
-  loadAddressDraft,
-  saveAddressDraft,
-} from '../../lib/addressPersistence';
-import { notificationTextMobile } from '../../lib/familyNotificationsMobile';
+  uploadAdmissionDocumentsMobile,
+  type PickedAdmissionFile,
+} from '../../lib/admissionDocumentUploadMobile';
+import {
+  insertAdmissionRequest,
+  patchAdmissionRequestGender,
+} from '../../lib/admissionRequestInsert';
+import * as DocumentPicker from 'expo-document-picker';
+import { appendFamilyNotificationsIfNewMobile, notificationTextMobile } from '../../lib/familyNotificationsMobile';
 import { useFamilyNotificationsState } from '../../lib/useFamilyNotificationsMobile';
 
 const { width } = Dimensions.get('window');
@@ -40,13 +42,6 @@ function deriveInitials(name: string): string {
 const DRAFT_KEY = 'bh_admission_draft';
 
 type FormData = {
-  fullName: string;
-  email: string;
-  phoneNumber: string;
-  province: string;
-  municipalityCity: string;
-  street: string;
-  barangay: string;
   patientLastName: string;
   patientFirstName: string;
   patientMiddleName: string;
@@ -57,13 +52,6 @@ type FormData = {
 };
 
 const emptyForm: FormData = {
-  fullName: '',
-  email: '',
-  phoneNumber: '',
-  province: '',
-  municipalityCity: '',
-  street: '',
-  barangay: '',
   patientLastName: '',
   patientFirstName: '',
   patientMiddleName: '',
@@ -89,6 +77,8 @@ export default function AdmissionForm() {
   /** iOS only: draft while modal is open so Cancel does not overwrite the field */
   const [iosDraftBirthDate, setIosDraftBirthDate] = useState(() => new Date(2000, 0, 1));
   const [submitting, setSubmitting] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<PickedAdmissionFile[]>([]);
+  const [guardianProfile, setGuardianProfile] = useState({ fullName: '', email: '', phone: '' });
   const [showNotifications, setShowNotifications] = useState(false);
   const [familyUserId, setFamilyUserId] = useState('');
   const { notificationItems, setNotificationItems } = useFamilyNotificationsState(familyUserId);
@@ -98,13 +88,6 @@ export default function AdmissionForm() {
   const requiredFields = useMemo(
     () =>
       [
-        { key: 'fullName' as const, label: 'Full Name' },
-        { key: 'email' as const, label: 'Email Address' },
-        { key: 'phoneNumber' as const, label: 'Phone Number' },
-        { key: 'province' as const, label: 'Province' },
-        { key: 'municipalityCity' as const, label: 'Municipality/City' },
-        { key: 'barangay' as const, label: 'Barangay' },
-        { key: 'street' as const, label: 'Street' },
         { key: 'patientLastName' as const, label: 'Resident Last Name' },
         { key: 'patientFirstName' as const, label: 'Resident First Name' },
         { key: 'patientGender' as const, label: 'Resident Gender' },
@@ -116,96 +99,6 @@ export default function AdmissionForm() {
 
   const completedFields = requiredFields.filter((f) => String(formData[f.key]).trim()).length;
   const progressPercent = Math.round((completedFields / requiredFields.length) * 100);
-
-  const {
-    provinceOptions,
-    cityOptions,
-    barangayOptions,
-    loadingProvinces,
-    loadingCities,
-    loadingBarangays,
-    fetchError,
-    setFetchError,
-    onProvinceSelected,
-    onCitySelected,
-    onBarangaySelected,
-    hydrateFromSaved,
-  } = usePsgcAddressCascade({ cityFieldKey: 'municipalityCity' });
-
-  const psgcCodesRef = useRef({
-    provinceCode: '',
-    provinceKind: 'province',
-    cityCode: '',
-    barangayCode: '',
-  });
-  const [addressRestored, setAddressRestored] = useState(false);
-  const psgcKey = getAddressStorageKey('request_management_admission');
-
-  useEffect(() => {
-    if (loadingProvinces) return;
-    let cancelled = false;
-    (async () => {
-      const saved = await loadAddressDraft(psgcKey);
-      if (!saved?.provinceCode || cancelled) return;
-      const ok = await hydrateFromSaved(
-        {
-          provinceCode: saved.provinceCode!,
-          provinceKind: (saved.provinceKind as 'province' | 'region') || 'province',
-          cityCode: saved.cityCode,
-          barangayCode: saved.barangayCode,
-          province: saved.province,
-          street: saved.street,
-        },
-        setFormData
-      );
-      if (!ok || cancelled) return;
-      psgcCodesRef.current = {
-        provinceCode: saved.provinceCode!,
-        provinceKind: saved.provinceKind || 'province',
-        cityCode: saved.cityCode || '',
-        barangayCode: saved.barangayCode || '',
-      };
-      setAddressRestored(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadingProvinces, psgcKey, hydrateFromSaved]);
-
-  useEffect(() => {
-    const p = provinceOptions.find((o) => o.name === formData.province);
-    if (p) {
-      psgcCodesRef.current.provinceCode = p.code;
-      psgcCodesRef.current.provinceKind = p.kind || 'province';
-    }
-  }, [formData.province, provinceOptions]);
-
-  useEffect(() => {
-    const c = cityOptions.find((o) => o.name === formData.municipalityCity);
-    if (c) psgcCodesRef.current.cityCode = c.code;
-  }, [formData.municipalityCity, cityOptions]);
-
-  useEffect(() => {
-    const b = barangayOptions.find((o) => o.name === formData.barangay);
-    if (b) psgcCodesRef.current.barangayCode = b.code;
-  }, [formData.barangay, barangayOptions]);
-
-  useEffect(() => {
-    if (!formData.province.trim()) return;
-    const t = setTimeout(() => {
-      void saveAddressDraft(psgcKey, {
-        province: formData.province.trim(),
-        city: formData.municipalityCity.trim(),
-        barangay: formData.barangay.trim(),
-        street: formData.street.trim(),
-        provinceCode: psgcCodesRef.current.provinceCode,
-        provinceKind: psgcCodesRef.current.provinceKind,
-        cityCode: psgcCodesRef.current.cityCode,
-        barangayCode: psgcCodesRef.current.barangayCode,
-      });
-    }, 450);
-    return () => clearTimeout(t);
-  }, [psgcKey, formData.province, formData.municipalityCity, formData.barangay, formData.street]);
 
   useEffect(() => {
     let mounted = true;
@@ -254,24 +147,31 @@ export default function AdmissionForm() {
         } else if (mounted) {
           setFamilyUserId(user.id);
         }
-        let resolved =
+        let fullName =
           (user?.user_metadata?.full_name as string | undefined)?.trim() ||
           [user?.user_metadata?.first_name, user?.user_metadata?.last_name]
             .filter(Boolean)
             .join(' ')
             .trim() ||
           'Family User';
+        let phone = (user?.user_metadata?.contact_number as string) || '';
         if (user?.id) {
           const { data: profileRow } = await supabase
             .from('profiles')
-            .select('full_name')
+            .select('full_name, phone')
             .eq('id', user.id)
             .maybeSingle();
-          if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
+          if (profileRow?.full_name?.trim()) fullName = profileRow.full_name.trim();
+          if (profileRow?.phone?.trim()) phone = profileRow.phone.trim();
         }
         if (mounted) {
-          setDisplayName(resolved);
-          setUserInitials(deriveInitials(resolved));
+          setDisplayName(fullName);
+          setUserInitials(deriveInitials(fullName));
+          setGuardianProfile({
+            fullName,
+            email: user?.email || '',
+            phone,
+          });
         }
       } catch {
         if (mounted) setFamilyUserId('');
@@ -296,23 +196,17 @@ export default function AdmissionForm() {
 
   const validateForm = useCallback(() => {
     const next: Record<string, string> = {};
-    if (!formData.fullName.trim()) next.fullName = 'Full name is required.';
-    if (!formData.email.trim()) next.email = 'Email is required.';
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) next.email = 'Invalid email format.';
-    if (!formData.phoneNumber.trim()) next.phoneNumber = 'Phone number is required.';
-    if (!formData.province.trim()) next.province = 'Province is required.';
-    if (!formData.municipalityCity.trim()) next.municipalityCity = 'Municipality/City is required.';
-    if (!formData.street.trim()) next.street = 'Street is required.';
-    if (!formData.barangay.trim()) next.barangay = 'Barangay is required.';
     if (!formData.patientLastName.trim()) next.patientLastName = 'Resident last name is required.';
     if (!formData.patientFirstName.trim()) next.patientFirstName = 'Resident first name is required.';
     if (!formData.patientGender.trim()) next.patientGender = 'Resident gender is required.';
     if (!formData.patientBirthday) next.patientBirthday = 'Resident birthday is required.';
     if (!formData.reasonForAdmission) next.reasonForAdmission = 'Please select a reason.';
+    if (!attachedFiles.length) next.attachedFiles = 'Please attach at least one required document.';
     if (!formData.agreeToTerms) next.agreeToTerms = 'You must agree to the terms.';
+    if (!guardianProfile.fullName.trim()) next.submit = 'Complete your profile before submitting.';
     setErrors(next);
     return Object.keys(next).length === 0;
-  }, [formData]);
+  }, [formData, attachedFiles.length, guardianProfile.fullName]);
 
   const saveDraft = async () => {
     try {
@@ -327,6 +221,7 @@ export default function AdmissionForm() {
 
   const clearForm = async () => {
     setFormData(emptyForm);
+    setAttachedFiles([]);
     setErrors({});
     try {
       await AsyncStorage.removeItem(DRAFT_KEY);
@@ -366,50 +261,87 @@ export default function AdmissionForm() {
         .filter(Boolean)
         .join(' ');
 
+      const uploadResult = await uploadAdmissionDocumentsMobile(attachedFiles, user.id, 'draft');
+      if (!uploadResult.ok) {
+        setErrors({ submit: uploadResult.errorMessage });
+        return;
+      }
+
+      const genderValue = formData.patientGender.trim();
+      const formSnapshot = {
+        patientLastName: formData.patientLastName.trim(),
+        patientFirstName: formData.patientFirstName.trim(),
+        patientMiddleName: formData.patientMiddleName.trim(),
+        patientGender: genderValue,
+        patientBirthday: formData.patientBirthday,
+        reasonForAdmission: formData.reasonForAdmission,
+      };
       const extendedRow = {
         family_id: user.id,
-        guardian_full_name: formData.fullName.trim(),
-        guardian_email: formData.email.trim(),
-        guardian_phone: formData.phoneNumber.trim(),
-        guardian_province: formData.province.trim(),
-        guardian_municipality_city: formData.municipalityCity.trim(),
-        guardian_street: formData.street.trim(),
-        guardian_barangay: formData.barangay.trim(),
+        guardian_full_name: guardianProfile.fullName.trim(),
+        guardian_email: guardianProfile.email.trim(),
+        guardian_phone: guardianProfile.phone.trim(),
         patient_name: patientFull,
         patient_last_name: formData.patientLastName.trim(),
         patient_first_name: formData.patientFirstName.trim(),
         patient_middle_name: formData.patientMiddleName.trim(),
-        patient_gender: formData.patientGender.trim(),
+        patient_gender: genderValue,
         patient_birth_date: formData.patientBirthday,
         reason_for_admission: formData.reasonForAdmission,
+        status: 'processing',
+        form_data: formSnapshot,
+        attached_files: uploadResult.files,
+      };
+      const coreRow = {
+        family_id: user.id,
+        guardian_full_name: guardianProfile.fullName.trim(),
+        guardian_email: guardianProfile.email.trim(),
+        guardian_phone: guardianProfile.phone.trim(),
+        patient_name: patientFull,
+        patient_last_name: formData.patientLastName.trim(),
+        patient_first_name: formData.patientFirstName.trim(),
+        patient_middle_name: formData.patientMiddleName.trim(),
+        patient_gender: genderValue,
+        patient_birth_date: formData.patientBirthday,
+        reason_for_admission: formData.reasonForAdmission,
+        status: 'processing',
+      };
+      const minimalRow = {
+        family_id: user.id,
+        guardian_full_name: guardianProfile.fullName.trim(),
+        guardian_email: guardianProfile.email.trim(),
+        guardian_phone: guardianProfile.phone.trim(),
+        patient_name: patientFull,
+        patient_gender: genderValue,
+        patient_birth_date: formData.patientBirthday,
+        reason_for_admission: formData.reasonForAdmission,
+        status: 'processing',
       };
 
-      let { error } = await supabase.from('admission_requests').insert(extendedRow);
-
-      if (
-        error &&
-        /column|schema cache|does not exist|PGRST204/i.test(error.message)
-      ) {
-        const minimalRow = {
-          family_id: user.id,
-          guardian_full_name: formData.fullName.trim(),
-          guardian_email: formData.email.trim(),
-          guardian_phone: formData.phoneNumber.trim(),
-          patient_name: patientFull,
-          patient_birth_date: formData.patientBirthday,
-          reason_for_admission: formData.reasonForAdmission,
-        };
-        ({ error } = await supabase.from('admission_requests').insert(minimalRow));
+      const insertResult = await insertAdmissionRequest([extendedRow, coreRow, minimalRow]);
+      if (!insertResult.ok) {
+        setErrors({ submit: insertResult.errorMessage });
+        return;
       }
 
-      if (error) {
-        setErrors({ submit: error.message || 'Could not submit request.' });
-        return;
+      await patchAdmissionRequestGender(insertResult.id, genderValue);
+      if (uploadResult.files.length) {
+        await supabase
+          .from('admission_requests')
+          .update({ attached_files: uploadResult.files, form_data: formSnapshot })
+          .eq('id', insertResult.id);
       }
 
       await appendActivityFeed(`Admission request submitted for ${patientFull}. Pending admin review.`, {
         familyId: user.id,
       });
+      if (familyUserId) {
+        await appendFamilyNotificationsIfNewMobile(
+          [{ id: `adm-processing-${insertResult.id}`, text: `Admission request for ${patientFull} is being processed.` }],
+          familyUserId
+        );
+      }
+      setAttachedFiles([]);
       try {
         await AsyncStorage.removeItem(DRAFT_KEY);
       } catch {
@@ -439,6 +371,31 @@ export default function AdmissionForm() {
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
+  };
+
+  const pickAttachedFiles = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: true,
+      copyToCacheDirectory: true,
+      type: ['image/*', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    });
+    if (result.canceled) return;
+    const picked = (result.assets || []).map((a) => ({
+      uri: a.uri,
+      name: a.name || 'document',
+      mimeType: a.mimeType,
+      size: a.size,
+    }));
+    setAttachedFiles((prev) => [...prev, ...picked]);
+    setErrors((prev) => {
+      const n = { ...prev };
+      delete n.attachedFiles;
+      return n;
+    });
+  };
+
+  const removeAttachedFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const openBirthdayPicker = () => {
@@ -571,134 +528,6 @@ export default function AdmissionForm() {
 
           <View style={styles.formBlock}>
             <LabeledInput
-              label="Full Name"
-              placeholder="Your full name"
-              icon="person-outline"
-              value={formData.fullName}
-              onChangeText={(t) => setField('fullName', t)}
-              error={errors.fullName}
-            />
-            <LabeledInput
-              label="Email Address"
-              placeholder="Email address"
-              icon="mail-outline"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              value={formData.email}
-              onChangeText={(t) => setField('email', t)}
-              error={errors.email}
-            />
-            <LabeledInput
-              label="Phone Number"
-              placeholder="Contact number"
-              icon="call-outline"
-              keyboardType="phone-pad"
-              value={formData.phoneNumber}
-              onChangeText={(t) => setField('phoneNumber', t)}
-              error={errors.phoneNumber}
-            />
-            <View style={styles.addressSection}>
-              <Text style={styles.addressKicker}>Guardian address</Text>
-              <Text style={styles.addressTitle}>Philippine address</Text>
-              <Text style={styles.addressSub}>
-                PSGC-backed lists. Complete each step before the next unlocks.
-              </Text>
-              {addressRestored ? (
-                <Text style={styles.addressRestored}>Last address on this device was restored.</Text>
-              ) : null}
-              {fetchError ? (
-                <View style={styles.fetchBanner}>
-                  <Text style={styles.fetchBannerText}>{fetchError}</Text>
-                  <TouchableOpacity onPress={() => setFetchError('')}>
-                    <Text style={styles.fetchDismiss}>Dismiss</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-              <PsgcSearchableSelect
-                label="Province"
-                description="Type to filter."
-                icon="location-outline"
-                options={provinceOptions}
-                valueName={formData.province}
-                onSelect={(opt) => {
-                  void onProvinceSelected(opt, setFormData);
-                  setErrors((e) => {
-                    const n = { ...e };
-                    delete n.province;
-                    return n;
-                  });
-                }}
-                disabled={loadingProvinces}
-                loading={loadingProvinces}
-                placeholder={loadingProvinces ? 'Loading provinces…' : 'Choose Province'}
-                emptyText="No province matched."
-                errorText={errors.province || ''}
-              />
-              <PsgcSearchableSelect
-                label="City / Municipality"
-                description="Loads after province."
-                icon="business-outline"
-                options={cityOptions}
-                valueName={formData.municipalityCity}
-                onSelect={(opt) => {
-                  void onCitySelected(opt, setFormData);
-                  setErrors((e) => {
-                    const n = { ...e };
-                    delete n.municipalityCity;
-                    return n;
-                  });
-                }}
-                disabled={!formData.province.trim() || loadingCities}
-                loading={loadingCities}
-                placeholder={
-                  !formData.province.trim()
-                    ? 'Choose Province First'
-                    : loadingCities
-                      ? 'Loading cities…'
-                      : 'Choose City / Municipality'
-                }
-                emptyText={loadingCities ? 'Loading…' : 'No match in this province.'}
-                errorText={errors.municipalityCity || ''}
-              />
-              <PsgcSearchableSelect
-                label="Barangay"
-                description="Loads after city."
-                icon="pin-outline"
-                options={barangayOptions}
-                valueName={formData.barangay}
-                onSelect={(opt) => {
-                  onBarangaySelected(opt, setFormData);
-                  setErrors((e) => {
-                    const n = { ...e };
-                    delete n.barangay;
-                    return n;
-                  });
-                }}
-                disabled={!formData.municipalityCity.trim() || loadingBarangays}
-                loading={loadingBarangays}
-                placeholder={
-                  !formData.municipalityCity.trim()
-                    ? 'Choose City First'
-                    : loadingBarangays
-                      ? 'Loading barangays…'
-                      : 'Choose Barangay'
-                }
-                emptyText={loadingBarangays ? 'Loading…' : 'No barangay matched.'}
-                errorText={errors.barangay || ''}
-              />
-              <LabeledInput
-                label="Street / Building Line"
-                placeholder="Enter block, lot, street, or building (e.g. Blk 2 Lot 15)"
-                icon="navigate-outline"
-                value={formData.street}
-                onChangeText={(t) => setField('street', t)}
-                error={errors.street}
-              />
-              <Text style={styles.streetHint}>
-                Block, lot, street, building, or subdivision (not in the lists above).
-              </Text>
-            </View>
-            <LabeledInput
               label="Resident Last Name"
               placeholder="Resident's last name"
               icon="person-outline"
@@ -821,6 +650,29 @@ export default function AdmissionForm() {
                 </View>
               </View>
             </Modal>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Required Documents</Text>
+              <Text style={styles.streetHint}>
+                Attach IDs, medical records, or other supporting files (PDF, images, or Word). Max 10 MB each.
+              </Text>
+              <TouchableOpacity style={styles.btnSecondary} onPress={() => void pickAttachedFiles()}>
+                <Text style={styles.btnSecondaryText}>Attach Files</Text>
+              </TouchableOpacity>
+              {attachedFiles.length > 0 ? (
+                <View style={{ marginTop: 8, gap: 6 }}>
+                  {attachedFiles.map((f, idx) => (
+                    <View key={`${f.uri}-${idx}`} style={styles.checklistRow}>
+                      <Text style={styles.checklistLabel} numberOfLines={1}>{f.name}</Text>
+                      <TouchableOpacity onPress={() => removeAttachedFile(idx)}>
+                        <Text style={[styles.checklistStatus, { color: '#DC2626' }]}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              {errors.attachedFiles ? <Text style={styles.errorSmall}>{errors.attachedFiles}</Text> : null}
+            </View>
 
             <View style={styles.fieldWrap}>
               <Text style={styles.fieldLabel}>Reason for Admission</Text>

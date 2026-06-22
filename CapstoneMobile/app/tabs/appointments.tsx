@@ -31,6 +31,7 @@ import {
   upsertVisitationRequestAfterRemoteInsert,
   type VisitationRequestRow,
 } from '../../lib/visitationAppointmentsMobile';
+import { isPastIsoDate } from '../../lib/bookingDates';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
@@ -123,6 +124,7 @@ export default function AppointmentsScreen() {
     patientName: '',
     preferredDate: '',
     preferredTime: '',
+    appointmentReason: '',
     note: '',
   });
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -174,6 +176,7 @@ export default function AppointmentsScreen() {
   const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
 
   const isBookableDate = (iso: string, dayOfWeek: number) => {
+    if (isPastIsoDate(iso)) return false;
     const mmdd = iso.slice(5);
     if (HOLIDAY_LABELS[mmdd]) return false;
     if (!allowedWeekdays.length) return true;
@@ -253,6 +256,14 @@ export default function AppointmentsScreen() {
       setFormError('Please select patient, date, and time before requesting.');
       return;
     }
+    if (!String(form.appointmentReason || '').trim()) {
+      setFormError('Please enter a reason for this appointment.');
+      return;
+    }
+    if (isPastIsoDate(form.preferredDate)) {
+      setFormError('Please choose today or a future date.');
+      return;
+    }
     const selectedDate = new Date(`${form.preferredDate}T00:00:00`);
     const selectedDow = selectedDate.getDay();
     const dateKey = form.preferredDate.slice(5);
@@ -294,6 +305,7 @@ export default function AppointmentsScreen() {
           patient_name: form.patientName || null,
           preferred_date: form.preferredDate || null,
           preferred_time: form.preferredTime || null,
+          appointment_reason: form.appointmentReason.trim() || null,
           note: form.note || null,
           status: 'Requested',
           confirmed_date: null,
@@ -315,7 +327,7 @@ export default function AppointmentsScreen() {
         }
       }
 
-      setForm({ patientId: '', patientName: '', preferredDate: '', preferredTime: '', note: '' });
+      setForm({ patientId: '', patientName: '', preferredDate: '', preferredTime: '', appointmentReason: '', note: '' });
       await loadAll();
       Alert.alert('Requested', 'Your visitation request has been submitted.');
     } finally {
@@ -436,9 +448,11 @@ export default function AppointmentsScreen() {
                   ]}
                   onPress={() => {
                     if (!bookable) {
-                      const reason = HOLIDAY_LABELS[mmdd]
-                        ? HOLIDAY_LABELS[mmdd]
-                        : 'Not an available visitation day.';
+                      const reason = isPastIsoDate(iso)
+                        ? 'Past dates cannot be booked.'
+                        : HOLIDAY_LABELS[mmdd]
+                          ? HOLIDAY_LABELS[mmdd]
+                          : 'Not an available visitation day.';
                       Alert.alert('Date not available', reason);
                       return;
                     }
@@ -509,6 +523,15 @@ export default function AppointmentsScreen() {
               </TouchableOpacity>
             ))}
           </View>
+
+          <Text style={styles.label}>Reason for appointment</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Why are you scheduling this visit?"
+            placeholderTextColor="#94A3B8"
+            value={form.appointmentReason}
+            onChangeText={(v) => setForm((f) => ({ ...f, appointmentReason: v }))}
+          />
 
           <Text style={styles.label}>Note (optional)</Text>
           <TextInput

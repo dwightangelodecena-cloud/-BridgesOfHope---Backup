@@ -17,6 +17,7 @@ import { useTerms } from "../contexts/TermsContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatAuthError } from "../lib/authErrors";
+import { SIGNUP_CONSENT_STORAGE_KEY } from "../lib/legalDocuments";
 import { PsgcSearchableSelect } from "../components/PsgcSearchableSelect";
 import { usePsgcAddressCascade } from "../hooks/usePsgcAddressCascade";
 import {
@@ -47,6 +48,21 @@ export default function SignupScreen() {
   useEffect(() => {
     if (hasReadPrivacy) setAcceptPrivacy(true);
   }, [hasReadPrivacy, setAcceptPrivacy]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const consent = await AsyncStorage.getItem(SIGNUP_CONSENT_STORAGE_KEY);
+        if (mounted && !consent) router.replace("/consent" as never);
+      } catch {
+        if (mounted) router.replace("/consent" as never);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");

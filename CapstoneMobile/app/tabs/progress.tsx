@@ -8,6 +8,7 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +20,17 @@ import {
   uiAdmissionRequestFromRow,
   uiDischargeRequestFromRow,
 } from '../../lib/dbMappers';
+import { FAMILY_ACTIVE_ADMISSION_STATUSES, admissionStatusLabel, parseAttachedFiles } from '../../lib/admissionWorkflow';
+import {
+  fetchFamilyAdmissionRequests,
+  visibleFamilyAdmissionRequests,
+} from '../../lib/familyAdmissionRequests';
+import {
+  uploadAdmissionDocumentsMobile,
+  type PickedAdmissionFile,
+} from '../../lib/admissionDocumentUploadMobile';
+import { appendFamilyNotificationsIfNewMobile } from '../../lib/familyNotificationsMobile';
+import * as DocumentPicker from 'expo-document-picker';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
@@ -36,6 +48,8 @@ export default function ProgressScreen() {
   const { displayName } = useFamilyUserMobile();
   const [pendingAdmissions, setPendingAdmissions] = useState(0);
   const [pendingDischarges, setPendingDischarges] = useState(0);
+  const [submittedAdmissions, setSubmittedAdmissions] = useState<Record<string, unknown>[]>([]);
+  const [uploadingRequestId, setUploadingRequestId] = useState('');
   const [loading, setLoading] = useState(true);
 
   const loadCounts = useCallback(async () => {
@@ -55,21 +69,25 @@ export default function ProgressScreen() {
         setFamilyUserId('');
         setPendingAdmissions(0);
         setPendingDischarges(0);
+        setSubmittedAdmissions([]);
         return;
       }
       setFamilyUserId(user.id);
-      const [{ data: aRows }, { data: dRows }] = await Promise.all([
-        supabase.from('admission_requests').select('id').eq('family_id', user.id).eq('status', 'pending'),
+      const [{ data: aRows }, { data: dRows }, admissionRows] = await Promise.all([
+        supabase.from('admission_requests').select('id').eq('family_id', user.id).in('status', [...FAMILY_ACTIVE_ADMISSION_STATUSES]),
         supabase.from('discharge_requests').select('id').eq('family_id', user.id).eq('status', 'pending'),
+        fetchFamilyAdmissionRequests(user.id),
       ]);
       const ac = (aRows || []).filter((r) => uiAdmissionRequestFromRow(r as Record<string, unknown>)).length;
       const dc = (dRows || []).filter((r) => uiDischargeRequestFromRow(r as Record<string, unknown>)).length;
       setPendingAdmissions(ac);
       setPendingDischarges(dc);
+      setSubmittedAdmissions(admissionRows);
     } catch {
       setFamilyUserId('');
       setPendingAdmissions(0);
       setPendingDischarges(0);
+      setSubmittedAdmissions([]);
     } finally {
       setLoading(false);
     }
@@ -82,6 +100,42 @@ export default function ProgressScreen() {
   );
 
   const first = (displayName || 'Family User').trim().split(/\s+/)[0];
+  const visibleSubmitted = visibleFamilyAdmissionRequests(submittedAdmissions, familyUserId);
+
+  const uploadSupplementalDocuments = async (requestId: string) => {
+    if (!requestId || !familyUserId) return;
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: true,
+      copyToCacheDirectory: true,
+      type: ['image/*', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    });
+    if (result.canceled) return;
+    const picked: PickedAdmissionFile[] = (result.assets || []).map((a) => ({
+      uri: a.uri,
+      name: a.name || 'document',
+      mimeType: a.mimeType,
+      size: a.size,
+    }));
+    setUploadingRequestId(requestId);
+    try {
+      const uploadResult = await uploadAdmissionDocumentsMobile(picked, familyUserId, requestId);
+      if (!uploadResult.ok) {
+        Alert.alert('Upload failed', uploadResult.errorMessage);
+        return;
+      }
+      const existing = submittedAdmissions.find((r) => String(r.id) === requestId);
+      const merged = [...parseAttachedFiles(existing?.attached_files), ...uploadResult.files];
+      await supabase.from('admission_requests').update({ attached_files: merged }).eq('id', requestId);
+      const rows = await fetchFamilyAdmissionRequests(familyUserId);
+      setSubmittedAdmissions(rows);
+      await appendFamilyNotificationsIfNewMobile(
+        [{ id: `adm-docs-${requestId}-${Date.now()}`, text: 'Additional documents uploaded for your admission request.' }],
+        familyUserId
+      );
+    } finally {
+      setUploadingRequestId('');
+    }
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: '#F8F9FD' }]}>
@@ -147,6 +201,71 @@ export default function ProgressScreen() {
             Patient lists and weekly report details live under Patient Details and Reports in the menu bar.
           </Text>
         </View>
+
+        {visibleSubmitted.length > 0 ? (
+          <View style={[styles.noteCard, { backgroundColor: '#FFFFFF', borderColor: '#E9EDF7', flexDirection: 'column', alignItems: 'stretch' }]}>
+            <Text style={styles.sectionTitle}>Submitted Admission Requests</Text>
+            {visibleSubmitted.map((row) => {
+              const formData = (row.form_data || {}) as Record<string, unknown>;
+              const files = parseAttachedFiles(row.attached_files);
+              const st = admissionStatusLabel(row.status);
+              const inReview = String(row.status || '').toLowerCase() === 'in_review';
+              const statusKey = String(row.status || '').toLowerCase();
+              const statusColor =
+                statusKey === 'approved' || statusKey === 'accepted'
+                  ? '#16A34A'
+                  : statusKey === 'declined' || statusKey === 'rejected'
+                    ? '#DC2626'
+                    : statusKey === 'in_review'
+                      ? '#D97706'
+                      : '#92400E';
+              return (
+                <View key={String(row.id)} style={styles.requestCard}>
+                  <View style={styles.requestHeader}>
+                    <Text style={styles.requestName} numberOfLines={1}>{String(row.patient_name || 'Resident')}</Text>
+                    <View style={[styles.hubBadge, { backgroundColor: `${statusColor}22` }]}>
+                      <Text style={[styles.hubBadgeText, { color: statusColor }]}>{st}</Text>
+                    </View>
+                  </View>
+                  {row.meeting_date ? (
+                    <Text style={styles.requestMeta}>
+                      Meeting with BOH: {String(row.meeting_date)}
+                      {row.meeting_time ? ` at ${String(row.meeting_time)}` : ''}
+                    </Text>
+                  ) : null}
+                  {row.required_document_notes && inReview ? (
+                    <Text style={[styles.requestMeta, { color: '#B45309' }]}>
+                      Required: {String(row.required_document_notes)}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.requestMeta}>
+                    Reason: {String(formData.reasonForAdmission || row.reason_for_admission || '—')}
+                  </Text>
+                  <Text style={styles.requestMeta}>
+                    Gender: {String(formData.patientGender || row.patient_gender || '—')}
+                  </Text>
+                  <Text style={styles.requestMeta}>
+                    Birthday: {String(formData.patientBirthday || row.patient_birth_date || '—')}
+                  </Text>
+                  {files.length > 0 ? (
+                    <Text style={styles.requestMeta}>Attached files: {files.map((f) => f.name).join(', ')}</Text>
+                  ) : null}
+                  {inReview && !row.documents_complete ? (
+                    <TouchableOpacity
+                      style={[styles.uploadBtn, uploadingRequestId === String(row.id) && { opacity: 0.7 }]}
+                      onPress={() => void uploadSupplementalDocuments(String(row.id))}
+                      disabled={uploadingRequestId === String(row.id)}
+                    >
+                      <Text style={styles.uploadBtnText}>
+                        {uploadingRequestId === String(row.id) ? 'Uploading…' : 'Upload additional documents'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
       </ScrollView>
 
       <FamilyWebMobileNav active="progress" />
@@ -254,4 +373,25 @@ const styles = StyleSheet.create({
     borderColor: '#DCE7FF',
   },
   noteText: { flex: 1, fontSize: 13, color: '#3758D5', fontWeight: '600', lineHeight: 18 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#1B2559', marginBottom: 10 },
+  requestCard: {
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  requestHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 },
+  requestName: { flex: 1, fontSize: 15, fontWeight: '800', color: '#1B2559' },
+  requestMeta: { fontSize: 12, color: '#475569', lineHeight: 18, marginBottom: 2 },
+  uploadBtn: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    backgroundColor: '#F54E25',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  uploadBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
 });

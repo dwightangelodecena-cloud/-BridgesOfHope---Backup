@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { FAMILY_ACTIVE_ADMISSION_STATUSES } from '../../lib/admissionWorkflow';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
 import {
   uiAdmissionRequestFromRow,
@@ -212,7 +213,7 @@ export default function HomeScreen() {
       setFamilyVisitationRequests(mergedVisit);
 
       const [{ data: aRows, error: aErr }, { data: dRows, error: dErr }] = await Promise.all([
-        supabase.from('admission_requests').select('*').eq('family_id', user.id).eq('status', 'pending'),
+        supabase.from('admission_requests').select('*').eq('family_id', user.id).in('status', [...FAMILY_ACTIVE_ADMISSION_STATUSES]),
         supabase
           .from('discharge_requests')
           .select('*, patients(full_name)')

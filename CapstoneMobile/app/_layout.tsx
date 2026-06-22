@@ -19,6 +19,8 @@ export default function RootLayout() {
         <Stack.Screen name="index" options={fadeScreen} />
         <Stack.Screen name="onboarding" options={fadeScreen} />
         <Stack.Screen name="login" options={fadeScreen} />
+        <Stack.Screen name="consent" options={fadeScreen} />
+        <Stack.Screen name="informed-consent" options={fadeScreen} />
         <Stack.Screen name="signup" options={fadeScreen} />
         <Stack.Screen name="forget" options={fadeScreen} />
         <Stack.Screen name="verification" options={fadeScreen} />

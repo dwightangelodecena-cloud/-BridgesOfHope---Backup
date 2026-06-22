@@ -210,7 +210,7 @@ export default function LoginScreen() {
   };
 
   const handleGoToSignup = () => {
-    router.push("/signup");
+    router.push("/consent" as never);
   };
 
   const handleForgotPassword = () => {
