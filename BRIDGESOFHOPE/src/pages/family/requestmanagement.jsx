@@ -1131,7 +1131,7 @@ const Progress = () => {
 
               {activeTab === 'discharge' && (
                 <div className="form-surface">
-                  <div className="section-kicker"><TrendingUp size={13} /> Family / guardian request</div>
+                  <div className="section-kicker"><ClipboardList size={13} /> Family / guardian request</div>
                   <div className="section-title-row">
                     <div>
                       <div className="section-title-main">Request temporary discharge</div>

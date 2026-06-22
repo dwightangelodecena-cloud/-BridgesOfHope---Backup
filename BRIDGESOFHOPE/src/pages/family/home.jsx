@@ -1087,7 +1087,7 @@ const HomeDashboard = () => {
               <div className="section-card">
                 <div className="section-header">
                   <div>
-                    <div className="section-title"><BarChart3 size={16} color="#F54E25" /> Dashboard Summary</div>
+                    <div className="section-title"><Activity size={16} color="#F54E25" /> Dashboard Summary</div>
                     <p className="section-sub">Live overview of patient, request, and report data</p>
                   </div>
                   <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>Updated from live data</span>
@@ -1280,9 +1280,9 @@ const HomeDashboard = () => {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} onClick={() => navigate('/home')}>
             <Home size={24} color="#F54E25" /><span style={{ fontSize: 10, fontWeight: 700, color: '#F54E25' }}>Home</span>
           </div>
-          <TrendingUp size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
+          <ClipboardList size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
           <Calendar size={24} color="#A3AED0" onClick={() => navigate('/appointments')} />
-          <BarChart3 size={24} color="#A3AED0" onClick={() => navigate('/reports')} />
+          <FileText size={24} color="#A3AED0" onClick={() => navigate('/reports')} />
           <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
           <LogOut size={24} color="#F54E25" onClick={() => navigate('/login')} />
         </div>

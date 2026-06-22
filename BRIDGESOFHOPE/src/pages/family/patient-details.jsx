@@ -670,7 +670,7 @@ const PatientDetailsPage = () => {
             {/* ── DIRECTORY TABLE ── */}
             <SectionCard style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FAFBFF' }}>
-                <CardTitle icon={BarChart3} style={{ marginBottom: 0 }}>Resident Directory</CardTitle>
+                <CardTitle icon={BookUser} style={{ marginBottom: 0 }}>Resident Directory</CardTitle>
                 <span style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, background: '#F1F5F9', padding: '3px 10px', borderRadius: 999 }}>{patients.length} entries</span>
               </div>
               <div style={{ overflowX: 'auto' }}>

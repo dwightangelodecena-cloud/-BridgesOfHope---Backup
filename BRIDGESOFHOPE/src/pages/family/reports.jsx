@@ -283,7 +283,7 @@ export default function FamilyReportsPage() {
               <div style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <BarChart3 size={16} color="#fff" />
+                    <FileText size={16} color="#fff" />
                   </div>
                   <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Family Portal · Weekly Reports</span>
                 </div>
@@ -370,10 +370,10 @@ export default function FamilyReportsPage() {
         {/* Mobile Bottom Nav (unchanged) */}
         <nav className="mobile-bottom-nav" style={{ position: 'fixed', left: 0, right: 0, bottom: 0, height: 70, background: '#fff', borderTop: '1px solid #EAEFFB', justifyContent: 'space-around', alignItems: 'center', zIndex: 1000 }}>
           <Home size={22} color="#CBD5E1" onClick={() => navigate('/home')} style={{ cursor: 'pointer' }} />
-          <TrendingUp size={22} color="#CBD5E1" onClick={() => navigate('/progress')} style={{ cursor: 'pointer' }} />
+          <ClipboardList size={22} color="#CBD5E1" onClick={() => navigate('/progress')} style={{ cursor: 'pointer' }} />
           <Calendar size={22} color="#CBD5E1" onClick={() => navigate('/appointments')} style={{ cursor: 'pointer' }} />
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer' }} onClick={() => navigate('/reports')}>
-            <BarChart3 size={22} color="#F54E25" /><span style={{ fontSize: 9, fontWeight: 800, color: '#F54E25' }}>Reports</span>
+            <FileText size={22} color="#F54E25" /><span style={{ fontSize: 9, fontWeight: 800, color: '#F54E25' }}>Reports</span>
           </div>
           <User size={22} color="#CBD5E1" onClick={() => navigate('/profile')} style={{ cursor: 'pointer' }} />
         </nav>
