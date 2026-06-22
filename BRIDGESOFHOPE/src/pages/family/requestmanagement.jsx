@@ -6,10 +6,6 @@ import { appendActivityFeed } from '@/lib/activityFeed';
 import { refreshAppData, APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { uiPatientFromRow } from '@/lib/dbMappers';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
-import { PsgcSearchableSelect } from '@/components/address/PsgcSearchableSelect';
-import { AddressFormSection, StreetAddressInput } from '@/components/address/AddressFormSection';
-import { usePsgcAddressCascade } from '@/hooks/usePsgcAddressCascade';
-import { getAddressStorageKey, loadAddressDraft, saveAddressDraft, clearAddressDraft } from '@/lib/addressPersistence';
 import logo from '@/assets/kalingalogo.png';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
 import FamilyPageHeader from '@/components/family/FamilyPageHeader';
@@ -73,31 +69,6 @@ const Progress = () => {
     otherInfo: '',
   });
   const [dischargeErrors, setDischargeErrors] = useState({});
-  const [addressRestored, setAddressRestored] = useState(false);
-  const {
-    provinceOptions,
-    cityOptions,
-    barangayOptions,
-    loadingProvinces,
-    loadingCities,
-    loadingBarangays,
-    fetchError,
-    setFetchError,
-    onProvinceSelected,
-    onCitySelected,
-    onBarangaySelected,
-    onProvinceCleared,
-    onCityCleared,
-    onBarangayCleared,
-    hydrateFromSaved,
-  } = usePsgcAddressCascade({ cityFieldKey: 'municipalityCity' });
-  const psgcCodesRef = useRef({
-    provinceCode: '',
-    provinceKind: 'province',
-    cityCode: '',
-    barangayCode: '',
-  });
-  const psgcStorageKey = getAddressStorageKey('request_management_admission');
   const admissionRequiredFields = [
     { key: 'patientLastName', label: 'Resident Last Name' },
     { key: 'patientFirstName', label: 'Resident First Name' },
@@ -121,89 +92,6 @@ const Progress = () => {
       setActiveTab(requestedTab);
     }
   }, [location.state]);
-
-  useEffect(() => {
-    if (loadingProvinces) return;
-    const saved = loadAddressDraft(psgcStorageKey);
-    if (!saved?.provinceCode) return;
-    let cancelled = false;
-    (async () => {
-      const ok = await hydrateFromSaved(
-        {
-          provinceCode: saved.provinceCode,
-          provinceKind: saved.provinceKind || 'province',
-          cityCode: saved.cityCode,
-          barangayCode: saved.barangayCode,
-          province: saved.province,
-          street: saved.street,
-        },
-        setAdmissionForm
-      );
-      if (cancelled || !ok) return;
-      psgcCodesRef.current = {
-        provinceCode: saved.provinceCode,
-        provinceKind: saved.provinceKind || 'province',
-        cityCode: saved.cityCode || '',
-        barangayCode: saved.barangayCode || '',
-      };
-      setAddressRestored(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadingProvinces, psgcStorageKey, hydrateFromSaved]);
-
-  useEffect(() => {
-    const p = provinceOptions.find((o) => o.name === admissionForm.province);
-    if (p) {
-      psgcCodesRef.current.provinceCode = p.code;
-      psgcCodesRef.current.provinceKind = p.kind || 'province';
-    } else if (!admissionForm.province?.trim()) {
-      psgcCodesRef.current.provinceCode = '';
-      psgcCodesRef.current.provinceKind = 'province';
-      psgcCodesRef.current.cityCode = '';
-      psgcCodesRef.current.barangayCode = '';
-    }
-  }, [admissionForm.province, provinceOptions]);
-
-  useEffect(() => {
-    const c = cityOptions.find((o) => o.name === admissionForm.municipalityCity);
-    if (c) {
-      psgcCodesRef.current.cityCode = c.code;
-    } else if (!admissionForm.municipalityCity?.trim()) {
-      psgcCodesRef.current.cityCode = '';
-      psgcCodesRef.current.barangayCode = '';
-    }
-  }, [admissionForm.municipalityCity, cityOptions]);
-
-  useEffect(() => {
-    const b = barangayOptions.find((o) => o.name === admissionForm.barangay);
-    if (b) {
-      psgcCodesRef.current.barangayCode = b.code;
-    } else if (!admissionForm.barangay?.trim()) {
-      psgcCodesRef.current.barangayCode = '';
-    }
-  }, [admissionForm.barangay, barangayOptions]);
-
-  useEffect(() => {
-    if (!admissionForm.province.trim()) {
-      clearAddressDraft(psgcStorageKey);
-      return;
-    }
-    const t = window.setTimeout(() => {
-      saveAddressDraft(psgcStorageKey, {
-        province: admissionForm.province.trim(),
-        city: admissionForm.municipalityCity.trim(),
-        barangay: admissionForm.barangay.trim(),
-        street: admissionForm.street.trim(),
-        provinceCode: psgcCodesRef.current.provinceCode,
-        provinceKind: psgcCodesRef.current.provinceKind,
-        cityCode: psgcCodesRef.current.cityCode,
-        barangayCode: psgcCodesRef.current.barangayCode,
-      });
-    }, 450);
-    return () => window.clearTimeout(t);
-  }, [psgcStorageKey, admissionForm.province, admissionForm.municipalityCity, admissionForm.barangay, admissionForm.street]);
 
   useEffect(() => {
     let cancelled = false;
@@ -523,10 +411,10 @@ const Progress = () => {
       }
       const familyName =
         user.user_metadata?.full_name
-        || String(admissionForm.fullName || '').trim()
+        || guardianProfile.fullName?.trim()
         || 'Family User';
-      const familyEmail = user.email || String(admissionForm.email || '').trim() || null;
-      const familyPhone = String(admissionForm.phoneNumber || '').trim() || null;
+      const familyEmail = user.email || guardianProfile.email?.trim() || null;
+      const familyPhone = guardianProfile.phone?.trim() || null;
       const dischargePayload = {
         patient_id: selectedPatient.id,
         family_id: user.id,
