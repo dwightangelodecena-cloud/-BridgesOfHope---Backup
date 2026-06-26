@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, X, Phone, MapPin, Building2, Hash, CheckCircle } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, Phone, MapPin, Building2, Hash, HelpCircle, CheckCircle } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
 import { PsgcSearchableSelect } from '@/components/address/PsgcSearchableSelect';
@@ -16,6 +15,20 @@ import {
 import { getPasswordStrengthChecks, getPasswordPolicyError, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
 import { PRIVACY_POLICY, TERMS_OF_USE, SIGNUP_CONSENT_STORAGE_KEY } from '@/lib/legalDocuments';
 import LegalDocumentModal from '@/components/auth/LegalDocumentModal';
+import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
+import AuthPageBackground from '@/components/auth/AuthPageBackground';
+import { AUTH_SHELL_STYLES } from '@/components/auth/authShellStyles';
+
+const LEARN_ABOUT_OPTIONS = [
+  { value: '', label: 'Select an option' },
+  { value: 'social_media', label: 'Social Media' },
+  { value: 'friend_family', label: 'Friend or Family' },
+  { value: 'healthcare_provider', label: 'Healthcare Provider' },
+  { value: 'hospital_clinic', label: 'Hospital / Clinic' },
+  { value: 'online_search', label: 'Online Search' },
+  { value: 'event_seminar', label: 'Event or Seminar' },
+  { value: 'other', label: 'Other' },
+];
 
 const SignUp = () => {
   const navigate = useNavigate();
@@ -36,7 +49,6 @@ const SignUp = () => {
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
-    middleInitial: '',
     contactNumber: '',
     province: '',
     municipality: '',
@@ -44,6 +56,7 @@ const SignUp = () => {
     street: '',
     houseBlockLot: '',
     email: '',
+    learnAboutUs: '',
     password: '',
     confirmPassword: '',
     agreeToTerms: false,
@@ -201,33 +214,31 @@ const SignUp = () => {
   };
 
   const validateForm = () => {
-    let newErrors = {};
-    if (!formData.firstName.trim()) newErrors.firstName = "First name is required";
-    if (!formData.lastName.trim()) newErrors.lastName = "Last name is required";
-    if (formData.middleInitial && !/^[A-Za-z]$/.test(formData.middleInitial.trim())) {
-      newErrors.middleInitial = "Middle initial must be one letter";
-    }
+    const newErrors = {};
+    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
+    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
+    if (!formData.province.trim()) newErrors.province = 'Province is required';
+    if (!formData.municipality.trim()) newErrors.municipality = 'Municipality / City is required';
+    if (!formData.barangay.trim()) newErrors.barangay = 'Barangay is required';
+    if (!formData.street.trim()) newErrors.street = 'Street is required';
+    else if (formData.street.trim().length < 2) newErrors.street = 'Enter a valid street (at least 2 characters)';
+    if (!formData.houseBlockLot.trim()) newErrors.houseBlockLot = 'House # / Block / Lot is required';
     if (!formData.contactNumber.trim()) {
-      newErrors.contactNumber = "Contact number is required";
+      newErrors.contactNumber = 'Contact number is required';
     } else if (!/^[0-9]{10,13}$/.test(formData.contactNumber.trim())) {
-      newErrors.contactNumber = "Contact number must be 10-13 digits";
+      newErrors.contactNumber = 'Contact number must be 10-13 digits';
     }
-    if (!formData.province.trim()) newErrors.province = "Province is required";
-    if (!formData.municipality.trim()) newErrors.municipality = "Municipality / City is required";
-    if (!formData.barangay.trim()) newErrors.barangay = "Barangay is required";
-    if (!formData.street.trim()) newErrors.street = "Street is required";
-    else if (formData.street.trim().length < 2) newErrors.street = "Enter a valid street (at least 2 characters)";
-    if (!formData.houseBlockLot.trim()) newErrors.houseBlockLot = "House # / Block / Lot is required";
-    if (!formData.email.trim()) newErrors.email = "Email is required";
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = "Invalid email format";
+    if (!formData.email.trim()) newErrors.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Invalid email format';
+    if (!formData.learnAboutUs) newErrors.learnAboutUs = 'Please tell us how you learned about us';
 
     const pwErr = getPasswordPolicyError(formData.password);
     if (pwErr) newErrors.password = pwErr;
 
     if (!formData.confirmPassword.trim()) {
-      newErrors.confirmPassword = "Please confirm your password";
+      newErrors.confirmPassword = 'Please confirm your password';
     } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = "Passwords do not match";
+      newErrors.confirmPassword = 'Passwords do not match';
     }
     if (!hasReadTerms) newErrors.agreeToTerms = 'Please read the Terms and Conditions of Use to the end.';
     else if (!formData.agreeToTerms) newErrors.agreeToTerms = 'You must agree to the Terms and Conditions of Use.';
@@ -254,17 +265,14 @@ const SignUp = () => {
     try {
       const first = formData.firstName.trim();
       const last = formData.lastName.trim();
-      const middle = formData.middleInitial.trim();
-      const fullName = middle
-        ? `${first} ${middle.toUpperCase()}. ${last}`
-        : `${first} ${last}`;
-
+      const fullName = `${first} ${last}`;
       const province = formData.province.trim();
       const municipality = formData.municipality.trim();
       const barangay = formData.barangay.trim();
       const street = formData.street.trim();
       const houseBlockLot = formData.houseBlockLot.trim();
       const addressLine = [houseBlockLot, street, barangay, municipality, province].filter(Boolean).join(', ');
+      const learnLabel = LEARN_ABOUT_OPTIONS.find((o) => o.value === formData.learnAboutUs)?.label || formData.learnAboutUs;
 
       const { data, error } = await supabase.auth.signUp({
         email: formData.email.trim(),
@@ -273,7 +281,6 @@ const SignUp = () => {
           data: {
             first_name: first,
             last_name: last,
-            middle_initial: middle.toUpperCase() || null,
             full_name: fullName,
             contact_number: formData.contactNumber.trim(),
             province,
@@ -282,9 +289,11 @@ const SignUp = () => {
             street,
             house_block_lot: houseBlockLot,
             address: addressLine,
-            account_type: 'family'
-          }
-        }
+            learn_about_us: formData.learnAboutUs,
+            learn_about_us_label: learnLabel,
+            account_type: 'family',
+          },
+        },
       });
 
       if (error) {
@@ -316,7 +325,8 @@ const SignUp = () => {
             municipality,
             barangay,
             street,
-            house_block_lot: houseBlockLot
+            house_block_lot: houseBlockLot,
+            address: addressLine,
           }, { onConflict: 'id' });
 
         if (profileError) {
@@ -335,91 +345,97 @@ const SignUp = () => {
   const pwChecks = getPasswordStrengthChecks(formData.password);
 
   return (
-    <div className="signup-container">
+    <div className="login-container auth-page--wide">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600;700&display=swap');
 
-        .signup-container {
-          min-height: 100vh;
-          width: 100%;
-          max-width: 100%;
-          background-color: #ffffff;
-          font-family: 'Inter', sans-serif;
-          margin: 0;
-          padding: 0;
-          overflow-x: hidden;
-          box-sizing: border-box;
-          position: relative;
+        ${AUTH_SHELL_STYLES}
+
+        .login-container.auth-page--wide {
           --signup-header-top: 22px;
           --signup-back-size: 42px;
-          /* Match .signup-content-wrapper width math so fixed logo sits in the left “gap” */
-          /* Same shell / card width / gap as login page */
-          --signup-shell: min(1240px, calc(100vw - 40px));
-          --signup-gap: 22px;
-          --signup-card-track: min(680px, var(--signup-shell));
-          --signup-brand-track: max(0px, calc(var(--signup-shell) - var(--signup-gap) - var(--signup-card-track)));
+          height: 100vh;
+          max-height: 100vh;
+          overflow: hidden;
+          align-items: stretch;
         }
 
-        .signup-brand-fixed {
-          display: none;
-          position: fixed;
-          top: 50%;
-          left: calc((100vw - var(--signup-shell)) / 2 + var(--signup-brand-track) / 2);
-          transform: translate(-50%, -50%);
-          z-index: 0;
-          pointer-events: none;
-          align-items: center;
-          justify-content: center;
-          width: min(360px, 34vw, calc(var(--signup-brand-track) - 8px));
-          max-width: min(360px, 34vw);
+        .login-container.auth-page--wide .login-content-wrapper {
+          align-items: stretch;
+          height: 100%;
+          max-height: 100vh;
         }
 
-        .signup-brand-fixed img {
-          width: 100%;
-          max-width: min(360px, 34vw);
-          max-height: min(58vh, 420px);
-          height: auto;
-          object-fit: contain;
-          display: block;
-        }
-
-        @media (min-width: 901px) {
-          .signup-brand-fixed {
-            display: flex;
-          }
-        }
-
-        .signup-content-wrapper {
-          position: relative;
-          z-index: 1;
-          min-height: 100vh;
-          width: 100%;
-          max-width: min(1240px, 100%);
-          margin: 0 auto;
-          padding: clamp(28px, 4vh, 40px) clamp(16px, 3vw, 24px) 48px;
-          box-sizing: border-box;
+        .login-container.auth-page--wide .brand-side {
+          position: sticky;
+          top: 0;
+          align-self: flex-start;
+          height: 100vh;
+          max-height: 100vh;
           display: flex;
-          justify-content: flex-end;
           align-items: flex-start;
+          justify-content: center;
+          padding-top: clamp(36px, 7vh, 64px);
+          box-sizing: border-box;
         }
 
-        .signup-form-column {
-          width: 100%;
-          min-width: 0;
-          max-width: min(680px, 100%);
+        .login-container.auth-page--wide .form-side {
+          align-items: flex-start;
+          align-self: stretch;
+          max-height: 100vh;
+          overflow-y: auto;
+          overflow-x: hidden;
+          padding: clamp(20px, 3vh, 32px) 6px clamp(28px, 4vh, 40px) 0;
+          scrollbar-width: thin;
+          scrollbar-color: #e2e8f0 transparent;
+        }
+
+        .login-container.auth-page--wide .form-side::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .login-container.auth-page--wide .form-side::-webkit-scrollbar-thumb {
+          background: #e2e8f0;
+          border-radius: 999px;
+        }
+
+        .signup-header {
+          margin-bottom: var(--space-3);
+          padding-right: calc(var(--signup-back-size) + 12px);
+        }
+
+        .signup-heading {
+          font-size: clamp(1.5rem, 2.4vw, 1.85rem);
+          font-weight: 800;
+          color: var(--brand-navy);
+          margin: 0 0 var(--space-1);
+          letter-spacing: -0.03em;
+          line-height: 1.25;
+        }
+
+        .signup-subtitle {
+          font-size: 0.95rem;
+          color: #64748b;
+          line-height: 1.6;
+          margin: 0;
         }
 
         .signup-card {
-          background: #ffffff;
-          padding: calc(var(--signup-header-top) + var(--signup-back-size) + 18px) clamp(32px, 4vw, 48px) 46px;
-          border-radius: 50px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+          background: rgba(255, 255, 255, 0.92);
+          backdrop-filter: blur(12px);
+          padding: calc(var(--signup-header-top) + var(--signup-back-size) + 18px) var(--space-4) var(--space-4);
+          border-radius: 26px;
+          box-shadow:
+            0 1px 2px rgba(26, 43, 74, 0.03),
+            0 8px 24px rgba(26, 43, 74, 0.06),
+            0 28px 56px rgba(26, 43, 74, 0.09);
           width: 100%;
-          max-width: min(680px, 100%);
-          text-align: center;
-          border: 1px solid #f1f5f9;
+          max-width: var(--auth-form-col);
+          text-align: left;
+          border: 1px solid rgba(255, 255, 255, 0.9);
           position: relative;
           box-sizing: border-box;
+          animation: loginFadeIn 0.7s ease-out 0.12s both;
         }
 
         .back-button {
@@ -458,10 +474,10 @@ const SignUp = () => {
         .form-group { text-align: left; margin-bottom: 20px; position: relative; }
         .form-group label {
           display: block;
-          font-size: 0.95rem;
-          color: #475569;
-          margin-bottom: 8px;
-          font-weight: 500;
+          font-size: 0.875rem;
+          color: var(--brand-navy);
+          margin-bottom: var(--space-1);
+          font-weight: 600;
         }
 
         .form-section-label {
@@ -478,14 +494,17 @@ const SignUp = () => {
 
         .input-wrapper input {
           width: 100%;
-          padding: 14px 15px 14px 48px;
+          height: 52px;
+          padding: 0 48px;
           border: 1.5px solid #e2e8f0;
           border-radius: 14px;
           font-size: 1rem;
-          color: #1e293b;
-          background-color: #ffffff;
+          color: var(--brand-navy);
+          background-color: #f8fafc;
           outline: none;
-          transition: all 0.2s ease;
+          transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
+          box-sizing: border-box;
+          font-family: inherit;
         }
 
         .input-wrapper input.input-error {
@@ -526,7 +545,67 @@ const SignUp = () => {
 
         .input-wrapper input:focus {
           border-color: #F54E25;
-          box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.1);
+          background-color: #ffffff;
+          box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.14);
+        }
+
+        .input-wrapper select,
+        .input-wrapper textarea {
+          width: 100%;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 14px;
+          font-size: 1rem;
+          color: var(--brand-navy);
+          background-color: #f8fafc;
+          outline: none;
+          transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
+          box-sizing: border-box;
+          font-family: inherit;
+        }
+
+        .input-wrapper select {
+          height: 52px;
+          padding: 0 48px 0 48px;
+          appearance: none;
+          cursor: pointer;
+        }
+
+        .input-wrapper textarea {
+          min-height: 88px;
+          padding: 14px 16px 14px 48px;
+          resize: vertical;
+          line-height: 1.5;
+        }
+
+        .input-wrapper select.input-error,
+        .input-wrapper textarea.input-error {
+          border-color: #ef4444;
+          background-color: #fef2f2;
+        }
+
+        .input-wrapper select:focus,
+        .input-wrapper textarea:focus {
+          border-color: #F54E25;
+          background-color: #ffffff;
+          box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.14);
+        }
+
+        .input-wrapper--textarea .input-icon {
+          top: 16px;
+          transform: none;
+        }
+
+        .name-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        @media (max-width: 520px) {
+          .name-row {
+            grid-template-columns: 1fr;
+            gap: 0;
+          }
         }
 
         .input-icon { position: absolute; left: 18px; color: #94a3b8; }
@@ -717,15 +796,25 @@ const SignUp = () => {
 
         .btn-primary {
           width: 100%;
-          background: #F54E25;
+          height: 54px;
+          background: linear-gradient(135deg, #FF6A3D 0%, #FF4D1F 100%);
           color: white;
-          padding: 16px;
+          padding: 0 24px;
           border: none;
           border-radius: 14px;
-          font-size: 1.1rem;
+          font-size: 1.05rem;
           font-weight: 600;
+          font-family: inherit;
           cursor: pointer;
           margin-top: 10px;
+          transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
+          box-shadow: 0 4px 16px rgba(255, 77, 31, 0.32);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+          filter: brightness(1.04);
+          box-shadow: 0 8px 28px rgba(255, 77, 31, 0.38);
+          transform: translateY(-2px);
         }
 
         .btn-primary:disabled {
@@ -840,12 +929,39 @@ const SignUp = () => {
         }
 
         @media (max-width: 900px) {
-          .signup-brand-fixed { display: none !important; }
-          .signup-content-wrapper {
-            justify-content: center;
-            padding: 24px 16px 40px;
+          .login-container.auth-page--wide {
+            height: auto;
+            max-height: none;
+            overflow-x: hidden;
+            overflow-y: auto;
           }
-          .signup-form-column { max-width: 100%; }
+
+          .login-container.auth-page--wide .login-content-wrapper {
+            max-height: none;
+            height: auto;
+          }
+
+          .login-container.auth-page--wide .brand-side {
+            position: static;
+            height: auto;
+            max-height: none;
+            padding-top: 0;
+          }
+
+          .login-container.auth-page--wide .form-side {
+            max-height: none;
+            overflow: visible;
+            padding: 0;
+          }
+
+          .signup-header {
+            padding-right: 0;
+            text-align: center;
+          }
+
+          .signup-card {
+            padding: calc(var(--signup-header-top) + var(--signup-back-size) + 12px) var(--space-3) var(--space-3);
+          }
         }
 
         @media (max-width: 768px) {
@@ -882,21 +998,23 @@ const SignUp = () => {
           .modal-header p { font-size: 0.9rem; }
           .btn-modal-agree { padding: 18px; font-size: 1.05rem; border-radius: 15px; }
           
-          .signup-card { border: none; box-shadow: none; padding: 20px 16px; border-radius: 0; }
-          .signup-content-wrapper {
-            justify-content: center;
-            padding: 16px 12px 32px;
-            max-width: 100%;
+          .signup-card {
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            box-shadow:
+              0 1px 2px rgba(26, 43, 74, 0.03),
+              0 8px 24px rgba(26, 43, 74, 0.06);
+            padding: calc(var(--signup-header-top) + var(--signup-back-size) + 12px) var(--space-3) var(--space-3);
+            border-radius: 26px;
           }
         }
       `}</style>
 
-      <div className="signup-brand-fixed" aria-hidden="true">
-        <img src={logo} alt="" />
-      </div>
+      <AuthPageBackground />
 
-      <div className="signup-content-wrapper">
-        <div className="signup-form-column">
+      <div className="login-content-wrapper">
+        <AuthBrandPanel variant="signup" />
+
+        <div className="form-side">
           <div className="signup-card">
             <button
               type="button"
@@ -907,56 +1025,33 @@ const SignUp = () => {
               <ArrowLeft size={20} strokeWidth={2.25} />
             </button>
 
+            <div className="signup-header">
+              <h2 className="signup-heading">Sign Up</h2>
+              <p className="signup-subtitle">
+                Create your family member account for the Kalinga Family Portal.
+              </p>
+            </div>
+
             <form onSubmit={handleSubmit} noValidate>
-              <div className="form-group">
-                <label>First Name</label>
-                <div className="input-wrapper">
-                  <User className="input-icon" size={22} />
-                  <input name="firstName" type="text" placeholder="Enter first name" className={errors.firstName ? 'input-error' : ''} value={formData.firstName} onChange={handleChange} />
+              <p className="form-section-label">Family Member Name</p>
+              <div className="name-row">
+                <div className="form-group">
+                  <label>First Name</label>
+                  <div className="input-wrapper">
+                    <User className="input-icon" size={22} />
+                    <input name="firstName" type="text" placeholder="First name" className={errors.firstName ? 'input-error' : ''} value={formData.firstName} onChange={handleChange} />
+                  </div>
+                  {errors.firstName && <div className="error-message">{errors.firstName}</div>}
                 </div>
-                {errors.firstName && <div className="error-message">{errors.firstName}</div>}
-              </div>
 
-              <div className="form-group">
-                <label>Last Name</label>
-                <div className="input-wrapper">
-                  <User className="input-icon" size={22} />
-                  <input name="lastName" type="text" placeholder="Enter last name" className={errors.lastName ? 'input-error' : ''} value={formData.lastName} onChange={handleChange} />
+                <div className="form-group">
+                  <label>Last Name</label>
+                  <div className="input-wrapper">
+                    <User className="input-icon" size={22} />
+                    <input name="lastName" type="text" placeholder="Last name" className={errors.lastName ? 'input-error' : ''} value={formData.lastName} onChange={handleChange} />
+                  </div>
+                  {errors.lastName && <div className="error-message">{errors.lastName}</div>}
                 </div>
-                {errors.lastName && <div className="error-message">{errors.lastName}</div>}
-              </div>
-
-              <div className="form-group">
-                <label>Middle Initial (Optional)</label>
-                <div className="input-wrapper">
-                  <User className="input-icon" size={22} />
-                  <input
-                    name="middleInitial"
-                    type="text"
-                    placeholder="e.g. A"
-                    maxLength={1}
-                    className={errors.middleInitial ? 'input-error' : ''}
-                    value={formData.middleInitial}
-                    onChange={handleChange}
-                  />
-                </div>
-                {errors.middleInitial && <div className="error-message">{errors.middleInitial}</div>}
-              </div>
-
-              <div className="form-group">
-                <label>Contact Number</label>
-                <div className="input-wrapper">
-                  <Phone className="input-icon" size={22} />
-                  <input
-                    name="contactNumber"
-                    type="text"
-                    placeholder="Enter contact number"
-                    className={errors.contactNumber ? 'input-error' : ''}
-                    value={formData.contactNumber}
-                    onChange={handleChange}
-                  />
-                </div>
-                {errors.contactNumber && <div className="error-message">{errors.contactNumber}</div>}
               </div>
 
               <AddressFormSection
@@ -1065,9 +1160,33 @@ const SignUp = () => {
                 <label>House # / Block / Lot</label>
                 <div className="input-wrapper">
                   <MapPin className="input-icon" size={22} />
-                  <input name="houseBlockLot" type="text" placeholder="e.g. Blk 2 Lot 15" className={errors.houseBlockLot ? 'input-error' : ''} value={formData.houseBlockLot} onChange={handleChange} />
+                  <input
+                    name="houseBlockLot"
+                    type="text"
+                    placeholder="e.g. Blk 2 Lot 15"
+                    className={errors.houseBlockLot ? 'input-error' : ''}
+                    value={formData.houseBlockLot}
+                    onChange={handleChange}
+                  />
                 </div>
                 {errors.houseBlockLot && <div className="error-message">{errors.houseBlockLot}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Contact Number</label>
+                <div className="input-wrapper">
+                  <Phone className="input-icon" size={22} />
+                  <input
+                    name="contactNumber"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Enter contact number"
+                    className={errors.contactNumber ? 'input-error' : ''}
+                    value={formData.contactNumber}
+                    onChange={handleChange}
+                  />
+                </div>
+                {errors.contactNumber && <div className="error-message">{errors.contactNumber}</div>}
               </div>
 
               <div className="form-group">
@@ -1077,6 +1196,26 @@ const SignUp = () => {
                   <input name="email" type="email" placeholder="Enter your email" className={errors.email ? 'input-error' : ''} value={formData.email} onChange={handleChange} />
                 </div>
                 {errors.email && <div className="error-message">{errors.email}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>How did you learn about us?</label>
+                <div className="input-wrapper">
+                  <HelpCircle className="input-icon" size={22} />
+                  <select
+                    name="learnAboutUs"
+                    className={errors.learnAboutUs ? 'input-error' : ''}
+                    value={formData.learnAboutUs}
+                    onChange={handleChange}
+                  >
+                    {LEARN_ABOUT_OPTIONS.map((opt) => (
+                      <option key={opt.value || 'placeholder'} value={opt.value} disabled={!opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {errors.learnAboutUs && <div className="error-message">{errors.learnAboutUs}</div>}
               </div>
 
               <div className="form-group">
@@ -1189,7 +1328,6 @@ const SignUp = () => {
           </div>
         </div>
       </div>
-
 
       <LegalDocumentModal
         open={legalModal === 'terms'}

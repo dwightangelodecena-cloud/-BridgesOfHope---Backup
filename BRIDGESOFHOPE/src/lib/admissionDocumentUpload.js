@@ -20,18 +20,29 @@ function safeFileName(name) {
 }
 
 /**
- * @param {File[]} files
+ * @param {File[] | { file: File, documentType?: string }[]} files
  * @param {string} userId
  * @param {string} [requestId]
  * @returns {Promise<{ ok: true, files: object[] } | { ok: false, errorMessage: string }>}
  */
 export async function uploadAdmissionDocuments(files, userId, requestId = 'draft') {
-  const list = Array.from(files || []).filter(Boolean);
+  const normalized = Array.from(files || [])
+    .map((entry) => {
+      if (entry instanceof File) return { file: entry, documentType: undefined };
+      if (entry?.file instanceof File) {
+        return { file: entry.file, documentType: entry.documentType };
+      }
+      return null;
+    })
+    .filter(Boolean);
+  const list = normalized.map((n) => n.file).filter(Boolean);
   if (!list.length) return { ok: true, files: [] };
   if (!userId) return { ok: false, errorMessage: 'Sign in to upload documents.' };
 
   const uploaded = [];
-  for (const file of list) {
+  for (let i = 0; i < list.length; i += 1) {
+    const file = list[i];
+    const documentType = normalized[i]?.documentType;
     if (file.size > MAX_BYTES) {
       return { ok: false, errorMessage: `${file.name} exceeds 10 MB.` };
     }
@@ -52,6 +63,7 @@ export async function uploadAdmissionDocuments(files, userId, requestId = 'draft
       path,
       url: urlData?.publicUrl || '',
       uploadedAt: new Date().toISOString(),
+      ...(documentType ? { documentType } : {}),
     });
   }
   return { ok: true, files: uploaded };

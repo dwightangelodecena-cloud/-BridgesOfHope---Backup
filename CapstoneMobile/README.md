@@ -10,18 +10,25 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. Start the app
+2. Start the app (clear cache after SDK changes)
 
    ```bash
-   npx expo start
+   npm run start:clear
    ```
 
-In the output, you'll find options to open the app in a
+### iPhone (Expo Go)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
+This project uses **Expo SDK 54**, which matches the **Expo Go** app from the App Store.
+
+1. Install or update [Expo Go](https://apps.apple.com/app/expo-go/id982107779) on your iPhone.
+2. On your PC, run `npm run start:clear` in `CapstoneMobile`.
+3. Scan the QR code with the **iPhone Camera** app (or Expo Go).
+4. Phone and PC must be on the **same Wi‑Fi**. If the QR code fails, run `npm run start:lan` and try again.
+
+In the terminal you can also open on:
+
 - [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- [development build](https://docs.expo.dev/develop/development-builds/introduction/) (for production-style testing)
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 

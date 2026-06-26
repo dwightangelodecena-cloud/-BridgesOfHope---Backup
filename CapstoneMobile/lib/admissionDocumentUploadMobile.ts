@@ -18,6 +18,7 @@ export type PickedAdmissionFile = {
   name: string;
   mimeType?: string | null;
   size?: number | null;
+  documentType?: 'valid_id' | 'birth_cert' | 'hospital_referral';
 };
 
 function safeFileName(name: string): string {
@@ -66,6 +67,7 @@ export async function uploadAdmissionDocumentsMobile(
         path,
         url: urlData?.publicUrl || '',
         uploadedAt: new Date().toISOString(),
+        ...(file.documentType ? { documentType: file.documentType } : {}),
       });
     } catch (e) {
       return { ok: false, errorMessage: e instanceof Error ? e.message : `Could not upload ${file.name}.` };

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Home, User, LogOut, Bell, CheckCircle2, CheckCircle, Calendar, ClipboardList, BookUser, FileText, Paperclip, Upload } from 'lucide-react';
+import { Home, User, LogOut, Bell, CheckCircle2, CheckCircle, BookUser, FileText, ClipboardList, Calendar } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -17,21 +17,54 @@ import {
 } from '@/lib/dischargeRequestTypes';
 import {
   insertAdmissionRequest,
-  patchAdmissionRequestGender,
 } from '@/lib/admissionRequestInsert';
 import { uploadAdmissionDocuments } from '@/lib/admissionDocumentUpload';
-import { admissionStatusLabel, parseAttachedFiles } from '@/lib/admissionWorkflow';
+import { parseAttachedFiles } from '@/lib/admissionWorkflow';
 import {
   fetchFamilyAdmissionRequests,
   visibleFamilyAdmissionRequests,
 } from '@/lib/familyAdmissionRequests';
+import {
+  ADMISSION_DEFAULT_REASON,
+  RELATIONSHIP_OPTIONS,
+} from '@/lib/admissionFormConfig';
+import AdmissionFormPanel, { ADMISSION_FORM_PANEL_STYLES } from '@/components/family/AdmissionFormPanel';
+import { ArrowRight, Save, Eraser } from 'lucide-react';
+
+const EMPTY_ADMISSION_FORM = {
+  patientLastName: '',
+  patientFirstName: '',
+  relationshipToResident: '',
+  agreeToTerms: false,
+};
+
+const ADMISSION_DRAFT_KEY = 'bh_admission_form_draft';
+const STICKY_BAR_HEIGHT = 68;
+const CHAT_BOTTOM_WITH_STICKY = STICKY_BAR_HEIGHT + 16;
+
+function formatRelativeTime(iso) {
+  if (!iso) return null;
+  try {
+    const diff = Date.now() - new Date(iso).getTime();
+    const secs = Math.floor(diff / 1000);
+    if (secs < 10) return 'just now';
+    if (secs < 60) return `${secs} seconds ago`;
+    const mins = Math.floor(secs / 60);
+    if (mins === 1) return '1 minute ago';
+    if (mins < 60) return `${mins} minutes ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs === 1) return '1 hour ago';
+    return `${hrs} hours ago`;
+  } catch {
+    return null;
+  }
+}
 
 const Progress = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [familyNotifUserId, setFamilyNotifUserId] = useState('');
-  const patientBirthdayInputRef = useRef(null);
   const [patients, setPatients] = useState([]);
   const [activeTab, setActiveTab] = useState('admission');
   const [selectedPatientId, setSelectedPatientId] = useState('');
@@ -41,23 +74,22 @@ const Progress = () => {
 
   useFamilyPatientProgressRealtime();
 
-  const [admissionForm, setAdmissionForm] = useState({
-    patientLastName: '',
-    patientFirstName: '',
-    patientMiddleName: '',
-    patientGender: '',
-    patientBirthday: '',
-    reasonForAdmission: '',
-    agreeToTerms: false,
-  });
-  const [attachedFiles, setAttachedFiles] = useState([]);
+  const [admissionForm, setAdmissionForm] = useState({ ...EMPTY_ADMISSION_FORM });
+  const [validIdFile, setValidIdFile] = useState(null);
+  const [birthCertFile, setBirthCertFile] = useState(null);
+  const [hospitalReferralFile, setHospitalReferralFile] = useState(null);
+  const validIdInputRef = useRef(null);
+  const birthCertInputRef = useRef(null);
+  const referralInputRef = useRef(null);
   const [submittedAdmissions, setSubmittedAdmissions] = useState([]);
   const [familyUserId, setFamilyUserId] = useState('');
   const [guardianProfile, setGuardianProfile] = useState({ fullName: '', email: '', phone: '' });
   const [supplementalUploadId, setSupplementalUploadId] = useState('');
-  const fileInputRef = useRef(null);
   const supplementalFileRef = useRef(null);
   const [admissionErrors, setAdmissionErrors] = useState({});
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
+  const [autosaveStatus, setAutosaveStatus] = useState('idle');
+  const [lastActivityAt, setLastActivityAt] = useState(null);
 
   const [dischargeForm, setDischargeForm] = useState({
     reasonCategory: '',
@@ -77,20 +109,33 @@ const Progress = () => {
   const admissionRequiredFields = [
     { key: 'patientLastName', label: 'Resident Last Name' },
     { key: 'patientFirstName', label: 'Resident First Name' },
-    { key: 'patientGender', label: 'Resident Gender' },
-    { key: 'patientBirthday', label: 'Resident Birthday' },
-    { key: 'reasonForAdmission', label: 'Reason for Admission' },
+    { key: 'relationshipToResident', label: 'Relationship to Resident' },
+    { key: 'validIdFile', label: 'Valid ID', isFile: true },
+    { key: 'birthCertFile', label: 'Birth Certificate', isFile: true },
   ];
-  const admissionCompletedFields = admissionRequiredFields.filter((field) => String(admissionForm[field.key]).trim()).length;
+
+  const isAdmissionFieldDone = (field) => {
+    if (field.isFile) {
+      if (field.key === 'validIdFile') return Boolean(validIdFile);
+      if (field.key === 'birthCertFile') return Boolean(birthCertFile);
+      return false;
+    }
+    return Boolean(String(admissionForm[field.key] || '').trim());
+  };
+
+  const admissionCompletedFields = admissionRequiredFields.filter(isAdmissionFieldDone).length;
   const admissionProgressPercent = Math.round((admissionCompletedFields / admissionRequiredFields.length) * 100);
   const selectedPatient = patients.find((p) => String(p.id) === String(selectedPatientId));
   const visibleSubmittedAdmissions = visibleFamilyAdmissionRequests(submittedAdmissions, familyUserId);
 
   const getPatientFullName = (form = admissionForm) =>
-    [form.patientFirstName, form.patientMiddleName, form.patientLastName]
+    [form.patientFirstName, form.patientLastName]
       .map((part) => String(part || '').trim())
       .filter(Boolean)
       .join(' ');
+
+  const relationshipLabel = (value) =>
+    RELATIONSHIP_OPTIONS.find((o) => o.value === value)?.label || value || '—';
 
   useEffect(() => {
     const requestedTab = location.state?.tab;
@@ -98,6 +143,59 @@ const Progress = () => {
       setActiveTab(requestedTab);
     }
   }, [location.state]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(ADMISSION_DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.admissionForm) {
+        setAdmissionForm((prev) => ({
+          ...prev,
+          patientLastName: parsed.admissionForm.patientLastName || '',
+          patientFirstName: parsed.admissionForm.patientFirstName || '',
+          relationshipToResident: parsed.admissionForm.relationshipToResident || '',
+          agreeToTerms: false,
+        }));
+      }
+      if (parsed?.savedAt) setDraftSavedAt(parsed.savedAt);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'admission') return undefined;
+    setAutosaveStatus('saving');
+    const timer = window.setTimeout(() => {
+      const savedAt = new Date().toISOString();
+      localStorage.setItem(
+        ADMISSION_DRAFT_KEY,
+        JSON.stringify({
+          admissionForm: {
+            patientLastName: admissionForm.patientLastName,
+            patientFirstName: admissionForm.patientFirstName,
+            relationshipToResident: admissionForm.relationshipToResident,
+          },
+          savedAt,
+        })
+      );
+      setDraftSavedAt(savedAt);
+      setAutosaveStatus('saved');
+    }, 1400);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeTab,
+    admissionForm.patientLastName,
+    admissionForm.patientFirstName,
+    admissionForm.relationshipToResident,
+  ]);
+
+  useEffect(() => {
+    if (validIdFile || birthCertFile || hospitalReferralFile) {
+      setLastActivityAt(new Date().toISOString());
+    }
+  }, [validIdFile, birthCertFile, hospitalReferralFile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,6 +291,7 @@ const Progress = () => {
 
   const handleAdmissionChange = (e) => {
     const { name, value, type, checked } = e.target;
+    setLastActivityAt(new Date().toISOString());
     setAdmissionForm((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
@@ -202,24 +301,13 @@ const Progress = () => {
     }
   };
 
-  const openBirthdayPicker = () => {
-    const input = patientBirthdayInputRef.current;
-    if (!input) return;
-    if (typeof input.showPicker === 'function') {
-      input.showPicker();
-      return;
-    }
-    input.focus();
-  };
-
   const validateAdmission = () => {
     const errs = {};
     if (!admissionForm.patientLastName.trim()) errs.patientLastName = 'Resident last name is required.';
     if (!admissionForm.patientFirstName.trim()) errs.patientFirstName = 'Resident first name is required.';
-    if (!admissionForm.patientGender.trim()) errs.patientGender = 'Resident gender is required.';
-    if (!admissionForm.patientBirthday) errs.patientBirthday = 'Resident birthday is required.';
-    if (!admissionForm.reasonForAdmission) errs.reasonForAdmission = 'Please select a reason.';
-    if (!attachedFiles.length) errs.attachedFiles = 'Please attach at least one necessary document.';
+    if (!admissionForm.relationshipToResident) errs.relationshipToResident = 'Please select your relationship to the resident.';
+    if (!validIdFile) errs.validIdFile = 'Please upload a valid ID.';
+    if (!birthCertFile) errs.birthCertFile = 'Please upload a birth certificate.';
     if (!admissionForm.agreeToTerms) errs.agreeToTerms = 'You must agree to the terms.';
     setAdmissionErrors(errs);
     return Object.keys(errs).length === 0;
@@ -261,16 +349,20 @@ const Progress = () => {
       setAdmissionErrors({ submit: 'Please sign in to submit an admission request.' });
       return;
     }
-    const genderValue = admissionForm.patientGender.trim();
+    const relationship = admissionForm.relationshipToResident;
     const formSnapshot = {
       patientLastName: admissionForm.patientLastName.trim(),
       patientFirstName: admissionForm.patientFirstName.trim(),
-      patientMiddleName: admissionForm.patientMiddleName.trim(),
-      patientGender: genderValue,
-      patientBirthday: admissionForm.patientBirthday,
-      reasonForAdmission: admissionForm.reasonForAdmission,
+      relationshipToResident: relationship,
+      relationshipLabel: relationshipLabel(relationship),
+      hasHospitalReferral: Boolean(hospitalReferralFile),
     };
-    const uploadResult = await uploadAdmissionDocuments(attachedFiles, user.id, 'pending');
+    const filesToUpload = [
+      validIdFile ? { file: validIdFile, documentType: 'valid_id' } : null,
+      birthCertFile ? { file: birthCertFile, documentType: 'birth_cert' } : null,
+      hospitalReferralFile ? { file: hospitalReferralFile, documentType: 'hospital_referral' } : null,
+    ].filter(Boolean);
+    const uploadResult = await uploadAdmissionDocuments(filesToUpload, user.id, 'pending');
     if (!uploadResult.ok) {
       setAdmissionErrors({ submit: uploadResult.errorMessage });
       return;
@@ -283,10 +375,7 @@ const Progress = () => {
       patient_name: getPatientFullName(),
       patient_last_name: admissionForm.patientLastName.trim(),
       patient_first_name: admissionForm.patientFirstName.trim(),
-      patient_middle_name: admissionForm.patientMiddleName.trim(),
-      patient_gender: genderValue,
-      patient_birth_date: admissionForm.patientBirthday,
-      reason_for_admission: admissionForm.reasonForAdmission,
+      reason_for_admission: ADMISSION_DEFAULT_REASON,
       status: 'processing',
       form_data: formSnapshot,
       attached_files: uploadResult.files,
@@ -299,10 +388,7 @@ const Progress = () => {
       patient_name: getPatientFullName(),
       patient_last_name: admissionForm.patientLastName.trim(),
       patient_first_name: admissionForm.patientFirstName.trim(),
-      patient_middle_name: admissionForm.patientMiddleName.trim(),
-      patient_gender: genderValue,
-      patient_birth_date: admissionForm.patientBirthday,
-      reason_for_admission: admissionForm.reasonForAdmission,
+      reason_for_admission: ADMISSION_DEFAULT_REASON,
       status: 'processing',
     };
     const minimalRow = {
@@ -311,9 +397,7 @@ const Progress = () => {
       guardian_email: guardianProfile.email.trim(),
       guardian_phone: guardianProfile.phone.trim(),
       patient_name: getPatientFullName(),
-      patient_gender: genderValue,
-      patient_birth_date: admissionForm.patientBirthday,
-      reason_for_admission: admissionForm.reasonForAdmission,
+      reason_for_admission: ADMISSION_DEFAULT_REASON,
       status: 'processing',
     };
     const insertResult = await insertAdmissionRequest([extendedRow, coreRow, minimalRow]);
@@ -321,7 +405,6 @@ const Progress = () => {
       setAdmissionErrors({ submit: insertResult.errorMessage });
       return;
     }
-    await patchAdmissionRequestGender(insertResult.id, genderValue);
     if (uploadResult.files.length) {
       await supabase
         .from('admission_requests')
@@ -336,16 +419,11 @@ const Progress = () => {
     );
     const rows = await fetchFamilyAdmissionRequests(user.id);
     setSubmittedAdmissions(rows);
-    setAdmissionForm({
-      patientLastName: '',
-      patientFirstName: '',
-      patientMiddleName: '',
-      patientGender: '',
-      patientBirthday: '',
-      reasonForAdmission: '',
-      agreeToTerms: false,
-    });
-    setAttachedFiles([]);
+    setAdmissionForm({ ...EMPTY_ADMISSION_FORM });
+    setValidIdFile(null);
+    setBirthCertFile(null);
+    setHospitalReferralFile(null);
+    localStorage.removeItem(ADMISSION_DRAFT_KEY);
     setSuccessModal({ open: true, message: 'Admission request submitted successfully.' });
   };
 
@@ -480,6 +558,51 @@ const Progress = () => {
     });
   };
 
+  const saveAdmissionDraft = () => {
+    const savedAt = new Date().toISOString();
+    localStorage.setItem(
+      ADMISSION_DRAFT_KEY,
+      JSON.stringify({
+        admissionForm: {
+          patientLastName: admissionForm.patientLastName,
+          patientFirstName: admissionForm.patientFirstName,
+          relationshipToResident: admissionForm.relationshipToResident,
+        },
+        savedAt,
+      })
+    );
+    setDraftSavedAt(savedAt);
+    setAutosaveStatus('saved');
+  };
+
+  const clearAdmissionForm = () => {
+    const hasContent =
+      admissionForm.patientLastName.trim()
+      || admissionForm.patientFirstName.trim()
+      || admissionForm.relationshipToResident
+      || admissionForm.agreeToTerms
+      || validIdFile
+      || birthCertFile
+      || hospitalReferralFile;
+
+    if (hasContent && !window.confirm('Clear this admission form? All entered fields and uploads will be removed.')) {
+      return;
+    }
+
+    setAdmissionForm({ ...EMPTY_ADMISSION_FORM });
+    setValidIdFile(null);
+    setBirthCertFile(null);
+    setHospitalReferralFile(null);
+    if (validIdInputRef.current) validIdInputRef.current.value = '';
+    if (birthCertInputRef.current) birthCertInputRef.current.value = '';
+    if (referralInputRef.current) referralInputRef.current.value = '';
+    setAdmissionErrors({});
+    localStorage.removeItem(ADMISSION_DRAFT_KEY);
+    setDraftSavedAt(null);
+    setAutosaveStatus('idle');
+    setLastActivityAt(null);
+  };
+
   const handlePrimarySubmit = () => {
     if (activeTab === 'admission') {
       if (!validateAdmission()) return;
@@ -554,22 +677,111 @@ const Progress = () => {
         .notif-dropdown-row span { flex: 1; min-width: 0; }
         .notif-remove-x { border: none; background: transparent; color: #CBD5E1; cursor: pointer; font-size: 16px; padding: 0; line-height: 1; flex-shrink: 0; }
         .notif-remove-x:hover { color: #EF4444; }
-        .content-area { flex: 1; padding: 24px 30px 30px; overflow-y: auto; }
-        .content-wrap { width: 100%; max-width: 1600px; margin: 0 auto; }
-        .request-shell { background: #fff; border: 1px solid #E9EDF7; border-radius: 20px; padding: 22px; min-height: calc(100vh - 170px); display: flex; flex-direction: column; box-shadow: 0 14px 35px rgba(15, 23, 42, 0.06); }
-        .heading { color: #1B2559; font-size: 24px; font-weight: 800; line-height: 1.2; }
-        .subheading { margin-top: 6px; color: #64748B; font-size: 14px; font-weight: 600; }
-        .tabs { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #F8FAFF; border: 1px solid #E5ECFA; border-radius: 14px; padding: 8px; }
-        .tab-btn { border: 1px solid transparent; background: transparent; border-radius: 10px; padding: 12px; font-weight: 800; color: #475569; cursor: pointer; transition: .18s ease; }
-        .tab-btn:hover { background: #FFFFFF; border-color: #E2E8F0; color: #334155; }
-        .tab-btn.active { background: linear-gradient(180deg, #FFF5F1 0%, #FFFFFF 100%); border-color: #FBCBBE; color: #F54E25; box-shadow: 0 8px 18px rgba(245, 78, 37, 0.12); }
-        .form-surface {
-          margin-top: 16px;
-          border: 1px solid #E7ECF8;
-          border-radius: 16px;
-          background: linear-gradient(180deg, #FDFEFF 0%, #FFFFFF 100%);
-          padding: 16px;
+        .content-area { flex: 1; padding: 24px 30px 100px; overflow-y: auto; position: relative; }
+        .content-wrap { width: 100%; max-width: 1060px; margin: 0 auto; position: relative; z-index: 1; }
+        .req-page-bg-shape {
+          position: absolute;
+          border-radius: 50%;
+          pointer-events: none;
+          z-index: 0;
         }
+        .req-page-bg-shape--1 {
+          width: 320px;
+          height: 320px;
+          top: -80px;
+          right: -60px;
+          background: radial-gradient(circle, rgba(245, 78, 37, 0.07) 0%, transparent 70%);
+        }
+        .req-page-bg-shape--2 {
+          width: 240px;
+          height: 240px;
+          bottom: 12%;
+          left: -80px;
+          background: radial-gradient(circle, rgba(27, 37, 89, 0.05) 0%, transparent 70%);
+        }
+        .req-page-intro {
+          margin-bottom: 20px;
+        }
+        .req-page-subtitle {
+          margin: 0 0 16px;
+          font-size: 0.95rem;
+          color: #64748b;
+          line-height: 1.6;
+          font-weight: 500;
+        }
+        .req-workflow {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .req-workflow__step {
+          font-size: 0.78rem;
+          font-weight: 700;
+          color: #94a3b8;
+          padding: 6px 12px;
+          border-radius: 999px;
+          background: #f8fafc;
+          border: 1px solid #eef2f7;
+          transition: color 0.2s, background 0.2s, border-color 0.2s;
+        }
+        .req-workflow__step--active {
+          color: #F54E25;
+          background: rgba(245, 78, 37, 0.08);
+          border-color: rgba(245, 78, 37, 0.2);
+        }
+        .req-workflow__arrow { color: #cbd5e1; flex-shrink: 0; }
+        .request-shell {
+          background: #fff;
+          border: 1px solid #E9EDF7;
+          border-radius: 22px;
+          padding: 28px 28px 32px;
+          min-height: calc(100vh - 200px);
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 20px 50px rgba(15, 23, 42, 0.07);
+        }
+        .tabs {
+          margin-bottom: 28px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          background: #F8FAFF;
+          border: 1px solid #E5ECFA;
+          border-radius: 16px;
+          padding: 6px;
+        }
+        .tab-btn {
+          border: 1px solid transparent;
+          background: transparent;
+          border-radius: 12px;
+          padding: 14px 16px;
+          font-weight: 800;
+          font-size: 0.92rem;
+          color: #475569;
+          cursor: pointer;
+          transition: background 0.22s ease, border-color 0.22s ease, color 0.22s ease, transform 0.15s ease, box-shadow 0.22s ease;
+        }
+        .tab-btn:hover {
+          background: #FFFFFF;
+          border-color: #E2E8F0;
+          color: #334155;
+        }
+        .tab-btn.active {
+          background: linear-gradient(180deg, #FFF5F1 0%, #FFFFFF 100%);
+          border-color: #FBCBBE;
+          color: #F54E25;
+          box-shadow: 0 8px 22px rgba(245, 78, 37, 0.14);
+          transform: translateY(-1px);
+        }
+        .form-surface {
+          margin-top: 0;
+          border: none;
+          border-radius: 0;
+          background: transparent;
+          padding: 0;
+        }
+        ${ADMISSION_FORM_PANEL_STYLES}
         .section-kicker {
           display: inline-flex;
           align-items: center;
@@ -628,6 +840,88 @@ const Progress = () => {
         .date-field-hint { font-size: 12px; color: #94a3b8; margin-top: 6px; }
         .empty-patient { margin-top: 16px; border: 1px dashed #D4DFEE; background: #F8FBFF; border-radius: 12px; padding: 22px; text-align: center; color: #64748B; font-weight: 700; }
         .submit-row { margin-top: 18px; padding-top: 12px; display: flex; justify-content: flex-end; }
+        .req-sticky-bar {
+          position: fixed;
+          bottom: 0;
+          right: 0;
+          z-index: 600;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 20px;
+          padding: 12px 28px;
+          padding-right: 96px;
+          background: rgba(255, 255, 255, 0.97);
+          border-top: 1px solid #E9EDF7;
+          box-shadow: 0 -6px 28px rgba(15, 23, 42, 0.07);
+          backdrop-filter: blur(12px);
+          transition: left 0.3s ease;
+        }
+        .req-sticky-bar__meta {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+        .req-sticky-bar__autosave {
+          font-size: 0.82rem;
+          font-weight: 700;
+          color: #1B2559;
+        }
+        .req-sticky-bar__autosave--saving { color: #64748b; }
+        .req-sticky-bar__autosave--saved { color: #16a34a; }
+        .req-sticky-bar__saved-at {
+          font-size: 0.76rem;
+          font-weight: 500;
+          color: #94a3b8;
+        }
+        .req-sticky-bar__actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-shrink: 0;
+        }
+        .req-draft-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          border: 1.5px solid #E2E8F0;
+          background: #fff;
+          color: #475569;
+          font-weight: 700;
+          font-size: 0.88rem;
+          padding: 11px 18px;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: border-color 0.2s, background 0.2s, transform 0.15s, box-shadow 0.2s;
+        }
+        .req-draft-btn:hover {
+          border-color: #cbd5e1;
+          background: #f8fafc;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+        }
+        .req-clear-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          border: 1.5px solid #fecaca;
+          background: #fff;
+          color: #dc2626;
+          font-weight: 700;
+          font-size: 0.88rem;
+          padding: 11px 18px;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: border-color 0.2s, background 0.2s, transform 0.15s, box-shadow 0.2s;
+        }
+        .req-clear-btn:hover {
+          border-color: #f87171;
+          background: #fef2f2;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(220, 38, 38, 0.08);
+        }
+        .req-draft-toast { display: none; }
         .primary-btn { background: linear-gradient(145deg, #F97316, #EA580C); color: #fff; border: none; border-radius: 12px; padding: 12px 22px; font-weight: 800; cursor: pointer; box-shadow: 0 10px 24px rgba(234, 88, 12, 0.24); transition: transform .18s ease, box-shadow .18s ease; }
         .primary-btn:hover { transform: translateY(-1px); box-shadow: 0 14px 28px rgba(234, 88, 12, 0.28); }
         .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 7000; display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -727,7 +1021,13 @@ const Progress = () => {
           .progress-container { flex-direction: column; overflow: auto; min-height: 100vh; height: auto; }
           .main-view { overflow: visible; }
           .mobile-top-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: #fff; border-bottom: 1px solid #F1F1F1; }
-          .content-area { padding: 16px 14px 100px; overflow: visible; }
+          .content-area { padding: 16px 14px 120px; overflow: visible; }
+          .req-sticky-bar { left: 0 !important; padding: 12px 14px; flex-wrap: wrap; }
+          .req-sticky-bar__meta { flex: 1 1 100%; }
+          .req-sticky-bar__actions { width: 100%; }
+          .req-sticky-bar__actions .primary-btn,
+          .req-sticky-bar__actions .req-draft-btn,
+          .req-sticky-bar__actions .req-clear-btn { flex: 1; justify-content: center; }
           .request-shell { min-height: auto; }
           .form-grid { grid-template-columns: 1fr; }
           .quick-insights { grid-template-columns: 1fr; }
@@ -771,7 +1071,23 @@ const Progress = () => {
         <FamilyPageHeader title="Request Management" />
 
         <div className="content-area" style={{ background: FAMILY_COLORS.background }}>
+          <div className="req-page-bg-shape req-page-bg-shape--1" aria-hidden />
+          <div className="req-page-bg-shape req-page-bg-shape--2" aria-hidden />
           <div className="content-wrap">
+            <div className="req-page-intro">
+              <p className="req-page-subtitle">
+                Submit admission requests and manage resident requirements.
+              </p>
+              <div className="req-workflow" aria-label="Admission workflow">
+                <span className={`req-workflow__step ${activeTab === 'admission' ? 'req-workflow__step--active' : ''}`}>
+                  Admission
+                </span>
+                <ArrowRight size={14} className="req-workflow__arrow" aria-hidden />
+                <span className="req-workflow__step">Review</span>
+                <ArrowRight size={14} className="req-workflow__arrow" aria-hidden />
+                <span className="req-workflow__step">Approval</span>
+              </div>
+            </div>
             <div className="request-shell">
               <div className="tabs">
                 <button className={`tab-btn ${activeTab === 'admission' ? 'active' : ''}`} onClick={() => setActiveTab('admission')}>Admission Form</button>
@@ -780,243 +1096,33 @@ const Progress = () => {
 
               {activeTab === 'admission' && (
                 <div className="form-surface">
-                  <div className="section-kicker"><CheckCircle2 size={13} /> Admission workflow</div>
-                  <div className="section-title-row">
-                    <div>
-                      <div className="section-title-main">Admission Request Form</div>
-                      <div className="section-title-sub">Patient details only — your profile is used for guardian contact.</div>
-                    </div>
-                    <div className="status-pill"><CheckCircle size={13} /> Admin review required</div>
-                  </div>
-                  <div className="quick-insights">
-                    <div className="insight-card">
-                      <div className="insight-label">Completion</div>
-                      <div className="insight-value">{admissionProgressPercent}%</div>
-                    </div>
-                    <div className="insight-card">
-                      <div className="insight-label">Required fields done</div>
-                      <div className="insight-value">{admissionCompletedFields}/{admissionRequiredFields.length}</div>
-                    </div>
-                    <div className="insight-card">
-                      <div className="insight-label">Form status</div>
-                      <div className="insight-value">{admissionProgressPercent === 100 ? 'Ready' : 'In Progress'}</div>
-                    </div>
-                  </div>
-                  <div className="meta-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.86rem' }}>Form Completion</span>
-                      <span style={{ fontWeight: 700, color: FAMILY_COLORS.accent, fontSize: '0.86rem' }}>{admissionProgressPercent}%</span>
-                    </div>
-                    <div style={{ height: 8, background: '#E2E8F0', borderRadius: 999 }}>
-                      <div style={{ width: `${admissionProgressPercent}%`, height: '100%', background: FAMILY_COLORS.accent, borderRadius: 999 }} />
-                    </div>
-                    <p style={{ marginTop: 8, color: '#64748b', fontSize: '0.8rem' }}>
-                      {admissionCompletedFields} of {admissionRequiredFields.length} required fields completed
-                    </p>
-                  </div>
-                  <div className="meta-card">
-                    <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.86rem', marginBottom: 6 }}>Admission Checklist</div>
-                    {admissionRequiredFields.map((field) => (
-                      <div key={field.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: 5 }}>
-                        <span style={{ color: '#475569' }}>{field.label}</span>
-                        <span style={{ color: String(admissionForm[field.key]).trim() ? '#16a34a' : '#94a3b8', fontWeight: 700 }}>
-                          {String(admissionForm[field.key]).trim() ? 'Done' : 'Pending'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="form-grid">
-                    <div className="field full">
-                      <label>Attach Necessary Files *</label>
-                      <div style={{ border: '1px dashed #CBD5E1', borderRadius: 12, padding: 14, background: '#F8FAFF' }}>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          multiple
-                          accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                          style={{ display: 'none' }}
-                          onChange={(e) => {
-                            const files = Array.from(e.target.files || []);
-                            setAttachedFiles(files);
-                            if (admissionErrors.attachedFiles) {
-                              setAdmissionErrors((prev) => ({ ...prev, attachedFiles: '' }));
-                            }
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="primary-btn"
-                          style={{ width: 'auto', padding: '10px 16px', margin: 0, boxShadow: 'none' }}
-                          onClick={() => fileInputRef.current?.click()}
-                        >
-                          <Upload size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-                          Choose files
-                        </button>
-                        {attachedFiles.length > 0 && (
-                          <ul style={{ margin: '10px 0 0', paddingLeft: 18, fontSize: '0.82rem', color: '#475569' }}>
-                            {attachedFiles.map((f) => (
-                              <li key={`${f.name}-${f.size}`}><Paperclip size={12} style={{ display: 'inline', marginRight: 4 }} />{f.name}</li>
-                            ))}
-                          </ul>
-                        )}
-                        <p style={{ margin: '8px 0 0', fontSize: '0.78rem', color: '#94a3b8' }}>
-                          Upload IDs, medical records, or other required documents (PDF, images, Word — max 10 MB each).
-                        </p>
-                      </div>
-                      {admissionErrors.attachedFiles && <div className="error">{admissionErrors.attachedFiles}</div>}
-                    </div>
-
-                    <div className="field">
-                      <label>Patient Last Name *</label>
-                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientLastName" placeholder="Resident's last name" value={admissionForm.patientLastName} onChange={handleAdmissionChange} /></div>
-                      {admissionErrors.patientLastName && <div className="error">{admissionErrors.patientLastName}</div>}
-                    </div>
-                    <div className="field">
-                      <label>Patient First Name *</label>
-                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientFirstName" placeholder="Resident's first name" value={admissionForm.patientFirstName} onChange={handleAdmissionChange} /></div>
-                      {admissionErrors.patientFirstName && <div className="error">{admissionErrors.patientFirstName}</div>}
-                    </div>
-                    <div className="field">
-                      <label>Patient Middle Name (Optional)</label>
-                      <div className="input-wrapper"><User className="input-icon" size={18} /><input name="patientMiddleName" placeholder="Resident's middle name" value={admissionForm.patientMiddleName} onChange={handleAdmissionChange} /></div>
-                      {admissionErrors.patientMiddleName && <div className="error">{admissionErrors.patientMiddleName}</div>}
-                    </div>
-                    <div className="field">
-                      <label>Patient Gender *</label>
-                      <div className="input-wrapper">
-                        <User className="input-icon" size={18} />
-                        <select name="patientGender" value={admissionForm.patientGender} onChange={handleAdmissionChange}>
-                          <option value="">Select Gender</option>
-                          <option value="Male">Male</option>
-                          <option value="Female">Female</option>
-                        </select>
-                      </div>
-                      {admissionErrors.patientGender && <div className="error">{admissionErrors.patientGender}</div>}
-                    </div>
-                    <div className="field">
-                      <label>Patient Birthday *</label>
-                      <div className="input-wrapper">
-                        <Calendar className="input-icon" size={18} />
-                        <input ref={patientBirthdayInputRef} name="patientBirthday" type="date" className="input-date" value={admissionForm.patientBirthday} onChange={handleAdmissionChange} />
-                        <button type="button" className="input-icon-btn" onClick={openBirthdayPicker} aria-label="Open birthday calendar">
-                          <Calendar size={16} />
-                        </button>
-                      </div>
-                      <p className="date-field-hint">Select a date or use the calendar control - not in the future.</p>
-                      {admissionErrors.patientBirthday && <div className="error">{admissionErrors.patientBirthday}</div>}
-                    </div>
-                    <div className="field full">
-                      <label>Reason for Admission *</label>
-                      <div className="input-wrapper">
-                        <ClipboardList className="input-icon" size={18} />
-                        <select name="reasonForAdmission" value={admissionForm.reasonForAdmission} onChange={handleAdmissionChange}>
-                          <option value="">Select Reason</option>
-                          <option value="Drugs">Drugs</option>
-                          <option value="Alcohol">Alcohol</option>
-                          <option value="Gambling">Gambling</option>
-                          <option value="Mental health">Mental health</option>
-                        </select>
-                      </div>
-                      {admissionErrors.reasonForAdmission && <div className="error">{admissionErrors.reasonForAdmission}</div>}
-                    </div>
-                    <div className="field full" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <input
-                      type="checkbox"
-                      name="agreeToTerms"
-                      checked={admissionForm.agreeToTerms}
-                      onChange={handleAdmissionChange}
-                      style={{ width: 18, height: 18 }}
-                      />
-                      
-                      <label style={{ margin: 0 }}>
-                        I agree to the{' '}
-                        <span
-                        style={{ color: '#F54E25', cursor: 'pointer', fontWeight: 700 }}
-                        onClick={() => setShowTermsModal(true)}
-                        >
-                        Privacy Policy
-                        </span>{' '}
-                        and{' '}
-                        <span
-                        style={{ color: '#F54E25', cursor: 'pointer', fontWeight: 700 }}
-                        onClick={() => setShowTermsModal(true)}
-                        >
-                          Terms
-                          </span>{' '}
-                          *
-                    </label> 
-                    </div>
-                    {admissionErrors.agreeToTerms && <div className="error full">{admissionErrors.agreeToTerms}</div>}
-                    {admissionErrors.submit && <div className="error full">{admissionErrors.submit}</div>}
-                  </div>
-
-                  {visibleSubmittedAdmissions.length > 0 && (
-                    <div className="meta-card" style={{ marginTop: 16 }}>
-                      <div style={{ fontWeight: 800, color: '#1B2559', marginBottom: 10 }}>Submitted Admission Requests</div>
-                      {visibleSubmittedAdmissions.map((row) => {
-                        const formData = row.form_data || {};
-                        const files = parseAttachedFiles(row.attached_files);
-                        const st = admissionStatusLabel(row.status);
-                        const inReview = String(row.status).toLowerCase() === 'in_review';
-                        return (
-                          <div key={row.id} style={{ border: '1px solid #E9EDF7', borderRadius: 12, padding: 12, marginBottom: 10, background: '#fff' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                              <strong style={{ color: '#1B2559' }}>{row.patient_name}</strong>
-                              <span className="status-pill">{st}</span>
-                            </div>
-                            {row.meeting_date && (
-                              <p style={{ fontSize: '0.8rem', color: '#92400e', marginBottom: 6 }}>
-                                Meeting with BOH: {row.meeting_date}{row.meeting_time ? ` at ${row.meeting_time}` : ''}
-                              </p>
-                            )}
-                            {row.required_document_notes && inReview && (
-                              <p style={{ fontSize: '0.8rem', color: '#b45309', marginBottom: 6 }}>
-                                Required: {row.required_document_notes}
-                              </p>
-                            )}
-                            <div style={{ fontSize: '0.8rem', color: '#475569', lineHeight: 1.5 }}>
-                              <div>Reason: {formData.reasonForAdmission || row.reason_for_admission}</div>
-                              <div>Gender: {formData.patientGender || row.patient_gender || '—'}</div>
-                              <div>Birthday: {formData.patientBirthday || row.patient_birth_date || '—'}</div>
-                            </div>
-                            {files.length > 0 && (
-                              <div style={{ marginTop: 8, fontSize: '0.78rem' }}>
-                                <strong>Attached files:</strong>
-                                <ul style={{ margin: '4px 0 0', paddingLeft: 16 }}>
-                                  {files.map((f) => (
-                                    <li key={f.path || f.name}>{f.name}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {inReview && !row.documents_complete && (
-                              <div style={{ marginTop: 10 }}>
-                                <input
-                                  ref={supplementalUploadId === row.id ? supplementalFileRef : null}
-                                  type="file"
-                                  multiple
-                                  accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                                  style={{ display: 'none' }}
-                                  onChange={() => void uploadSupplementalDocuments(row.id)}
-                                />
-                                <button
-                                  type="button"
-                                  className="primary-btn"
-                                  style={{ width: 'auto', padding: '8px 14px', fontSize: '0.82rem', boxShadow: 'none' }}
-                                  onClick={() => {
-                                    setSupplementalUploadId(row.id);
-                                    setTimeout(() => supplementalFileRef.current?.click(), 0);
-                                  }}
-                                >
-                                  Upload missing documents
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <AdmissionFormPanel
+                    admissionForm={admissionForm}
+                    admissionErrors={admissionErrors}
+                    handleAdmissionChange={handleAdmissionChange}
+                    validIdFile={validIdFile}
+                    birthCertFile={birthCertFile}
+                    hospitalReferralFile={hospitalReferralFile}
+                    validIdInputRef={validIdInputRef}
+                    birthCertInputRef={birthCertInputRef}
+                    referralInputRef={referralInputRef}
+                    setValidIdFile={setValidIdFile}
+                    setBirthCertFile={setBirthCertFile}
+                    setHospitalReferralFile={setHospitalReferralFile}
+                    setAdmissionErrors={setAdmissionErrors}
+                    admissionRequiredFields={admissionRequiredFields}
+                    isAdmissionFieldDone={isAdmissionFieldDone}
+                    admissionCompletedFields={admissionCompletedFields}
+                    admissionProgressPercent={admissionProgressPercent}
+                    visibleSubmittedAdmissions={visibleSubmittedAdmissions}
+                    relationshipLabel={relationshipLabel}
+                    setShowTermsModal={setShowTermsModal}
+                    supplementalUploadId={supplementalUploadId}
+                    supplementalFileRef={supplementalFileRef}
+                    setSupplementalUploadId={setSupplementalUploadId}
+                    uploadSupplementalDocuments={uploadSupplementalDocuments}
+                    lastActivityAt={lastActivityAt}
+                  />
                 </div>
               )}
 
@@ -1091,10 +1197,47 @@ const Progress = () => {
                 </div>
               )}
 
-              <div className="submit-row"><button type="button" className="primary-btn" onClick={handlePrimarySubmit}>Submit Request</button></div>
+              {activeTab === 'discharge' && (
+                <div className="submit-row">
+                  <button type="button" className="primary-btn" onClick={handlePrimarySubmit}>Submit Request</button>
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {activeTab === 'admission' && (
+          <div
+            className="req-sticky-bar"
+            style={{ left: isExpanded ? 280 : 110 }}
+            role="region"
+            aria-label="Admission form actions"
+          >
+            <div className="req-sticky-bar__meta">
+              <span className={`req-sticky-bar__autosave req-sticky-bar__autosave--${autosaveStatus}`}>
+                {autosaveStatus === 'saving' ? 'Saving…' : autosaveStatus === 'saved' ? 'Autosaved' : 'Draft ready'}
+              </span>
+              {draftSavedAt && formatRelativeTime(draftSavedAt) ? (
+                <span className="req-sticky-bar__saved-at">
+                  Last saved {formatRelativeTime(draftSavedAt)}
+                </span>
+              ) : null}
+            </div>
+            <div className="req-sticky-bar__actions">
+              <button type="button" className="req-clear-btn" onClick={clearAdmissionForm}>
+                <Eraser size={16} />
+                Clear
+              </button>
+              <button type="button" className="req-draft-btn" onClick={saveAdmissionDraft}>
+                <Save size={16} />
+                Save Draft
+              </button>
+              <button type="button" className="primary-btn" onClick={handlePrimarySubmit}>
+                Submit Request
+              </button>
+            </div>
+          </div>
+        )}
 
         <nav className="mobile-bottom-nav">
           <Home size={24} color="#A3AED0" onClick={() => navigate('/home')} />
@@ -1123,7 +1266,7 @@ const Progress = () => {
           <LogOut size={24} color="#A3AED0" onClick={() => navigate('/login')} />
         </nav>
       </main>
-      <FloatingChatHead />
+      <FloatingChatHead bottomOffset={activeTab === 'admission' ? CHAT_BOTTOM_WITH_STICKY : 24} />
 
       {showTermsModal && (
         <div className="modal-overlay" onClick={() => setShowTermsModal(false)}>

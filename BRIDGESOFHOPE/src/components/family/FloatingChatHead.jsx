@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MessageCircle, Send, X } from 'lucide-react';
 import { useSupportChat } from '@/hooks/useSupportChat';
 
-export default function FloatingChatHead() {
+export default function FloatingChatHead({ bottomOffset = 24 }) {
   const inputRef = useRef(null);
   const chatBodyRef = useRef(null);
   const { messages, loading, sending, sendError, isChatOpen, setIsChatOpen, sendMessage } = useSupportChat();
@@ -82,11 +82,17 @@ export default function FloatingChatHead() {
         </div>
       )}
 
-      <button type="button" className="floating-chat-head" aria-label="Open chat support" onClick={() => setIsChatOpen((v) => !v)}>
+      <button
+        type="button"
+        className="floating-chat-head"
+        aria-label="Open chat support"
+        onClick={() => setIsChatOpen((v) => !v)}
+        style={{ '--chat-bottom': `${bottomOffset}px` }}
+      >
         {isChatOpen ? <X size={26} color="#FFFFFF" /> : <MessageCircle size={24} color="#FFFFFF" strokeWidth={2.25} />}
       </button>
       <style>{`
-        .family-chat-window { position: fixed; bottom: 100px; right: 20px; width: 350px; height: 500px; background: #fff; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); display: flex; flex-direction: column; z-index: 5001; overflow: hidden; border: 1px solid rgba(0,0,0,0.05); animation: familySlideUp 0.3s ease; }
+        .family-chat-window { position: fixed; bottom: ${bottomOffset + 76}px; right: 20px; width: 350px; height: 500px; background: #fff; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); display: flex; flex-direction: column; z-index: 5001; overflow: hidden; border: 1px solid rgba(0,0,0,0.05); animation: familySlideUp 0.3s ease; }
         @keyframes familySlideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .family-chat-header { padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid #F1F1F1; }
         .family-chat-body { flex: 1; padding: 20px; background: #F8F9FD; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; scrollbar-width: none; }
@@ -104,8 +110,8 @@ export default function FloatingChatHead() {
         .family-chat-send-btn { background: #F54E25; width: 44px; height: 44px; min-width: 44px; border-radius: 12px; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0; }
         .family-chat-send-btn svg { width: 18px !important; height: 18px !important; stroke-width: 2; }
         .family-chat-send-btn:disabled { background: #E9EDF7; cursor: not-allowed; }
-        .floating-chat-head { position: fixed; right: 20px; bottom: 24px; width: 60px; height: 60px; border: none; border-radius: 999px; background: linear-gradient(145deg, #F97316, #F54E25); box-shadow: 0 14px 30px rgba(245, 78, 37, 0.32); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5000; }
-        @media (max-width: 768px) { .family-chat-window { width: 320px; height: 450px; bottom: 85px; right: 15px; } .floating-chat-head { width: 56px; height: 56px; right: 14px; bottom: 84px; } }
+        .floating-chat-head { position: fixed; right: 20px; bottom: var(--chat-bottom, 24px); width: 60px; height: 60px; border: none; border-radius: 999px; background: linear-gradient(145deg, #F97316, #F54E25); box-shadow: 0 14px 30px rgba(245, 78, 37, 0.32); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5000; transition: bottom 0.25s ease; }
+        @media (max-width: 768px) { .family-chat-window { width: 320px; height: 450px; right: 15px; bottom: calc(var(--chat-bottom, 24px) + 76px); } .floating-chat-head { width: 56px; height: 56px; right: 14px; bottom: calc(var(--chat-bottom, 24px) + 60px); } }
       `}</style>
     </>
   );

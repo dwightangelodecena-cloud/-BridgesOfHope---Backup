@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Shield } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { resolveAccountRole } from '@/components/RoleGuard';
 import { takeOAuthExpectedRole, startGoogleOAuthWeb } from '@/lib/oauthWeb';
+import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
+import AuthPageBackground from '@/components/auth/AuthPageBackground';
+import { AUTH_SHELL_STYLES } from '@/components/auth/authShellStyles';
 
 const Login = () => {
   const REMEMBER_LOGIN_KEY = 'bh_remembered_login_identifier';
@@ -257,84 +259,72 @@ const Login = () => {
   return (
     <div className="login-container">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600;700&display=swap');
 
-        .login-container {
-          min-height: 100vh;
-          width: 100%;
-          max-width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background-color: #ffffff;
-          font-family: 'Inter', sans-serif;
-          margin: 0;
-          padding: 0;
-          overflow-x: hidden;
-          box-sizing: border-box;
-          /* Align with signup auth shell / card / gap */
-          --auth-shell: min(1240px, calc(100vw - 40px));
-          --auth-gap: 22px;
-          --auth-card-max: min(680px, 100%);
-        }
+        ${AUTH_SHELL_STYLES}
 
-        .login-content-wrapper {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(0, var(--auth-card-max));
-          gap: var(--auth-gap);
-          align-items: center;
-          width: 100%;
-          max-width: var(--auth-shell);
-          margin: 0 auto;
-          padding: clamp(28px, 4vh, 40px) clamp(16px, 3vw, 24px) 48px;
-          box-sizing: border-box;
-        }
-
-        .brand-side {
-          min-width: 0;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-        }
-
-        .brand-side img {
-          width: 100%;
-          max-width: min(360px, 34vw);
-          max-height: min(58vh, 420px);
-          height: auto;
-          object-fit: contain;
-        }
-
-        .form-side {
-          width: 100%;
-          min-width: 0;
-          display: flex;
-          justify-content: flex-start;
+        @keyframes loginFocusRing {
+          from { box-shadow: 0 0 0 0 rgba(245, 78, 37, 0.2); }
+          to { box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.14), inset 0 1px 2px rgba(26, 43, 74, 0.04); }
         }
 
         .login-card {
-          background: #ffffff;
-          padding: clamp(44px, 5vw, 52px) clamp(32px, 4vw, 48px);
-          border-radius: 50px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+          background: rgba(255, 255, 255, 0.92);
+          backdrop-filter: blur(12px);
+          padding: var(--space-4);
+          border-radius: 26px;
+          box-shadow:
+            0 1px 2px rgba(26, 43, 74, 0.03),
+            0 8px 24px rgba(26, 43, 74, 0.06),
+            0 28px 56px rgba(26, 43, 74, 0.09);
           width: 100%;
-          max-width: var(--auth-card-max);
-          text-align: center;
-          border: 1px solid #f1f5f9;
+          max-width: var(--auth-form-col);
+          text-align: left;
+          border: 1px solid rgba(255, 255, 255, 0.9);
           box-sizing: border-box;
+          animation: loginFadeIn 0.7s ease-out 0.12s both;
+          transition: box-shadow 0.35s ease, transform 0.35s ease;
+        }
+
+        .login-card:hover {
+          box-shadow:
+            0 1px 2px rgba(26, 43, 74, 0.03),
+            0 12px 32px rgba(26, 43, 74, 0.07),
+            0 32px 64px rgba(26, 43, 74, 0.1);
+        }
+
+        .login-header {
+          margin-bottom: var(--space-3);
+        }
+
+        .login-heading {
+          font-size: clamp(1.5rem, 2.5vw, 1.75rem);
+          font-weight: 800;
+          color: var(--brand-navy);
+          margin: 0 0 var(--space-1);
+          letter-spacing: -0.03em;
+          line-height: 1.25;
+        }
+
+        .login-subtitle {
+          font-size: 0.95rem;
+          color: #64748b;
+          line-height: 1.55;
+          margin: 0;
+          font-weight: 400;
         }
 
         .form-group {
-          text-align: left;
-          margin-bottom: 22px;
+          margin-bottom: var(--space-2);
         }
 
         .form-group label {
           display: block;
-          font-size: 0.95rem;
-          color: #475569;
-          margin-bottom: 10px;
-          font-weight: 500;
+          font-size: 0.875rem;
+          color: var(--brand-navy);
+          margin-bottom: var(--space-1);
+          font-weight: 600;
+          line-height: 1.4;
         }
 
         .input-wrapper {
@@ -345,70 +335,101 @@ const Login = () => {
 
         .input-wrapper input {
           width: 100%;
-          padding: 14px 15px 14px 48px;
+          height: 54px;
+          padding: 0 48px;
           border: 1.5px solid #e2e8f0;
           border-radius: 14px;
           font-size: 1rem;
-          color: #1e293b;
+          color: var(--brand-navy);
           outline: none;
-          transition: all 0.2s ease;
+          transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease, transform 0.2s ease;
+          background-color: #f8fafc;
+          box-sizing: border-box;
+          box-shadow: inset 0 1px 2px rgba(26, 43, 74, 0.04);
+          font-family: inherit;
+        }
+
+        .input-wrapper input::placeholder {
+          color: #94a3b8;
+        }
+
+        .input-wrapper input:hover {
+          border-color: #cbd5e1;
           background-color: #ffffff;
         }
 
         .input-wrapper input:focus {
-          border-color: #F54E25;
-          box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.1);
+          border-color: var(--brand-orange);
+          background-color: #ffffff;
+          animation: loginFocusRing 0.3s ease forwards;
         }
 
         .input-icon {
           position: absolute;
-          left: 18px;
+          left: 16px;
           color: #94a3b8;
+          transition: color 0.2s ease;
+          pointer-events: none;
+        }
+
+        .input-wrapper:focus-within .input-icon {
+          color: var(--brand-orange);
         }
 
         .eye-icon {
           position: absolute;
-          right: 18px;
+          right: 14px;
           color: #94a3b8;
           cursor: pointer;
           background: none;
           border: none;
           display: flex;
           align-items: center;
+          padding: 4px;
+          border-radius: 6px;
+          transition: color 0.2s ease, background-color 0.2s ease;
+        }
+
+        .eye-icon:hover {
+          color: var(--brand-navy);
+          background-color: #f1f5f9;
         }
 
         .status-msg {
-          padding: 12px;
-          border-radius: 10px;
-          font-size: 0.85rem;
-          margin-bottom: 20px;
+          padding: var(--space-2);
+          border-radius: 12px;
+          font-size: 0.875rem;
+          margin-bottom: var(--space-2);
           text-align: center;
+          line-height: 1.5;
         }
 
         .error-msg {
-          background-color: #fee2e2;
+          background-color: #fef2f2;
           color: #dc2626;
           border: 1px solid #fecaca;
         }
 
         .success-msg {
-          background-color: #dcfce7;
+          background-color: #f0fdf4;
           color: #166534;
           border: 1px solid #bbf7d0;
         }
 
         .info-msg {
-          background-color: #e0f2fe;
-          color: #075985;
-          border: 1px solid #bae6fd;
+          background-color: #eff6ff;
+          color: #1d4ed8;
+          border: 1px solid #bfdbfe;
         }
 
         .form-extras {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 30px;
-          font-size: 0.9rem;
+          margin: var(--space-1) 0 var(--space-3);
+          font-size: 0.875rem;
+          gap: var(--space-2);
+          flex-wrap: wrap;
         }
 
         .remember-me {
@@ -419,6 +440,11 @@ const Login = () => {
           cursor: pointer;
           position: relative;
           user-select: none;
+          transition: color 0.2s ease;
+        }
+
+        .remember-me:hover {
+          color: var(--brand-navy);
         }
 
         .remember-me input {
@@ -434,15 +460,16 @@ const Login = () => {
           width: 18px;
           background-color: #ffffff;
           border: 1.5px solid #e2e8f0;
-          border-radius: 4px;
+          border-radius: 5px;
           display: inline-block;
           position: relative;
           transition: all 0.2s;
+          flex-shrink: 0;
         }
 
         .remember-me input:checked ~ .checkmark {
-          background-color: #F54E25;
-          border-color: #F54E25;
+          background-color: var(--brand-orange);
+          border-color: var(--brand-orange);
         }
 
         .checkmark:after {
@@ -463,120 +490,201 @@ const Login = () => {
         }
 
         .forgot-link {
-          color: #334155;
+          color: var(--brand-navy);
           text-decoration: none;
           font-weight: 600;
+          transition: color 0.2s ease;
+        }
+
+        .forgot-link:hover {
+          color: var(--brand-orange);
         }
 
         .btn-primary {
           width: 100%;
-          background: #F54E25;
+          height: 54px;
+          background: linear-gradient(135deg, #FF6A3D 0%, #FF4D1F 100%);
           color: white;
-          padding: 16px;
+          padding: 0 24px;
           border: none;
           border-radius: 14px;
-          font-size: 1.1rem;
+          font-size: 1.05rem;
           font-weight: 600;
+          font-family: inherit;
           cursor: pointer;
-          transition: transform 0.1s, background 0.2s;
+          transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
+          box-shadow: 0 4px 16px rgba(255, 77, 31, 0.32);
         }
 
-        .btn-primary:hover {
-          background: #e0441f;
+        .btn-primary:hover:not(:disabled) {
+          filter: brightness(1.04);
+          box-shadow: 0 8px 28px rgba(255, 77, 31, 0.38);
+          transform: translateY(-2px) scale(1.01);
         }
 
-        .btn-primary:active {
-          transform: scale(0.98);
+        .btn-primary:active:not(:disabled) {
+          transform: translateY(0) scale(0.99);
+          box-shadow: 0 3px 12px rgba(255, 77, 31, 0.28);
         }
 
         .btn-primary:disabled {
           opacity: 0.7;
           cursor: not-allowed;
+          box-shadow: none;
         }
 
         .or-divider {
           display: flex;
           align-items: center;
-          margin: 25px 0;
-          color: #334155;
-          font-size: 0.85rem;
-          font-weight: 500;
+          margin: var(--space-2) 0;
+          gap: var(--space-2);
         }
 
-        .or-divider::before, 
+        .or-divider::before,
         .or-divider::after {
           content: "";
           flex: 1;
           height: 1px;
-          background: #334155;
+          background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
         }
 
         .or-divider span {
-          padding: 0 15px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          font-size: 0.65rem;
+          font-weight: 700;
+          color: #94a3b8;
+          letter-spacing: 0.06em;
+          background: #f8fafc;
+          border-radius: 50%;
+          border: 1.5px solid #e8edf3;
+          flex-shrink: 0;
+          line-height: 1;
         }
 
         .btn-google {
           width: 100%;
+          height: 52px;
           background: #ffffff;
-          border: 1px solid #e2e8f0;
-          padding: 14px;
+          border: 1.5px solid #e2e8f0;
+          padding: 0 20px;
           border-radius: 14px;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 12px;
           font-weight: 500;
-          font-size: 1rem;
-          color: #1e293b;
+          font-size: 0.975rem;
+          font-family: inherit;
+          color: var(--brand-navy);
           cursor: pointer;
-          margin-bottom: 30px;
-          transition: background 0.2s;
+          margin-bottom: var(--space-2);
+          box-sizing: border-box;
+          transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
         }
 
-        .btn-google:hover {
+        .btn-google:hover:not(:disabled) {
           background: #f8fafc;
+          border-color: #cbd5e1;
+          box-shadow: 0 2px 8px rgba(26, 43, 74, 0.06);
+          transform: translateY(-1px);
+        }
+
+        .btn-google:active:not(:disabled) {
+          transform: translateY(0);
+        }
+
+        .btn-google:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .security-note {
+          display: flex;
+          align-items: center;
+          gap: var(--space-2);
+          font-size: 0.78rem;
+          color: #64748b;
+          margin: var(--space-2) auto var(--space-2);
+          padding: var(--space-2);
+          max-width: 92%;
+          width: 100%;
+          background: linear-gradient(135deg, rgba(248, 250, 252, 0.95) 0%, rgba(255, 247, 244, 0.6) 100%);
+          border-radius: 12px;
+          border: 1px solid rgba(245, 78, 37, 0.08);
+          line-height: 1.5;
+          transition: border-color 0.25s ease, box-shadow 0.25s ease;
+          box-sizing: border-box;
+        }
+
+        .security-note:hover {
+          border-color: rgba(245, 78, 37, 0.14);
+          box-shadow: 0 2px 12px rgba(245, 78, 37, 0.06);
+        }
+
+        .security-note-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          background: rgba(245, 78, 37, 0.09);
+          color: var(--brand-orange);
+          flex-shrink: 0;
         }
 
         .signup-prompt {
-          font-size: 1rem;
+          font-size: 0.9rem;
           color: #64748b;
+          text-align: center;
+          margin: var(--space-1) 0 0;
+          line-height: 1.5;
         }
 
         .signup-prompt span {
-          color: #F54E25;
+          color: var(--brand-orange);
           font-weight: 700;
           cursor: pointer;
-          margin-left: 5px;
+          margin-left: 4px;
+          transition: color 0.2s ease;
         }
 
-        @media (max-width: 1100px) {
-          .brand-side { display: none; }
-          .login-content-wrapper {
-            grid-template-columns: 1fr;
-            justify-items: center;
-            padding: 24px 16px 40px;
+        .signup-prompt span:hover {
+          color: #e0441f;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+
+        @media (max-width: 900px) {
+          .login-card {
+            padding: var(--space-3);
           }
-          .form-side {
-            width: 100%;
-            max-width: min(680px, 100%);
-            justify-content: center;
+
+          .login-header {
+            text-align: center;
+            margin-bottom: var(--space-3);
           }
-          .login-card { 
-            box-shadow: none; 
-            border: none;
-            padding: 20px; 
-          }
-          .login-container { align-items: flex-start; padding-top: 50px; }
         }
       `}</style>
 
+      <AuthPageBackground />
+
       <div className="login-content-wrapper">
-        <div className="brand-side">
-          <img src={logo} alt="Bridges of Hope" />
-        </div>
+        <AuthBrandPanel />
 
         <div className="form-side">
           <div className="login-card">
+            <div className="login-header">
+              <h2 className="login-heading">Welcome Back</h2>
+              <p className="login-subtitle">
+                Sign in to continue to your Kalinga Family Portal account.
+              </p>
+            </div>
+
             {signupNotice && <div className="status-msg info-msg">{signupNotice}</div>}
             {error && <div className="status-msg error-msg">{error}</div>}
             {success && <div className="status-msg success-msg">Login Successful!</div>}
@@ -636,7 +744,7 @@ const Login = () => {
               </button>
 
               <div className="or-divider">
-                <span>or</span>
+                <span>OR</span>
               </div>
 
               <button
@@ -645,7 +753,7 @@ const Login = () => {
                 onClick={handleGoogle}
                 disabled={submitting}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24">
+                <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
@@ -653,6 +761,13 @@ const Login = () => {
                 </svg>
                 Continue with Google
               </button>
+
+              <div className="security-note">
+                <span className="security-note-icon">
+                  <Shield size={15} />
+                </span>
+                <span>Your information is securely protected and encrypted.</span>
+              </div>
 
               <p className="signup-prompt">
                 Don't have an account?

@@ -127,38 +127,50 @@ export const PRIVACY_POLICY = {
 
 /** Informed consent shown before family account registration (Kalinga revision). */
 export const INFORMED_CONSENT = {
-  title: 'INFORMED CONSENT FORM',
+  title: 'Informed Consent Form',
   subtitle: 'Bridges of Hope · Kalinga Family Portal Registration',
   sections: [
     {
+      id: 'purpose',
       title: '1. Purpose',
+      highlight: true,
       body: 'This consent form explains how Bridges of Hope will collect, use, and protect personal and health-related information when you register for and use the Kalinga family portal to submit admission requests, schedule visits, receive updates, and communicate with facility staff.',
     },
     {
+      id: 'information-collected',
       title: '2. Information We Collect',
+      highlight: true,
       body: 'When you create an account and use the system, we may collect your name, contact details, address, relationship to the resident, admission application details, uploaded documents (such as IDs and medical records), appointment preferences, and messages you send through the platform.',
     },
     {
+      id: 'how-used',
       title: '3. How Your Information Is Used',
       body: 'Your information is used to process admission and discharge requests, schedule family meetings and visitations, coordinate care with authorized staff, send status notifications, maintain accurate records, and comply with applicable laws and institutional policies.',
     },
     {
+      id: 'voluntary',
       title: '4. Voluntary Participation',
       body: 'Registration and submission of admission requests are voluntary. You may decline to provide certain information, but incomplete data may delay admission processing or limit available services.',
     },
     {
+      id: 'confidentiality',
       title: '5. Confidentiality',
+      highlight: true,
       body: 'Patient and family information is kept confidential and shared only with authorized Bridges of Hope personnel and legally authorized representatives, in accordance with applicable data privacy regulations and facility policies.',
     },
     {
+      id: 'electronic-records',
       title: '6. Electronic Records and Notifications',
       body: 'By consenting, you agree to receive electronic notifications about your requests, meetings, appointments, and required documents through the Kalinga system and associated email channels.',
     },
     {
+      id: 'your-rights',
       title: '7. Your Rights',
+      highlight: true,
       body: 'You may request access to or correction of your personal information, subject to legal and operational requirements. Contact clinic administration through official channels provided in the system for privacy-related concerns.',
     },
     {
+      id: 'acknowledgment',
       title: '8. Acknowledgment',
       body: 'I confirm that I have read and understood this Informed Consent Form. I voluntarily agree to the collection and processing of my information as described above for admission-related and family portal purposes.',
     },
@@ -166,5 +178,18 @@ export const INFORMED_CONSENT = {
   footer:
     'By selecting “I Agree and Continue”, you confirm your informed consent before creating a family account.',
 };
+
+/** Approximate reading time in minutes (~200 wpm). */
+export function estimateConsentReadingMinutes(document) {
+  const text = [
+    document?.subtitle,
+    ...(document?.sections || []).map((s) => `${s.title} ${s.body}`),
+    document?.footer,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(words / 200));
+}
 
 export const SIGNUP_CONSENT_STORAGE_KEY = 'bh_signup_consent_accepted';

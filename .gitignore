@@ -1,1 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment secrets — never commit
+.env
+.env.local
+.env.*.local
+**/.env
+!**/.env.example
+
+# Build / cache
+dist/
+build/
+.vite/
+.expo/
+web-build/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# Temp
 _tmp_pdf_extract/
