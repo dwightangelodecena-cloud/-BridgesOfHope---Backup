@@ -65,3 +65,35 @@ export function parseAttachedFiles(raw) {
   }
   return [];
 }
+
+const ORIGINAL_ADMISSION_DOCUMENT_TYPES = new Set(['valid_id', 'birth_cert', 'hospital_referral']);
+
+/** Whether a file was uploaded as a supplemental / missing document (not initial intake). */
+export function isSupplementalAdmissionFile(file) {
+  if (file?.isSupplemental === true || file?.supplemental === true) return true;
+  const docType = String(file?.documentType || '').trim();
+  if (docType && ORIGINAL_ADMISSION_DOCUMENT_TYPES.has(docType)) return false;
+  return true;
+}
+
+/** Split attached files into initial submission vs supplemental uploads. */
+export function partitionAdmissionDocuments(files) {
+  const submitted = [];
+  const supplemental = [];
+  for (const file of parseAttachedFiles(files)) {
+    if (isSupplementalAdmissionFile(file)) supplemental.push(file);
+    else submitted.push(file);
+  }
+  return { submitted, supplemental };
+}
+
+export function admissionDocumentKey(file) {
+  return String(file?.path || file?.name || '').trim();
+}
+
+export function admissionDocumentsMatch(file, keyOrFile) {
+  const left = admissionDocumentKey(file);
+  if (!left) return false;
+  if (typeof keyOrFile === 'string') return left === keyOrFile.trim();
+  return left === admissionDocumentKey(keyOrFile);
+}

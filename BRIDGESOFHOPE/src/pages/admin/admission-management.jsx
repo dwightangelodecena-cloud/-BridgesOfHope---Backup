@@ -23,7 +23,7 @@ import {
   User,
   FileText, MessageCircle,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -35,6 +35,7 @@ import {
   buildAdmissionRow,
   findPatientForAdmission,
   isOrphanedAdmissionRequest,
+  isActiveAdmissionWorkflowStatus,
   removeWorkflowOverridesForRequestIds,
   residentAdmissionDedupeKey,
   splitDuplicateAdmissionRequests,
@@ -67,6 +68,8 @@ import {
   parseAttachedFiles,
 } from '@/lib/admissionWorkflow';
 import { appendFamilyNotificationsIfNew } from '@/lib/familyNotifications';
+import { AdmissionAttachedFilesList } from '@/components/admin/AdmissionAttachedFilesList';
+import { resolveAdmissionDocumentsForView } from '@/lib/admissionDocumentAccess';
 
 const FILTER_OPTIONS = ['All Admissions', ...ADMISSION_WORKFLOW_STATUSES];
 
@@ -114,12 +117,16 @@ function sortRows(rows, sortId) {
 /** Built UI row with no linked patient (stale after patients table was cleared). */
 function isOrphanedAdmissionRow(row) {
   const st = String(row?.dbStatus || '').toLowerCase();
-  if (st === 'pending') return false;
-  return !row?.rawPatient;
+  if (isActiveAdmissionWorkflowStatus(st)) return false;
+  if (st === 'approved' || st === 'accepted' || st === 'declined' || st === 'rejected') {
+    return !row?.rawPatient;
+  }
+  return false;
 }
 
 const AdmissionManagement = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const pendingApproveRowRef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -132,6 +139,8 @@ const AdmissionManagement = () => {
   const [page, setPage] = useState(1);
 
   const [viewRow, setViewRow] = useState(null);
+  const [viewDocuments, setViewDocuments] = useState([]);
+  const [viewDocumentsLoading, setViewDocumentsLoading] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [assignStaffLists, setAssignStaffLists] = useState({ nurses: [], programStaff: [] });
   const [assignStaffLoadError, setAssignStaffLoadError] = useState('');
@@ -207,11 +216,10 @@ const AdmissionManagement = () => {
           .in('id', duplicateIds);
         if (dupErr) {
           console.warn('[admission-mgmt] duplicate admission cleanup:', dupErr.message);
-          admissionRows = dedupedRows;
         } else {
           removeWorkflowOverridesForRequestIds(duplicateIds);
-          admissionRows = dedupedRows;
         }
+        admissionRows = dedupedRows;
       } else {
         admissionRows = dedupedRows;
       }
@@ -246,6 +254,43 @@ const AdmissionManagement = () => {
     };
   }, [loadData]);
 
+  const openAdmissionView = useCallback(async (row) => {
+    if (!row) return;
+    setViewRow(row);
+    setViewDocuments([]);
+    setViewDocumentsLoading(true);
+    try {
+      const files = await resolveAdmissionDocumentsForView({
+        requestId: row.requestId,
+        attachedFiles: row.attachedFiles,
+        familyId: row.familyId,
+        createdAfter: row.admissionDate || row.rawAdmission?.created_at,
+      });
+      setViewDocuments(files);
+    } catch (err) {
+      console.warn('[admission-mgmt] documents:', err);
+      setViewDocuments(parseAttachedFiles(row.attachedFiles));
+    } finally {
+      setViewDocumentsLoading(false);
+    }
+  }, []);
+
+  const closeAdmissionView = useCallback(() => {
+    setViewRow(null);
+    setViewDocuments([]);
+    setViewDocumentsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const viewRequestId = location.state?.viewRequestId;
+    if (!viewRequestId || loading) return;
+    const match = rows.find((r) => String(r.requestId) === String(viewRequestId));
+    if (match) {
+      void openAdmissionView(match);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state?.viewRequestId, rows, loading, location.pathname, navigate, openAdmissionView]);
+
   useEffect(() => {
     if (!filterDropdownOpen && !sortDropdownOpen) return;
     const onDoc = (e) => {
@@ -272,8 +317,11 @@ const AdmissionManagement = () => {
           patient_birth_date: r.patientBirthDate,
         });
       if (residentKey) {
-        if (seenResident.has(residentKey)) return false;
-        seenResident.add(residentKey);
+        const dedupeKey = isActiveAdmissionWorkflowStatus(r.dbStatus)
+          ? `${residentKey}|active:${r.requestId}`
+          : residentKey;
+        if (seenResident.has(dedupeKey)) return false;
+        seenResident.add(dedupeKey);
       }
       if (!q) return true;
       return (
@@ -1044,7 +1092,7 @@ const AdmissionManagement = () => {
                                 Reject
                               </button>
                             )}
-                            <button type="button" className="db-view-btn" onClick={() => setViewRow(r)}>
+                            <button type="button" className="db-view-btn" onClick={() => void openAdmissionView(r)}>
                               <Eye size={12} /> View
                             </button>
                             <button
@@ -1118,15 +1166,16 @@ const AdmissionManagement = () => {
       </div>
 
       {viewRow && (
-        <div className="am-modal-backdrop" onClick={() => setViewRow(null)}>
+        <div className="am-modal-backdrop" onClick={closeAdmissionView}>
           <div className="am-modal" onClick={(e) => e.stopPropagation()}>
             <div className="am-modal-head">
               <div style={{ fontSize: 18, fontWeight: 800 }}>Admission details</div>
-              <button type="button" className="db-action-btn" onClick={() => setViewRow(null)}><X size={16} /></button>
+              <button type="button" className="db-action-btn" onClick={closeAdmissionView}><X size={16} /></button>
             </div>
             <div className="am-modal-body">
               <div className="am-modal-field"><span className="am-modal-label">Resident ID</span><div className="am-input">{viewRow.admissionDisplayId}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Resident</span><div className="am-input">{viewRow.patientName}</div></div>
+              <div className="am-modal-field"><span className="am-modal-label">Date of birth</span><div className="am-input">{viewRow.patientBirthDate ? formatDate(viewRow.patientBirthDate) : '—'}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Gender</span><div className="am-input">{viewRow.patientGender?.trim() ? viewRow.patientGender : 'Not specified'}</div></div>
                             <div className="am-modal-field"><span className="am-modal-label">Room</span><div className="am-input">{viewRow.roomAssignment || '—'}</div></div>
 <div className="am-modal-field"><span className="am-modal-label">Status</span><div className="am-input">{viewRow.status}</div></div>
@@ -1143,18 +1192,18 @@ const AdmissionManagement = () => {
                   </div>
                 </div>
               )}
-              {parseAttachedFiles(viewRow.attachedFiles).length > 0 && (
-                <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
-                  <span className="am-modal-label">Attached files</span>
-                  <div className="am-input">
-                    <ul style={{ margin: 0, paddingLeft: 18 }}>
-                      {parseAttachedFiles(viewRow.attachedFiles).map((f) => (
-                        <li key={f.path || f.name}>{f.name}</li>
-                      ))}
-                    </ul>
-                  </div>
+              <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
+                <span className="am-modal-label">Submitted documents</span>
+                <div className="am-input">
+                  {viewDocumentsLoading ? (
+                    <span style={{ color: '#64748b' }}>Loading documents…</span>
+                  ) : viewDocuments.length > 0 ? (
+                    <AdmissionAttachedFilesList files={viewDocuments} />
+                  ) : (
+                    <span style={{ color: '#64748b' }}>No documents uploaded.</span>
+                  )}
                 </div>
-              )}
+              </div>
               {(viewRow.meetingDate || viewRow.meetingTime) && (
                 <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
                   <span className="am-modal-label">Scheduled meeting</span>

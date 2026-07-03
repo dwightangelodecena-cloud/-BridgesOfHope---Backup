@@ -124,7 +124,8 @@ export default function ProgressScreen() {
         return;
       }
       const existing = submittedAdmissions.find((r) => String(r.id) === requestId);
-      const merged = [...parseAttachedFiles(existing?.attached_files), ...uploadResult.files];
+      const tagged = uploadResult.files.map((file) => ({ ...file, isSupplemental: true }));
+      const merged = [...parseAttachedFiles(existing?.attached_files), ...tagged];
       await supabase.from('admission_requests').update({ attached_files: merged }).eq('id', requestId);
       const rows = await fetchFamilyAdmissionRequests(familyUserId);
       setSubmittedAdmissions(rows);

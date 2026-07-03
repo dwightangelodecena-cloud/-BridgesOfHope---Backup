@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
 import { appendActivityFeed } from '@/lib/activityFeed';
-import { resolveAccountRole } from '@/components/RoleGuard';
+import { resolveAccountRole, getAccountTypeFromUser } from '@/components/RoleGuard';
 import { takeOAuthExpectedRole, startGoogleOAuthWeb } from '@/lib/oauthWeb';
 import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
 import AuthPageBackground from '@/components/auth/AuthPageBackground';
@@ -198,6 +198,15 @@ const Login = () => {
     }
 
     const accountRole = await resolveAccountRole(data.user);
+
+    const jwtRole = getAccountTypeFromUser(data.user);
+    if (accountRole && accountRole !== jwtRole && (accountRole === 'admin' || accountRole === 'nurse')) {
+      try {
+        await supabase.auth.updateUser({ data: { account_type: accountRole } });
+      } catch {
+        // JWT sync should not block login; staff RLS also checks profiles.account_type.
+      }
+    }
 
     await touchPresence(data.user?.id);
     await appendActivityFeed('Logged in from web app.', {

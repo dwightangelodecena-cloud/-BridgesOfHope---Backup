@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { appendActivityFeed } from '../../lib/activityFeed';
@@ -24,17 +25,26 @@ import {
 } from '../../lib/admissionDocumentUploadMobile';
 import {
   insertAdmissionRequest,
+  patchAdmissionRequestGender,
 } from '../../lib/admissionRequestInsert';
 import * as DocumentPicker from 'expo-document-picker';
 import { appendFamilyNotificationsIfNewMobile, notificationTextMobile } from '../../lib/familyNotificationsMobile';
 import { useFamilyNotificationsState } from '../../lib/useFamilyNotificationsMobile';
 import {
-  ADMISSION_DEFAULT_REASON,
   ADMISSION_FORM_SUBTITLE,
   ADMISSION_FORM_TITLE,
   ADMISSION_REQUIREMENTS_NOTE,
+  PATIENT_GENDER_OPTIONS,
+  REASON_FOR_ADMISSION_OPTIONS,
   RELATIONSHIP_OPTIONS,
+  validatePatientBirthDate,
+  validatePatientGender,
+  validateReasonForAdmission,
 } from '../../lib/admissionFormConfig';
+
+function formatIsoDate(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
@@ -49,6 +59,9 @@ const DRAFT_KEY = 'bh_admission_draft';
 type FormData = {
   patientLastName: string;
   patientFirstName: string;
+  patientBirthDate: string;
+  patientGender: string;
+  reasonForAdmission: string;
   relationshipToResident: string;
   agreeToTerms: boolean;
 };
@@ -56,6 +69,9 @@ type FormData = {
 const emptyForm: FormData = {
   patientLastName: '',
   patientFirstName: '',
+  patientBirthDate: '',
+  patientGender: '',
+  reasonForAdmission: '',
   relationshipToResident: '',
   agreeToTerms: false,
 };
@@ -69,6 +85,10 @@ export default function AdmissionForm() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showRelationshipModal, setShowRelationshipModal] = useState(false);
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [showGenderModal, setShowGenderModal] = useState(false);
+  const [birthDateModal, setBirthDateModal] = useState(false);
+  const [birthDateDraft, setBirthDateDraft] = useState(() => new Date(2000, 0, 1));
   const [submitting, setSubmitting] = useState(false);
   const [validIdFile, setValidIdFile] = useState<PickedAdmissionFile | null>(null);
   const [birthCertFile, setBirthCertFile] = useState<PickedAdmissionFile | null>(null);
@@ -85,6 +105,9 @@ export default function AdmissionForm() {
       [
         { key: 'patientLastName' as const, label: 'Resident Last Name' },
         { key: 'patientFirstName' as const, label: 'Resident First Name' },
+        { key: 'patientBirthDate' as const, label: 'Date of Birth' },
+        { key: 'patientGender' as const, label: 'Gender' },
+        { key: 'reasonForAdmission' as const, label: 'Reason for Admission' },
         { key: 'relationshipToResident' as const, label: 'Relationship to Resident' },
         { key: 'validIdFile' as const, label: 'Valid ID', isFile: true as const },
         { key: 'birthCertFile' as const, label: 'Birth Certificate', isFile: true as const },
@@ -97,6 +120,12 @@ export default function AdmissionForm() {
       if (field.key === 'validIdFile') return Boolean(validIdFile);
       if (field.key === 'birthCertFile') return Boolean(birthCertFile);
       return false;
+    }
+    if (field.key === 'reasonForAdmission') {
+      return !validateReasonForAdmission(formData.reasonForAdmission);
+    }
+    if (field.key === 'patientGender') {
+      return !validatePatientGender(formData.patientGender);
     }
     return Boolean(String(formData[field.key as keyof FormData] || '').trim());
   };
@@ -202,6 +231,12 @@ export default function AdmissionForm() {
     const next: Record<string, string> = {};
     if (!formData.patientLastName.trim()) next.patientLastName = 'Resident last name is required.';
     if (!formData.patientFirstName.trim()) next.patientFirstName = 'Resident first name is required.';
+    const birthDateError = validatePatientBirthDate(formData.patientBirthDate);
+    if (birthDateError) next.patientBirthDate = birthDateError;
+    const genderError = validatePatientGender(formData.patientGender);
+    if (genderError) next.patientGender = genderError;
+    const reasonError = validateReasonForAdmission(formData.reasonForAdmission);
+    if (reasonError) next.reasonForAdmission = reasonError;
     if (!formData.relationshipToResident) next.relationshipToResident = 'Please select your relationship to the resident.';
     if (!validIdFile) next.validIdFile = 'Please upload a valid ID.';
     if (!birthCertFile) next.birthCertFile = 'Please upload a birth certificate.';
@@ -274,19 +309,19 @@ export default function AdmissionForm() {
         Boolean
       ) as PickedAdmissionFile[];
 
-      const uploadResult = await uploadAdmissionDocumentsMobile(filesToUpload, user.id, 'draft');
-      if (!uploadResult.ok) {
-        setErrors({ submit: uploadResult.errorMessage });
-        return;
-      }
-
       const formSnapshot = {
         patientLastName: formData.patientLastName.trim(),
         patientFirstName: formData.patientFirstName.trim(),
+        patientBirthDate: formData.patientBirthDate.trim().slice(0, 10),
+        patientGender: formData.patientGender.trim(),
+        reasonForAdmission: formData.reasonForAdmission.trim(),
         relationshipToResident: formData.relationshipToResident,
         relationshipLabel,
         hasHospitalReferral: Boolean(hospitalReferralFile),
       };
+      const patientBirthDate = formData.patientBirthDate.trim().slice(0, 10);
+      const patientGender = formData.patientGender.trim();
+      const reasonForAdmission = formData.reasonForAdmission.trim();
       const extendedRow = {
         family_id: user.id,
         guardian_full_name: guardianProfile.fullName.trim(),
@@ -295,10 +330,11 @@ export default function AdmissionForm() {
         patient_name: patientFull,
         patient_last_name: formData.patientLastName.trim(),
         patient_first_name: formData.patientFirstName.trim(),
-        reason_for_admission: ADMISSION_DEFAULT_REASON,
+        patient_birth_date: patientBirthDate,
+        patient_gender: patientGender,
+        reason_for_admission: reasonForAdmission,
         status: 'processing',
         form_data: formSnapshot,
-        attached_files: uploadResult.files,
       };
       const coreRow = {
         family_id: user.id,
@@ -308,7 +344,9 @@ export default function AdmissionForm() {
         patient_name: patientFull,
         patient_last_name: formData.patientLastName.trim(),
         patient_first_name: formData.patientFirstName.trim(),
-        reason_for_admission: ADMISSION_DEFAULT_REASON,
+        patient_birth_date: patientBirthDate,
+        patient_gender: patientGender,
+        reason_for_admission: reasonForAdmission,
         status: 'processing',
       };
       const minimalRow = {
@@ -317,7 +355,9 @@ export default function AdmissionForm() {
         guardian_email: guardianProfile.email.trim(),
         guardian_phone: guardianProfile.phone.trim(),
         patient_name: patientFull,
-        reason_for_admission: ADMISSION_DEFAULT_REASON,
+        patient_birth_date: patientBirthDate,
+        patient_gender: patientGender,
+        reason_for_admission: reasonForAdmission,
         status: 'processing',
       };
 
@@ -326,12 +366,27 @@ export default function AdmissionForm() {
         setErrors({ submit: insertResult.errorMessage });
         return;
       }
+      await patchAdmissionRequestGender(insertResult.id, patientGender);
 
-      if (uploadResult.files.length) {
-        await supabase
-          .from('admission_requests')
-          .update({ attached_files: uploadResult.files, form_data: formSnapshot })
-          .eq('id', insertResult.id);
+      const uploadResult = await uploadAdmissionDocumentsMobile(filesToUpload, user.id, insertResult.id);
+      if (!uploadResult.ok) {
+        setErrors({ submit: uploadResult.errorMessage });
+        return;
+      }
+
+      const { error: patchErr } = await supabase
+        .from('admission_requests')
+        .update({
+          attached_files: uploadResult.files,
+          form_data: formSnapshot,
+          patient_birth_date: patientBirthDate,
+          patient_gender: patientGender,
+          reason_for_admission: reasonForAdmission,
+        })
+        .eq('id', insertResult.id);
+      if (patchErr) {
+        setErrors({ submit: 'Request was submitted but documents could not be linked. Please contact support.' });
+        return;
       }
 
       await appendActivityFeed(`Admission request submitted for ${patientFull}. Pending admin review.`, {
@@ -389,6 +444,25 @@ export default function AdmissionForm() {
   const relationshipDisplay =
     RELATIONSHIP_OPTIONS.find((o) => o.value === formData.relationshipToResident)?.label
     || 'Select Relationship';
+
+  const reasonDisplay =
+    REASON_FOR_ADMISSION_OPTIONS.find((o) => o.value === formData.reasonForAdmission)?.label
+    || 'Select reason for admission';
+
+  const genderDisplay =
+    PATIENT_GENDER_OPTIONS.find((o) => o.value === formData.patientGender)?.label
+    || 'Select gender';
+
+  const openBirthDatePicker = () => {
+    setBirthDateDraft(
+      formData.patientBirthDate
+        ? new Date(`${formData.patientBirthDate}T12:00:00`)
+        : new Date(2000, 0, 1)
+    );
+    setBirthDateModal(true);
+  };
+
+  const birthDateDisplay = formData.patientBirthDate || 'Select date of birth';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -524,6 +598,54 @@ export default function AdmissionForm() {
             />
 
             <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Date of Birth *</Text>
+              <TouchableOpacity
+                style={[styles.inputShell, errors.patientBirthDate ? styles.inputShellError : null]}
+                onPress={openBirthDatePicker}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="calendar-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+                <Text style={[styles.dateInputText, !formData.patientBirthDate && styles.placeholderText]}>
+                  {birthDateDisplay}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color="#94A3B8" />
+              </TouchableOpacity>
+              {errors.patientBirthDate ? <Text style={styles.errorSmall}>{errors.patientBirthDate}</Text> : null}
+            </View>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Gender *</Text>
+              <TouchableOpacity
+                style={[styles.inputShell, errors.patientGender ? styles.inputShellError : null]}
+                onPress={() => setShowGenderModal(true)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="male-female-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+                <Text style={[styles.dateInputText, !formData.patientGender && styles.placeholderText]}>
+                  {genderDisplay}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color="#94A3B8" />
+              </TouchableOpacity>
+              {errors.patientGender ? <Text style={styles.errorSmall}>{errors.patientGender}</Text> : null}
+            </View>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Reason for Admission *</Text>
+              <TouchableOpacity
+                style={[styles.inputShell, errors.reasonForAdmission ? styles.inputShellError : null]}
+                onPress={() => setShowReasonModal(true)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="medical-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+                <Text style={[styles.dateInputText, !formData.reasonForAdmission && styles.placeholderText]}>
+                  {reasonDisplay}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color="#94A3B8" />
+              </TouchableOpacity>
+              {errors.reasonForAdmission ? <Text style={styles.errorSmall}>{errors.reasonForAdmission}</Text> : null}
+            </View>
+
+            <View style={styles.fieldWrap}>
               <Text style={styles.fieldLabel}>Relationship to Resident</Text>
               <TouchableOpacity
                 style={[styles.inputShell, errors.relationshipToResident ? styles.inputShellError : null]}
@@ -625,6 +747,99 @@ export default function AdmissionForm() {
             ))}
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={showReasonModal} transparent animationType="fade" onRequestClose={() => setShowReasonModal(false)}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowReasonModal(false)}>
+          <View style={styles.reasonSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.reasonSheetTitle}>Reason for Admission</Text>
+            {REASON_FOR_ADMISSION_OPTIONS.filter((opt) => opt.value).map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={styles.reasonOption}
+                onPress={() => {
+                  setField('reasonForAdmission', opt.value);
+                  setShowReasonModal(false);
+                }}
+              >
+                <Text style={styles.reasonOptionText}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={showGenderModal} transparent animationType="fade" onRequestClose={() => setShowGenderModal(false)}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowGenderModal(false)}>
+          <View style={styles.reasonSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.reasonSheetTitle}>Gender</Text>
+            {PATIENT_GENDER_OPTIONS.filter((opt) => opt.value).map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={styles.reasonOption}
+                onPress={() => {
+                  setField('patientGender', opt.value);
+                  setShowGenderModal(false);
+                }}
+              >
+                <Text style={styles.reasonOptionText}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {Platform.OS === 'android' && birthDateModal ? (
+        <DateTimePicker
+          value={birthDateDraft}
+          mode="date"
+          display="default"
+          maximumDate={new Date()}
+          onChange={(ev, date) => {
+            setBirthDateModal(false);
+            if (ev.type !== 'set' || !date) return;
+            setField('patientBirthDate', formatIsoDate(date));
+          }}
+        />
+      ) : null}
+
+      <Modal visible={Platform.OS === 'ios' && birthDateModal} transparent animationType="slide">
+        <View style={styles.dateIosModalRoot}>
+          <Pressable style={styles.dateIosBackdrop} onPress={() => setBirthDateModal(false)} />
+          <View style={[styles.dateIosSheet, { paddingBottom: insets.bottom + 12 }]}>
+            <View style={styles.dateIosHeader}>
+              <View style={styles.dateIosHeaderSide}>
+                <TouchableOpacity onPress={() => setBirthDateModal(false)}>
+                  <Text style={styles.dateIosHeaderBtn}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.dateIosTitle}>Date of birth</Text>
+              <View style={[styles.dateIosHeaderSide, styles.dateIosHeaderSideEnd]}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setField('patientBirthDate', formatIsoDate(birthDateDraft));
+                    setBirthDateModal(false);
+                  }}
+                >
+                  <Text style={styles.dateIosHeaderBtnPrimary}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.dateIosPickerWrap}>
+              <DateTimePicker
+                value={birthDateDraft}
+                mode="date"
+                display="spinner"
+                themeVariant="light"
+                maximumDate={new Date()}
+                style={styles.dateIosPicker}
+                onChange={(_, d) => {
+                  if (d) setBirthDateDraft(d);
+                }}
+              />
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={showTermsModal} transparent animationType="slide" onRequestClose={() => setShowTermsModal(false)}>
@@ -1103,6 +1318,20 @@ const styles = StyleSheet.create({
   inputShellError: {
     borderColor: '#EF4444',
     backgroundColor: '#FEF2F2',
+  },
+  inputShellTextArea: {
+    minHeight: 120,
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+  },
+  textAreaInput: {
+    flex: 1,
+    width: '100%',
+    minHeight: 96,
+    fontSize: isCompactScreen ? 15 : 16,
+    color: '#1E293B',
+    lineHeight: 22,
+    paddingVertical: 0,
   },
   inputIcon: {
     marginRight: 10,

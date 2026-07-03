@@ -184,7 +184,7 @@ const AdminDashboard = () => {
     const { data: a } = await supabase
       .from('admission_requests')
       .select('*')
-      .eq('status', 'pending')
+      .in('status', ['pending', 'processing', 'in_review'])
       .order('created_at', { ascending: false });
     const { data: acts } = await supabase
       .from('activity_log')
@@ -338,6 +338,13 @@ const AdminDashboard = () => {
     setDecisionAction(action);
     resetDecisionForm();
     setModalView('confirm');
+  };
+
+  const handleViewAdmissionClick = (req) => {
+    const requestId = req?.id || req?.requestId;
+    if (!requestId) return;
+    setModalView(null);
+    navigate('/admin-admission-management', { state: { viewRequestId: requestId } });
   };
 
   // --- HANDLERS ---
@@ -1215,14 +1222,14 @@ const AdminDashboard = () => {
                     <div className="req-time">{req.requestTime || '2 hours ago'}</div>
                   </div>
                   <div className="req-details">
-                    <div>Family Member's Number: {req.familyNumber || '09123456789'}</div>
-                    <div>Family Member's E-Mail Address: {req.familyEmail || 'Sample@email.com'}</div>
-                    <div>Patient Number: {req.patientNumber || '09123456789'}</div>
+                    <div>Family Member's Number: {req.familyNumber || '—'}</div>
+                    <div>Family Member's E-Mail Address: {req.familyEmail || '—'}</div>
+                    <div>Reason of Admission: {req.reasonForAdmission || req.reason || req.reason_for_admission || '—'}</div>
                     <div>Patient Gender: {req.patient_gender || 'N/A'}</div>
                   </div>
                   <div className="req-buttons">
-                    <button className="btn-approve" onClick={() => handleApproveClick(req, 'admission')}>Approve</button>
-                    <button className="btn-decline" onClick={() => openDecisionModal(req, 'admission', 'decline')}>Decline</button>
+                    <button className="btn-approve" type="button" onClick={() => handleViewAdmissionClick(req)}>View</button>
+                    <button className="btn-decline" type="button" onClick={() => openDecisionModal(req, 'admission', 'decline')}>Decline</button>
                   </div>
                 </div>
               ))}
@@ -1321,9 +1328,13 @@ const AdminDashboard = () => {
                 <div className="req-time">{selectedRequest.requestTime || '2 hours ago'}</div>
               </div>
               <div className="req-details">
-                <div>Family Member's Number: {selectedRequest.familyNumber || '09123456789'}</div>
-                <div>Family Member's E-Mail Address: {selectedRequest.familyEmail || 'Sample@email.com'}</div>
-                <div>Patient Number: {selectedRequest.patientNumber || '09123456789'}</div>
+                <div>Family Member's Number: {selectedRequest.familyNumber || '—'}</div>
+                <div>Family Member's E-Mail Address: {selectedRequest.familyEmail || '—'}</div>
+                {requestType === 'admission' ? (
+                  <div>Reason of Admission: {selectedRequest.reasonForAdmission || selectedRequest.reason || selectedRequest.reason_for_admission || '—'}</div>
+                ) : (
+                  <div>Patient Number: {selectedRequest.patientNumber || '—'}</div>
+                )}
                 {requestType === 'admission' ? (
                   <div>Patient Gender: {selectedRequest.patient_gender || 'N/A'}</div>
                 ) : null}

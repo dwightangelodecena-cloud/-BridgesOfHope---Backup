@@ -16,16 +16,29 @@ import {
   ChevronDown,
   Clock,
   ArrowRight,
+  Calendar,
 } from 'lucide-react';
 import {
   ADMISSION_DEFAULT_REASON,
   ADMISSION_FORM_SUBTITLE,
   ADMISSION_FORM_TITLE,
   ADMISSION_REQUIREMENTS_NOTE,
-  DOCUMENT_TYPE_LABELS,
+  PATIENT_GENDER_OPTIONS,
+  REASON_FOR_ADMISSION_OPTIONS,
   RELATIONSHIP_OPTIONS,
+  patientGenderLabel,
+  reasonForAdmissionLabel,
+  validatePatientGender,
+  validateReasonForAdmission,
 } from '@/lib/admissionFormConfig';
-import { admissionStatusLabel, admissionStatusPillClass, parseAttachedFiles } from '@/lib/admissionWorkflow';
+import { resolveAdmissionDocumentsForView } from '@/lib/admissionDocumentAccess';
+import { AdmissionAttachedFilesList } from '@/components/admin/AdmissionAttachedFilesList';
+import { FamilySupplementalDocumentsList } from '@/components/family/FamilySupplementalDocumentsList';
+import {
+  admissionStatusLabel,
+  admissionStatusPillClass,
+  partitionAdmissionDocuments,
+} from '@/lib/admissionWorkflow';
 
 function deriveInitials(name) {
   return String(name || '')
@@ -34,6 +47,32 @@ function deriveInitials(name) {
     .slice(0, 2)
     .map((p) => (p[0] ? p[0].toUpperCase() : ''))
     .join('') || '?';
+}
+
+function parseFormData(raw) {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function formatDisplayDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return String(iso);
+  }
 }
 
 function formatSubmittedDate(iso) {
@@ -264,10 +303,19 @@ export default function AdmissionFormPanel({
   supplementalFileRef,
   setSupplementalUploadId,
   uploadSupplementalDocuments,
+  removeSupplementalDocument,
+  startReplaceSupplementalDocument,
+  replaceSupplementalRef,
+  onReplaceSupplementalFile,
+  supplementalBusyKey,
+  supplementalDocError,
+  documentsRefreshKey,
   lastActivityAt,
 }) {
   const remainingTasks = admissionRequiredFields.length - admissionCompletedFields;
   const [expandedRequestId, setExpandedRequestId] = useState(null);
+  const [expandedDocuments, setExpandedDocuments] = useState([]);
+  const [expandedDocumentsLoading, setExpandedDocumentsLoading] = useState(false);
   const [justCompletedKey, setJustCompletedKey] = useState(null);
   const prevDoneKeysRef = useRef(new Set());
   const estimatedMinutes = Math.max(1, remainingTasks * 2);
@@ -288,6 +336,39 @@ export default function AdmissionFormPanel({
     };
   }, [admissionRequiredFields, isAdmissionFieldDone, admissionCompletedFields]);
 
+  useEffect(() => {
+    if (!expandedRequestId) {
+      setExpandedDocuments([]);
+      setExpandedDocumentsLoading(false);
+      return undefined;
+    }
+
+    const row = visibleSubmittedAdmissions.find((r) => r.id === expandedRequestId);
+    if (!row) return undefined;
+
+    let cancelled = false;
+    setExpandedDocumentsLoading(true);
+    void (async () => {
+      try {
+        const files = await resolveAdmissionDocumentsForView({
+          requestId: row.id,
+          attachedFiles: row.attached_files,
+          familyId: row.family_id,
+          createdAfter: row.created_at,
+        });
+        if (!cancelled) setExpandedDocuments(files);
+      } catch {
+        if (!cancelled) setExpandedDocuments([]);
+      } finally {
+        if (!cancelled) setExpandedDocumentsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expandedRequestId, visibleSubmittedAdmissions, documentsRefreshKey]);
+
   const nextField = useMemo(
     () => admissionRequiredFields.find((f) => !isAdmissionFieldDone(f)),
     [admissionRequiredFields, isAdmissionFieldDone]
@@ -304,6 +385,14 @@ export default function AdmissionFormPanel({
 
   const fieldState = (key, value, isFile = false) => {
     if (admissionErrors[key]) return 'error';
+    if (key === 'reasonForAdmission') {
+      if (!validateReasonForAdmission(value)) return 'valid';
+      return 'idle';
+    }
+    if (key === 'patientGender') {
+      if (!validatePatientGender(value)) return 'valid';
+      return 'idle';
+    }
     if (isFile ? Boolean(value) : Boolean(String(value || '').trim())) return 'valid';
     return 'idle';
   };
@@ -414,7 +503,7 @@ export default function AdmissionFormPanel({
         sectionNumber={1}
         icon={User}
         title="Resident information"
-        description="Legal first and last name of the person applying for admission."
+        description="Legal first and last name, date of birth, and reason admission is being requested."
         helper="Use the name exactly as it appears on official documents."
       >
         <div className="adm-fields-grid">
@@ -456,6 +545,77 @@ export default function AdmissionFormPanel({
               <p className="adm-field-error">{admissionErrors.patientFirstName}</p>
             ) : fieldState('patientFirstName', admissionForm.patientFirstName) === 'valid' ? (
               <p className="adm-field-ok">Looks good</p>
+            ) : null}
+          </div>
+          <div className={`adm-field adm-field--full adm-field--required adm-field--${fieldState('patientBirthDate', admissionForm.patientBirthDate)}`}>
+            <label htmlFor="adm-birth-date">
+              Date of birth <span className="adm-required-mark">*</span>
+            </label>
+            <div className="adm-input-wrap">
+              <Calendar className="adm-input-icon" size={18} />
+              <input
+                id="adm-birth-date"
+                name="patientBirthDate"
+                type="date"
+                max={new Date().toISOString().slice(0, 10)}
+                value={admissionForm.patientBirthDate}
+                onChange={handleAdmissionChange}
+              />
+            </div>
+            {admissionErrors.patientBirthDate ? (
+              <p className="adm-field-error">{admissionErrors.patientBirthDate}</p>
+            ) : fieldState('patientBirthDate', admissionForm.patientBirthDate) === 'valid' ? (
+              <p className="adm-field-ok">Looks good</p>
+            ) : null}
+          </div>
+          <div className={`adm-field adm-field--full adm-field--required adm-field--${fieldState('patientGender', admissionForm.patientGender)}`}>
+            <label htmlFor="adm-gender">
+              Gender <span className="adm-required-mark">*</span>
+            </label>
+            <div className="adm-input-wrap">
+              <User className="adm-input-icon" size={18} />
+              <select
+                id="adm-gender"
+                name="patientGender"
+                value={admissionForm.patientGender}
+                onChange={handleAdmissionChange}
+              >
+                {PATIENT_GENDER_OPTIONS.map((opt) => (
+                  <option key={opt.value || 'placeholder'} value={opt.value} disabled={!opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {admissionErrors.patientGender ? (
+              <p className="adm-field-error">{admissionErrors.patientGender}</p>
+            ) : fieldState('patientGender', admissionForm.patientGender) === 'valid' ? (
+              <p className="adm-field-ok">Selected</p>
+            ) : null}
+          </div>
+          <div className={`adm-field adm-field--full adm-field--required adm-field--${fieldState('reasonForAdmission', admissionForm.reasonForAdmission)}`}>
+            <label htmlFor="adm-reason">
+              Reason for admission <span className="adm-required-mark">*</span>
+            </label>
+            <div className="adm-input-wrap">
+              <FileText className="adm-input-icon" size={18} />
+              <select
+                id="adm-reason"
+                name="reasonForAdmission"
+                value={admissionForm.reasonForAdmission}
+                onChange={handleAdmissionChange}
+              >
+                {REASON_FOR_ADMISSION_OPTIONS.map((opt) => (
+                  <option key={opt.value || 'placeholder'} value={opt.value} disabled={!opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {admissionErrors.reasonForAdmission ? (
+              <p className="adm-field-error">{admissionErrors.reasonForAdmission}</p>
+            ) : fieldState('reasonForAdmission', admissionForm.reasonForAdmission) === 'valid' ? (
+              <p className="adm-field-ok">Selected</p>
             ) : null}
           </div>
         </div>
@@ -598,8 +758,7 @@ export default function AdmissionFormPanel({
           <h3 className="adm-submitted__title">Submitted admission requests</h3>
           <div className="adm-submitted__list">
             {visibleSubmittedAdmissions.map((row) => {
-              const formData = row.form_data || {};
-              const files = parseAttachedFiles(row.attached_files);
+              const formData = parseFormData(row.form_data);
               const st = admissionStatusLabel(row.status);
               const pillClass = admissionStatusPillClass(row.status);
               const inReview = String(row.status).toLowerCase() === 'in_review';
@@ -607,6 +766,11 @@ export default function AdmissionFormPanel({
                 (formData.reasonForAdmission || row.reason_for_admission) !== ADMISSION_DEFAULT_REASON
                   ? formData.reasonForAdmission || row.reason_for_admission
                   : null;
+              const showMissingDocsSection = inReview && !row.documents_complete;
+              const { submitted: submittedDocs, supplemental: supplementalDocs } =
+                expandedRequestId === row.id
+                  ? partitionAdmissionDocuments(expandedDocuments)
+                  : { submitted: [], supplemental: [] };
 
               return (
                 <article key={row.id} className={`adm-request-card${expandedRequestId === row.id ? ' adm-request-card--expanded' : ''}`}>
@@ -631,6 +795,65 @@ export default function AdmissionFormPanel({
                     </div>
                     {expandedRequestId === row.id ? (
                       <div className="adm-request-card__details">
+                        <dl className="adm-request-card__detail-grid">
+                          <div className="adm-request-card__detail-item">
+                            <dt>Reason for admission</dt>
+                            <dd>
+                              {reasonForAdmissionLabel(formData.reasonForAdmission || row.reason_for_admission)
+                                || '—'}
+                            </dd>
+                          </div>
+                          <div className="adm-request-card__detail-item">
+                            <dt>Date of birth</dt>
+                            <dd>{formatDisplayDate(formData.patientBirthDate || row.patient_birth_date)}</dd>
+                          </div>
+                          <div className="adm-request-card__detail-item">
+                            <dt>Gender</dt>
+                            <dd>
+                              {patientGenderLabel(formData.patientGender || row.patient_gender) || '—'}
+                            </dd>
+                          </div>
+                          <div className="adm-request-card__detail-item">
+                            <dt>Relationship</dt>
+                            <dd>
+                              {relationshipLabel(formData.relationshipToResident) !== '—'
+                                ? relationshipLabel(formData.relationshipToResident)
+                                : formData.relationshipLabel || 'Family member'}
+                            </dd>
+                          </div>
+                          <div className="adm-request-card__detail-item">
+                            <dt>Status</dt>
+                            <dd>{st}</dd>
+                          </div>
+                          {row.guardian_full_name ? (
+                            <div className="adm-request-card__detail-item">
+                              <dt>Guardian</dt>
+                              <dd>{row.guardian_full_name}</dd>
+                            </div>
+                          ) : null}
+                          {row.guardian_email ? (
+                            <div className="adm-request-card__detail-item">
+                              <dt>Contact email</dt>
+                              <dd>{row.guardian_email}</dd>
+                            </div>
+                          ) : null}
+                          {row.guardian_phone ? (
+                            <div className="adm-request-card__detail-item">
+                              <dt>Contact phone</dt>
+                              <dd>{row.guardian_phone}</dd>
+                            </div>
+                          ) : null}
+                        </dl>
+                        <div className="adm-request-card__docs">
+                          <p className="adm-request-card__docs-title">Submitted documents</p>
+                          {expandedDocumentsLoading ? (
+                            <p className="adm-request-card__docs-empty">Loading documents…</p>
+                          ) : submittedDocs.length > 0 ? (
+                            <AdmissionAttachedFilesList files={submittedDocs} />
+                          ) : (
+                            <p className="adm-request-card__docs-empty">No documents uploaded yet.</p>
+                          )}
+                        </div>
                         {row.meeting_date ? (
                           <p className="adm-request-card__note adm-request-card__note--meeting">
                             Meeting with BOH: {row.meeting_date}
@@ -642,38 +865,55 @@ export default function AdmissionFormPanel({
                             Required: {row.required_document_notes}
                           </p>
                         ) : null}
-                        {files.length > 0 ? (
-                          <ul className="adm-request-card__files">
-                            {files.map((f) => (
-                              <li key={f.path || f.name}>
-                                {f.documentType ? `${DOCUMENT_TYPE_LABELS[f.documentType] || f.documentType}: ` : ''}
-                                {f.name}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                        {inReview && !row.documents_complete ? (
-                          <div className="adm-request-card__actions">
-                            <input
-                              ref={supplementalUploadId === row.id ? supplementalFileRef : null}
-                              type="file"
-                              multiple
-                              accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                              style={{ display: 'none' }}
-                              onChange={() => void uploadSupplementalDocuments(row.id)}
-                            />
-                            <button
-                              type="button"
-                              className="adm-request-card__btn"
-                              onClick={() => {
-                                setSupplementalUploadId(row.id);
-                                setTimeout(() => supplementalFileRef.current?.click(), 0);
-                              }}
-                            >
-                              Upload missing documents
-                            </button>
+                        {showMissingDocsSection || supplementalDocs.length > 0 ? (
+                          <div className="adm-request-card__docs adm-request-card__docs--missing">
+                            <p className="adm-request-card__docs-title">Documents</p>
+                            {supplementalDocs.length > 0 ? (
+                              <FamilySupplementalDocumentsList
+                                files={supplementalDocs}
+                                requestId={row.id}
+                                onRemove={removeSupplementalDocument}
+                                onReplace={startReplaceSupplementalDocument}
+                                busyKey={supplementalBusyKey}
+                              />
+                            ) : (
+                              <p className="adm-request-card__docs-empty">No missing documents uploaded yet.</p>
+                            )}
+                            {showMissingDocsSection ? (
+                              <div className="adm-request-card__actions">
+                                <input
+                                  ref={supplementalUploadId === row.id ? supplementalFileRef : null}
+                                  type="file"
+                                  multiple
+                                  accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                                  style={{ display: 'none' }}
+                                  onChange={() => void uploadSupplementalDocuments(row.id)}
+                                />
+                                <button
+                                  type="button"
+                                  className="adm-request-card__btn"
+                                  disabled={supplementalBusyKey === 'upload'}
+                                  onClick={() => {
+                                    setSupplementalUploadId(row.id);
+                                    setTimeout(() => supplementalFileRef.current?.click(), 0);
+                                  }}
+                                >
+                                  {supplementalBusyKey === 'upload' ? 'Uploading…' : 'Upload missing documents'}
+                                </button>
+                              </div>
+                            ) : null}
+                            {supplementalDocError ? (
+                              <p className="adm-supplemental-files__error">{supplementalDocError}</p>
+                            ) : null}
                           </div>
                         ) : null}
+                        <input
+                          ref={replaceSupplementalRef}
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                          style={{ display: 'none' }}
+                          onChange={() => void onReplaceSupplementalFile?.()}
+                        />
                       </div>
                     ) : null}
                     <button
@@ -1105,13 +1345,15 @@ export const ADMISSION_FORM_PANEL_STYLES = `
   }
 
   .adm-field--valid .adm-input-wrap input,
-  .adm-field--valid .adm-input-wrap select {
+  .adm-field--valid .adm-input-wrap select,
+  .adm-field--valid .adm-input-wrap textarea {
     border-color: #86efac;
     background: #f0fdf4;
   }
 
   .adm-field--error .adm-input-wrap input,
-  .adm-field--error .adm-input-wrap select {
+  .adm-field--error .adm-input-wrap select,
+  .adm-field--error .adm-input-wrap textarea {
     border-color: #ef4444;
     background: #fef2f2;
   }
@@ -1122,6 +1364,10 @@ export const ADMISSION_FORM_PANEL_STYLES = `
     align-items: center;
   }
 
+  .adm-input-wrap--textarea {
+    align-items: stretch;
+  }
+
   .adm-input-icon {
     position: absolute;
     left: 16px;
@@ -1130,10 +1376,9 @@ export const ADMISSION_FORM_PANEL_STYLES = `
   }
 
   .adm-input-wrap input,
-  .adm-input-wrap select {
+  .adm-input-wrap select,
+  .adm-input-wrap textarea {
     width: 100%;
-    height: 52px;
-    padding: 0 16px 0 46px;
     border: 1.5px solid #e2e8f0;
     border-radius: 14px;
     font-size: 15px;
@@ -1142,8 +1387,22 @@ export const ADMISSION_FORM_PANEL_STYLES = `
     transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
   }
 
+  .adm-input-wrap input,
+  .adm-input-wrap select {
+    height: 52px;
+    padding: 0 16px 0 46px;
+  }
+
+  .adm-input-wrap textarea {
+    min-height: 120px;
+    padding: 14px 16px;
+    line-height: 1.5;
+    resize: vertical;
+  }
+
   .adm-input-wrap input:focus,
-  .adm-input-wrap select:focus {
+  .adm-input-wrap select:focus,
+  .adm-input-wrap textarea:focus {
     outline: none;
     border-color: #F54E25;
     background: #fff;
@@ -1486,6 +1745,123 @@ export const ADMISSION_FORM_PANEL_STYLES = `
     border-radius: 14px;
     border: 1px solid #eef2f7;
     animation: adm-details-in 0.22s ease;
+  }
+
+  .adm-request-card__detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 20px;
+    margin: 0 0 16px;
+    padding: 0;
+  }
+
+  .adm-request-card__detail-item dt {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+
+  .adm-request-card__detail-item dd {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #1B2559;
+    word-break: break-word;
+  }
+
+  .adm-request-card__docs {
+    margin-bottom: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .adm-request-card__docs-title {
+    margin: 0 0 10px;
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .adm-request-card__docs-empty {
+    margin: 0;
+    font-size: 0.86rem;
+    color: #64748b;
+    font-weight: 500;
+  }
+
+  .adm-request-card__docs--missing {
+    margin-top: 4px;
+    padding-top: 14px;
+    border-top: 1px dashed #e2e8f0;
+  }
+
+  .adm-supplemental-files {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 10px;
+  }
+
+  .adm-supplemental-files__item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid #e8edf5;
+    border-radius: 12px;
+  }
+
+  .adm-supplemental-files__info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .adm-supplemental-files__name {
+    word-break: break-word;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #1B2559;
+  }
+
+  .adm-supplemental-files__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .adm-supplemental-files__btn--muted {
+    color: #475569;
+  }
+
+  .adm-supplemental-files__btn--danger {
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+
+  .adm-supplemental-files__btn--danger:hover {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #b91c1c;
+  }
+
+  .adm-supplemental-files__error {
+    margin: 10px 0 0;
+    font-size: 12px;
+    color: #dc2626;
+    font-weight: 600;
   }
 
   @keyframes adm-details-in {

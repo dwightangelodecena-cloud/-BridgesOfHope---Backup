@@ -17,16 +17,23 @@ import {
 } from '@/lib/dischargeRequestTypes';
 import {
   insertAdmissionRequest,
+  patchAdmissionRequestGender,
 } from '@/lib/admissionRequestInsert';
 import { uploadAdmissionDocuments } from '@/lib/admissionDocumentUpload';
-import { parseAttachedFiles } from '@/lib/admissionWorkflow';
+import { removeSupplementalAdmissionDocument } from '@/lib/admissionDocumentAccess';
+import {
+  admissionDocumentKey,
+  parseAttachedFiles,
+} from '@/lib/admissionWorkflow';
 import {
   fetchFamilyAdmissionRequests,
   visibleFamilyAdmissionRequests,
 } from '@/lib/familyAdmissionRequests';
 import {
-  ADMISSION_DEFAULT_REASON,
   RELATIONSHIP_OPTIONS,
+  validatePatientBirthDate,
+  validatePatientGender,
+  validateReasonForAdmission,
 } from '@/lib/admissionFormConfig';
 import AdmissionFormPanel, { ADMISSION_FORM_PANEL_STYLES } from '@/components/family/AdmissionFormPanel';
 import { ArrowRight, Save, Eraser } from 'lucide-react';
@@ -34,6 +41,9 @@ import { ArrowRight, Save, Eraser } from 'lucide-react';
 const EMPTY_ADMISSION_FORM = {
   patientLastName: '',
   patientFirstName: '',
+  patientBirthDate: '',
+  patientGender: '',
+  reasonForAdmission: '',
   relationshipToResident: '',
   agreeToTerms: false,
 };
@@ -86,6 +96,11 @@ const Progress = () => {
   const [guardianProfile, setGuardianProfile] = useState({ fullName: '', email: '', phone: '' });
   const [supplementalUploadId, setSupplementalUploadId] = useState('');
   const supplementalFileRef = useRef(null);
+  const replaceSupplementalRef = useRef(null);
+  const [replaceSupplementalTarget, setReplaceSupplementalTarget] = useState(null);
+  const [supplementalBusyKey, setSupplementalBusyKey] = useState('');
+  const [supplementalDocError, setSupplementalDocError] = useState('');
+  const [documentsRefreshKey, setDocumentsRefreshKey] = useState(0);
   const [admissionErrors, setAdmissionErrors] = useState({});
   const [draftSavedAt, setDraftSavedAt] = useState(null);
   const [autosaveStatus, setAutosaveStatus] = useState('idle');
@@ -109,6 +124,9 @@ const Progress = () => {
   const admissionRequiredFields = [
     { key: 'patientLastName', label: 'Resident Last Name' },
     { key: 'patientFirstName', label: 'Resident First Name' },
+    { key: 'patientBirthDate', label: 'Date of Birth' },
+    { key: 'patientGender', label: 'Gender' },
+    { key: 'reasonForAdmission', label: 'Reason for Admission' },
     { key: 'relationshipToResident', label: 'Relationship to Resident' },
     { key: 'validIdFile', label: 'Valid ID', isFile: true },
     { key: 'birthCertFile', label: 'Birth Certificate', isFile: true },
@@ -119,6 +137,12 @@ const Progress = () => {
       if (field.key === 'validIdFile') return Boolean(validIdFile);
       if (field.key === 'birthCertFile') return Boolean(birthCertFile);
       return false;
+    }
+    if (field.key === 'reasonForAdmission') {
+      return !validateReasonForAdmission(admissionForm.reasonForAdmission);
+    }
+    if (field.key === 'patientGender') {
+      return !validatePatientGender(admissionForm.patientGender);
     }
     return Boolean(String(admissionForm[field.key] || '').trim());
   };
@@ -154,6 +178,9 @@ const Progress = () => {
           ...prev,
           patientLastName: parsed.admissionForm.patientLastName || '',
           patientFirstName: parsed.admissionForm.patientFirstName || '',
+          patientBirthDate: parsed.admissionForm.patientBirthDate || '',
+          patientGender: parsed.admissionForm.patientGender || '',
+          reasonForAdmission: parsed.admissionForm.reasonForAdmission || '',
           relationshipToResident: parsed.admissionForm.relationshipToResident || '',
           agreeToTerms: false,
         }));
@@ -175,6 +202,9 @@ const Progress = () => {
           admissionForm: {
             patientLastName: admissionForm.patientLastName,
             patientFirstName: admissionForm.patientFirstName,
+            patientBirthDate: admissionForm.patientBirthDate,
+            patientGender: admissionForm.patientGender,
+            reasonForAdmission: admissionForm.reasonForAdmission,
             relationshipToResident: admissionForm.relationshipToResident,
           },
           savedAt,
@@ -188,6 +218,9 @@ const Progress = () => {
     activeTab,
     admissionForm.patientLastName,
     admissionForm.patientFirstName,
+    admissionForm.patientBirthDate,
+    admissionForm.patientGender,
+    admissionForm.reasonForAdmission,
     admissionForm.relationshipToResident,
   ]);
 
@@ -305,6 +338,12 @@ const Progress = () => {
     const errs = {};
     if (!admissionForm.patientLastName.trim()) errs.patientLastName = 'Resident last name is required.';
     if (!admissionForm.patientFirstName.trim()) errs.patientFirstName = 'Resident first name is required.';
+    const birthDateError = validatePatientBirthDate(admissionForm.patientBirthDate);
+    if (birthDateError) errs.patientBirthDate = birthDateError;
+    const genderError = validatePatientGender(admissionForm.patientGender);
+    if (genderError) errs.patientGender = genderError;
+    const reasonError = validateReasonForAdmission(admissionForm.reasonForAdmission);
+    if (reasonError) errs.reasonForAdmission = reasonError;
     if (!admissionForm.relationshipToResident) errs.relationshipToResident = 'Please select your relationship to the resident.';
     if (!validIdFile) errs.validIdFile = 'Please upload a valid ID.';
     if (!birthCertFile) errs.birthCertFile = 'Please upload a birth certificate.';
@@ -350,9 +389,15 @@ const Progress = () => {
       return;
     }
     const relationship = admissionForm.relationshipToResident;
+    const patientBirthDate = admissionForm.patientBirthDate.trim().slice(0, 10);
+    const patientGender = admissionForm.patientGender.trim();
+    const reasonForAdmission = admissionForm.reasonForAdmission.trim();
     const formSnapshot = {
       patientLastName: admissionForm.patientLastName.trim(),
       patientFirstName: admissionForm.patientFirstName.trim(),
+      patientBirthDate,
+      patientGender,
+      reasonForAdmission,
       relationshipToResident: relationship,
       relationshipLabel: relationshipLabel(relationship),
       hasHospitalReferral: Boolean(hospitalReferralFile),
@@ -362,11 +407,6 @@ const Progress = () => {
       birthCertFile ? { file: birthCertFile, documentType: 'birth_cert' } : null,
       hospitalReferralFile ? { file: hospitalReferralFile, documentType: 'hospital_referral' } : null,
     ].filter(Boolean);
-    const uploadResult = await uploadAdmissionDocuments(filesToUpload, user.id, 'pending');
-    if (!uploadResult.ok) {
-      setAdmissionErrors({ submit: uploadResult.errorMessage });
-      return;
-    }
     const extendedRow = {
       family_id: user.id,
       guardian_full_name: guardianProfile.fullName.trim(),
@@ -375,10 +415,11 @@ const Progress = () => {
       patient_name: getPatientFullName(),
       patient_last_name: admissionForm.patientLastName.trim(),
       patient_first_name: admissionForm.patientFirstName.trim(),
-      reason_for_admission: ADMISSION_DEFAULT_REASON,
+      patient_birth_date: patientBirthDate,
+      patient_gender: patientGender,
+      reason_for_admission: reasonForAdmission,
       status: 'processing',
       form_data: formSnapshot,
-      attached_files: uploadResult.files,
     };
     const coreRow = {
       family_id: user.id,
@@ -388,7 +429,9 @@ const Progress = () => {
       patient_name: getPatientFullName(),
       patient_last_name: admissionForm.patientLastName.trim(),
       patient_first_name: admissionForm.patientFirstName.trim(),
-      reason_for_admission: ADMISSION_DEFAULT_REASON,
+      patient_birth_date: patientBirthDate,
+      patient_gender: patientGender,
+      reason_for_admission: reasonForAdmission,
       status: 'processing',
     };
     const minimalRow = {
@@ -397,7 +440,9 @@ const Progress = () => {
       guardian_email: guardianProfile.email.trim(),
       guardian_phone: guardianProfile.phone.trim(),
       patient_name: getPatientFullName(),
-      reason_for_admission: ADMISSION_DEFAULT_REASON,
+      patient_birth_date: patientBirthDate,
+      patient_gender: patientGender,
+      reason_for_admission: reasonForAdmission,
       status: 'processing',
     };
     const insertResult = await insertAdmissionRequest([extendedRow, coreRow, minimalRow]);
@@ -405,11 +450,28 @@ const Progress = () => {
       setAdmissionErrors({ submit: insertResult.errorMessage });
       return;
     }
-    if (uploadResult.files.length) {
-      await supabase
-        .from('admission_requests')
-        .update({ attached_files: uploadResult.files, form_data: formSnapshot })
-        .eq('id', insertResult.id);
+    await patchAdmissionRequestGender(insertResult.id, patientGender);
+    const uploadResult = await uploadAdmissionDocuments(filesToUpload, user.id, insertResult.id);
+    if (!uploadResult.ok) {
+      setAdmissionErrors({ submit: uploadResult.errorMessage });
+      return;
+    }
+    const { error: patchErr } = await supabase
+      .from('admission_requests')
+      .update({
+        attached_files: uploadResult.files,
+        form_data: formSnapshot,
+        patient_birth_date: patientBirthDate,
+        patient_gender: patientGender,
+        reason_for_admission: reasonForAdmission,
+      })
+      .eq('id', insertResult.id);
+    if (patchErr) {
+      console.warn('[admission] admission request patch:', patchErr.message);
+      setAdmissionErrors({
+        submit: 'Request was submitted but some details could not be saved. Please contact support.',
+      });
+      return;
     }
     await appendActivityFeed(`Admission request submitted for ${getPatientFullName()}. Pending admin review.`, { familyId: user.id });
     refreshAppData();
@@ -433,22 +495,106 @@ const Progress = () => {
     if (!requestId || !files?.length) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const uploadResult = await uploadAdmissionDocuments(Array.from(files), user.id, requestId);
-    if (!uploadResult.ok) {
-      setAdmissionErrors({ submit: uploadResult.errorMessage });
-      return;
+    setSupplementalBusyKey('upload');
+    try {
+      const uploadResult = await uploadAdmissionDocuments(Array.from(files), user.id, requestId);
+      if (!uploadResult.ok) {
+        setAdmissionErrors({ submit: uploadResult.errorMessage });
+        return;
+      }
+      const existing = submittedAdmissions.find((r) => r.id === requestId);
+      const tagged = uploadResult.files.map((file) => ({ ...file, isSupplemental: true }));
+      const merged = [...parseAttachedFiles(existing?.attached_files), ...tagged];
+      const { error } = await supabase.from('admission_requests').update({ attached_files: merged }).eq('id', requestId);
+      if (error) {
+        setAdmissionErrors({ submit: error.message || 'Could not save uploaded documents.' });
+        return;
+      }
+      const rows = await fetchFamilyAdmissionRequests(user.id);
+      setSubmittedAdmissions(rows);
+      setDocumentsRefreshKey((v) => v + 1);
+      setSupplementalUploadId('');
+      if (input) input.value = '';
+      appendFamilyNotificationsIfNew(
+        [{ id: `adm-docs-${requestId}-${Date.now()}`, text: 'Additional documents uploaded for your admission request.' }],
+        user.id
+      );
+    } finally {
+      setSupplementalBusyKey('');
     }
-    const existing = submittedAdmissions.find((r) => r.id === requestId);
-    const merged = [...parseAttachedFiles(existing?.attached_files), ...uploadResult.files];
-    await supabase.from('admission_requests').update({ attached_files: merged }).eq('id', requestId);
-    const rows = await fetchFamilyAdmissionRequests(user.id);
-    setSubmittedAdmissions(rows);
-    setSupplementalUploadId('');
-    if (input) input.value = '';
-    appendFamilyNotificationsIfNew(
-      [{ id: `adm-docs-${requestId}-${Date.now()}`, text: 'Additional documents uploaded for your admission request.' }],
-      user.id
-    );
+  };
+
+  const removeSupplementalDocument = async (requestId, fileRef) => {
+    if (!requestId || !fileRef) return;
+    const label = typeof fileRef === 'string' ? fileRef : (fileRef.name || 'this document');
+    if (!window.confirm(`Remove ${label}?`)) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const busyKey = typeof fileRef === 'string' ? fileRef : admissionDocumentKey(fileRef);
+    setSupplementalBusyKey(busyKey);
+    setSupplementalDocError('');
+    try {
+      const result = await removeSupplementalAdmissionDocument(requestId, fileRef);
+      if (!result.ok) {
+        setSupplementalDocError(result.errorMessage);
+        return;
+      }
+      const rows = await fetchFamilyAdmissionRequests(user.id);
+      setSubmittedAdmissions(rows);
+      setDocumentsRefreshKey((v) => v + 1);
+    } finally {
+      setSupplementalBusyKey('');
+    }
+  };
+
+  const startReplaceSupplementalDocument = (requestId, fileRef) => {
+    const filePath = typeof fileRef === 'string' ? fileRef : admissionDocumentKey(fileRef);
+    setReplaceSupplementalTarget({ requestId, filePath, fileRef });
+    setTimeout(() => replaceSupplementalRef.current?.click(), 0);
+  };
+
+  const handleReplaceSupplementalFile = async () => {
+    const input = replaceSupplementalRef.current;
+    const file = input?.files?.[0];
+    const target = replaceSupplementalTarget;
+    if (!target?.requestId || !target?.filePath || !file) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setSupplementalBusyKey(target.filePath);
+    setSupplementalDocError('');
+    try {
+      const removeResult = await removeSupplementalAdmissionDocument(target.requestId, target.fileRef || target.filePath);
+      if (!removeResult.ok) {
+        setSupplementalDocError(removeResult.errorMessage);
+        return;
+      }
+
+      const uploadResult = await uploadAdmissionDocuments([file], user.id, target.requestId);
+      if (!uploadResult.ok) {
+        setSupplementalDocError(uploadResult.errorMessage);
+        return;
+      }
+      const replacement = { ...uploadResult.files[0], isSupplemental: true };
+      const merged = [...removeResult.remaining, replacement];
+      const { error } = await supabase
+        .from('admission_requests')
+        .update({ attached_files: merged })
+        .eq('id', target.requestId);
+      if (error) {
+        setSupplementalDocError(error.message || 'Could not replace document.');
+        return;
+      }
+      const rows = await fetchFamilyAdmissionRequests(user.id);
+      setSubmittedAdmissions(rows);
+      setDocumentsRefreshKey((v) => v + 1);
+    } finally {
+      setSupplementalBusyKey('');
+      setReplaceSupplementalTarget(null);
+      if (input) input.value = '';
+    }
   };
 
   const submitDischarge = async () => {
@@ -566,6 +712,9 @@ const Progress = () => {
         admissionForm: {
           patientLastName: admissionForm.patientLastName,
           patientFirstName: admissionForm.patientFirstName,
+          patientBirthDate: admissionForm.patientBirthDate,
+          patientGender: admissionForm.patientGender,
+          reasonForAdmission: admissionForm.reasonForAdmission,
           relationshipToResident: admissionForm.relationshipToResident,
         },
         savedAt,
@@ -579,6 +728,9 @@ const Progress = () => {
     const hasContent =
       admissionForm.patientLastName.trim()
       || admissionForm.patientFirstName.trim()
+      || admissionForm.patientBirthDate.trim()
+      || admissionForm.patientGender.trim()
+      || admissionForm.reasonForAdmission.trim()
       || admissionForm.relationshipToResident
       || admissionForm.agreeToTerms
       || validIdFile
@@ -1121,6 +1273,13 @@ const Progress = () => {
                     supplementalFileRef={supplementalFileRef}
                     setSupplementalUploadId={setSupplementalUploadId}
                     uploadSupplementalDocuments={uploadSupplementalDocuments}
+                    removeSupplementalDocument={removeSupplementalDocument}
+                    startReplaceSupplementalDocument={startReplaceSupplementalDocument}
+                    replaceSupplementalRef={replaceSupplementalRef}
+                    onReplaceSupplementalFile={handleReplaceSupplementalFile}
+                    supplementalBusyKey={supplementalBusyKey}
+                    supplementalDocError={supplementalDocError}
+                    documentsRefreshKey={documentsRefreshKey}
                     lastActivityAt={lastActivityAt}
                   />
                 </div>

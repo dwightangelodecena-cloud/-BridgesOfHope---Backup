@@ -1,6 +1,6 @@
 import { computeTotalServiceCostPhp } from '@/lib/servicePricing';
 import { formatRoomAssignmentSummary, resolveDisplayGender } from '@/lib/residentPlacement';
-import { admissionStatusLabel } from '@/lib/admissionWorkflow';
+import { admissionStatusLabel, parseAttachedFiles } from '@/lib/admissionWorkflow';
 
 const WORKFLOW_KEY = 'bh_admission_workflow_overrides_v1';
 const DISCHARGE_KEY = 'bh_discharge_management_records_v1';
@@ -59,11 +59,20 @@ export function removeWorkflowOverridesForRequestIds(requestIds) {
   if (changed) saveWorkflowOverrides(map);
 }
 
+/** Statuses for requests still in the admission pipeline (no patient row required yet). */
+export function isActiveAdmissionWorkflowStatus(status) {
+  const st = String(status || '').toLowerCase();
+  return st === 'pending' || st === 'processing' || st === 'in_review';
+}
+
 /** Approved/declined admission_requests with no matching patients row (e.g. after manual patient delete). */
 export function isOrphanedAdmissionRequest(admissionRow, patients) {
   const st = String(admissionRow?.status || '').toLowerCase();
-  if (st === 'pending') return false;
-  return !findPatientForAdmission(patients || [], admissionRow);
+  if (isActiveAdmissionWorkflowStatus(st)) return false;
+  if (st === 'approved' || st === 'accepted' || st === 'declined' || st === 'rejected') {
+    return !findPatientForAdmission(patients || [], admissionRow);
+  }
+  return false;
 }
 
 export function patchWorkflowOverride(requestId, partial) {
@@ -166,15 +175,17 @@ function admissionRequestRank(admissionRow, patients) {
   const hasPatient = findPatientForAdmission(patients || [], admissionRow) ? 1 : 0;
   const st = String(admissionRow?.status || '').toLowerCase();
   let statusRank = 0;
-  if (st === 'approved') statusRank = 4;
-  else if (st === 'pending') statusRank = 3;
-  else if (st === 'declined') statusRank = 1;
+  if (st === 'approved' || st === 'accepted') statusRank = 5;
+  else if (st === 'in_review') statusRank = 4;
+  else if (st === 'processing' || st === 'pending') statusRank = 3;
+  else if (st === 'declined' || st === 'rejected') statusRank = 1;
   const ts = Date.parse(admissionRow?.decided_at || admissionRow?.updated_at || admissionRow?.created_at || '') || 0;
   return hasPatient * 1e15 + statusRank * 1e12 + ts;
 }
 
 /**
  * Multiple admission_requests for one resident (re-submit, pending + approved, etc.)
+ * Never drops in-flight workflow requests when an older finalized row exists.
  * @returns {{ keep: object[], duplicateIds: string[] }}
  */
 export function splitDuplicateAdmissionRequests(admissions, patients) {
@@ -197,11 +208,25 @@ export function splitDuplicateAdmissionRequests(admissions, patients) {
       keep.push(group[0]);
       continue;
     }
-    const ranked = [...group].sort(
-      (a, b) => admissionRequestRank(b, patients) - admissionRequestRank(a, patients)
-    );
-    keep.push(ranked[0]);
-    drop.push(...ranked.slice(1));
+
+    const active = group.filter((ar) => isActiveAdmissionWorkflowStatus(ar?.status));
+    const inactive = group.filter((ar) => !isActiveAdmissionWorkflowStatus(ar?.status));
+
+    if (active.length > 0) {
+      const rankedActive = [...active].sort(
+        (a, b) => admissionRequestRank(b, patients) - admissionRequestRank(a, patients)
+      );
+      keep.push(rankedActive[0]);
+      drop.push(...rankedActive.slice(1));
+    }
+
+    if (inactive.length > 0) {
+      const rankedInactive = [...inactive].sort(
+        (a, b) => admissionRequestRank(b, patients) - admissionRequestRank(a, patients)
+      );
+      keep.push(rankedInactive[0]);
+      drop.push(...rankedInactive.slice(1));
+    }
   }
 
   return {
@@ -352,7 +377,7 @@ export function buildAdmissionRow(admissionRow, patientRow, override) {
     bunkLevel: patientRow?.bunk_level || '',
     dbStatus: admissionRow.status,
     formData: admissionRow.form_data || null,
-    attachedFiles: Array.isArray(admissionRow.attached_files) ? admissionRow.attached_files : [],
+    attachedFiles: parseAttachedFiles(admissionRow.attached_files),
     meetingDate: admissionRow.meeting_date || null,
     meetingTime: admissionRow.meeting_time || null,
     meetingScheduledAt: admissionRow.meeting_scheduled_at || null,

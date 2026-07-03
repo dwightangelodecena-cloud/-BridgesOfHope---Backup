@@ -44,11 +44,16 @@ export function uiPatientFromRow(p) {
 
 export function uiAdmissionRequestFromRow(r) {
   if (!r) return null;
+  const formData =
+    r.form_data && typeof r.form_data === 'object' && !Array.isArray(r.form_data) ? r.form_data : {};
+  const reasonForAdmission = String(formData.reasonForAdmission || r.reason_for_admission || '').trim();
   return {
     requestId: r.id,
     id: r.id,
     name: r.patient_name,
-    reason: r.reason_for_admission,
+    reason: reasonForAdmission || r.reason_for_admission,
+    reasonForAdmission,
+    form_data: r.form_data,
     requestTime: r.created_at
       ? new Date(r.created_at).toLocaleString('en-US', {
           month: 'short',
