@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, Sparkles, BedDouble, FileText, MessageCircle, LayoutTemplate, Calendar } from 'lucide-react';
+import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, BedDouble, FileText, MessageCircle, LayoutTemplate, Calendar } from 'lucide-react';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
@@ -35,7 +35,6 @@ import {
   displayProgressPercent,
   validateBedPlacementPolicy,
 } from '@/lib/residentPlacement';
-import { fetchWeeklyReportRecommendation } from '@/lib/weeklyReportAi';
 import BehaviorProgressBoard, {
   emptyBehaviorChecks,
   computeBehaviorBoardProgressPercent,
@@ -375,74 +374,6 @@ const makePatientGenderFallbackKey = ({ name, familyId, birthDate }) => {
   return `${String(name || '').trim().toLowerCase()}|${String(familyId || '')}|${normBirthDateKey(birthDate)}`;
 };
 
-const renderAiInline = (text, keyPrefix) => {
-  const parts = String(text || '').split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
-  return parts.map((part, index) => {
-    const isBold = part.startsWith('**') && part.endsWith('**');
-    if (!isBold) return <React.Fragment key={`${keyPrefix}-text-${index}`}>{part}</React.Fragment>;
-    return <strong key={`${keyPrefix}-bold-${index}`}>{part.slice(2, -2)}</strong>;
-  });
-};
-
-const renderAiContent = (text) => {
-  const lines = String(text || '').split(/\r?\n/);
-  const blocks = [];
-  let pendingList = [];
-
-  const flushList = () => {
-    if (!pendingList.length) return;
-    blocks.push({ type: 'list', items: pendingList });
-    pendingList = [];
-  };
-
-  lines.forEach((rawLine) => {
-    const line = rawLine.trim();
-    if (!line) {
-      flushList();
-      return;
-    }
-
-    const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
-    if (bulletMatch) {
-      pendingList.push(bulletMatch[1].trim());
-      return;
-    }
-
-    flushList();
-    const cleanLine = line.replace(/^\*\s+\*\*/g, '**');
-    const isHeading = /^\*\*[^*]+\*\*:?\s*$/.test(cleanLine);
-    blocks.push({ type: isHeading ? 'heading' : 'paragraph', text: cleanLine });
-  });
-
-  flushList();
-
-  return blocks.map((block, index) => {
-    if (block.type === 'list') {
-      return (
-        <ul className="admin-ai-list" key={`ai-list-${index}`}>
-          {block.items.map((item, itemIndex) => (
-            <li key={`ai-list-${index}-item-${itemIndex}`}>{renderAiInline(item, `ai-li-${index}-${itemIndex}`)}</li>
-          ))}
-        </ul>
-      );
-    }
-
-    if (block.type === 'heading') {
-      return (
-        <p className="admin-ai-heading" key={`ai-heading-${index}`}>
-          {renderAiInline(block.text, `ai-heading-${index}`)}
-        </p>
-      );
-    }
-
-    return (
-      <p className="admin-ai-paragraph" key={`ai-p-${index}`}>
-        {renderAiInline(block.text, `ai-p-${index}`)}
-      </p>
-    );
-  });
-};
-
 const toUiPatient = (row) => {
   const prof = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
   const discharged = row.discharged_at != null && String(row.discharged_at).trim() !== '';
@@ -656,11 +587,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   const [selectedWeeklyVitalsWeek, setSelectedWeeklyVitalsWeek] = useState(null);
   const [weeklyReportModalOpen, setWeeklyReportModalOpen] = useState(false);
   const [weeklyReportModalWeek, setWeeklyReportModalWeek] = useState(null);
-  const [aiModalOpen, setAiModalOpen] = useState(false);
-  const [aiWeekNumber, setAiWeekNumber] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiText, setAiText] = useState('');
-  const [aiError, setAiError] = useState('');
   const [roomForm, setRoomForm] = useState({
     roomCode: '',
     roomGenderSegment: '',
@@ -1639,49 +1565,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     }
   };
 
-  const openWeeklyAiModal = useCallback(
-    (weekNum) => {
-      if (!selectedPatient) return;
-      const row = weeklyReportsByWeek[weekNum];
-      setAiWeekNumber(weekNum);
-      setAiModalOpen(true);
-      setAiText('');
-      setAiError('');
-      setAiLoading(true);
-
-      const patientSummary = [
-        `Resident: ${selectedPatient.name}`,
-        `Age: ${selectedPatient.age}`,
-        `Primary concern: ${selectedPatient.concern}`,
-        `Clinical status: ${selectedPatient.clinicalStatus || selectedPatient.status}`,
-        `Progress (recovery ladder): ${selectedPatientLadderProgressPct}%`,
-        `Admission: ${selectedPatient.date}`,
-        `Family contact name: ${selectedPatient.familyName}`,
-      ].join('\n');
-
-      const weekBlock = row
-        ? [
-            `Week number: ${weekNum}`,
-            `Nurse (as filed): ${row.nurse_name || '—'}`,
-            `Report date (as filed): ${row.report_date || '—'}`,
-            `Submitted: ${row.submitted_at ? formatDate(row.submitted_at) : '—'}`,
-            'Note: Only filing metadata is stored; narrative notes are not in this record.',
-          ].join('\n')
-        : `Week number: ${weekNum}\nNo weekly report has been filed for this week in the system.`;
-
-      void fetchWeeklyReportRecommendation({ patientSummary, weekBlock })
-        .then((text) => {
-          setAiText(text);
-          setAiLoading(false);
-        })
-        .catch((err) => {
-          setAiError(err instanceof Error ? err.message : 'Could not generate recommendations.');
-          setAiLoading(false);
-        });
-    },
-    [selectedPatient, weeklyReportsByWeek, selectedPatientLadderProgressPct]
-  );
-
   const openWeeklyReportModal = useCallback((weekNum) => {
     setSelectedWeeklyVitalsWeek(weekNum);
     setWeeklyReportModalWeek(weekNum);
@@ -2167,32 +2050,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         .week-number { font-size: 42px; font-weight: 800; color: #1B2559; }
 
         .admin-week-card { position: relative; cursor: default !important; }
-        .admin-week-ai-btn {
-          position: absolute;
-          top: 10px;
-          right: 10px;
-          width: 32px;
-          height: 32px;
-          border-radius: 10px;
-          border: 1px solid #E9EDF7;
-          background: #f8fafc;
-          color: #4f46e5;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          padding: 0;
-          transition: background 0.15s, border-color 0.15s;
-          z-index: 2;
-        }
-        .admin-week-ai-btn:hover:not(:disabled) {
-          background: #eef2ff;
-          border-color: #c7d2fe;
-        }
-        .admin-week-ai-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
 
         .admin-ai-modal-backdrop {
           position: fixed;
@@ -2233,47 +2090,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           color: #334155;
           white-space: normal;
         }
-        .admin-ai-content {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-        .admin-ai-heading {
-          margin: 0;
-          font-size: 15px;
-          line-height: 1.45;
-          color: #1e293b;
-          font-weight: 700;
-        }
-        .admin-ai-paragraph {
-          margin: 0;
-          font-size: 14px;
-          line-height: 1.65;
-          color: #334155;
-        }
-        .admin-ai-list {
-          margin: 0;
-          padding-left: 20px;
-          display: grid;
-          gap: 8px;
-        }
-        .admin-ai-list li {
-          color: #334155;
-          line-height: 1.6;
-        }
-        .admin-ai-list strong,
-        .admin-ai-paragraph strong,
-        .admin-ai-heading strong {
-          color: #1e293b;
-          font-weight: 700;
-        }
-        .admin-ai-modal-footer {
-          padding: 12px 22px 16px;
-          border-top: 1px solid #F4F7FE;
-          font-size: 11px;
-          color: #94a3b8;
-          line-height: 1.4;
-        }
         .report-row {
           background: #ffffff;
           border: 1px solid #e8eaef;
@@ -2293,10 +2109,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           line-height: 1.55;
           white-space: pre-wrap;
           overflow-wrap: anywhere;
-        }
-
-        @keyframes admin-ai-spin {
-          to { transform: rotate(360deg); }
         }
 
         .db-mobile-only { display: none; }
@@ -3130,19 +2942,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                                   cursor: 'pointer',
                                 }}
                               >
-                                <button
-                                  type="button"
-                                  className="admin-week-ai-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openWeeklyAiModal(w);
-                                  }}
-                                  aria-label={`AI recommendations for week ${w}`}
-                                  title="AI recommendations"
-                                >
-                                  <Sparkles size={16} strokeWidth={2} aria-hidden />
-                                </button>
-                                <p className="week-number" style={{ fontSize: 34, lineHeight: 1, marginTop: 8 }}>
+                                <p className="week-number" style={{ fontSize: 34, lineHeight: 1 }}>
                                   {w}
                                 </p>
                                 <div style={{ textAlign: 'center' }}>
@@ -3287,19 +3087,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                                   cursor: 'pointer',
                                 }}
                               >
-                                <button
-                                  type="button"
-                                  className="admin-week-ai-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openWeeklyAiModal(w);
-                                  }}
-                                  aria-label={`AI recommendations for week ${w}`}
-                                  title="AI recommendations"
-                                >
-                                  <Sparkles size={16} strokeWidth={2} aria-hidden />
-                                </button>
-                                <p className="week-number" style={{ fontSize: 34, lineHeight: 1, marginTop: 8 }}>
+                                <p className="week-number" style={{ fontSize: 34, lineHeight: 1 }}>
                                   {w}
                                 </p>
                                 <div style={{ textAlign: 'center' }}>
@@ -3917,98 +3705,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
-
-      {aiModalOpen &&
-        createPortal(
-          <div
-            className="admin-ai-modal-backdrop"
-            role="presentation"
-            onClick={() => {
-              if (!aiLoading) setAiModalOpen(false);
-            }}
-          >
-            <div
-              className="admin-ai-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="admin-ai-modal-title"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="admin-ai-modal-header">
-                <div>
-                  <h2 id="admin-ai-modal-title" style={{ fontSize: 17, fontWeight: 800, color: '#1B2559', margin: 0 }}>
-                    AI care considerations
-                    {aiWeekNumber != null ? ` · Week ${aiWeekNumber}` : ''}
-                  </h2>
-                  <p style={{ fontSize: 12, color: '#64748b', margin: '6px 0 0' }}>
-                    For {selectedPatient?.name || 'patient'} — not a substitute for clinical judgment.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!aiLoading) setAiModalOpen(false);
-                  }}
-                  disabled={aiLoading}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: aiLoading ? 'not-allowed' : 'pointer',
-                    padding: 4,
-                    color: '#64748b',
-                    borderRadius: 8,
-                  }}
-                  aria-label="Close"
-                >
-                  <X size={22} />
-                </button>
-              </div>
-              <div className="admin-ai-modal-body">
-                {aiLoading && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#64748b' }}>
-                    <span
-                      style={{
-                        width: 22,
-                        height: 22,
-                        border: '2px solid #E9EDF7',
-                        borderTopColor: '#4f46e5',
-                        borderRadius: '50%',
-                        animation: 'admin-ai-spin 0.7s linear infinite',
-                        display: 'inline-block',
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span style={{ fontWeight: 600 }}>Generating recommendations…</span>
-                  </div>
-                )}
-                {!aiLoading && aiError && (
-                  <div
-                    className="admin-ai-error"
-                    style={{
-                      color: '#b91c1c',
-                      fontWeight: 600,
-                      fontSize: 14,
-                      whiteSpace: 'pre-line',
-                      lineHeight: 1.55,
-                      overflowWrap: 'anywhere',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {aiError}
-                  </div>
-                )}
-                {!aiLoading && !aiError && aiText && <div className="admin-ai-content">{renderAiContent(aiText)}</div>}
-                {!aiLoading && !aiError && !aiText && (
-                  <div style={{ color: '#94a3b8' }}>No content returned.</div>
-                )}
-              </div>
-              <div className="admin-ai-modal-footer">
-                Suggestions are generated by AI from available metadata and may be incomplete. Verify before acting; do not use as a sole basis for medical decisions.
               </div>
             </div>
           </div>,

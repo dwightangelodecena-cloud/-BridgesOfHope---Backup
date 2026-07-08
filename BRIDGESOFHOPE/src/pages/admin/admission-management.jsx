@@ -21,7 +21,7 @@ import {
   LayoutTemplate,
   Calendar,
   User,
-  FileText, MessageCircle,
+  FileText, MessageCircle, ScanLine,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
@@ -70,6 +70,11 @@ import {
 import { appendFamilyNotificationsIfNew } from '@/lib/familyNotifications';
 import { AdmissionAttachedFilesList } from '@/components/admin/AdmissionAttachedFilesList';
 import { resolveAdmissionDocumentsForView } from '@/lib/admissionDocumentAccess';
+import {
+  REFERRAL_SUMMARY_FIELDS,
+  scanHospitalReferralFromFile,
+  scanHospitalReferralFromUrl,
+} from '@/lib/hospitalReferralScan';
 
 const FILTER_OPTIONS = ['All Admissions', ...ADMISSION_WORKFLOW_STATUSES];
 
@@ -158,6 +163,12 @@ const AdmissionManagement = () => {
   const [meetingTime, setMeetingTime] = useState('09:00');
   const [docNotesRow, setDocNotesRow] = useState(null);
   const [docNotesText, setDocNotesText] = useState('');
+  const referralFileInputRef = useRef(null);
+  const [referralScanLoading, setReferralScanLoading] = useState(false);
+  const [referralScanError, setReferralScanError] = useState('');
+  const [referralSummaryOpen, setReferralSummaryOpen] = useState(false);
+  const [referralSummary, setReferralSummary] = useState(null);
+  const [referralScannedFileName, setReferralScannedFileName] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -279,6 +290,8 @@ const AdmissionManagement = () => {
     setViewRow(null);
     setViewDocuments([]);
     setViewDocumentsLoading(false);
+    setReferralScanError('');
+    setReferralScanLoading(false);
   }, []);
 
   useEffect(() => {
@@ -671,6 +684,32 @@ const AdmissionManagement = () => {
     return admissionStatusPillClass(key) || 'am-pill--muted';
   };
 
+  const runReferralScan = async (scanPromise, fileName) => {
+    setReferralScanLoading(true);
+    setReferralScanError('');
+    try {
+      const summary = await scanPromise;
+      setReferralSummary(summary);
+      setReferralScannedFileName(fileName);
+      setReferralSummaryOpen(true);
+    } catch (e) {
+      setReferralSummary(null);
+      setReferralScanError(e instanceof Error ? e.message : 'Could not scan referral.');
+    } finally {
+      setReferralScanLoading(false);
+    }
+  };
+
+  const handleReferralFileScan = (file) => {
+    if (!file) return;
+    void runReferralScan(scanHospitalReferralFromFile(file), file.name);
+  };
+
+  const handleReferralUrlScan = (fileMeta) => {
+    if (!fileMeta?.url) return;
+    void runReferralScan(scanHospitalReferralFromUrl(fileMeta.url, fileMeta.name || 'referral'), fileMeta.name || 'referral');
+  };
+
   return (
     <div className="am-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559' }}>
       <TwoFactorApproveModal
@@ -772,6 +811,11 @@ const AdmissionManagement = () => {
         .am-modal { width: min(92vw, 720px); max-height: 90vh; overflow-y: auto; background: white; border: 1px solid #E9EDF7; border-radius: 20px; box-shadow: 0 20px 50px rgba(15,23,42,0.25); }
         .am-modal-head { padding: 16px 20px; border-bottom: 1px solid #EEF2FF; display: flex; align-items: center; justify-content: space-between; }
         .am-modal-body { padding: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+        .am-referral-summary-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .am-referral-summary-table th, .am-referral-summary-table td { border: 1px solid #E9EDF7; padding: 10px 12px; text-align: left; vertical-align: top; }
+        .am-referral-summary-table th { width: 34%; background: #F8FAFC; color: #475569; font-weight: 700; }
+        .am-referral-summary-table td { color: #1B2559; font-weight: 600; line-height: 1.5; white-space: pre-wrap; }
+        .am-referral-summary-box { margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid #E9EDF7; background: #F8FAFC; color: #334155; font-size: 13px; line-height: 1.6; }
         .am-modal-field { display: flex; flex-direction: column; gap: 6px; }
         .am-modal-label { font-size: 12px; font-weight: 700; color: #707EAE; }
         .am-input { border: 1px solid #E9EDF7; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #1B2559; outline: none; background: white; }
@@ -1204,6 +1248,54 @@ const AdmissionManagement = () => {
                   )}
                 </div>
               </div>
+              <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
+                <span className="am-modal-label">Hospital referral</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="db-edit-btn"
+                    disabled={referralScanLoading}
+                    onClick={() => referralFileInputRef.current?.click()}
+                  >
+                    <ScanLine size={14} />
+                    {referralScanLoading ? 'Scanning…' : 'Scan file'}
+                  </button>
+                  <input
+                    ref={referralFileInputRef}
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png,image/webp"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      handleReferralFileScan(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>
+                    PDF or image — Groq will extract referral details into a summary pop-up.
+                  </span>
+                </div>
+                {parseAttachedFiles(viewRow.attachedFiles).length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                    {parseAttachedFiles(viewRow.attachedFiles).map((f) => (
+                      <button
+                        key={f.path || f.name}
+                        type="button"
+                        className="db-action-btn"
+                        disabled={referralScanLoading || !f.url}
+                        onClick={() => handleReferralUrlScan(f)}
+                      >
+                        Scan {f.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {referralScanError && (
+                  <div style={{ color: '#b91c1c', fontSize: 12, fontWeight: 600, marginTop: 8, whiteSpace: 'pre-line' }}>
+                    {referralScanError}
+                  </div>
+                )}
+              </div>
               {(viewRow.meetingDate || viewRow.meetingTime) && (
                 <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
                   <span className="am-modal-label">Scheduled meeting</span>
@@ -1215,6 +1307,54 @@ const AdmissionManagement = () => {
               <div className="am-modal-field"><span className="am-modal-label">Estimated total</span><div className="am-input" style={{ fontWeight: 800, color: '#05CD99' }}>{formatPhp(viewRow.estimatedCost)}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Guardian</span><div className="am-input">{viewRow.guardianName || '—'}</div></div>
               <div className="am-modal-field"><span className="am-modal-label">Contact</span><div className="am-input">{viewRow.guardianPhone || '—'}</div></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {referralSummaryOpen && referralSummary && (
+        <div
+          className="am-modal-backdrop"
+          onClick={() => {
+            if (!referralScanLoading) setReferralSummaryOpen(false);
+          }}
+        >
+          <div className="am-modal" style={{ maxWidth: 920 }} onClick={(e) => e.stopPropagation()}>
+            <div className="am-modal-head">
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>Hospital referral summary</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                  {referralScannedFileName || 'Scanned document'} — generated by Groq for admin review only.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="db-action-btn"
+                disabled={referralScanLoading}
+                onClick={() => setReferralSummaryOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="am-modal-body" style={{ display: 'block', maxHeight: 'min(78vh, 820px)' }}>
+              <table className="am-referral-summary-table">
+                <tbody>
+                  {REFERRAL_SUMMARY_FIELDS.map(({ key, label }) => (
+                    <tr key={key}>
+                      <th scope="row">{label}</th>
+                      <td>{referralSummary[key] || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {referralSummary.summary ? (
+                <div className="am-referral-summary-box">
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#475569', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Summary
+                  </div>
+                  {referralSummary.summary}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

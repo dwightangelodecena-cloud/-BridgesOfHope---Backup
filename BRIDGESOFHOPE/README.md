@@ -1,6 +1,6 @@
 # Bridges of Hope (Web)
 
-Admin web app for patient management, admissions/discharge workflows, and weekly AI care recommendations.
+Admin web app for patient management and admissions/discharge workflows.
 
 ## 1) Install and run
 
@@ -23,52 +23,22 @@ Notes:
 - `.env` is ignored by git and should never be committed.
 - `CapstoneMobile/.env` is separate; this web app only reads `BRIDGESOFHOPE/.env`.
 
-## 3) Weekly AI provider setup
+## 3) Hospital referral scan (Groq)
 
-The weekly AI insights feature supports:
-- `groq`
-- `gemini`
-- `openai`
-- `anthropic`
-
-Set one of the provider keys in `.env`. You can also force provider selection with:
+Admission Management can scan a hospital referral PDF or image and show a structured summary using the **Groq API** (`VITE_GROQ_API_KEY`).
 
 ```env
-VITE_AI_WEEKLY_REPORT_PROVIDER=groq
-```
-
-If `VITE_AI_WEEKLY_REPORT_PROVIDER` is not set, the app auto-selects based on whichever API key exists.
-
-### Recommended free setup (Groq)
-
-```env
-VITE_AI_WEEKLY_REPORT_PROVIDER=groq
 VITE_GROQ_API_KEY=gsk_...
-VITE_GROQ_WEEKLY_REPORT_MODEL=llama-3.1-8b-instant
+VITE_GROQ_REFERRAL_SCAN_MODEL=llama-3.2-11b-vision-preview
+VITE_GROQ_REFERRAL_TEXT_MODEL=llama-3.3-70b-versatile
 ```
 
-### Alternative providers
-
-```env
-# Gemini
-VITE_GEMINI_API_KEY=AIza...
-VITE_GEMINI_WEEKLY_REPORT_MODEL=gemini-2.0-flash
-
-# OpenAI
-VITE_OPENAI_API_KEY=sk-...
-VITE_OPENAI_WEEKLY_REPORT_MODEL=gpt-4o-mini
-
-# Anthropic
-VITE_ANTHROPIC_API_KEY=sk-ant-...
-VITE_ANTHROPIC_WEEKLY_REPORT_MODEL=claude-3-5-haiku-20241022
-```
+Restart `npm run dev` after changing `.env`.
 
 ## 4) Common env troubleshooting
 
-- **AI says provider/env is not set**
+- **Supabase connection issues**
   - Confirm values are in `BRIDGESOFHOPE/.env` (not another folder).
   - Restart `npm run dev`.
-- **Still seeing old provider errors**
+- **Still seeing old config**
   - Hard refresh browser (`Ctrl+Shift+R`).
-- **Provider quota errors**
-  - API key is valid; provider-side quota/billing is the issue.
