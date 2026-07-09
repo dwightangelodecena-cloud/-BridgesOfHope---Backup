@@ -3,7 +3,11 @@ import { FileText, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import { ProgramSidebar, ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
+import BulletedListFieldInput from '@/components/clinical/BulletedListFieldInput';
+import MedicationTableField from '@/components/clinical/MedicationTableField';
 import { appendActivityFeed } from '@/lib/activityFeed';
+import { formatBulletedListNoteSection } from '@/lib/bulletedListField';
+import { formatMedicationTableNoteSection } from '@/lib/medicationTableField';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 
@@ -497,9 +501,9 @@ const ProgramWeeklyReport = () => {
       return Number.isFinite(raw) ? raw : null;
     })();
     const summaryText = [
-      reportDetails.currentMedications && `Current medications: ${reportDetails.currentMedications}`,
+      formatMedicationTableNoteSection('Current medications', reportDetails.currentMedications),
       reportDetails.interventionMedication && `Medication intervention: ${reportDetails.interventionMedication}`,
-      reportDetails.ongoingMedicalConcern && `Ongoing medical concern: ${reportDetails.ongoingMedicalConcern}`,
+      formatBulletedListNoteSection('Ongoing medical concern', reportDetails.ongoingMedicalConcern),
     ]
       .filter(Boolean)
       .join('\n');
@@ -511,9 +515,9 @@ const ProgramWeeklyReport = () => {
       .filter(Boolean)
       .join('\n');
     const noteText = [
-      reportDetails.dietaryRestrictions && `Dietary restrictions: ${reportDetails.dietaryRestrictions}`,
+      formatBulletedListNoteSection('Dietary restrictions', reportDetails.dietaryRestrictions),
       reportDetails.foodAllergies && `Food allergies: ${reportDetails.foodAllergies}`,
-      reportDetails.ongoingMedicalConcern && `Clinical notes: ${reportDetails.ongoingMedicalConcern}`,
+      formatBulletedListNoteSection('Clinical notes', reportDetails.ongoingMedicalConcern),
     ]
       .filter(Boolean)
       .join('\n');
@@ -984,6 +988,29 @@ const ProgramWeeklyReport = () => {
           background: #FFFFFF;
         }
 
+        .form-underline-input--readonly,
+        .form-textarea--readonly {
+          background: #F4F7FE;
+          border-color: #E9EDF7;
+          color: #475569;
+          cursor: not-allowed;
+        }
+
+        .form-underline-input--readonly:focus,
+        .form-textarea--readonly:focus {
+          border-color: #E9EDF7;
+          box-shadow: none;
+          background: #F4F7FE;
+        }
+
+        .wr-nurse-only-note {
+          margin: -6px 0 14px;
+          font-size: 12px;
+          color: #64748B;
+          line-height: 1.45;
+          font-weight: 500;
+        }
+
         /* ---- SECTION ---- */
         .form-section {
           margin-bottom: 18px;
@@ -1049,7 +1076,7 @@ const ProgramWeeklyReport = () => {
         }
 
         .btn-submit {
-          background: linear-gradient(135deg,#F54E25,#D946EF);
+          background: linear-gradient(145deg, #F54E25, #EA5A37);
           color: white;
           border: none;
           padding: 14px 48px;
@@ -1057,7 +1084,7 @@ const ProgramWeeklyReport = () => {
           font-size: 14px;
           font-weight: 800;
           cursor: pointer;
-          box-shadow: 0 10px 24px rgba(217, 70, 239, 0.26);
+          box-shadow: 0 8px 18px rgba(245, 78, 37, 0.28);
           transition: all 0.2s ease;
           font-family: 'Inter', sans-serif;
         }
@@ -1106,7 +1133,7 @@ const ProgramWeeklyReport = () => {
         .confirm-btn-cancel:hover { background: #F4F7FE; }
 
         .confirm-btn-ok {
-          background: linear-gradient(135deg,#F54E25,#D946EF);
+          background: linear-gradient(145deg, #F54E25, #EA5A37);
           border: none;
           border-radius: 10px;
           padding: 10px 20px;
@@ -1116,6 +1143,7 @@ const ProgramWeeklyReport = () => {
           cursor: pointer;
           font-family: 'Inter', sans-serif;
           transition: background 0.15s;
+          box-shadow: 0 4px 12px rgba(245, 78, 37, 0.22);
         }
 
         .confirm-btn-ok:hover { filter: brightness(1.02); }
@@ -1414,9 +1442,10 @@ const ProgramWeeklyReport = () => {
                   <label className="form-label">Resident Name:</label>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     value={reportBasics.patientName}
-                    onChange={(e) => setReportBasics((prev) => ({ ...prev, patientName: e.target.value }))}
+                    readOnly
+                    aria-readonly="true"
                   />
                 </div>
                 <div className="form-grid-2">
@@ -1424,18 +1453,20 @@ const ProgramWeeklyReport = () => {
                     <label className="form-label">Age:</label>
                     <input
                       type="text"
-                      className="form-underline-input"
+                      className="form-underline-input form-underline-input--readonly"
                       value={reportBasics.age}
-                      onChange={(e) => setReportBasics((prev) => ({ ...prev, age: e.target.value }))}
+                      readOnly
+                      aria-readonly="true"
                     />
                   </div>
                   <div className="form-field">
                     <label className="form-label">Primary Concern:</label>
                     <input
                       type="text"
-                      className="form-underline-input"
+                      className="form-underline-input form-underline-input--readonly"
                       value={reportBasics.primaryConcern}
-                      onChange={(e) => setReportBasics((prev) => ({ ...prev, primaryConcern: e.target.value }))}
+                      readOnly
+                      aria-readonly="true"
                     />
                   </div>
                 </div>
@@ -1445,55 +1476,60 @@ const ProgramWeeklyReport = () => {
             {/* Current Medications */}
             <div className="form-section">
               <div className="section-title">Current Medications</div>
-              <textarea
-                className="form-textarea"
-                placeholder="List all current medications with dosages and frequency..."
+              <p className="wr-nurse-only-note">Filled by the assigned nurse. Program staff can review but not edit.</p>
+              <MedicationTableField
                 value={reportDetails.currentMedications}
-                onChange={(e) => setReportDetails((prev) => ({ ...prev, currentMedications: e.target.value }))}
+                onChange={() => {}}
+                readOnly
+                emptyText="Not recorded by nurse yet."
               />
             </div>
 
             {/* BMI / Weight / Vital Signs */}
             <div className="form-section" style={{ background: 'linear-gradient(180deg, #F8FAFF 0%, #F4F7FF 100%)' }}>
               <div className="section-title" style={{ marginBottom: 8 }}>BMI / Weight / Vital Signs</div>
-              <p style={{ marginBottom: 16, color: '#64748B', fontSize: 12, lineHeight: 1.4 }}>
-                Auto-filled from the selected resident profile and latest encoded values.
+              <p className="wr-nurse-only-note" style={{ marginBottom: 16 }}>
+                Filled by the assigned nurse. Program staff can review but not edit.
               </p>
               <div className="form-grid-2" style={{ rowGap: '32px' }}>
                 <div className="form-field">
                   <label className="form-label">Weight (kg):</label>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     value={vitals.weight}
-                    onChange={(e) => handleVitalsFieldChange('weight', e.target.value)}
+                    readOnly
+                    aria-readonly="true"
                   />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Height (cm):</label>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     value={vitals.height}
-                    onChange={(e) => handleVitalsFieldChange('height', e.target.value)}
+                    readOnly
+                    aria-readonly="true"
                   />
                 </div>
                 <div className="form-field">
                   <label className="form-label">BMI:</label>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     value={vitals.bmi}
-                    onChange={(e) => setVitals((prev) => ({ ...prev, bmi: e.target.value }))}
+                    readOnly
+                    aria-readonly="true"
                   />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Blood Pressure:</label>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     value={vitals.bp}
-                    onChange={(e) => setVitals((prev) => ({ ...prev, bp: e.target.value }))}
+                    readOnly
+                    aria-readonly="true"
                     placeholder="120/80"
                   />
                 </div>
@@ -1501,36 +1537,40 @@ const ProgramWeeklyReport = () => {
                   <label className="form-label">PR:</label>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     value={vitals.pr}
-                    onChange={(e) => setVitals((prev) => ({ ...prev, pr: e.target.value }))}
+                    readOnly
+                    aria-readonly="true"
                   />
                 </div>
                 <div className="form-field">
                   <label className="form-label">RR:</label>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     value={vitals.rr}
-                    onChange={(e) => setVitals((prev) => ({ ...prev, rr: e.target.value }))}
+                    readOnly
+                    aria-readonly="true"
                   />
                 </div>
                 <div className="form-field">
                   <label className="form-label">SPO2:</label>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     value={vitals.spo2}
-                    onChange={(e) => setVitals((prev) => ({ ...prev, spo2: e.target.value }))}
+                    readOnly
+                    aria-readonly="true"
                   />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Temperature (°F):</label>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     value={vitals.temperature}
-                    onChange={(e) => setVitals((prev) => ({ ...prev, temperature: e.target.value }))}
+                    readOnly
+                    aria-readonly="true"
                   />
                 </div>
               </div>
@@ -1550,24 +1590,29 @@ const ProgramWeeklyReport = () => {
             {/* Diet Restrictions */}
             <div className="form-section">
               <div className="section-title">Diet Restrictions</div>
+              <p className="wr-nurse-only-note">Filled by the assigned nurse. Program staff can review but not edit.</p>
               <div className="section-fields">
                 <div>
                   <label className="form-label" style={{ marginBottom: 8 }}>Dietary Restrictions:</label>
-                  <textarea
-                    className="form-textarea"
-                    placeholder="List any dietary restrictions, special diets, or nutritional requirements..."
+                  <BulletedListFieldInput
                     value={reportDetails.dietaryRestrictions}
-                    onChange={(e) => setReportDetails((prev) => ({ ...prev, dietaryRestrictions: e.target.value }))}
+                    onChange={() => {}}
+                    placeholder="e.g. Low sodium diet, no raw foods..."
+                    inputClassName="form-underline-input"
+                    addLabel="Add restriction"
+                    readOnly
+                    emptyText="Not recorded by nurse yet."
                   />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Food Allergies:</label>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     placeholder="List any known food allergies"
                     value={reportDetails.foodAllergies}
-                    onChange={(e) => setReportDetails((prev) => ({ ...prev, foodAllergies: e.target.value }))}
+                    readOnly
+                    aria-readonly="true"
                   />
                 </div>
               </div>
@@ -1587,11 +1632,16 @@ const ProgramWeeklyReport = () => {
             {/* Ongoing Medical Concern */}
             <div className="form-section">
               <div className="section-title">Ongoing Medical Concern</div>
-              <textarea
-                className="form-textarea"
-                placeholder="Detail any ongoing medical issues, chronic conditions, or health concerns requiring continuous monitoring..."
+              <p className="wr-nurse-only-note">Filled by the assigned nurse. Program staff can review but not edit.</p>
+              <BulletedListFieldInput
                 value={reportDetails.ongoingMedicalConcern}
-                onChange={(e) => setReportDetails((prev) => ({ ...prev, ongoingMedicalConcern: e.target.value }))}
+                onChange={() => {}}
+                placeholder="e.g. Chronic back injury, hypertension monitoring..."
+                inputClassName="form-textarea"
+                multiline
+                addLabel="Add concern"
+                readOnly
+                emptyText="Not recorded by nurse yet."
               />
             </div>
 

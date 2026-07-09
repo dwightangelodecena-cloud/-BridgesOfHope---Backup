@@ -23,6 +23,8 @@ import {
 } from '@/lib/visitationAppointments';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
 import FamilyFeesInclusionsPanel from '@/components/family/FamilyFeesInclusionsPanel';
+import BulletedListDisplay from '@/components/clinical/BulletedListDisplay';
+import MedicationTableDisplay from '@/components/clinical/MedicationTableDisplay';
 import FamilyPageHeader from '@/components/family/FamilyPageHeader';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 import { useFamilyUser } from '@/hooks/useFamilyUser';
@@ -234,7 +236,7 @@ const HomeDashboard = () => {
           for (const row of wRows) {
             const pid = String(row.patient_id);
             if (!byPatient[pid]) byPatient[pid] = {};
-            byPatient[pid][String(row.week_number)] = { submittedAt: row.submitted_at, nurseName: row.nurse_name || '', reportDate: row.report_date || '', summary: row.summary || row.report_summary || '', progressPercent: row.progress_percent, nurseNote: row.nurse_note || row.notes || '', behaviorObservation: row.behavior_observation || '', recommendations: row.recommendations || row.plan_next_week || '', currentMedications: row.current_medications || '', medicationIntervention: row.medication_intervention || '' };
+            byPatient[pid][String(row.week_number)] = { submittedAt: row.submitted_at, nurseName: row.nurse_name || '', reportDate: row.report_date || '', summary: row.summary || row.report_summary || '', progressPercent: row.progress_percent, nurseNote: row.nurse_note || row.notes || '', behaviorObservation: row.behavior_observation || '', recommendations: row.recommendations || row.plan_next_week || '', currentMedications: row.current_medications || '', medicationIntervention: row.medication_intervention || '', dietaryRestrictions: row.dietary_restrictions || '', ongoingMedicalConcern: row.ongoing_medical_concern || row.behavior_observation || '' };
           }
         }
       }
@@ -920,9 +922,39 @@ const HomeDashboard = () => {
               <button type="button" className="report-header-close" onClick={() => setWeeklyReportDetail(null)} aria-label="Close details"><X size={20} strokeWidth={2} /></button>
             </div>
             <div className="report-detail-grid">
-              {[['Submitted', formatNurseReportDate(weeklyReportDetail.submittedAt) || '—'],['Nurse', weeklyReportDetail.nurseName || '—'],['Report Date', weeklyReportDetail.reportDate || '—'],['Progress', weeklyReportDetail.progressPercent != null ? `${weeklyReportDetail.progressPercent}%` : 'N/A'],['Current Medications', weeklyReportDetail.currentMedications || '—'],['Medication Intervention', weeklyReportDetail.medicationIntervention || '—'],['Summary', weeklyReportDetail.summary || '—'],['Nurse Notes', weeklyReportDetail.nurseNote || '—'],['Behavior / Mood', weeklyReportDetail.behaviorObservation || '—'],['Recommendations', weeklyReportDetail.recommendations || '—']].map(([label, value]) => (
-                <div key={label} className="report-detail-item"><div className="report-detail-label">{label}</div><div className="report-detail-value">{value}</div></div>
+              {[
+                ['Submitted', formatNurseReportDate(weeklyReportDetail.submittedAt) || '—'],
+                ['Nurse', weeklyReportDetail.nurseName || '—'],
+                ['Report Date', weeklyReportDetail.reportDate || '—'],
+                ['Progress', weeklyReportDetail.progressPercent != null ? `${weeklyReportDetail.progressPercent}%` : 'N/A'],
+                ['Medication Intervention', weeklyReportDetail.medicationIntervention || '—'],
+                ['Summary', weeklyReportDetail.summary || '—'],
+                ['Nurse Notes', weeklyReportDetail.nurseNote || '—'],
+                ['Behavior / Mood', weeklyReportDetail.behaviorObservation || '—'],
+                ['Recommendations', weeklyReportDetail.recommendations || '—'],
+              ].map(([label, value]) => (
+                <div key={label} className="report-detail-item">
+                  <div className="report-detail-label">{label}</div>
+                  <div className="report-detail-value">{value}</div>
+                </div>
               ))}
+              <div className="report-detail-item" style={{ gridColumn: '1 / -1' }}>
+                <div className="report-detail-label">Current Medications</div>
+                <div className="report-detail-value">
+                  <MedicationTableDisplay value={weeklyReportDetail.currentMedications} emptyText="—" />
+                </div>
+              </div>
+              <div className="report-detail-item">
+                <div className="report-detail-value">
+                  <BulletedListDisplay value={weeklyReportDetail.dietaryRestrictions} emptyText="—" />
+                </div>
+              </div>
+              <div className="report-detail-item">
+                <div className="report-detail-label">Ongoing Medical Concern</div>
+                <div className="report-detail-value">
+                  <BulletedListDisplay value={weeklyReportDetail.ongoingMedicalConcern} emptyText="—" />
+                </div>
+              </div>
             </div>
           </div>
         </div>,

@@ -12,6 +12,8 @@ import { uiPatientFromRow } from '@/lib/dbMappers';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
 import FamilyPageHeader from '@/components/family/FamilyPageHeader';
+import BulletedListDisplay from '@/components/clinical/BulletedListDisplay';
+import MedicationTableDisplay from '@/components/clinical/MedicationTableDisplay';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 import { isSupabasePatientId, resolveWeeklyReportsForPatient } from '@/lib/familyWeeklyReports';
 
@@ -33,14 +35,31 @@ function SectionLabel({ children }) {
   );
 }
 
-function ReportFieldRow({ label, value, icon: Icon }) {
+function ReportFieldRow({ label, value, icon: Icon, bulleted = false, medications = false }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #E9EDF7', borderRadius: 14, padding: '14px 16px', boxShadow: '0 2px 8px rgba(15,23,42,0.03)' }}>
+    <div
+      style={{
+        background: '#fff',
+        border: '1px solid #E9EDF7',
+        borderRadius: 14,
+        padding: '14px 16px',
+        boxShadow: '0 2px 8px rgba(15,23,42,0.03)',
+        gridColumn: medications ? '1 / -1' : undefined,
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         {Icon && <Icon size={13} color="#F54E25" />}
         <span style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</span>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', lineHeight: 1.55 }}>{value || '—'}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', lineHeight: 1.55 }}>
+        {medications ? (
+          <MedicationTableDisplay value={value} emptyText="—" />
+        ) : bulleted ? (
+          <BulletedListDisplay value={value} emptyText={value || '—'} />
+        ) : (
+          value || '—'
+        )}
+      </div>
     </div>
   );
 }
@@ -466,8 +485,11 @@ export default function FamilyReportsPage() {
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <ReportFieldRow icon={Stethoscope} label="Current Medications" value={weeklyReport?.current_medications} medications />
                       <ReportFieldRow icon={BookOpen} label="Summary" value={weeklyReport?.summary || weeklyReport?.report_summary || 'No report available.'} />
                       <ReportFieldRow icon={Activity} label="Progress" value={weeklyReport?.progress_percent != null ? `${weeklyReport.progress_percent}%` : 'N/A'} />
+                      <ReportFieldRow icon={FileText} label="Dietary Restrictions" value={weeklyReport?.dietary_restrictions} bulleted />
+                      <ReportFieldRow icon={Heart} label="Ongoing Medical Concern" value={weeklyReport?.ongoing_medical_concern || weeklyReport?.behavior_observation} bulleted />
                       <ReportFieldRow icon={FileText} label="Nurse Notes" value={weeklyReport?.nurse_note || weeklyReport?.notes || 'No notes available.'} />
                       <ReportFieldRow icon={Heart} label="Behavior / Mood" value={weeklyReport?.behavior_observation || weeklyReport?.mood_assessment || 'No behavior notes.'} />
                       <ReportFieldRow icon={CheckCircle2} label="Recommendations" value={weeklyReport?.recommendations || weeklyReport?.plan_next_week || 'No recommendations.'} />

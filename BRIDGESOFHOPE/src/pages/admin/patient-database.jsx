@@ -39,6 +39,9 @@ import BehaviorProgressBoard, {
   emptyBehaviorChecks,
   computeBehaviorBoardProgressPercent,
 } from '@/components/admin/BehaviorProgressBoard';
+import BulletedListDisplay from '@/components/clinical/BulletedListDisplay';
+import MedicationTableDisplay from '@/components/clinical/MedicationTableDisplay';
+import { formatBulletedListNoteSection, bulletedListHasContent } from '@/lib/bulletedListField';
 import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
 import { ProgramSidebar, ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
 import {
@@ -211,7 +214,9 @@ const nurseNotesDisplayReplaceFoodAllergiesWithMedicalHistory = (rawNotes, medic
     if (!m) return line;
     const fallbackInline = String(m[1] ?? '').trim();
     const value = mh || fallbackInline;
-    return value ? `Medical history: ${value}` : 'Medical history: —';
+    if (!value) return 'Medical history: —';
+    if (bulletedListHasContent(value)) return formatBulletedListNoteSection('Medical history', value);
+    return `Medical history: ${value}`;
   });
   return out.join('\n');
 };
@@ -1086,7 +1091,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       if (isSupabaseConfigured() && isSupabasePatientId(pidStr)) {
         let { data, error } = await supabase
           .from('weekly_reports')
-          .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent, current_medications, medication_intervention, ongoing_medical_concern, created_at, vitals_weight, vitals_height, vitals_bmi, vitals_bp, vitals_pr, vitals_rr, vitals_spo2, vitals_temperature')
+          .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent, current_medications, medication_intervention, dietary_restrictions, ongoing_medical_concern, created_at, vitals_weight, vitals_height, vitals_bmi, vitals_bp, vitals_pr, vitals_rr, vitals_spo2, vitals_temperature')
           .eq('patient_id', pid);
         if (error && /column .* does not exist/i.test(String(error.message || ''))) {
           ({ data, error } = await supabase
@@ -1122,6 +1127,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               recommendations: e.recommendations ?? e.plan_next_week ?? '',
               current_medications: e.currentMedications ?? e.current_medications ?? '',
               medication_intervention: e.medicationIntervention ?? e.medication_intervention ?? '',
+              dietary_restrictions: e.dietaryRestrictions ?? e.dietary_restrictions ?? '',
               ongoing_medical_concern: e.ongoingMedicalConcern ?? e.ongoing_medical_concern ?? '',
               progress_percent: e.progressPercent ?? e.progress_percent ?? null,
               vitals_weight: e.vitalsWeight ?? e.vitals_weight ?? null,
@@ -1147,6 +1153,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                 recommendations: firstNonEmpty(map[n].recommendations, localRow.recommendations),
                 current_medications: firstNonEmpty(map[n].current_medications, localRow.current_medications),
                 medication_intervention: firstNonEmpty(map[n].medication_intervention, localRow.medication_intervention),
+                dietary_restrictions: firstNonEmpty(map[n].dietary_restrictions, localRow.dietary_restrictions),
                 ongoing_medical_concern: firstNonEmpty(map[n].ongoing_medical_concern, localRow.ongoing_medical_concern),
                 progress_percent: firstNonEmpty(map[n].progress_percent, localRow.progress_percent),
                 vitals_weight: firstNonEmpty(map[n].vitals_weight, localRow.vitals_weight),
@@ -1706,6 +1713,12 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         localWeeklyVitals?.currentMedications,
         localWeeklyVitals?.current_medications
       ),
+      dietaryRestrictions: firstNonEmpty(
+        effectiveVitalsRow?.dietary_restrictions,
+        localWeeklyVitals?.dietaryRestrictions,
+        localWeeklyVitals?.dietary_restrictions
+      ),
+      ongoingMedicalConcern: medicalHistoryDb,
       nurseNotes: nurseNotesDisplayReplaceFoodAllergiesWithMedicalHistory(rawNurseNotes, medicalHistoryDb),
       behavior: firstNonEmpty(
         effectiveVitalsRow?.behavior_observation,
@@ -2815,7 +2828,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                       </p>
                     </div>
                   );
-                  const clinicalCell = (label, value) => {
+                  const clinicalCell = (label, value, { bulleted = false, medications = false } = {}) => {
                     const text = formatVitalValue(value);
                     const has = String(value ?? '').trim() !== '';
                     return (
@@ -2828,11 +2841,17 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                             fontWeight: 500,
                             color: has ? '#334155' : '#94a3b8',
                             lineHeight: 1.5,
-                            whiteSpace: 'pre-wrap',
+                            whiteSpace: medications || bulleted ? 'normal' : 'pre-wrap',
                             wordBreak: 'break-word',
                           }}
                         >
-                          {text}
+                          {medications ? (
+                            <MedicationTableDisplay value={value} emptyText={text} compact />
+                          ) : bulleted ? (
+                            <BulletedListDisplay value={value} emptyText={text} />
+                          ) : (
+                            text
+                          )}
                         </div>
                       </div>
                     );
@@ -2869,8 +2888,21 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                           alignItems: 'flex-start',
                         }}
                       >
-                        {clinicalCell('Current medications', weeklyClinicalSnapshot.currentMedications)}
+                        {clinicalCell('Current medications', weeklyClinicalSnapshot.currentMedications, { medications: true })}
                         {clinicalCell('Nurse Notes', weeklyClinicalSnapshot.nurseNotes)}
+                      </div>
+                      <div
+                        className="view-vitals-row"
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 10,
+                          marginBottom: 10,
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        {clinicalCell('Dietary restrictions', weeklyClinicalSnapshot.dietaryRestrictions, { bulleted: true })}
+                        {clinicalCell('Ongoing medical concern', weeklyClinicalSnapshot.ongoingMedicalConcern, { bulleted: true })}
                       </div>
                       <div
                         className="view-vitals-row"
@@ -3690,6 +3722,24 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                     <div className="report-row">
                       <div className="report-label">Summary</div>
                       <div className="report-value">{weeklyReportModalRow.summary || weeklyReportModalRow.report_summary || 'No summary provided.'}</div>
+                    </div>
+                    <div className="report-row">
+                      <div className="report-label">Dietary Restrictions</div>
+                      <div className="report-value">
+                        <BulletedListDisplay
+                          value={weeklyReportModalRow.dietary_restrictions}
+                          emptyText="No dietary restrictions listed."
+                        />
+                      </div>
+                    </div>
+                    <div className="report-row">
+                      <div className="report-label">Ongoing Medical Concern</div>
+                      <div className="report-value">
+                        <BulletedListDisplay
+                          value={weeklyReportModalRow.ongoing_medical_concern || weeklyReportModalRow.behavior_observation}
+                          emptyText="No ongoing medical concerns listed."
+                        />
+                      </div>
                     </div>
                     <div className="report-row">
                       <div className="report-label">Nurse Notes</div>

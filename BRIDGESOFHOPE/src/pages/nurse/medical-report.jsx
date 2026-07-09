@@ -2,7 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { LogOut, FileText, ChevronDown, Users, Calendar, LayoutGrid, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
+import BulletedListFieldInput from '@/components/clinical/BulletedListFieldInput';
+import MedicationTableField from '@/components/clinical/MedicationTableField';
 import { appendActivityFeed } from '@/lib/activityFeed';
+import { formatBulletedListNoteSection } from '@/lib/bulletedListField';
+import { formatMedicationTableNoteSection } from '@/lib/medicationTableField';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 
@@ -90,6 +94,26 @@ const deriveAge = (row) => {
   if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
   return age >= 0 ? String(age) : '';
 };
+
+const RequiredMark = () => (
+  <span className="wr-required-mark" aria-hidden="true">
+    *
+  </span>
+);
+
+const FormLabel = ({ children, required = false, className = '', style }) => (
+  <label className={`form-label ${className}`.trim()} style={style}>
+    {children}
+    {required ? <RequiredMark /> : null}
+  </label>
+);
+
+const SectionTitle = ({ children, required = false }) => (
+  <div className="section-title">
+    {children}
+    {required ? <RequiredMark /> : null}
+  </div>
+);
 
 /** Nurse medical report filing — same workflow as weekly reports; assigned residents match `program_staff` (nurse). */
 const NurseMedicalReportPage = () => {
@@ -335,16 +359,16 @@ const NurseMedicalReportPage = () => {
       return Number.isFinite(raw) ? raw : null;
     })();
     const summaryText = [
-      reportDetails.currentMedications && `Current medications: ${reportDetails.currentMedications}`,
-      reportDetails.ongoingMedicalConcern && `Ongoing medical concern: ${reportDetails.ongoingMedicalConcern}`,
+      formatMedicationTableNoteSection('Current medications', reportDetails.currentMedications),
+      formatBulletedListNoteSection('Ongoing medical concern', reportDetails.ongoingMedicalConcern),
     ]
       .filter(Boolean)
       .join('\n');
     const recommendationText = '';
     const noteText = [
-      reportDetails.dietaryRestrictions && `Dietary restrictions: ${reportDetails.dietaryRestrictions}`,
+      formatBulletedListNoteSection('Dietary restrictions', reportDetails.dietaryRestrictions),
       reportDetails.foodAllergies && `Food allergies: ${reportDetails.foodAllergies}`,
-      reportDetails.ongoingMedicalConcern && `Clinical notes: ${reportDetails.ongoingMedicalConcern}`,
+      formatBulletedListNoteSection('Clinical notes', reportDetails.ongoingMedicalConcern),
     ]
       .filter(Boolean)
       .join('\n');
@@ -857,6 +881,18 @@ const NurseMedicalReportPage = () => {
           margin-bottom: 6px;
         }
 
+        .wr-required-mark {
+          color: #F54E25;
+          margin-left: 2px;
+        }
+
+        .wr-required-note {
+          font-size: 12px;
+          color: #64748B;
+          margin: -12px 0 20px;
+          font-weight: 500;
+        }
+
         .form-underline-input {
           background: #FCFDFF;
           border: 1px solid #E5ECFF;
@@ -876,6 +912,29 @@ const NurseMedicalReportPage = () => {
           border-color: #8EA2FF;
           box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
           background: #FFFFFF;
+        }
+
+        .form-underline-input--readonly,
+        .form-textarea--readonly {
+          background: #F4F7FE;
+          border-color: #E9EDF7;
+          color: #475569;
+          cursor: not-allowed;
+        }
+
+        .form-underline-input--readonly:focus,
+        .form-textarea--readonly:focus {
+          border-color: #E9EDF7;
+          box-shadow: none;
+          background: #F4F7FE;
+        }
+
+        .wr-nurse-only-note {
+          margin: -6px 0 14px;
+          font-size: 12px;
+          color: #64748B;
+          line-height: 1.45;
+          font-weight: 500;
         }
 
         /* ---- SECTION ---- */
@@ -943,7 +1002,7 @@ const NurseMedicalReportPage = () => {
         }
 
         .btn-submit {
-          background: linear-gradient(135deg,#F54E25,#D946EF);
+          background: linear-gradient(145deg, #F54E25, #EA5A37);
           color: white;
           border: none;
           padding: 14px 48px;
@@ -951,7 +1010,7 @@ const NurseMedicalReportPage = () => {
           font-size: 14px;
           font-weight: 800;
           cursor: pointer;
-          box-shadow: 0 10px 24px rgba(217, 70, 239, 0.26);
+          box-shadow: 0 8px 18px rgba(245, 78, 37, 0.28);
           transition: all 0.2s ease;
           font-family: 'Inter', sans-serif;
         }
@@ -1000,7 +1059,7 @@ const NurseMedicalReportPage = () => {
         .confirm-btn-cancel:hover { background: #F4F7FE; }
 
         .confirm-btn-ok {
-          background: linear-gradient(135deg,#F54E25,#D946EF);
+          background: linear-gradient(145deg, #F54E25, #EA5A37);
           border: none;
           border-radius: 10px;
           padding: 10px 20px;
@@ -1010,6 +1069,7 @@ const NurseMedicalReportPage = () => {
           cursor: pointer;
           font-family: 'Inter', sans-serif;
           transition: background 0.15s;
+          box-shadow: 0 4px 12px rgba(245, 78, 37, 0.22);
         }
 
         .confirm-btn-ok:hover { filter: brightness(1.02); }
@@ -1303,13 +1363,16 @@ const NurseMedicalReportPage = () => {
         {/* Paper */}
         <div className="wr-paper">
           <div className="wr-paper-title">Medical Report</div>
+          <p className="wr-required-note">
+            Fields marked with <RequiredMark /> are required.
+          </p>
 
           <form onSubmit={(e) => { e.preventDefault(); setShowConfirm(true); }}>
 
             {/* Week & Admission Date */}
             <div className="form-grid-2">
               <div className="form-field">
-                <label className="form-label">Week:</label>
+                <FormLabel required>Week:</FormLabel>
                 <input
                   type="text"
                   className="form-underline-input"
@@ -1319,7 +1382,7 @@ const NurseMedicalReportPage = () => {
                 />
               </div>
               <div className="form-field">
-                <label className="form-label">Admission Date:</label>
+                <FormLabel>Admission Date:</FormLabel>
                 <input
                   type="text"
                   className="form-underline-input"
@@ -1331,34 +1394,37 @@ const NurseMedicalReportPage = () => {
 
             {/* Resident Information */}
             <div className="form-section">
-              <div className="section-title">Resident Information</div>
+              <SectionTitle>Resident Information</SectionTitle>
               <div className="section-fields">
                 <div className="form-field">
-                  <label className="form-label">Resident Name:</label>
+                  <FormLabel required>Resident Name:</FormLabel>
                   <input
                     type="text"
-                    className="form-underline-input"
+                    className="form-underline-input form-underline-input--readonly"
                     value={reportBasics.patientName}
-                    onChange={(e) => setReportBasics((prev) => ({ ...prev, patientName: e.target.value }))}
+                    readOnly
+                    aria-readonly="true"
                   />
                 </div>
                 <div className="form-grid-2">
                   <div className="form-field">
-                    <label className="form-label">Age:</label>
+                    <FormLabel>Age:</FormLabel>
                     <input
                       type="text"
-                      className="form-underline-input"
+                      className="form-underline-input form-underline-input--readonly"
                       value={reportBasics.age}
-                      onChange={(e) => setReportBasics((prev) => ({ ...prev, age: e.target.value }))}
+                      readOnly
+                      aria-readonly="true"
                     />
                   </div>
                   <div className="form-field">
-                    <label className="form-label">Primary Concern:</label>
+                    <FormLabel>Primary Concern:</FormLabel>
                     <input
                       type="text"
-                      className="form-underline-input"
+                      className="form-underline-input form-underline-input--readonly"
                       value={reportBasics.primaryConcern}
-                      onChange={(e) => setReportBasics((prev) => ({ ...prev, primaryConcern: e.target.value }))}
+                      readOnly
+                      aria-readonly="true"
                     />
                   </div>
                 </div>
@@ -1367,12 +1433,10 @@ const NurseMedicalReportPage = () => {
 
             {/* Current Medications */}
             <div className="form-section">
-              <div className="section-title">Current Medications</div>
-              <textarea
-                className="form-textarea"
-                placeholder="List all current medications with dosages and frequency..."
+              <SectionTitle required>Current Medications</SectionTitle>
+              <MedicationTableField
                 value={reportDetails.currentMedications}
-                onChange={(e) => setReportDetails((prev) => ({ ...prev, currentMedications: e.target.value }))}
+                onChange={(next) => setReportDetails((prev) => ({ ...prev, currentMedications: next }))}
               />
             </div>
 
@@ -1384,7 +1448,7 @@ const NurseMedicalReportPage = () => {
               </p>
               <div className="form-grid-2" style={{ rowGap: '32px' }}>
                 <div className="form-field">
-                  <label className="form-label">Weight (kg):</label>
+                  <FormLabel required>Weight (kg):</FormLabel>
                   <input
                     type="text"
                     className="form-underline-input"
@@ -1393,7 +1457,7 @@ const NurseMedicalReportPage = () => {
                   />
                 </div>
                 <div className="form-field">
-                  <label className="form-label">Height (cm):</label>
+                  <FormLabel>Height (cm):</FormLabel>
                   <input
                     type="text"
                     className="form-underline-input"
@@ -1402,7 +1466,7 @@ const NurseMedicalReportPage = () => {
                   />
                 </div>
                 <div className="form-field">
-                  <label className="form-label">BMI:</label>
+                  <FormLabel>BMI:</FormLabel>
                   <input
                     type="text"
                     className="form-underline-input"
@@ -1411,7 +1475,7 @@ const NurseMedicalReportPage = () => {
                   />
                 </div>
                 <div className="form-field">
-                  <label className="form-label">Blood Pressure:</label>
+                  <FormLabel required>Blood Pressure:</FormLabel>
                   <input
                     type="text"
                     className="form-underline-input"
@@ -1421,7 +1485,7 @@ const NurseMedicalReportPage = () => {
                   />
                 </div>
                 <div className="form-field">
-                  <label className="form-label">PR:</label>
+                  <FormLabel required>PR:</FormLabel>
                   <input
                     type="text"
                     className="form-underline-input"
@@ -1430,7 +1494,7 @@ const NurseMedicalReportPage = () => {
                   />
                 </div>
                 <div className="form-field">
-                  <label className="form-label">RR:</label>
+                  <FormLabel required>RR:</FormLabel>
                   <input
                     type="text"
                     className="form-underline-input"
@@ -1439,7 +1503,7 @@ const NurseMedicalReportPage = () => {
                   />
                 </div>
                 <div className="form-field">
-                  <label className="form-label">SPO2:</label>
+                  <FormLabel required>SPO2:</FormLabel>
                   <input
                     type="text"
                     className="form-underline-input"
@@ -1448,7 +1512,7 @@ const NurseMedicalReportPage = () => {
                   />
                 </div>
                 <div className="form-field">
-                  <label className="form-label">Temperature (°F):</label>
+                  <FormLabel required>Temperature (°F):</FormLabel>
                   <input
                     type="text"
                     className="form-underline-input"
@@ -1461,19 +1525,20 @@ const NurseMedicalReportPage = () => {
 
             {/* Diet Restrictions */}
             <div className="form-section">
-              <div className="section-title">Diet Restrictions</div>
+              <SectionTitle>Diet Restrictions</SectionTitle>
               <div className="section-fields">
                 <div>
-                  <label className="form-label" style={{ marginBottom: 8 }}>Dietary Restrictions:</label>
-                  <textarea
-                    className="form-textarea"
-                    placeholder="List any dietary restrictions, special diets, or nutritional requirements..."
+                  <FormLabel style={{ marginBottom: 8 }}>Dietary Restrictions:</FormLabel>
+                  <BulletedListFieldInput
                     value={reportDetails.dietaryRestrictions}
-                    onChange={(e) => setReportDetails((prev) => ({ ...prev, dietaryRestrictions: e.target.value }))}
+                    onChange={(next) => setReportDetails((prev) => ({ ...prev, dietaryRestrictions: next }))}
+                    placeholder="e.g. Low sodium diet, no raw foods..."
+                    inputClassName="form-underline-input"
+                    addLabel="Add restriction"
                   />
                 </div>
                 <div className="form-field">
-                  <label className="form-label">Food Allergies:</label>
+                  <FormLabel>Food Allergies:</FormLabel>
                   <input
                     type="text"
                     className="form-underline-input"
@@ -1487,19 +1552,21 @@ const NurseMedicalReportPage = () => {
 
             {/* Ongoing Medical Concern */}
             <div className="form-section">
-              <div className="section-title">Ongoing Medical Concern</div>
-              <textarea
-                className="form-textarea"
-                placeholder="Detail any ongoing medical issues, chronic conditions, or health concerns requiring continuous monitoring..."
+              <SectionTitle required>Ongoing Medical Concern</SectionTitle>
+              <BulletedListFieldInput
                 value={reportDetails.ongoingMedicalConcern}
-                onChange={(e) => setReportDetails((prev) => ({ ...prev, ongoingMedicalConcern: e.target.value }))}
+                onChange={(next) => setReportDetails((prev) => ({ ...prev, ongoingMedicalConcern: next }))}
+                placeholder="e.g. Chronic back injury, hypertension monitoring..."
+                inputClassName="form-textarea"
+                multiline
+                addLabel="Add concern"
               />
             </div>
 
             {/* Signatures */}
             <div className="form-grid-2" style={{ marginBottom: 0 }}>
               <div className="form-field">
-                <label className="form-label">Nurse&apos;s name:</label>
+                <FormLabel required>Nurse&apos;s name:</FormLabel>
                 <input
                   type="text"
                   className="form-underline-input"
@@ -1508,7 +1575,7 @@ const NurseMedicalReportPage = () => {
                 />
               </div>
               <div className="form-field">
-                <label className="form-label">Date:</label>
+                <FormLabel required>Date:</FormLabel>
                 <input
                   type="text"
                   className="form-underline-input"
