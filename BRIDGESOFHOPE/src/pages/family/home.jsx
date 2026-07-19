@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Home, TrendingUp, User, LogOut, MessageCircle, X, Send, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown, ClipboardList, BookUser, Heart, Activity, AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
+import { Home, TrendingUp, User, LogOut, MessageCircle, X, FileText, Bell, Calendar, CheckCircle2, Clock3, ChevronDown, ClipboardList, BookUser, Heart, Activity, AlertCircle, ArrowRight, Sparkles, Sun, CloudSun, Moon } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
@@ -26,11 +26,19 @@ import FamilyFeesInclusionsPanel from '@/components/family/FamilyFeesInclusionsP
 import BulletedListDisplay from '@/components/clinical/BulletedListDisplay';
 import MedicationTableDisplay from '@/components/clinical/MedicationTableDisplay';
 import FamilyPageHeader from '@/components/family/FamilyPageHeader';
+import { FAMILY_PAGE_HEADERS } from '@/lib/familyPageHeaders';
+import FamilyChatComposer from '@/components/family/FamilyChatComposer';
+import FamilyChatMessageList from '@/components/family/FamilyChatMessageList';
+import FamilyChatFab from '@/components/family/FamilyChatFab';
+import FamilySidebar from '@/components/family/FamilySidebar';
+import FamilyMobileBottomNav from '@/components/family/FamilyMobileBottomNav';
+import FamilyChatBrandMark from '@/components/family/FamilyChatBrandMark';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 import { useFamilyUser } from '@/hooks/useFamilyUser';
 import { useSupportChat } from '@/hooks/useSupportChat';
+import { useFamilyPageScroll } from '@/hooks/useFamilyPageScroll';
+import { getFamilyGreetingIcon, getFamilyTimeGreeting } from '@/lib/familyGreeting';
 
-import logo from '@/assets/kalingalogo.png';
 import servicesIcon from '@/assets/services.png';
 
 /* ─────────────────────────────────────────
@@ -73,6 +81,7 @@ function StatusPill({ label, color, bg }) {
 const HomeDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { scrollToTop } = useFamilyPageScroll();
   const [isExpanded, setIsExpanded] = useState(false);
   const {
     messages,
@@ -388,11 +397,13 @@ const HomeDashboard = () => {
   }, []);
 
   const now = new Date();
-  const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
+  const greeting = getFamilyTimeGreeting(now);
+  const greetingIconKey = getFamilyGreetingIcon(now);
+  const GreetingIcon = greetingIconKey === 'sun' ? Sun : greetingIconKey === 'cloud-sun' ? CloudSun : Moon;
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
   return (
-    <div className="app-container">
+    <div className="family-portal app-container">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@500&display=swap');
 
@@ -406,42 +417,10 @@ const HomeDashboard = () => {
           min-height: 100dvh;
           height: 100vh;
           height: 100dvh;
-          background: #F8FAFF;
           font-family: 'DM Sans', -apple-system, sans-serif;
           overflow: hidden;
           touch-action: manipulation;
         }
-
-        /* ── Sidebar (structure UNCHANGED) ── */
-        .desktop-sidebar {
-          width: ${isExpanded ? '280px' : '110px'};
-          background: white;
-          border-right: 1px solid #F1F1F1;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 25px 0 170px;
-          z-index: 100;
-          transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          cursor: pointer;
-          position: relative;
-        }
-        .sidebar-logo-container { display: flex; justify-content: center; width: 100%; margin-bottom: 40px; }
-        .sidebar-logo { width: ${isExpanded ? '120px' : '70px'}; transition: width 0.3s ease; }
-        .sidebar-nav-item {
-          display: flex; align-items: center; width: 100%;
-          padding: 0 ${isExpanded ? '35px' : '0'};
-          justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 20px; margin-bottom: 25px; min-height: 52px; box-sizing: border-box;
-          border: 2px solid transparent; border-radius: 12px;
-        }
-        .sidebar-nav-item.sidebar-nav-active { border-color: #F54E25; }
-        .sidebar-icon-wrap { padding: 12px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 700; font-size: 18px; color: #707EAE; max-width: 140px; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
-        .sidebar-primary { width: 100%; }
-        .sidebar-footer { position: absolute; left: 0; right: 0; bottom: 20px; width: 100%; }
-        .sidebar-footer .sidebar-nav-item { margin-bottom: 0; }
-        .sidebar-footer .sidebar-nav-item + .sidebar-nav-item { margin-top: 14px; }
 
         /* ── Top nav ── */
         .top-nav-actions { margin-left: auto; display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
@@ -462,7 +441,7 @@ const HomeDashboard = () => {
         .notif-dropdown-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
         .notif-clear-all { border: none; background: transparent; color: #94a3b8; font-size: 12px; font-weight: 700; cursor: pointer; padding: 4px 6px; border-radius: 8px; flex-shrink: 0; }
         .notif-clear-all:hover { color: #64748b; background: #f1f5f9; }
-        .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
         .top-nav {
           height: 72px; background: white; display: flex; align-items: center;
           padding: 0 28px; border-bottom: 1px solid #F1F5F9; box-sizing: border-box; z-index: 300;
@@ -480,66 +459,233 @@ const HomeDashboard = () => {
         }
 
         /* ── Scroll area ── */
-        .scroll-content { flex: 1; padding: 24px 28px 40px; overflow-y: auto; background: #F8FAFF; }
+        .scroll-content {
+          flex: 1;
+          padding: clamp(16px, 2.5vw, 28px) clamp(16px, 2.8vw, 32px) clamp(28px, 4vw, 44px);
+          overflow-y: auto;
+          background:
+            radial-gradient(ellipse 80% 50% at 100% 0%, rgba(245, 78, 37, 0.04) 0%, transparent 50%),
+            radial-gradient(ellipse 60% 40% at 0% 100%, rgba(99, 102, 241, 0.03) 0%, transparent 45%),
+            #F8FAFF;
+        }
         .content-wrap { width: 100%; max-width: min(1560px, 100%); margin: 0 auto; }
-        .dashboard-stack { display: grid; gap: 18px; }
+        .dashboard-stack { display: grid; gap: clamp(14px, 2vw, 20px); }
+        .dashboard-stack > * {
+          animation: dashFadeUp 0.5s ease-out both;
+        }
+        .dashboard-stack > *:nth-child(1) { animation-delay: 0.04s; }
+        .dashboard-stack > *:nth-child(2) { animation-delay: 0.08s; }
+        .dashboard-stack > *:nth-child(3) { animation-delay: 0.12s; }
+        .dashboard-stack > *:nth-child(4) { animation-delay: 0.16s; }
+        @keyframes dashFadeUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
 
         /* ── Hero banner ── */
         .hero-banner {
-          background: linear-gradient(135deg,#1E293B 0%,#1D2D50 55%,#312e81 100%);
-          border-radius: 22px; padding: 26px 28px;
-          box-shadow: 0 12px 40px rgba(15,23,42,0.18);
+          background: linear-gradient(135deg, #0f172a 0%, #1e293b 42%, #312e81 100%);
+          border-radius: clamp(18px, 2.2vw, 24px);
+          padding: clamp(22px, 3vw, 30px) clamp(22px, 3.2vw, 32px);
+          box-shadow: 0 20px 56px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08);
           position: relative; overflow: hidden;
+          border: 1px solid rgba(255, 255, 255, 0.07);
         }
-        .hero-deco-1 { position: absolute; top: -40px; right: -40px; width: 180px; height: 180px; border-radius: 50%; background: rgba(255,255,255,0.04); }
-        .hero-deco-2 { position: absolute; bottom: -20px; right: 120px; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.05); }
-        .hero-deco-3 { position: absolute; top: 20px; right: 200px; width: 60px; height: 60px; border-radius: 50%; background: rgba(245,78,37,0.15); }
-        .hero-banner-inner { position: relative; }
+        .hero-banner::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background:
+            radial-gradient(ellipse 55% 80% at 0% 0%, rgba(245, 78, 37, 0.18) 0%, transparent 55%),
+            radial-gradient(ellipse 40% 60% at 100% 100%, rgba(99, 102, 241, 0.15) 0%, transparent 50%);
+          pointer-events: none;
+        }
+        .hero-deco-1 { position: absolute; top: -50px; right: -30px; width: 200px; height: 200px; border-radius: 50%; background: rgba(255,255,255,0.05); filter: blur(2px); }
+        .hero-deco-2 { position: absolute; bottom: -30px; right: 100px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.06); }
+        .hero-deco-3 { position: absolute; top: 16px; right: 180px; width: 72px; height: 72px; border-radius: 50%; background: rgba(245,78,37,0.2); box-shadow: 0 0 40px rgba(245, 78, 37, 0.25); }
+        .hero-banner-inner {
+          position: relative; z-index: 1;
+          display: flex; align-items: center; justify-content: space-between;
+          gap: clamp(16px, 3vw, 28px); flex-wrap: wrap;
+        }
+        .hero-banner-main { flex: 1; min-width: 220px; }
+        .hero-mini-stats {
+          display: flex; gap: 10px; flex-wrap: wrap;
+        }
+        .hero-mini-stat {
+          background: rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 999px;
+          padding: 10px 18px;
+          min-width: 92px;
+          text-align: center;
+          transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+        }
+        .hero-mini-stat:hover {
+          transform: translateY(-2px);
+          background: rgba(255, 255, 255, 0.14);
+          border-color: rgba(255, 255, 255, 0.22);
+        }
+        .hero-mini-stat__label {
+          margin: 0;
+          font-size: 9px;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.5);
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+        }
+        .hero-mini-stat__value {
+          margin: 4px 0 0;
+          font-size: clamp(1.2rem, 2vw, 1.45rem);
+          font-weight: 900;
+          line-height: 1;
+          letter-spacing: -0.03em;
+        }
+        .hero-banner-kicker {
+          display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+        }
+        .hero-banner-kicker-icon {
+          width: 34px; height: 34px; border-radius: 11px;
+          background: rgba(255,255,255,0.12); backdrop-filter: blur(8px);
+          display: flex; align-items: center; justify-content: center;
+          border: 1px solid rgba(255,255,255,0.1);
+        }
+        .hero-banner-eyebrow {
+          font-size: clamp(0.625rem, 0.5vw + 0.5rem, 0.6875rem);
+          color: rgba(255,255,255,0.55); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+        }
+        .hero-banner-title {
+          margin: 0; color: #fff;
+          font-size: clamp(1.375rem, 2vw + 0.75rem, 1.75rem);
+          font-weight: 900; letter-spacing: -0.025em; line-height: 1.15;
+        }
+        .hero-banner-title-row {
+          display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px;
+        }
+        .hero-banner-title-icon {
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+        .hero-banner-date {
+          margin: 6px 0 0; color: rgba(255,255,255,0.55);
+          font-size: clamp(0.75rem, 0.4vw + 0.65rem, 0.8125rem); line-height: 1.45;
+        }
 
         /* ── Stat cards ── */
-        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(12px, 1.5vw, 16px); }
         .stat-card {
-          background: #fff; border-radius: 18px; padding: 16px 18px;
-          border: 1px solid #E9EDF7; box-shadow: 0 4px 16px rgba(15,23,42,0.05);
+          background: #fff; border-radius: 18px; padding: clamp(14px, 1.8vw, 18px);
+          border: 1px solid #e9edf7;
+          box-shadow: 0 4px 18px rgba(15,23,42,0.05);
           position: relative; overflow: hidden;
+          min-height: 118px;
+          display: flex; flex-direction: column; justify-content: center;
+          transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
         }
-        .stat-card-deco { position: absolute; top: 0; right: 0; width: 70px; height: 70px; border-radius: '0 18px 0 70px'; opacity: 0.6; }
+        .stat-card::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 3px;
+          background: var(--stat-accent, #f54e25);
+          opacity: 0.85;
+        }
+        .stat-card:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 12px 32px rgba(15, 23, 42, 0.09);
+          border-color: #dde6f7;
+        }
+        .stat-card-label {
+          margin: 0; font-size: 10px; color: #94a3b8; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.07em;
+        }
+        .stat-card-value {
+          margin: 8px 0 4px; font-size: clamp(1.5rem, 2vw + 0.5rem, 1.875rem);
+          font-weight: 900; color: #0f172a; line-height: 1; letter-spacing: -0.03em;
+        }
+        .stat-card-sub { margin: 0; font-size: 11px; color: #94a3b8; line-height: 1.35; }
+        .stat-card-icon {
+          width: 44px; height: 44px; border-radius: 14px;
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        }
+        .stat-card-deco { position: absolute; top: 0; right: 0; width: 80px; height: 80px; border-radius: 0 18px 0 80px; opacity: 0.5; }
+        .stat-card-body { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 
         /* ── Action cards ── */
-        .action-grid-desktop { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+        .action-grid-desktop { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(12px, 1.8vw, 18px); }
         .action-card {
-          background: white; border-radius: 20px; padding: 22px 20px;
+          background: white; border-radius: 18px; padding: clamp(18px, 2vw, 22px) clamp(16px, 2vw, 20px);
           display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
-          cursor: pointer; border: 1px solid #E9EDF7;
-          transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-          box-shadow: 0 4px 14px rgba(15,23,42,0.05);
+          cursor: pointer; border: 1px solid #e9edf7;
+          transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+          box-shadow: 0 4px 16px rgba(15,23,42,0.04);
+          min-height: 168px;
         }
-        .action-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(15,23,42,0.1); border-color: #D0DBF5; }
+        .action-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 16px 40px rgba(15,23,42,0.1);
+          border-color: #d0dbf5;
+        }
+        .action-card:active { transform: translateY(-1px); }
+        .action-card-top { display: flex; align-items: center; justify-content: space-between; width: 100%; }
         .icon-square {
-          width: 52px; height: 52px; background: #F54E25; border-radius: 14px;
-          display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 6px 16px rgba(245,78,37,0.3);
+          width: 50px; height: 50px; background: linear-gradient(145deg, #f54e25, #ea580c);
+          border-radius: 14px; display: flex; align-items: center; justify-content: center;
+          box-shadow: 0 8px 20px rgba(245,78,37,0.28);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
+        .action-card:hover .icon-square { transform: scale(1.04); box-shadow: 0 10px 24px rgba(245,78,37,0.34); }
         .icon-square svg { width: 24px; height: 24px; stroke: #fff; stroke-width: 2.2; }
-        .action-title { font-size: 15px; font-weight: 800; color: #0F172A; letter-spacing: -0.01em; }
-        .action-subtitle { font-size: 12px; color: #64748B; font-weight: 500; line-height: 1.4; }
-        .action-badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 800; }
-        .action-arrow { margin-left: auto; width: 28px; height: 28px; border-radius: 8px; background: #F8FAFF; display: flex; align-items: center; justify-content: center; color: #94A3B8; }
+        .action-title { font-size: clamp(0.875rem, 0.5vw + 0.75rem, 0.9375rem); font-weight: 800; color: #0F172A; letter-spacing: -0.015em; line-height: 1.25; }
+        .action-subtitle { font-size: 12px; color: #64748B; font-weight: 500; line-height: 1.45; }
+        .action-badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 5px 11px; font-size: 11px; font-weight: 800; margin-top: auto; }
+        .action-arrow {
+          width: 32px; height: 32px; border-radius: 10px; background: #f8faff;
+          display: flex; align-items: center; justify-content: center; color: #94A3B8;
+          border: 1px solid #eef2f7;
+          transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+        }
+        .action-card:hover .action-arrow {
+          background: #fff5f0; color: #f54e25; border-color: #ffd4c4;
+          transform: translateX(2px);
+        }
 
         /* ── Section card ── */
         .section-card {
-          background: white; border: 1px solid #E9EDF7; border-radius: 20px; padding: 20px 22px;
-          box-shadow: 0 4px 20px rgba(15,23,42,0.05);
+          background: white; border: 1px solid #e9edf7; border-radius: 20px;
+          padding: clamp(16px, 2.2vw, 22px) clamp(18px, 2.4vw, 24px);
+          box-shadow: 0 6px 24px rgba(15,23,42,0.04);
+          position: relative;
+          overflow: hidden;
         }
-        .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; }
-        .section-title { font-size: 14px; font-weight: 800; color: #0F172A; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
-        .section-sub { font-size: 11px; color: #94A3B8; margin-top: 2px; }
+        .section-card::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(245, 78, 37, 0.25), transparent);
+        }
+        .section-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: clamp(14px, 2vw, 18px); gap: 12px; }
+        .section-title { font-size: clamp(0.8125rem, 0.4vw + 0.7rem, 0.875rem); font-weight: 800; color: #0F172A; letter-spacing: -0.015em; display: flex; align-items: center; gap: 8px; }
+        .section-sub { font-size: 11px; color: #94A3B8; margin-top: 4px; line-height: 1.4; }
         .section-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
 
         /* ── Tables ── */
-        .tables-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
-        .table-card { background: #fff; border: 1px solid #E9EDF7; border-radius: 18px; overflow: hidden; box-shadow: 0 4px 16px rgba(15,23,42,0.04); }
-        .table-head { padding: 14px 18px; border-bottom: 1px solid #F1F5F9; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #FAFBFF; }
+        .tables-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: clamp(12px, 1.8vw, 16px); }
+        .table-card {
+          background: #fff; border: 1px solid #e9edf7; border-radius: 18px; overflow: hidden;
+          box-shadow: 0 4px 20px rgba(15,23,42,0.04);
+          transition: box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+        .table-card:hover { box-shadow: 0 8px 28px rgba(15,23,42,0.06); border-color: #dde6f7; }
+        .table-head {
+          padding: clamp(12px, 1.5vw, 14px) clamp(14px, 1.8vw, 18px);
+          border-bottom: 1px solid #f1f5f9;
+          display: flex; align-items: center; justify-content: space-between; gap: 8px;
+          background: linear-gradient(180deg, #fafbff 0%, #fff 100%);
+        }
         .table-scroll { overflow-x: auto; }
         .table-scroll-patients { max-height: 340px; overflow-y: auto; }
         .table-scroll-requests { max-height: 400px; overflow-y: auto; }
@@ -550,43 +696,78 @@ const HomeDashboard = () => {
         .dashboard-table tr:hover td { background: #FAFBFF; }
 
         /* ── Bottom grid ── */
-        .bottom-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; }
+        .bottom-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: clamp(12px, 1.8vw, 16px); }
         .clean-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
         .clean-list-item {
-          border: 1px solid #F1F5F9; border-radius: 14px; background: #FAFBFF;
-          padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
-          transition: border-color 0.15s;
+          border: 1px solid #f1f5f9; border-radius: 14px; background: #fafbff;
+          padding: clamp(12px, 1.5vw, 14px) clamp(12px, 1.8vw, 16px);
+          display: flex; justify-content: space-between; align-items: center; gap: 12px;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
-        .clean-list-item:hover { border-color: #DDE6F7; }
-        .mini-pill { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 4px 10px; }
+        .clean-list-item:hover { border-color: #dde6f7; box-shadow: 0 4px 16px rgba(15,23,42,0.04); transform: translateY(-1px); }
+        .clean-list-title { color: #0F172A; font-weight: 700; font-size: clamp(0.8125rem, 0.4vw + 0.7rem, 0.8125rem); line-height: 1.3; }
+        .clean-list-sub { color: #94A3B8; font-size: 12px; margin-top: 3px; line-height: 1.4; }
+        .clean-list-btn {
+          border: none; border-radius: 10px; padding: 6px 12px; font-size: 11px; font-weight: 700;
+          cursor: pointer; flex-shrink: 0; transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .clean-list-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(15,23,42,0.08); }
+        .mini-pill { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 5px 11px; }
+        .section-desc { margin: 0 0 4px; color: #94A3B8; font-size: 12px; line-height: 1.45; }
 
         /* ── Overview highlights ── */
-        .highlights-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .highlights-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(10px, 1.5vw, 14px); }
         .highlight-item {
-          border: 1px solid #F1F5F9; border-radius: 16px; background: #fff;
-          padding: 14px 16px; box-shadow: 0 2px 10px rgba(15,23,42,0.03);
+          border: 1px solid #f1f5f9; border-radius: 16px; background: #fff;
+          padding: clamp(12px, 1.8vw, 16px);
+          box-shadow: 0 2px 12px rgba(15,23,42,0.03);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          min-height: 96px;
         }
-        .highlight-label { color: #94A3B8; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 6px; }
-        .highlight-value { color: #0F172A; font-size: 26px; font-weight: 900; line-height: 1; letter-spacing: -0.02em; }
-        .highlight-sub { color: #94A3B8; font-size: 11px; font-weight: 500; margin-top: 4px; }
+        .highlight-item:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(15,23,42,0.06); }
+        .highlight-label { color: #94A3B8; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 8px; }
+        .highlight-value { color: #0F172A; font-size: clamp(1.375rem, 2vw + 0.5rem, 1.625rem); font-weight: 900; line-height: 1; letter-spacing: -0.03em; }
+        .highlight-sub { color: #94A3B8; font-size: 11px; font-weight: 500; margin-top: 6px; line-height: 1.35; }
 
         /* ── Graph bars ── */
-        .graph-bars-wrap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; align-items: flex-end; min-height: 180px; padding-top: 8px; }
+        .graph-bars-wrap { display: grid; grid-template-columns: repeat(6, 1fr); gap: clamp(8px, 1.2vw, 12px); align-items: flex-end; min-height: 190px; padding: 12px 4px 4px; }
         .graph-bar-item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-        .graph-bar-track { width: 100%; height: 130px; background: #F8FAFC; border-radius: 10px; display: flex; align-items: flex-end; overflow: hidden; border: 1px solid #F1F5F9; }
-        .graph-bar-fill { width: 100%; border-radius: 8px 8px 4px 4px; min-height: 8px; }
-        .graph-bar-value { font-size: 14px; font-weight: 900; color: #0F172A; }
-        .graph-bar-label { font-size: 10px; font-weight: 700; color: #64748B; text-align: center; }
+        .graph-bar-track { width: 100%; height: 140px; background: #f8fafc; border-radius: 12px; display: flex; align-items: flex-end; overflow: hidden; border: 1px solid #f1f5f9; }
+        .graph-bar-fill { width: 100%; border-radius: 10px 10px 6px 6px; min-height: 8px; transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: inset 0 1px 0 rgba(255,255,255,0.25); }
+        .graph-bar-value { font-size: clamp(0.8125rem, 0.5vw + 0.65rem, 0.875rem); font-weight: 900; color: #0F172A; }
+        .graph-bar-label { font-size: 10px; font-weight: 700; color: #64748B; text-align: center; line-height: 1.2; }
 
         /* ── KPI grid ── */
-        .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .kpi-item { border: 1px solid #F1F5F9; border-radius: 14px; padding: 14px; background: #fff; }
-        .kpi-dot { width: 24px; height: 4px; border-radius: 999px; margin-top: 8px; }
-        .kpi-note { margin-top: 5px; color: #64748B; font-size: 11px; line-height: 1.35; font-weight: 500; }
+        .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(8px, 1.2vw, 12px); }
+        .kpi-item {
+          border: 1px solid #f1f5f9; border-radius: 14px; padding: clamp(12px, 1.5vw, 16px);
+          background: #fff; transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .kpi-item:hover { border-color: #e2e8f0; box-shadow: 0 4px 16px rgba(15,23,42,0.04); }
+        .kpi-dot { width: 28px; height: 4px; border-radius: 999px; margin-top: 10px; }
+        .kpi-label { font-size: 10px; color: #94A3B8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+        .kpi-value { color: #0F172A; font-weight: 900; font-size: clamp(1.125rem, 1.5vw + 0.5rem, 1.375rem); margin-top: 6px; letter-spacing: -0.02em; line-height: 1.1; }
+        .kpi-note { margin-top: 6px; color: #64748B; font-size: 11px; line-height: 1.4; font-weight: 500; }
+        .summary-updated-badge { font-size: 11px; color: #94A3B8; font-weight: 600; white-space: nowrap; }
+        .summary-tables-wrap { margin-top: clamp(14px, 2vw, 20px); padding-top: clamp(14px, 2vw, 18px); border-top: 1px solid #f1f5f9; }
 
         /* ── Insights split ── */
-        .insights-split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-        .insight-panel { border: 1px solid #F1F5F9; border-radius: 14px; background: #fff; padding: 16px; }
+        .insights-split { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(12px, 1.8vw, 16px); }
+        .insight-panel {
+          border: 1px solid #f1f5f9; border-radius: 16px; background: #fff;
+          padding: clamp(14px, 2vw, 18px);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+        }
+        .insight-panel-title { margin: 0 0 14px; font-size: 13px; font-weight: 800; color: #0F172A; letter-spacing: -0.01em; }
+        .graph-chart-shell {
+          background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 14px;
+          padding: clamp(12px, 1.8vw, 16px) clamp(10px, 1.5vw, 14px);
+        }
+        .graph-insight-banner {
+          margin-top: 12px; padding: 10px 12px; border-radius: 12px;
+          background: #eef4ff; border: 1px solid #dce7ff;
+          font-size: 12px; font-weight: 600; color: #334155; line-height: 1.4;
+        }
 
         /* ── Report modal (structure UNCHANGED) ── */
         .report-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15,23,42,0.3); backdrop-filter: blur(8px); display: flex; justify-content: center; align-items: center; z-index: 3000; padding: 16px; box-sizing: border-box; }
@@ -671,20 +852,7 @@ const HomeDashboard = () => {
           min-height: 0;
         }
 
-        /* ── Chat ── */
-        .chat-window { position: fixed; bottom: 100px; right: 20px; width: 350px; height: 500px; background: white; border-radius: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); display: flex; flex-direction: column; z-index: 2000; overflow: hidden; border: 1px solid rgba(0,0,0,0.05); animation: slideUp 0.3s ease; }
-        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .chat-header { padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; background: white; border-bottom: 1px solid #F1F5F9; }
-        .chat-body { flex: 1; padding: 20px; background: #F8FAFF; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; scrollbar-width: none; }
-        .chat-body::-webkit-scrollbar { display: none; }
-        .msg-bubble { max-width: 85%; padding: 12px 16px; font-size: 13px; line-height: 1.5; position: relative; }
-        .msg-received { background: white; color: #1B2559; align-self: flex-start; border-radius: 18px 18px 18px 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-        .msg-sent { background: #F54E25; color: white; align-self: flex-end; border-radius: 18px 18px 4px 18px; }
-        .typing-indicator { display: flex; gap: 4px; padding: 12px 16px; background: white; width: fit-content; border-radius: 18px 18px 18px 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-        .dot { width: 6px; height: 6px; background: #A3AED0; border-radius: 50%; animation: bounce 1.4s infinite ease-in-out; }
-        .dot:nth-child(2) { animation-delay: 0.2s; }
-        .dot:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+        /* ── Chat (styles in styles/family-chat.css) ── */
 
         /* ── Panel title helper ── */
         .panel-title { color: #0F172A; font-weight: 800; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 14px; }
@@ -694,6 +862,19 @@ const HomeDashboard = () => {
         .notif-row-text { flex: 1; }
         .notif-remove-btn { border: none; background: transparent; color: #94A3B8; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
         .notif-remove-btn:hover { color: #EF4444; }
+
+        @media (min-width: 1600px) {
+          .content-wrap { max-width: min(1680px, 100%); }
+          .stat-grid { gap: 18px; }
+          .action-grid-desktop { gap: 20px; }
+        }
+
+        @media (min-width: 900px) and (max-width: 1199px) {
+          .stat-grid { grid-template-columns: repeat(2, 1fr); }
+          .highlights-grid { grid-template-columns: repeat(2, 1fr); }
+          .action-grid-desktop { grid-template-columns: repeat(2, 1fr); }
+          .tables-row { grid-template-columns: 1fr; }
+        }
 
         /* ── Table helpers ── */
         .table-patient-wrap { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -798,9 +979,12 @@ const HomeDashboard = () => {
           .report-detail-head .report-detail-kicker { color: #FDBA74 !important; }
           .report-detail-head .report-detail-title { color: #fff !important; }
           .report-detail-modal .report-detail-grid { margin: 14px 16px 0; }
-          .chat-window { width: 320px; height: 450px; bottom: 85px; right: 15px; border-radius: 20px; }
+          .family-chat-window { width: min(360px, calc(100vw - 16px)); right: 8px; --family-chat-bottom: 90px; }
+          .family-chat-fab { --family-chat-fab-bottom: 90px; }
           .mobile-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 70px; background: white; border-top: 1px solid #EEE; display: flex; justify-content: space-around; align-items: center; padding-bottom: env(safe-area-inset-bottom); z-index: 1000; }
           .hero-banner { border-radius: 18px; padding: 18px 16px; }
+          .stat-card { min-height: 108px; }
+          .action-card { min-height: auto; }
           .icon-square { width: 48px; height: 48px; border-radius: 14px; }
           .icon-square svg { width: 22px; height: 22px; }
           .action-card {
@@ -980,47 +1164,15 @@ const HomeDashboard = () => {
         document.body,
       )}
 
-      {/* ── SIDEBAR (100% unchanged) ── */}
-      <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container"><img src={logo} alt="Kalinga" className="sidebar-logo" /></div>
-        <div className="sidebar-primary">
-          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
-            <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div>
-            <span className="sidebar-label">Dashboard</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}>
-            <div className="sidebar-icon-wrap"><BookUser size={22} color="#707EAE" /></div>
-            <span className="sidebar-label">Resident Details</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div>
-            <span className="sidebar-label">Request Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
-            <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
-            <span className="sidebar-label">Appointments</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
-            <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
-            <span className="sidebar-label">Reports</span>
-          </div>
-        </div>
-        <div className="sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}>
-            <User size={22} color="#707EAE" />
-            <span className="sidebar-label">Profile</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" style={{ cursor: 'pointer' }} />
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
-          </div>
-        </div>
-      </aside>
+      <FamilySidebar
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+      />
 
       {/* ── MAIN VIEW ── */}
       <div className="main-view">
 
-        <FamilyPageHeader title="Dashboard" subtitle={`${greeting}, ${displayName}`} />
+        <FamilyPageHeader {...FAMILY_PAGE_HEADERS.dashboard} onBrandPress={scrollToTop} showMobileLogo={false} />
 
         {/* ── Scroll content ── */}
         <div className="scroll-content" style={{ background: FAMILY_COLORS.background }}>
@@ -1031,15 +1183,32 @@ const HomeDashboard = () => {
               <div className="hero-banner">
                 <div className="hero-deco-1" /><div className="hero-deco-2" /><div className="hero-deco-3" />
                 <div className="hero-banner-inner">
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="hero-banner-main">
+                    <div className="hero-banner-kicker">
+                      <div className="hero-banner-kicker-icon">
                         <Heart size={16} color="#fff" />
                       </div>
-                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Bridges of Hope — Family Portal</span>
+                      <span className="hero-banner-eyebrow">Bridges of Hope — Family Portal</span>
                     </div>
-                    <h1 style={{ margin: 0, color: '#fff', fontSize: 26, fontWeight: 900, letterSpacing: '-0.02em' }}>{greeting}, {firstName} 👋</h1>
-                    <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>{dateStr} · Your care overview at a glance</p>
+                    <h1 className="hero-banner-title">
+                      <span className="hero-banner-title-row">
+                        <span>{greeting}, {firstName}</span>
+                        <GreetingIcon size={22} color="#F54E25" className="hero-banner-title-icon" strokeWidth={2.25} aria-hidden />
+                      </span>
+                    </h1>
+                    <p className="hero-banner-date">{dateStr} · Your care overview at a glance</p>
+                  </div>
+                  <div className="hero-mini-stats">
+                    {[
+                      { label: 'Residents', value: patients.length, color: '#A5B4FC' },
+                      { label: 'Pending', value: totalPendingRequests, color: '#FCA5A5' },
+                      { label: 'Reports', value: reportsReceivedCount, color: '#6EE7B7' },
+                    ].map((s) => (
+                      <div key={s.label} className="hero-mini-stat">
+                        <p className="hero-mini-stat__label">{s.label}</p>
+                        <p className="hero-mini-stat__value" style={{ color: s.color }}>{s.value}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -1052,15 +1221,15 @@ const HomeDashboard = () => {
                   { label: 'Pending Requests', value: totalPendingRequests, sub: 'Admissions, discharges, visits', color: '#F59E0B', bg: '#FFFBEB', border: '#FDE68A', icon: () => <AlertCircle size={20} color="#F59E0B" /> },
                   { label: 'Reports Received', value: reportsReceivedCount, sub: 'From nursing staff', color: '#8B5CF6', bg: '#F5F3FF', border: '#DDD6FE', icon: () => <FileText size={20} color="#8B5CF6" /> },
                 ].map((card) => (
-                  <div key={card.label} className="stat-card" style={{ borderColor: card.border }}>
-                    <div style={{ position: 'absolute', top: 0, right: 0, width: 80, height: 80, background: card.bg, borderRadius: '0 18px 0 80px', opacity: 0.5 }} />
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <div key={card.label} className="stat-card" style={{ borderColor: card.border, '--stat-accent': card.color }}>
+                    <div className="stat-card-deco" style={{ background: card.bg }} />
+                    <div className="stat-card-body">
                       <div>
-                        <p style={{ margin: 0, fontSize: 10, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{card.label}</p>
-                        <p style={{ margin: '6px 0 2px', fontSize: 30, fontWeight: 900, color: '#0F172A', lineHeight: 1, letterSpacing: '-0.02em' }}>{card.value}</p>
-                        <p style={{ margin: 0, fontSize: 11, color: '#94A3B8' }}>{card.sub}</p>
+                        <p className="stat-card-label">{card.label}</p>
+                        <p className="stat-card-value">{card.value}</p>
+                        <p className="stat-card-sub">{card.sub}</p>
                       </div>
-                      <div style={{ width: 40, height: 40, borderRadius: 12, background: card.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${card.border}` }}>
+                      <div className="stat-card-icon" style={{ background: card.bg, border: `1px solid ${card.border}` }}>
                         {card.icon()}
                       </div>
                     </div>
@@ -1078,7 +1247,7 @@ const HomeDashboard = () => {
                 </div>
                 <div className="action-grid-desktop">
                   <div className="action-card" onClick={() => { setWeeklyReportExpandedPatientId(null); setShowReport(true); setIsChatOpen(false); }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <div className="action-card-top">
                       <div className="icon-square"><FileText aria-hidden /></div>
                       <div className="action-arrow"><ArrowRight size={14} /></div>
                     </div>
@@ -1087,7 +1256,7 @@ const HomeDashboard = () => {
                     <span className="action-badge" style={{ background: '#FFF1EB', color: '#C2410C' }}>{reportsReceivedCount} received</span>
                   </div>
                   <div className="action-card" onClick={() => navigate('/progress', { state: { tab: 'admission' } })}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <div className="action-card-top">
                       <div className="icon-square"><ClipboardList aria-hidden /></div>
                       <div className="action-arrow"><ArrowRight size={14} /></div>
                     </div>
@@ -1102,7 +1271,7 @@ const HomeDashboard = () => {
                       setIsChatOpen(false);
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <div className="action-card-top">
                       <div className="icon-square">
                         <img src={servicesIcon} alt="Services" style={{ width: 22, height: 22, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
                       </div>
@@ -1122,13 +1291,13 @@ const HomeDashboard = () => {
                     <div className="section-title"><Activity size={16} color="#F54E25" /> Dashboard Summary</div>
                     <p className="section-sub">Live overview of patient, request, and report data</p>
                   </div>
-                  <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>Updated from live data</span>
+                  <span className="summary-updated-badge">Updated from live data</span>
                 </div>
                 <div className="insights-split">
                   {/* Graph */}
                   <div className="insight-panel">
-                    <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 800, color: '#0F172A' }}>Graph View</p>
-                    <div style={{ background: '#F8FAFC', border: '1px solid #F1F5F9', borderRadius: 14, padding: '14px 12px' }}>
+                    <p className="insight-panel-title">Graph View</p>
+                    <div className="graph-chart-shell">
                       <div className="graph-bars-wrap">
                         {summaryGraphData.map((item) => (
                           <div className="graph-bar-item" key={item.label}>
@@ -1141,18 +1310,18 @@ const HomeDashboard = () => {
                         ))}
                       </div>
                     </div>
-                    <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: '#EEF4FF', border: '1px solid #DCE7FF', fontSize: 12, fontWeight: 600, color: '#334155' }}>
+                    <div className="graph-insight-banner">
                       Highest metric: <strong>{summaryGraphData.reduce((max, item) => (item.value > max.value ? item : max), summaryGraphData[0]).label}</strong>
                     </div>
                   </div>
                   {/* KPI */}
                   <div className="insight-panel">
-                    <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 800, color: '#0F172A' }}>Operational Insights</p>
+                    <p className="insight-panel-title">Operational Insights</p>
                     <div className="kpi-grid">
                       {metricInsights.map((item) => (
                         <div key={item.label} className="kpi-item">
-                          <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{item.label}</div>
-                          <div style={{ color: '#0F172A', fontWeight: 900, fontSize: 22, marginTop: 5, letterSpacing: '-0.02em' }}>{item.value}</div>
+                          <div className="kpi-label">{item.label}</div>
+                          <div className="kpi-value">{item.value}</div>
                           <div className="kpi-dot" style={{ background: item.color }} />
                           <div className="kpi-note">{item.note}</div>
                         </div>
@@ -1162,7 +1331,8 @@ const HomeDashboard = () => {
                 </div>
 
                 {/* Tables */}
-                <div className="tables-row" style={{ marginTop: 16 }}>
+                <div className="summary-tables-wrap">
+                  <div className="tables-row">
                   <div className="table-card">
                     <div className="table-head">
                       <div className="panel-title" style={{ marginBottom: 0 }}><User size={15} color="#F54E25" /> Resident Snapshot</div>
@@ -1237,6 +1407,7 @@ const HomeDashboard = () => {
                     </div>
                   </div>
                 </div>
+                </div>
 
                 {isSupabaseConfigured() && supabaseReadError && (
                   <div style={{ color: '#ef4444', fontSize: 11, fontWeight: 700, marginTop: 10 }}>{String(supabaseReadError).slice(0, 100)}</div>
@@ -1268,19 +1439,28 @@ const HomeDashboard = () => {
               <div className="bottom-grid">
                 <div className="section-card" style={{ margin: 0 }}>
                   <div className="section-title" style={{ marginBottom: 6 }}><Calendar size={16} color="#F54E25" /> Next Steps</div>
-                  <p style={{ margin: '0 0 4px', color: '#94A3B8', fontSize: 12 }}>Suggested actions to keep care coordination on track.</p>
+                  <p className="section-desc">Suggested actions to keep care coordination on track.</p>
                   <div className="clean-list">
                     <div className="clean-list-item">
-                      <div><div style={{ color: '#0F172A', fontWeight: 700, fontSize: 13 }}>Review request management queue</div><div style={{ color: '#94A3B8', fontSize: 12, marginTop: 2 }}>Check admission/discharge updates from staff</div></div>
+                      <div>
+                        <div className="clean-list-title">Review request management queue</div>
+                        <div className="clean-list-sub">Check admission/discharge updates from staff</div>
+                      </div>
                       <span className="mini-pill" style={{ background: '#FEF3C7', color: '#92400E', flexShrink: 0 }}>{totalPendingRequests||0} pending</span>
                     </div>
                     <div className="clean-list-item">
-                      <div><div style={{ color: '#0F172A', fontWeight: 700, fontSize: 13 }}>Open patient details tab</div><div style={{ color: '#94A3B8', fontSize: 12, marginTop: 2 }}>View status and progress of all patients</div></div>
-                      <button type="button" onClick={() => navigate('/patient-details')} style={{ border: 'none', borderRadius: 10, background: '#EEF2FF', color: '#3730A3', padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>Open</button>
+                      <div>
+                        <div className="clean-list-title">Open patient details tab</div>
+                        <div className="clean-list-sub">View status and progress of all patients</div>
+                      </div>
+                      <button type="button" className="clean-list-btn" onClick={() => navigate('/patient-details')} style={{ background: '#EEF2FF', color: '#3730A3' }}>Open</button>
                     </div>
                     <div className="clean-list-item">
-                      <div><div style={{ color: '#0F172A', fontWeight: 700, fontSize: 13 }}>Check appointment slots</div><div style={{ color: '#94A3B8', fontSize: 12, marginTop: 2 }}>Plan follow-ups and visit schedules</div></div>
-                      <button type="button" onClick={() => navigate('/appointments')} style={{ border: 'none', borderRadius: 10, background: '#ECFDF5', color: '#065F46', padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>View</button>
+                      <div>
+                        <div className="clean-list-title">Check appointment slots</div>
+                        <div className="clean-list-sub">Plan follow-ups and visit schedules</div>
+                      </div>
+                      <button type="button" className="clean-list-btn" onClick={() => navigate('/appointments')} style={{ background: '#ECFDF5', color: '#065F46' }}>View</button>
                     </div>
                   </div>
                 </div>
@@ -1288,16 +1468,16 @@ const HomeDashboard = () => {
                   <div className="section-title" style={{ marginBottom: 6 }}><FileText size={16} color="#F54E25" /> Care Resources</div>
                   <div className="clean-list" style={{ marginTop: 8 }}>
                     <div className="clean-list-item">
-                      <div style={{ color: '#0F172A', fontWeight: 700, fontSize: 13 }}>View Weekly Reports</div>
-                      <button type="button" onClick={() => { setWeeklyReportExpandedPatientId(null); setShowReport(true); }} style={{ border: 'none', borderRadius: 10, background: '#FFF1EB', color: '#C2410C', padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>Open</button>
+                      <div className="clean-list-title">View Weekly Reports</div>
+                      <button type="button" className="clean-list-btn" onClick={() => { setWeeklyReportExpandedPatientId(null); setShowReport(true); }} style={{ background: '#FFF1EB', color: '#C2410C' }}>Open</button>
                     </div>
                     <div className="clean-list-item">
-                      <div style={{ color: '#0F172A', fontWeight: 700, fontSize: 13 }}>Go to Services</div>
-                      <button type="button" onClick={() => { setShowServicesModal(true); setIsChatOpen(false); }} style={{ border: 'none', borderRadius: 10, background: '#EEF2FF', color: '#3730A3', padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>Open</button>
+                      <div className="clean-list-title">Go to Services</div>
+                      <button type="button" className="clean-list-btn" onClick={() => { setShowServicesModal(true); setIsChatOpen(false); }} style={{ background: '#EEF2FF', color: '#3730A3' }}>Open</button>
                     </div>
                     <div className="clean-list-item">
-                      <div style={{ color: '#0F172A', fontWeight: 700, fontSize: 13 }}>Manage Your Profile</div>
-                      <button type="button" onClick={() => navigate('/profile')} style={{ border: 'none', borderRadius: 10, background: '#ECFDF5', color: '#065F46', padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>Open</button>
+                      <div className="clean-list-title">Manage Your Profile</div>
+                      <button type="button" className="clean-list-btn" onClick={() => navigate('/profile')} style={{ background: '#ECFDF5', color: '#065F46' }}>Open</button>
                     </div>
                   </div>
                 </div>
@@ -1307,59 +1487,63 @@ const HomeDashboard = () => {
           </div>
         </div>
 
-        {/* ── Mobile bottom nav (unchanged) ── */}
-        <div className="mobile-only mobile-bottom-nav">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} onClick={() => navigate('/home')}>
-            <Home size={24} color="#F54E25" /><span style={{ fontSize: 10, fontWeight: 700, color: '#F54E25' }}>Home</span>
-          </div>
-          <ClipboardList size={24} color="#A3AED0" onClick={() => navigate('/progress')} />
-          <Calendar size={24} color="#A3AED0" onClick={() => navigate('/appointments')} />
-          <FileText size={24} color="#A3AED0" onClick={() => navigate('/reports')} />
-          <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
-          <LogOut size={24} color="#F54E25" onClick={() => navigate('/login')} />
-        </div>
+        <FamilyMobileBottomNav />
       </div>
 
       {/* ── Chat Window (unchanged logic) ── */}
       {isChatOpen && !showReport && !showServicesModal && (
-        <div className="chat-window">
-          <div className="chat-header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 38, height: 38, background: 'linear-gradient(135deg,#F54E25,#EA580C)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <MessageCircle size={20} color="white" />
+        <div
+          className="family-chat-window"
+          style={{ '--family-chat-bottom': `${layoutCompact ? 90 : 100}px`, zIndex: 2000 }}
+        >
+          <header className="family-chat-header">
+            <div className="family-chat-header__brand">
+              <FamilyChatBrandMark />
+              <div className="family-chat-header__text">
+                <div className="family-chat-title">Bridges of Hope</div>
+                <div className="family-chat-status">
+                  <span className="family-chat-status__dot" aria-hidden />
+                  <span>Care team</span>
+                </div>
               </div>
-              <div><div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>Bridges of Hope</div><div style={{ fontSize: 11, color: '#22C55E', fontWeight: 700 }}>● Care team</div></div>
             </div>
-            <X size={20} color="#A3AED0" style={{ cursor: 'pointer' }} onClick={() => setIsChatOpen(false)} />
-          </div>
-          <div className="chat-body" ref={chatBodyRef}>
-            {messages.map(msg => (
-              <div key={msg.id} className={`msg-bubble ${msg.sender === 'staff' ? 'msg-received' : 'msg-sent'}`}>
-                {msg.text}
-                <div style={{ fontSize: 9, marginTop: 6, opacity: 0.6, textAlign: msg.sender === 'staff' ? 'left' : 'right' }}>{msg.time}</div>
-              </div>
-            ))}
-            {chatSending && <div className="typing-indicator"><div className="dot"/><div className="dot"/><div className="dot"/></div>}
+            <button
+              type="button"
+              className="family-chat-close"
+              onClick={() => setIsChatOpen(false)}
+              aria-label="Close chat"
+            >
+              <X size={20} strokeWidth={2} aria-hidden />
+            </button>
+          </header>
+          <div className="family-chat-body-wrap">
+            <div className="family-chat-body" ref={chatBodyRef}>
+              {chatLoading && <div className="family-chat-loading">Loading messages…</div>}
+              <FamilyChatMessageList messages={messages} sending={chatSending} />
+            </div>
           </div>
           {chatSendError ? (
-            <div style={{ padding: '8px 16px', fontSize: 12, color: '#DC2626', background: '#FEF2F2', borderTop: '1px solid #FECACA' }}>
+            <div className="family-chat-error" role="alert">
               {chatSendError}
             </div>
           ) : null}
-          <div style={{ padding: '14px 18px', background: 'white', display: 'flex', gap: 10, alignItems: 'center', borderTop: '1px solid #F1F5F9' }}>
-            <input style={{ flex: 1, border: 'none', background: '#F8FAFF', borderRadius: 14, padding: '11px 16px', outline: 'none', fontSize: 13, color: '#0F172A', fontFamily: 'DM Sans, sans-serif' }} placeholder="Type your message..." value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} />
-            <button onClick={handleSendMessage} disabled={!inputValue.trim() || chatSending} aria-label="Send message" style={{ background: inputValue.trim() ? '#F54E25' : '#E9EDF7', width: 44, height: 44, minWidth: 44, borderRadius: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 0, boxShadow: inputValue.trim() ? '0 4px 12px rgba(245,78,37,0.3)' : 'none' }}>
-              <Send size={18} color="white" strokeWidth={2} style={{ width: 18, height: 18 }} />
-            </button>
-          </div>
+          <FamilyChatComposer
+            value={inputValue}
+            onChange={setInputValue}
+            onSend={handleSendMessage}
+            sending={chatSending}
+          />
         </div>
       )}
 
       {/* ── Chat FAB (unchanged logic) ── */}
       {!showReport && !showServicesModal && (
-        <div onClick={() => setIsChatOpen(!isChatOpen)} style={{ position: 'fixed', bottom: layoutCompact ? 90 : 30, right: 20, width: 58, height: 58, background: 'linear-gradient(135deg,#F54E25,#EA580C)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', boxShadow: '0 8px 24px rgba(245,78,37,0.4)', zIndex: 1000, cursor: 'pointer', transition: 'transform 0.2s' }}>
-          {isChatOpen ? <X size={26} /> : <MessageCircle size={26} />}
-        </div>
+        <FamilyChatFab
+          isOpen={isChatOpen}
+          onClick={() => setIsChatOpen(!isChatOpen)}
+          bottom={layoutCompact ? 90 : 30}
+          style={{ zIndex: 1000 }}
+        />
       )}
     </div>
   );

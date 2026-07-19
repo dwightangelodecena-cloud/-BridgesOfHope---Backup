@@ -7,34 +7,44 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { KalingaLogoMark } from './KalingaLogoMark';
+import { FamilyHeaderBrand, FamilyPageTitleBrand } from './FamilyHeaderBrand';
 import { FamilyHeaderAvatarMobile } from './FamilyHeaderAvatarMobile';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 import { useFamilyNotificationsMobile } from '../../lib/useFamilyNotificationsMobileHook';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 
 type Props = {
-  /** Page title (web desktop header). On mobile, shown when `showLogo` is false. */
+  /** Page title — inner pages use unified title brand (no subtitle on mobile). */
   title?: string;
+  /** @deprecated Subtitles are not shown on mobile; use in-page hero copy instead. */
   subtitle?: string;
-  /** Default true — Kalinga logo on the left like web mobile top bar. */
+  /** Home dashboard: full Kalinga brand. Other pages: pass `title`. */
   showLogo?: boolean;
+  /** Scroll main page content to top (tap brand / title area). */
+  onBrandPress?: () => void;
 };
 
 /**
- * Unified family header for Capstone Mobile — matches web FamilyPageHeader behavior.
+ * Unified family mobile header — home brand or page title brand, always with accent line.
  */
-export function FamilyMobilePageHeader({ title, subtitle, showLogo = true }: Props) {
+export function FamilyMobilePageHeader({
+  title,
+  showLogo = true,
+  onBrandPress,
+}: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { userId, initials } = useFamilyUserMobile();
   const notif = useFamilyNotificationsMobile(userId);
 
   const onProfile = () => router.navigate(TAB_ROUTES.profile as never);
+  const isHomeBrand = showLogo && !title;
 
   return (
     <>
@@ -81,45 +91,82 @@ export function FamilyMobilePageHeader({ title, subtitle, showLogo = true }: Pro
         </View>
       </Modal>
 
-      <View style={[styles.bar, { paddingTop: Math.max(insets.top, 8) }]}>
-        {showLogo && !title ? (
-          <KalingaLogoMark size={44} />
-        ) : (
-          <View style={styles.titleBlock}>
-            {title ? <Text style={styles.title}>{title}</Text> : <KalingaLogoMark size={40} />}
-            {subtitle ? <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text> : null}
-          </View>
-        )}
-        <View style={styles.actions}>
+      <View style={styles.headerShell}>
+        <View style={[styles.bar, { paddingTop: Math.max(insets.top, 8) }]}>
           <TouchableOpacity
-            style={styles.notifyBtn}
-            onPress={notif.toggle}
-            accessibilityRole="button"
-            accessibilityLabel="Notifications"
+            style={styles.brandArea}
+            onPress={onBrandPress}
+            disabled={!onBrandPress}
+            activeOpacity={onBrandPress ? 0.82 : 1}
+            accessibilityRole={onBrandPress ? 'button' : undefined}
+            accessibilityLabel={onBrandPress ? 'Scroll to top' : undefined}
           >
-            <Ionicons name="notifications" size={18} color="#FFFFFF" />
+            {isHomeBrand ? (
+              <FamilyHeaderBrand />
+            ) : title ? (
+              <FamilyPageTitleBrand title={title} />
+            ) : (
+              <KalingaLogoMark size={44} variant="boxed" />
+            )}
           </TouchableOpacity>
-          <FamilyHeaderAvatarMobile userId={userId} initials={initials} onPress={onProfile} size={36} />
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={styles.notifyBtn}
+              onPress={notif.toggle}
+              accessibilityRole="button"
+              accessibilityLabel={
+                notif.unreadCount > 0
+                  ? `Notifications, ${notif.unreadCount} unread`
+                  : 'Notifications'
+              }
+              activeOpacity={0.88}
+            >
+              <Ionicons name="notifications" size={18} color="#FFFFFF" />
+              {notif.unreadCount > 0 ? (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>
+                    {notif.unreadCount > 9 ? '9+' : String(notif.unreadCount)}
+                  </Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+            <FamilyHeaderAvatarMobile userId={userId} initials={initials} onPress={onProfile} size={36} />
+          </View>
         </View>
+        <View style={styles.themeAccent} />
       </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  headerShell: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingBottom: 10,
+    minHeight: 56,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F1',
   },
-  titleBlock: { flex: 1, minWidth: 0, paddingRight: 12 },
-  title: { fontSize: 18, fontWeight: '800', color: '#F54E25' },
-  subtitle: { fontSize: 13, fontWeight: '500', color: '#64748B', marginTop: 2 },
+  brandArea: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
+    justifyContent: 'center',
+  },
+  themeAccent: {
+    height: 2,
+    backgroundColor: 'rgba(245, 78, 37, 0.45)',
+    marginHorizontal: 20,
+    marginBottom: -1,
+    borderRadius: 2,
+  },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   notifyBtn: {
     width: 36,
@@ -128,6 +175,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#F54E25',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+    overflow: 'visible',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#F54E25',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.22,
+        shadowRadius: 6,
+      },
+      android: { elevation: 3 },
+      default: {},
+    }),
   },
   notifRoot: { flex: 1 },
   notifBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' },
@@ -160,4 +219,29 @@ const styles = StyleSheet.create({
   notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
   notifText: { flex: 1, fontSize: 13, color: '#334155', lineHeight: 18 },
   notifDismiss: { fontSize: 16, color: '#94A3B8', paddingHorizontal: 4 },
+  notifBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#1B2559',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  notifBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    lineHeight: 12,
+    textAlign: 'center',
+    ...Platform.select({
+      android: { includeFontPadding: false, textAlignVertical: 'center' },
+      default: {},
+    }),
+  },
 });

@@ -3,6 +3,7 @@ import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { isInvalidRefreshTokenError } from "../lib/authErrors";
 import { TAB_ROUTES } from "../lib/navigationConfig";
 
 const touchPresence = async (userId?: string) => {
@@ -35,10 +36,7 @@ export default function Index() {
           } = await supabase.auth.getSession();
 
           if (sessionError) {
-            const msg = String(sessionError.message || "").toLowerCase();
-            const isInvalidRefresh =
-              msg.includes("invalid refresh token") || msg.includes("refresh token not found");
-            if (isInvalidRefresh) {
+            if (isInvalidRefreshTokenError(sessionError)) {
               // Clear only local auth state so stale refresh tokens do not block app startup.
               await supabase.auth.signOut({ scope: "local" });
             } else {

@@ -2,6 +2,7 @@ const LEGACY_KEY = 'bh_family_notifications_v1';
 /** Pre–per-user bucket (shared across accounts on same browser). Migrated once into the active user’s v3 key. */
 const GLOBAL_V2_KEY = 'bh_family_notifications_v2';
 const PER_USER_PREFIX = 'bh_family_notifications_v3:';
+const LAST_READ_PREFIX = 'bh_family_notifications_last_read_v1:';
 const MAX_NOTIFICATIONS = 80;
 
 export const FAMILY_NOTIFICATIONS_CHANGED = 'bh_family_notifications_changed';
@@ -23,6 +24,53 @@ export function notificationStorageKeyForUser(userId) {
   const id = userId != null ? String(userId).trim() : '';
   if (!id) return null;
   return `${PER_USER_PREFIX}${id}`;
+}
+
+export function notificationLastReadKeyForUser(userId) {
+  const id = userId != null ? String(userId).trim() : '';
+  if (!id) return null;
+  return `${LAST_READ_PREFIX}${id}`;
+}
+
+export function loadFamilyNotificationsLastRead(userId) {
+  const key = notificationLastReadKeyForUser(userId);
+  if (!key) return 0;
+  try {
+    const raw = localStorage.getItem(key);
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveFamilyNotificationsLastRead(userId, timestamp = Date.now()) {
+  const key = notificationLastReadKeyForUser(userId);
+  if (!key) return 0;
+  const ts = Number.isFinite(Number(timestamp)) ? Number(timestamp) : Date.now();
+  try {
+    localStorage.setItem(key, String(ts));
+    dispatchChanged();
+  } catch {
+    /* ignore */
+  }
+  return ts;
+}
+
+export function countUnreadFamilyNotifications(items, lastReadAt = 0) {
+  const last = Number(lastReadAt) || 0;
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const createdAt = Number(item?.createdAt) || 0;
+    return createdAt > last;
+  }).length;
+}
+
+export function markFamilyNotificationsRead(items, userId) {
+  const list = Array.isArray(items) ? items : [];
+  const ts = list.length
+    ? Math.max(...list.map((item) => Number(item?.createdAt) || 0), Date.now())
+    : Date.now();
+  return saveFamilyNotificationsLastRead(userId, ts);
 }
 
 /** Normalize stored row to { id, text, createdAt }. */
@@ -142,6 +190,7 @@ export function clearAllFamilyNotifications(userId) {
   const empty = '[]';
   if (localStorage.getItem(key) === empty) return [];
   localStorage.setItem(key, empty);
+  saveFamilyNotificationsLastRead(userId, Date.now());
   dispatchChanged();
   return [];
 }

@@ -1,14 +1,17 @@
 /**
  * GUIDE: verify.jsx
  * System Part: Authentication Module
- * 
+ *
  * This file supports the Authentication Module of the Bridges of Hope system.
  */
 import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import logo from '@/assets/kalingalogo.png';
+import { ShieldCheck } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { startGoogleOAuthWeb } from '@/lib/oauthWeb';
+import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
+import AuthPageBackground from '@/components/auth/AuthPageBackground';
+import { AUTH_SHELL_STYLES } from '@/components/auth/authShellStyles';
 
 const VerifyStep2 = () => {
   const navigate = useNavigate();
@@ -17,31 +20,25 @@ const VerifyStep2 = () => {
   const recoveryEmail = location.state?.email || localStorage.getItem('bh_recovery_email') || '';
   const otpLength = 6;
 
-  // State to hold the 6-digit code
   const [otp, setOtp] = useState(() => Array.from({ length: otpLength }, () => ''));
   const [verifyError, setVerifyError] = useState('');
   const [googleBusy, setGoogleBusy] = useState(false);
-  
-  // References for each input field to handle auto-focus
+
   const inputRefs = Array.from({ length: otpLength }, () => useRef());
 
   const handleChange = (index, value) => {
-    // Only allow numbers
     if (isNaN(value)) return;
 
     const newOtp = [...otp];
-    // Take only the last character entered
     newOtp[index] = value.substring(value.length - 1);
     setOtp(newOtp);
 
-    // Auto-focus to next input if value is entered
     if (value && index < otp.length - 1) {
       inputRefs[index + 1].current.focus();
     }
   };
 
   const handleKeyDown = (index, e) => {
-    // Move to previous input on backspace if current is empty
     if (e.key === 'Backspace' && !otp[index] && index > 0) {
       inputRefs[index - 1].current.focus();
     }
@@ -94,197 +91,391 @@ const VerifyStep2 = () => {
     }
   };
 
+  const maskedEmail = recoveryEmail
+    ? recoveryEmail.replace(/^(.{1,2})(.*)(@.*)$/, (_, a, mid, domain) => {
+        const hidden = mid.length > 0 ? '*'.repeat(Math.min(mid.length, 4)) : '';
+        return `${a}${hidden}${domain}`;
+      })
+    : '';
+
   return (
-    <div className="verify-container">
+    <div className="login-container">
+      <AuthPageBackground />
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600;700&display=swap');
 
-        .verify-container {
-          min-height: 100vh;
-          width: 100vw;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background-color: #ffffff;
-          font-family: 'Inter', sans-serif;
-          margin: 0;
-          padding: 0;
+        ${AUTH_SHELL_STYLES}
+
+        @keyframes verifyFocusRing {
+          from { box-shadow: 0 0 0 0 rgba(245, 78, 37, 0.22); }
+          to { box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.14), inset 0 1px 2px rgba(26, 43, 74, 0.04); }
         }
 
-        .verify-content-wrapper {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 120px;
-          width: 90%;
-          max-width: 1400px;
+        @keyframes verifyDigitIn {
+          from { opacity: 0; transform: scale(0.85); }
+          to { opacity: 1; transform: scale(1); }
         }
 
-        .brand-side {
-          flex: 1;
-          display: flex;
-          justify-content: flex-end;
-        }
-
-        .brand-side img {
-          width: 100%;
-          max-width: 550px;
-          height: auto;
-        }
-
-        .form-side {
-          flex: 1;
-          display: flex;
-          justify-content: flex-start;
+        @keyframes verifySpin {
+          to { transform: rotate(360deg); }
         }
 
         .verify-card {
-          background: #ffffff;
-          padding: 60px 50px;
-          border-radius: 50px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+          background: rgba(255, 255, 255, 0.94);
+          backdrop-filter: blur(14px);
+          padding: clamp(28px, 4vw, 40px);
+          border-radius: 24px;
+          box-shadow:
+            0 1px 2px rgba(26, 43, 74, 0.03),
+            0 8px 24px rgba(26, 43, 74, 0.06),
+            0 28px 56px rgba(26, 43, 74, 0.09);
           width: 100%;
-          max-width: 500px;
+          max-width: var(--auth-form-col);
           text-align: center;
-          border: 1px solid #f1f5f9;
+          border: 1px solid rgba(255, 255, 255, 0.92);
+          box-sizing: border-box;
+          animation: loginFadeIn 0.65s ease-out 0.1s both;
+          transition: box-shadow 0.25s ease;
         }
 
-        .step-title {
-          color: #475569;
-          font-size: 1.6rem;
-          margin-bottom: 25px;
-          font-weight: 500;
+        .verify-card:hover {
+          box-shadow:
+            0 1px 2px rgba(26, 43, 74, 0.03),
+            0 12px 32px rgba(26, 43, 74, 0.07),
+            0 32px 64px rgba(26, 43, 74, 0.1);
         }
 
-        .input-label {
-          display: block;
+        .verify-card-icon {
+          width: 56px;
+          height: 56px;
+          margin: 0 auto 20px;
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, #fff1ec 0%, #fde0d5 100%);
+          box-shadow: 0 4px 16px rgba(245, 78, 37, 0.12);
+          color: var(--brand-orange);
+        }
+
+        .verify-card-title {
+          font-size: clamp(1.45rem, 2.5vw, 1.75rem);
+          font-weight: 800;
+          color: var(--brand-navy);
+          margin: 0 0 10px;
+          letter-spacing: -0.03em;
+          line-height: 1.25;
+        }
+
+        .verify-card-subtitle {
           font-size: 0.95rem;
-          color: #1e293b;
-          margin-bottom: 20px;
+          color: #64748b;
+          line-height: 1.6;
+          margin: 0 0 8px;
           font-weight: 400;
+        }
+
+        .verify-card-hint {
+          font-size: 0.8rem;
+          color: #94a3b8;
+          line-height: 1.5;
+          margin: 0 0 24px;
+        }
+
+        .verify-card-hint strong {
+          color: #64748b;
+          font-weight: 600;
+        }
+
+        .verify-error {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          color: #dc2626;
+          font-size: 0.85rem;
+          font-weight: 600;
+          margin-bottom: 16px;
+          padding: 10px 14px;
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          border-radius: 12px;
+          line-height: 1.45;
         }
 
         .otp-wrapper {
           display: flex;
           justify-content: center;
-          gap: 15px;
-          margin-bottom: 20px;
+          gap: clamp(8px, 2vw, 14px);
+          margin-bottom: 24px;
         }
 
         .otp-input {
-          width: 60px;
-          height: 60px;
+          width: clamp(44px, 11vw, 56px);
+          height: clamp(52px, 13vw, 60px);
           border: 1.5px solid #e2e8f0;
-          border-radius: 50%;
+          border-radius: 16px;
           text-align: center;
-          font-size: 1.2rem;
-          font-weight: 500;
-          color: #1e293b;
+          font-size: clamp(1.1rem, 3vw, 1.35rem);
+          font-weight: 700;
+          color: var(--brand-navy);
           outline: none;
+          background-color: #f8fafc;
+          transition:
+            border-color 0.2s ease,
+            box-shadow 0.2s ease,
+            background-color 0.2s ease,
+            transform 0.2s ease;
+          font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+          box-shadow: inset 0 1px 2px rgba(26, 43, 74, 0.04);
+          caret-color: var(--brand-orange);
+        }
+
+        .otp-input:hover {
+          border-color: #cbd5e1;
           background-color: #ffffff;
-          transition: border-color 0.2s;
         }
 
         .otp-input:focus {
-          border-color: #F54E25;
+          border-color: var(--brand-orange);
+          background-color: #ffffff;
+          animation: verifyFocusRing 0.22s ease forwards;
+          transform: translateY(-1px);
         }
 
-        .text-link-btn {
-          background: none;
-          border: none;
-          color: #94a3b8;
-          font-size: 0.85rem;
-          cursor: pointer;
-          margin: 15px 0 25px 0;
-          display: block;
-          width: 100%;
-          text-align: center;
+        .otp-input--filled {
+          border-color: rgba(245, 78, 37, 0.35);
+          background-color: #fff7f4;
+          color: var(--brand-orange);
+          animation: verifyDigitIn 0.18s ease;
         }
 
         .btn-primary {
           width: 100%;
-          background: #F54E25;
+          height: 54px;
+          background: linear-gradient(135deg, #FF6A3D 0%, #FF4D1F 100%);
           color: white;
-          padding: 16px;
+          padding: 0 24px;
           border: none;
-          border-radius: 14px;
-          font-size: 1.1rem;
+          border-radius: 999px;
+          font-size: 1.05rem;
           font-weight: 600;
+          font-family: inherit;
           cursor: pointer;
-          transition: opacity 0.2s;
+          transition: transform 0.22s ease, box-shadow 0.22s ease, filter 0.22s ease, opacity 0.22s ease;
+          box-shadow: 0 4px 16px rgba(255, 77, 31, 0.32);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+          filter: brightness(1.04);
+          box-shadow: 0 8px 28px rgba(255, 77, 31, 0.38);
+          transform: translateY(-2px);
+        }
+
+        .btn-primary:active:not(:disabled) {
+          transform: translateY(0) scale(0.99);
+          box-shadow: 0 3px 12px rgba(255, 77, 31, 0.28);
+        }
+
+        .btn-primary:disabled {
+          opacity: 0.72;
+          cursor: not-allowed;
+          box-shadow: none;
+          transform: none;
+        }
+
+        .verify-spinner {
+          width: 18px;
+          height: 18px;
+          border: 2.5px solid rgba(255, 255, 255, 0.35);
+          border-top-color: #ffffff;
+          border-radius: 50%;
+          animation: verifySpin 0.7s linear infinite;
         }
 
         .or-divider {
           display: flex;
           align-items: center;
-          margin: 30px 0;
-          color: #334155;
-          font-size: 0.85rem;
+          margin: 24px 0;
+          gap: var(--space-2);
         }
 
-        .or-divider::before, 
+        .or-divider::before,
         .or-divider::after {
           content: "";
           flex: 1;
           height: 1px;
-          background: #334155;
+          background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
         }
 
-        .or-divider span { padding: 0 15px; }
+        .or-divider span {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          font-size: 0.65rem;
+          font-weight: 700;
+          color: #94a3b8;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          background: #f8fafc;
+          border-radius: 50%;
+          border: 1.5px solid #e8edf3;
+          flex-shrink: 0;
+          line-height: 1;
+        }
 
         .btn-google {
           width: 100%;
+          height: 52px;
           background: #ffffff;
-          border: 1px solid #e2e8f0;
-          padding: 14px;
+          border: 1.5px solid #e2e8f0;
+          padding: 0 20px;
           border-radius: 14px;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 12px;
           font-weight: 500;
+          font-size: 0.975rem;
+          font-family: inherit;
+          color: var(--brand-navy);
           cursor: pointer;
-          color: #1e293b;
+          box-sizing: border-box;
+          transition: background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s ease;
         }
 
-        .signup-prompt { margin-top: 30px; font-size: 1rem; color: #64748b; }
-        .signup-prompt span { color: #F54E25; font-weight: 700; cursor: pointer; }
+        .btn-google:hover:not(:disabled) {
+          background: #f8fafc;
+          border-color: #cbd5e1;
+          box-shadow: 0 2px 8px rgba(26, 43, 74, 0.06);
+          transform: translateY(-1px);
+        }
 
-        @media (max-width: 1024px) {
-          .verify-content-wrapper { flex-direction: column; gap: 40px; padding: 40px 20px; }
-          .brand-side { justify-content: center; }
-          .brand-side img { max-width: 300px; }
-          .form-side { justify-content: center; width: 100%; }
-          .verify-card { padding: 40px 25px; border-radius: 30px; box-shadow: none; border: none; }
-          .otp-input { width: 50px; height: 50px; background-color: #ffffff !important; }
+        .btn-google:active:not(:disabled) {
+          transform: translateY(0);
+        }
+
+        .btn-google:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .verify-footer {
+          margin-top: 28px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .verify-footer-prompt {
+          margin: 0;
+          font-size: 0.95rem;
+          color: #64748b;
+          line-height: 1.5;
+        }
+
+        .verify-footer-prompt button,
+        .verify-footer-prompt a {
+          color: var(--brand-orange);
+          font-weight: 700;
+          cursor: pointer;
+          background: none;
+          border: none;
+          font-family: inherit;
+          font-size: inherit;
+          padding: 0;
+          text-decoration: none;
+          transition: color 0.2s ease, opacity 0.2s ease;
+        }
+
+        .verify-footer-prompt button:hover,
+        .verify-footer-prompt a:hover {
+          color: #e8441e;
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+
+        .verify-back-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #64748b;
+          text-decoration: none;
+          padding: 8px 14px;
+          border-radius: 999px;
+          transition: color 0.2s ease, background-color 0.2s ease;
+        }
+
+        .verify-back-link:hover {
+          color: var(--brand-navy);
+          background: #f1f5f9;
+        }
+
+        @media (max-width: 480px) {
+          .verify-card {
+            border-radius: 20px;
+            padding: 24px 20px;
+          }
+
+          .otp-wrapper {
+            gap: 8px;
+          }
+
+          .otp-input {
+            border-radius: 14px;
+          }
         }
       `}</style>
 
-      <div className="verify-content-wrapper">
-        <div className="brand-side">
-          <img src={logo} alt="Bridges of Hope" />
-        </div>
+      <div className="login-content-wrapper">
+        <AuthBrandPanel variant="recovery" />
 
         <div className="form-side">
-          <div className="verify-card">
-            <h2 className="step-title">Forgot Password?</h2>
-            <label className="input-label">Enter the 6-digit code sent to your email</label>
-            <p style={{ fontSize: 12, color: '#64748b', marginTop: -8, marginBottom: 16 }}>
-              Use the one-time code from your email. Do not use the magic link.
+          <div className="verify-card" role="main">
+            <div className="verify-card-icon" aria-hidden="true">
+              <ShieldCheck size={26} strokeWidth={2.25} />
+            </div>
+
+            <h1 className="verify-card-title">Verify Your Identity</h1>
+            <p className="verify-card-subtitle">
+              Enter the 6-digit verification code sent to your registered email address.
             </p>
+            {maskedEmail ? (
+              <p className="verify-card-hint">
+                Code sent to <strong>{maskedEmail}</strong>. Use the one-time code from your email — not the magic link.
+              </p>
+            ) : (
+              <p className="verify-card-hint">
+                Use the one-time code from your email. Do not use the magic link.
+              </p>
+            )}
 
             {verifyError ? (
-              <div style={{ color: '#dc2626', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>{verifyError}</div>
+              <div className="verify-error" role="alert">
+                {verifyError}
+              </div>
             ) : null}
 
             <form onSubmit={handleSubmit}>
-              <div className="otp-wrapper">
+              <div className="otp-wrapper" role="group" aria-label="6-digit verification code">
                 {otp.map((digit, index) => (
                   <input
                     key={index}
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete={index === 0 ? 'one-time-code' : 'off'}
                     maxLength="1"
-                    className="otp-input"
+                    className={`otp-input${digit ? ' otp-input--filled' : ''}`}
                     value={digit}
                     ref={inputRefs[index]}
                     onChange={(e) => handleChange(index, e.target.value)}
@@ -298,7 +489,7 @@ const VerifyStep2 = () => {
               </button>
             </form>
 
-            <div className="or-divider">
+            <div className="or-divider" aria-hidden="true">
               <span>or</span>
             </div>
 
@@ -308,7 +499,7 @@ const VerifyStep2 = () => {
               onClick={handleGoogle}
               disabled={googleBusy}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24">
+              <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -329,8 +520,11 @@ const VerifyStep2 = () => {
               Continue with Google
             </button>
 
-            <p className="signup-prompt">
-              Don&apos;t have an account? <span onClick={() => navigate('/signup')}>Sign Up</span>
+            <p className="verify-footer-prompt">
+              Don&apos;t have an account?{' '}
+              <button type="button" onClick={() => navigate('/signup')}>
+                Sign Up
+              </button>
             </p>
           </div>
         </div>

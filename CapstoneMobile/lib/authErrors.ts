@@ -1,3 +1,8 @@
+export function isInvalidRefreshTokenError(error: { message?: string } | null | undefined): boolean {
+  const msg = String(error?.message || "").toLowerCase();
+  return msg.includes("invalid refresh token") || msg.includes("refresh token not found");
+}
+
 export function formatAuthError(error: { message?: string } | null): string {
   if (!error?.message) return "Something went wrong. Please try again.";
   const msg = error.message.toLowerCase();

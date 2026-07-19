@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   loadFamilyNotifications,
   saveFamilyNotifications,
   clearAllFamilyNotifications,
   FAMILY_NOTIFICATIONS_CHANGED,
   notificationDisplayText,
+  loadFamilyNotificationsLastRead,
+  countUnreadFamilyNotifications,
+  markFamilyNotificationsRead,
 } from '@/lib/familyNotifications';
 
 function itemsEqual(a, b) {
@@ -21,9 +24,21 @@ function itemsEqual(a, b) {
  */
 export function useFamilyNotifications(userId) {
   const [items, setItems] = useState([]);
+  const [lastReadAt, setLastReadAt] = useState(0);
   const [open, setOpen] = useState(false);
   const desktopRef = useRef(null);
   const mobileRef = useRef(null);
+
+  const reloadAll = useCallback(() => {
+    if (!userId) {
+      setItems([]);
+      setLastReadAt(0);
+      return;
+    }
+    const next = loadFamilyNotifications(userId);
+    setItems((prev) => (itemsEqual(prev, next) ? prev : next));
+    setLastReadAt(loadFamilyNotificationsLastRead(userId));
+  }, [userId]);
 
   const updateItems = useCallback(
     (updater) => {
@@ -38,22 +53,14 @@ export function useFamilyNotifications(userId) {
   );
 
   useEffect(() => {
-    if (!userId) {
-      setItems([]);
-      return undefined;
-    }
-    const reload = () => {
-      const next = loadFamilyNotifications(userId);
-      setItems((prev) => (itemsEqual(prev, next) ? prev : next));
-    };
-    reload();
-    window.addEventListener('storage', reload);
-    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+    reloadAll();
+    window.addEventListener('storage', reloadAll);
+    window.addEventListener(FAMILY_NOTIFICATIONS_CHANGED, reloadAll);
     return () => {
-      window.removeEventListener('storage', reload);
-      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reload);
+      window.removeEventListener('storage', reloadAll);
+      window.removeEventListener(FAMILY_NOTIFICATIONS_CHANGED, reloadAll);
     };
-  }, [userId]);
+  }, [reloadAll]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -71,12 +78,19 @@ export function useFamilyNotifications(userId) {
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !userId) return;
+    const ts = markFamilyNotificationsRead(items, userId);
+    setLastReadAt(ts);
+  }, [open, userId, items]);
+
   const toggle = useCallback(() => setOpen((v) => !v), []);
 
   const clearAll = useCallback(() => {
     if (!userId) return;
     const cleared = clearAllFamilyNotifications(userId);
     setItems((prev) => (itemsEqual(prev, cleared) ? prev : cleared));
+    setLastReadAt(loadFamilyNotificationsLastRead(userId));
   }, [userId]);
 
   const removeItem = useCallback(
@@ -86,8 +100,14 @@ export function useFamilyNotifications(userId) {
     [updateItems]
   );
 
+  const unreadCount = useMemo(
+    () => countUnreadFamilyNotifications(items, lastReadAt),
+    [items, lastReadAt]
+  );
+
   return {
     items,
+    unreadCount,
     open,
     toggle,
     clearAll,

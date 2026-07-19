@@ -27,6 +27,17 @@ const BRAND_VARIANTS = {
       'Create your family account to stay connected with loved ones, manage visits, and receive secure care updates.',
     features: SIGNUP_FEATURES,
   },
+  recovery: {
+    eyebrow: 'Account Recovery',
+    title: 'Secure Password Recovery',
+    description:
+      'Helping you safely regain access to your Bridges of Hope account.',
+    features: [
+      'Encrypted Verification',
+      'Secure Email Delivery',
+      'Protected Account Access',
+    ],
+  },
 };
 
 export default function AuthBrandPanel({ variant = 'login' }) {

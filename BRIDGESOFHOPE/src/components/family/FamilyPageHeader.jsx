@@ -1,7 +1,8 @@
 import React from 'react';
 import { Bell, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logo from '@/assets/kalingalogo.png';
+import FamilyHeaderBrand from '@/components/family/FamilyHeaderBrand';
+import FamilyPageTitleBrand from '@/components/family/FamilyPageTitleBrand';
 import FamilyHeaderAvatar from '@/components/family/FamilyHeaderAvatar';
 import { useFamilyNotifications } from '@/hooks/useFamilyNotifications';
 import { useFamilyUser } from '@/hooks/useFamilyUser';
@@ -53,19 +54,29 @@ function NotificationDropdown({
   );
 }
 
+function NotificationTrigger({ notif, className = 'notifications-trigger', size = 20 }) {
+  const count = notif.unreadCount ?? 0;
+  const badge = count > 9 ? '9+' : String(count);
+
+  return (
+    <button
+      type="button"
+      className={className}
+      aria-expanded={notif.open}
+      aria-label={count > 0 ? `Notifications, ${count} unread` : 'Notifications'}
+      onClick={notif.toggle}
+    >
+      <Bell size={size} stroke="#fff" strokeWidth={2.25} aria-hidden />
+      {count > 0 ? <span className="family-notif-badge">{badge}</span> : null}
+    </button>
+  );
+}
+
 function HeaderActions({ notif, onProfile }) {
   return (
     <>
       <div ref={notif.desktopRef} className="family-header-notif-wrap">
-        <button
-          type="button"
-          className="notifications-trigger"
-          aria-expanded={notif.open}
-          aria-label="Notifications"
-          onClick={notif.toggle}
-        >
-          <Bell size={20} stroke="#fff" strokeWidth={2.25} aria-hidden />
-        </button>
+        <NotificationTrigger notif={notif} />
         <NotificationDropdown
           open={notif.open}
           items={notif.items}
@@ -83,15 +94,11 @@ function MobileHeaderActions({ notif, onProfile }) {
   return (
     <>
       <div ref={notif.mobileRef} className="family-header-notif-wrap">
-        <button
-          type="button"
+        <NotificationTrigger
+          notif={notif}
           className="notifications-trigger family-notifications-trigger--mobile"
-          aria-expanded={notif.open}
-          aria-label="Notifications"
-          onClick={notif.toggle}
-        >
-          <Bell size={18} stroke="#fff" strokeWidth={2.25} aria-hidden />
-        </button>
+          size={18}
+        />
         <NotificationDropdown
           open={notif.open}
           items={notif.items}
@@ -112,10 +119,28 @@ function MobileHeaderActions({ notif, onProfile }) {
   );
 }
 
+function PageTitleBlock({ title, subtitle, className, onBrandPress }) {
+  const brand = (
+    <FamilyPageTitleBrand
+      title={title}
+      subtitle={subtitle}
+      className={`${className}${subtitle ? '' : ' family-page-title-brand--no-sub'}`}
+    />
+  );
+
+  if (!onBrandPress) return brand;
+
+  return (
+    <button type="button" className="family-page-header__title-btn" onClick={onBrandPress}>
+      {brand}
+    </button>
+  );
+}
+
 /**
  * Unified family portal header (desktop + mobile) with notifications and profile avatar.
  */
-export default function FamilyPageHeader({ title, subtitle = null, showMobileLogo = true }) {
+export default function FamilyPageHeader({ title, subtitle = null, showMobileLogo = true, onBrandPress = null }) {
   const navigate = useNavigate();
   const { userId, initials } = useFamilyUser();
   const notif = useFamilyNotifications(userId);
@@ -127,29 +152,59 @@ export default function FamilyPageHeader({ title, subtitle = null, showMobileLog
     initials,
   };
 
+  const headerClass = `family-page-header${subtitle ? ' family-page-header--with-sub' : ''}`;
+
   return (
     <>
-      <header className="family-page-header">
-        <div className="family-page-header__left">
-          <span className="family-page-header__title">{title}</span>
-          {subtitle ? <span className="family-page-header__subtitle">{subtitle}</span> : null}
-        </div>
-        <div className="family-page-header__actions">
-          <HeaderActions notif={notifProps} onProfile={onProfile} />
-        </div>
-      </header>
+      <div className="family-page-header-shell">
+        <header className={headerClass}>
+          <div className="family-page-header__left">
+            {title ? (
+              <PageTitleBlock
+                title={title}
+                subtitle={subtitle}
+                className="family-page-title-brand--desktop"
+                onBrandPress={onBrandPress}
+              />
+            ) : null}
+          </div>
+          <div className="family-page-header__actions">
+            <HeaderActions notif={notifProps} onProfile={onProfile} />
+          </div>
+        </header>
+        <div className="family-page-header__accent" aria-hidden="true" />
+      </div>
 
-      <div className="family-mobile-top-bar">
-        {showMobileLogo ? (
-          <img src={logo} alt="Kalinga" className="family-mobile-top-bar__logo" />
-        ) : (
-          <span className="family-page-header__title">{title}</span>
-        )}
-        <div className="family-mobile-top-bar__actions">
-          <MobileHeaderActions notif={notifProps} onProfile={onProfile} />
+      <div className="family-mobile-top-bar-shell">
+        <div className="family-mobile-top-bar">
+          {showMobileLogo ? (
+            <FamilyHeaderBrand className="family-header-brand--mobile-bar" onClick={onBrandPress} />
+          ) : title ? (
+            onBrandPress ? (
+              <button type="button" className="family-mobile-top-bar__title-btn" onClick={onBrandPress}>
+                <FamilyPageTitleBrand
+                  title={title}
+                  subtitle={subtitle}
+                  className={`family-page-title-brand--mobile-bar${subtitle ? '' : ' family-page-title-brand--no-sub'}`}
+                />
+              </button>
+            ) : (
+              <FamilyPageTitleBrand
+                title={title}
+                subtitle={subtitle}
+                className={`family-page-title-brand--mobile-bar${subtitle ? '' : ' family-page-title-brand--no-sub'}`}
+              />
+            )
+          ) : null}
+          <div className="family-mobile-top-bar__actions">
+            <MobileHeaderActions notif={notifProps} onProfile={onProfile} />
+          </div>
         </div>
+        {showMobileLogo && subtitle ? (
+          <p className="family-mobile-top-bar__page-sub">{subtitle}</p>
+        ) : null}
+        <div className="family-mobile-top-bar__accent" aria-hidden="true" />
       </div>
     </>
   );
 }
-

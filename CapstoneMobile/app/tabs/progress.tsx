@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router/react-navigation';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import {
@@ -35,7 +35,7 @@ import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
-import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
+import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
   return parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('') || 'FU';
@@ -43,9 +43,9 @@ function deriveInitials(name: string): string {
 
 export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
+  const { scrollRef, scrollToTop } = useFamilyPageScroll();
   const router = useRouter();
   const [familyUserId, setFamilyUserId] = useState('');
-  const { displayName } = useFamilyUserMobile();
   const [pendingAdmissions, setPendingAdmissions] = useState(0);
   const [pendingDischarges, setPendingDischarges] = useState(0);
   const [submittedAdmissions, setSubmittedAdmissions] = useState<Record<string, unknown>[]>([]);
@@ -99,7 +99,6 @@ export default function ProgressScreen() {
     }, [loadCounts])
   );
 
-  const first = (displayName || 'Family User').trim().split(/\s+/)[0];
   const visibleSubmitted = visibleFamilyAdmissionRequests(submittedAdmissions, familyUserId);
 
   const uploadSupplementalDocuments = async (requestId: string) => {
@@ -140,19 +139,13 @@ export default function ProgressScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: '#F8F9FD' }]}>
-      <FamilyMobilePageHeader title="Request Management" showLogo={false} />
+      <FamilyMobilePageHeader title="Request Management" onBrandPress={scrollToTop} />
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.welcomeLine} numberOfLines={1}>
-          Welcome Back, {first}
-        </Text>
-        <Text style={styles.sub}>
-          Submit admission requests, request discharge, and track pending items—same tools as the family web portal.
-        </Text>
-
         {loading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color="#F54E25" />
@@ -161,7 +154,7 @@ export default function ProgressScreen() {
         ) : null}
 
         <TouchableOpacity
-          style={styles.hubCard}
+          style={[styles.hubCard, styles.hubCardFirst]}
           onPress={() => router.navigate(TAB_ROUTES.admission)}
           activeOpacity={0.9}
         >
@@ -330,16 +323,14 @@ const styles = StyleSheet.create({
   notificationsDropdownRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   notificationsDropdownText: { flex: 1, fontSize: 13, color: '#334155', lineHeight: 18 },
   notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
-  scrollContent: { paddingHorizontal: 18, paddingTop: 16 },
-  welcomeLine: { fontSize: 22, fontWeight: '800', color: '#1B2559' },
-  sub: { fontSize: 14, color: '#64748B', fontWeight: '600', marginTop: 8, lineHeight: 20 },
-  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16 },
+  scrollContent: { paddingHorizontal: 18, paddingTop: 8 },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
   loadingText: { color: '#64748B', fontWeight: '700' },
   hubCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    marginTop: 16,
+    marginTop: 12,
     padding: 16,
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
@@ -351,6 +342,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 2,
   },
+  hubCardFirst: { marginTop: 0 },
   hubIcon: {
     width: 56,
     height: 56,

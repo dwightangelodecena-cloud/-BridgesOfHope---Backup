@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
   Modal,
   Alert,
@@ -15,27 +14,37 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { appendActivityFeed } from '../../lib/activityFeed';
+import {
+  FAMILY_DISCHARGE_TYPE,
+  FAMILY_TEMPORARY_REASON_CATEGORIES,
+} from '../../lib/dischargeRequestTypesMobile';
+import { LoginField } from '../../components/auth/LoginField';
+import { ScalePressable } from '../../components/auth/ScalePressable';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
 
+const C = {
+  orange: '#F54E25',
+  orangeLight: '#FF6A3D',
+  orangeDark: '#E8441A',
+  navy: '#1A2B4A',
+  muted: '#64748B',
+  white: '#FFFFFF',
+};
+
 type PatientOpt = { id: string; name: string };
 
-const FAMILY_DISCHARGE_TYPE = 'temporary';
-
-const REASON_CATEGORIES = [
-  'Family visit or event',
-  'Medical appointment (outside facility)',
-  'Family emergency',
-  'Other',
-] as const;
+const BASE_REQUIRED_COUNT = 6;
 
 function formatIsoDate(d: Date) {
   const y = d.getFullYear();
@@ -51,8 +60,9 @@ export default function DischargeForm() {
   const [patients, setPatients] = useState<PatientOpt[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [reasonCategory, setReasonCategory] = useState('');
+  const [reasonCategoryOther, setReasonCategoryOther] = useState('');
   const [reasonDetails, setReasonDetails] = useState('');
-  const [preferredDate, setPreferredDate] = useState(() => formatIsoDate(new Date()));
+  const [preferredDate, setPreferredDate] = useState('');
   const [pickupAuthorized, setPickupAuthorized] = useState('');
   const [followUpPhone, setFollowUpPhone] = useState('');
   const [escortName, setEscortName] = useState('');
@@ -110,35 +120,91 @@ export default function DischargeForm() {
     });
   };
 
+  const isFieldDone = useCallback(
+    (key: string) => {
+      switch (key) {
+        case 'selectedPatientId':
+          return Boolean(selectedPatientId);
+        case 'reasonCategory':
+          return Boolean(reasonCategory);
+        case 'reasonCategoryOther':
+          return reasonCategory !== 'Other' || Boolean(reasonCategoryOther.trim());
+        case 'reasonDetails':
+          return reasonDetails.trim().length >= 15;
+        case 'escortName':
+          return Boolean(escortName.trim());
+        case 'escortContact':
+          return Boolean(escortContact.trim());
+        case 'destinationAfterDischarge':
+          return Boolean(destinationAfterDischarge.trim());
+        default:
+          return false;
+      }
+    },
+    [
+      selectedPatientId,
+      reasonCategory,
+      reasonCategoryOther,
+      reasonDetails,
+      escortName,
+      escortContact,
+      destinationAfterDischarge,
+    ]
+  );
+
+  const requiredFieldCount = reasonCategory === 'Other' ? BASE_REQUIRED_COUNT + 1 : BASE_REQUIRED_COUNT;
+
+  const completedFields = useMemo(() => {
+    const keys = [
+      'selectedPatientId',
+      'reasonCategory',
+      ...(reasonCategory === 'Other' ? (['reasonCategoryOther'] as const) : []),
+      'reasonDetails',
+      'escortName',
+      'escortContact',
+      'destinationAfterDischarge',
+    ];
+    return keys.filter((k) => isFieldDone(k)).length;
+  }, [isFieldDone, reasonCategory]);
+
+  const progressPercent = useMemo(
+    () => Math.round((completedFields / requiredFieldCount) * 100),
+    [completedFields, requiredFieldCount]
+  );
+
   const validate = () => {
     const next: Record<string, string> = {};
-    if (!selectedPatientId) next.selectedPatientId = 'Please select a patient.';
-    if (!reasonCategory) next.reasonCategory = 'Please select a reason.';
-    if (!reasonDetails.trim() || reasonDetails.trim().length < 15) {
-      next.reasonDetails = 'Reason details must be at least 15 characters.';
+    if (!selectedPatientId) {
+      next.selectedPatientId = 'Please choose which family member this request is for.';
     }
-    if (!escortName.trim()) next.escortName = 'Authorized escort name is required.';
-    if (!escortContact.trim()) next.escortContact = 'Escort contact number is required.';
+    if (!reasonCategory) {
+      next.reasonCategory = 'Please choose the option that best matches your situation.';
+    }
+    if (reasonCategory === 'Other' && !reasonCategoryOther.trim()) {
+      next.reasonCategoryOther = 'Please briefly describe the reason.';
+    }
+    if (!reasonDetails.trim() || reasonDetails.trim().length < 15) {
+      next.reasonDetails =
+        'Please add a bit more detail (at least 15 characters) so staff can understand your request.';
+    }
+    if (!escortName.trim()) {
+      next.escortName = 'Please enter the name of the person who will pick up your family member.';
+    }
+    if (!escortContact.trim()) {
+      next.escortContact = 'Please enter a phone number for the person who will pick them up.';
+    }
     if (!destinationAfterDischarge.trim()) {
-      next.destinationAfterDischarge = 'Discharge destination is required.';
+      next.destinationAfterDischarge =
+        'Please tell us where they will stay during this temporary leave (for example your home).';
     }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
 
-  const canSubmit = useMemo(() => {
-    if (!selectedPatientId || !reasonCategory || !escortName.trim() || !escortContact.trim()) return false;
-    if (!destinationAfterDischarge.trim()) return false;
-    if (!reasonDetails.trim() || reasonDetails.trim().length < 15) return false;
-    return true;
-  }, [
-    selectedPatientId,
-    reasonCategory,
-    reasonDetails,
-    escortName,
-    escortContact,
-    destinationAfterDischarge,
-  ]);
+  const canSubmit = useMemo(
+    () => completedFields === requiredFieldCount,
+    [completedFields, requiredFieldCount]
+  );
 
   const handleSubmit = async () => {
     if (!validate()) {
@@ -173,6 +239,9 @@ export default function DischargeForm() {
         .maybeSingle();
 
       const bundledOtherInfo = [
+        reasonCategory === 'Other' && reasonCategoryOther.trim()
+          ? `Other Reason Category: ${reasonCategoryOther.trim()}`
+          : '',
         otherInfo?.trim() ? `Additional Notes: ${otherInfo.trim()}` : '',
         escortName?.trim() ? `Authorized Escort: ${escortName.trim()}` : '',
         escortRelation?.trim() ? `Escort Relationship: ${escortRelation.trim()}` : '',
@@ -237,8 +306,9 @@ export default function DischargeForm() {
       Alert.alert('Success', 'Temporary discharge request submitted and sent to the admin queue.');
       setSelectedPatientId('');
       setReasonCategory('');
+      setReasonCategoryOther('');
       setReasonDetails('');
-      setPreferredDate(formatIsoDate(new Date()));
+      setPreferredDate('');
       setPickupAuthorized('');
       setFollowUpPhone('');
       setEscortName('');
@@ -261,236 +331,336 @@ export default function DischargeForm() {
     setPrefDateModal(true);
   };
 
-  const displayPreferred = preferredDate || formatIsoDate(new Date());
+  const displayPreferred = preferredDate || 'Select start date';
 
   return (
-    <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity onPress={() => router.navigate(TAB_ROUTES.progress)} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={28} color="#333" />
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <StatusBar style="dark" />
+
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.navigate(TAB_ROUTES.progress)}
+          style={styles.headerBack}
+          hitSlop={12}
+        >
+          <Ionicons name="arrow-back" size={22} color={C.navy} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Discharge</Text>
-        <View style={{ width: 32 }} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerBrandTitle}>Discharge</Text>
+          <Text style={styles.headerWelcomeLine} numberOfLines={1}>
+            Temporary leave request
+          </Text>
+        </View>
+        <View style={styles.headerSpacer} />
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flexContainer}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <Text style={styles.formTitle}>Temporary Discharge Request</Text>
-          <Text style={styles.formSubtitle}>
-            Short-term leave only. Your family member is expected to return to the facility after this leave.
-          </Text>
-
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Select Patient *</Text>
-            <TouchableOpacity
-              style={[styles.inputContainer, errors.selectedPatientId ? styles.inputError : null]}
-              onPress={() => setPatientModalVisible(true)}
-            >
-              <Ionicons name="person-outline" size={20} color="#AAA" style={styles.icon} />
-              <Text style={[styles.pickerText, !selectedPatient && { color: '#AAA' }]}>
-                {selectedPatient ? selectedPatient.name : 'Select admitted patient'}
-              </Text>
-              <Ionicons name="chevron-down" size={18} color="#94A3B8" />
-            </TouchableOpacity>
-            {errors.selectedPatientId ? <Text style={styles.errorSmall}>{errors.selectedPatientId}</Text> : null}
+      <View style={styles.heroBand}>
+        <LinearGradient
+          colors={['#0B1528', '#152238', '#2A1A28']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.heroBandWash} />
+        <View style={styles.heroBandInner}>
+          <LinearGradient colors={[C.orangeLight, C.orange, C.orangeDark]} style={styles.heroIcon}>
+            <Ionicons name="exit-outline" size={24} color="#fff" />
+          </LinearGradient>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroEyebrow}>FAMILY REQUEST</Text>
+            <Text style={styles.heroTitle}>Temporary discharge</Text>
+            <Text style={styles.heroSub}>
+              Short-term leave only — your family member is expected to return after this leave.
+            </Text>
           </View>
+        </View>
+      </View>
+
+      <ScrollView
+        style={styles.flex1}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+      >
+        <View style={styles.noticeCard}>
+          <View style={styles.noticeHeader}>
+            <Ionicons name="information-circle-outline" size={18} color={C.orange} />
+            <Text style={styles.noticeTitle}>Before you submit</Text>
+          </View>
+          <Text style={styles.noticeBody}>
+            This form is for temporary leave only. All escort and destination details help our care team
+            review your request safely.
+          </Text>
+        </View>
+
+        <View style={styles.progressCard}>
+          <View style={styles.cardTitleRow}>
+            <Text style={styles.cardTitle}>Form completion</Text>
+            <View style={styles.percentPill}>
+              <Text style={styles.percentText}>{progressPercent}%</Text>
+            </View>
+          </View>
+          <View style={styles.progressTrack}>
+            <LinearGradient
+              colors={[C.orangeLight, C.orange, C.orangeDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.progressFill, { width: `${Math.max(progressPercent, 4)}%` }]}
+            />
+          </View>
+          <Text style={styles.cardSub}>
+            {completedFields} of {requiredFieldCount} required fields completed
+          </Text>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <SelectField
+            label="Which family member is this for?"
+            icon="person-outline"
+            value={selectedPatient?.name || 'Choose someone currently admitted'}
+            placeholder={!selectedPatient}
+            error={errors.selectedPatientId}
+            onPress={() => setPatientModalVisible(true)}
+          />
 
           {!patients.length ? (
-            <Text style={styles.emptyPatients}>No admitted patients available for discharge request.</Text>
+            <Text style={styles.emptyPatients}>
+              No one in your family is listed as admitted right now, so a temporary discharge request
+              cannot be submitted yet.
+            </Text>
           ) : null}
+        </View>
 
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Reason Category *</Text>
-            <TouchableOpacity
-              style={[styles.inputContainer, errors.reasonCategory ? styles.inputError : null]}
-              onPress={() => setReasonModalVisible(true)}
-            >
-              <Ionicons name="list-outline" size={20} color="#AAA" style={styles.icon} />
-              <Text style={[styles.pickerText, !reasonCategory && { color: '#AAA' }]}>
-                {reasonCategory || 'Select reason'}
-              </Text>
-              <Ionicons name="chevron-down" size={18} color="#94A3B8" />
-            </TouchableOpacity>
-            {errors.reasonCategory ? <Text style={styles.errorSmall}>{errors.reasonCategory}</Text> : null}
-          </View>
+        {selectedPatientId ? (
+          <>
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionLabel}>Reason & timing</Text>
 
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Preferred Discharge Date</Text>
-            <TouchableOpacity style={styles.inputContainer} onPress={openPreferredDatePicker}>
-              <Ionicons name="calendar-outline" size={20} color="#AAA" style={styles.icon} />
-              <Text style={[styles.pickerText, !preferredDate && { color: '#AAA' }]}>{displayPreferred}</Text>
-              <Ionicons name="chevron-down" size={18} color="#94A3B8" />
-            </TouchableOpacity>
-          </View>
+              <SelectField
+                label="What best describes your reason?"
+                icon="list-outline"
+                value={reasonCategory || 'Choose one'}
+                placeholder={!reasonCategory}
+                error={errors.reasonCategory}
+                onPress={() => setReasonModalVisible(true)}
+              />
 
-          <InputField
-            label="Authorized Pickup"
-            placeholder="Name or role authorized for pickup"
-            icon="people-outline"
-            value={pickupAuthorized}
-            onChangeText={setPickupAuthorized}
-          />
+              {reasonCategory === 'Other' ? (
+                <>
+                  <LoginField
+                    label="Describe your reason"
+                    icon="create-outline"
+                    placeholder="Brief description"
+                    value={reasonCategoryOther}
+                    onChangeText={(t) => {
+                      setReasonCategoryOther(t);
+                      clearFieldError('reasonCategoryOther');
+                    }}
+                    error={!!errors.reasonCategoryOther}
+                  />
+                  {errors.reasonCategoryOther ? (
+                    <Text style={styles.errorSmall}>{errors.reasonCategoryOther}</Text>
+                  ) : null}
+                </>
+              ) : null}
 
-          <InputField
-            label="Follow-up Phone"
-            placeholder="Contact for follow-up"
-            icon="call-outline"
-            keyboardType="phone-pad"
-            value={followUpPhone}
-            onChangeText={setFollowUpPhone}
-          />
+              <SelectField
+                label="Preferred start date of temporary leave"
+                icon="calendar-outline"
+                value={displayPreferred}
+                placeholder={!preferredDate}
+                onPress={openPreferredDatePicker}
+              />
+            </View>
 
-          <InputField
-            label="Authorized Escort Name *"
-            placeholder="Who will accompany the patient?"
-            icon="people-outline"
-            value={escortName}
-            onChangeText={(t) => {
-              setEscortName(t);
-              clearFieldError('escortName');
-            }}
-            error={errors.escortName}
-          />
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionLabel}>Pickup & contact</Text>
 
-          <InputField
-            label="Escort Relationship"
-            placeholder="Ex. Mother, Brother, Spouse"
-            icon="person-outline"
-            value={escortRelation}
-            onChangeText={setEscortRelation}
-          />
+              <LoginField
+                label="Who is allowed to pick them up?"
+                icon="people-outline"
+                placeholder="e.g. parent, spouse"
+                value={pickupAuthorized}
+                onChangeText={setPickupAuthorized}
+              />
 
-          <InputField
-            label="Escort Contact Number *"
-            placeholder="Contact number"
-            icon="call-outline"
-            keyboardType="phone-pad"
-            value={escortContact}
-            onChangeText={(t) => {
-              setEscortContact(t);
-              clearFieldError('escortContact');
-            }}
-            error={errors.escortContact}
-          />
+              <LoginField
+                label="Best phone number to reach you"
+                icon="call-outline"
+                placeholder="Your follow-up number"
+                keyboardType="phone-pad"
+                value={followUpPhone}
+                onChangeText={setFollowUpPhone}
+              />
 
-          <InputField
-            label="Where they will stay during leave *"
-            placeholder="Home address or a relative's home"
-            icon="location-outline"
-            value={destinationAfterDischarge}
-            onChangeText={(t) => {
-              setDestinationAfterDischarge(t);
-              clearFieldError('destinationAfterDischarge');
-            }}
-            error={errors.destinationAfterDischarge}
-          />
+              <LoginField
+                label="Name of person picking them up"
+                icon="person-outline"
+                placeholder="Full name"
+                value={escortName}
+                onChangeText={(t) => {
+                  setEscortName(t);
+                  clearFieldError('escortName');
+                }}
+                error={!!errors.escortName}
+              />
+              {errors.escortName ? <Text style={styles.errorSmall}>{errors.escortName}</Text> : null}
 
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Belongings Checklist</Text>
-            <View style={[styles.inputContainer, styles.textAreaContainer]}>
-              <Ionicons name="briefcase-outline" size={20} color="#AAA" style={[styles.icon, { marginTop: 15 }]} />
-              <TextInput
-                placeholder="List released belongings, documents, and medications."
-                placeholderTextColor="#AAA"
-                style={[styles.input, styles.textArea]}
-                multiline
-                numberOfLines={3}
+              <LoginField
+                label="That person's relationship to your family member"
+                icon="heart-outline"
+                placeholder="e.g. mother, partner"
+                value={escortRelation}
+                onChangeText={setEscortRelation}
+              />
+
+              <LoginField
+                label="Pickup person's phone number"
+                icon="call-outline"
+                placeholder="Mobile or landline"
+                keyboardType="phone-pad"
+                value={escortContact}
+                onChangeText={(t) => {
+                  setEscortContact(t);
+                  clearFieldError('escortContact');
+                }}
+                error={!!errors.escortContact}
+              />
+              {errors.escortContact ? <Text style={styles.errorSmall}>{errors.escortContact}</Text> : null}
+            </View>
+
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionLabel}>Leave details</Text>
+
+              <LoginField
+                label="Where will they stay during this temporary leave?"
+                icon="location-outline"
+                placeholder="Home or relative's address"
+                value={destinationAfterDischarge}
+                onChangeText={(t) => {
+                  setDestinationAfterDischarge(t);
+                  clearFieldError('destinationAfterDischarge');
+                }}
+                error={!!errors.destinationAfterDischarge}
+              />
+              {errors.destinationAfterDischarge ? (
+                <Text style={styles.errorSmall}>{errors.destinationAfterDischarge}</Text>
+              ) : null}
+
+              <AreaField
+                label="Important items going home"
+                icon="briefcase-outline"
+                placeholder="Clothing, IDs, meds, etc."
                 value={belongingsChecklist}
                 onChangeText={setBelongingsChecklist}
               />
-            </View>
-          </View>
 
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Reason Details *</Text>
-            <View style={[styles.inputContainer, styles.textAreaContainer, errors.reasonDetails ? styles.inputError : null]}>
-              <Ionicons name="document-text-outline" size={20} color="#AAA" style={[styles.icon, { marginTop: 15 }]} />
-              <TextInput
-                placeholder="At least 15 characters describing the discharge context."
-                placeholderTextColor="#AAA"
-                style={[styles.input, styles.textArea]}
-                multiline
-                numberOfLines={4}
+              <AreaField
+                label="Tell us more about your request"
+                icon="document-text-outline"
+                placeholder="Timing, circumstances, details…"
                 value={reasonDetails}
                 onChangeText={(t) => {
                   setReasonDetails(t);
                   clearFieldError('reasonDetails');
                 }}
+                error={!!errors.reasonDetails}
               />
-            </View>
-            {errors.reasonDetails ? <Text style={styles.errorSmall}>{errors.reasonDetails}</Text> : null}
-          </View>
+              {errors.reasonDetails ? <Text style={styles.errorSmall}>{errors.reasonDetails}</Text> : null}
 
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Other Information</Text>
-            <View style={[styles.inputContainer, styles.textAreaContainer]}>
-              <Ionicons name="chatbox-ellipses-outline" size={20} color="#AAA" style={[styles.icon, { marginTop: 15 }]} />
-              <TextInput
-                placeholder="Any other notes for the care team"
-                placeholderTextColor="#AAA"
-                style={[styles.input, styles.textArea]}
-                multiline
-                numberOfLines={3}
+              <AreaField
+                label="Anything else we should know?"
+                icon="chatbox-ellipses-outline"
+                placeholder="Optional"
                 value={otherInfo}
                 onChangeText={setOtherInfo}
               />
             </View>
-          </View>
+          </>
+        ) : null}
 
-          <TouchableOpacity
-            style={[styles.submitButton, (isSubmitting || !canSubmit) && styles.submitButtonDisabled]}
-            onPress={handleSubmit}
-            disabled={isSubmitting}
+        <ScalePressable
+          onPress={handleSubmit}
+          disabled={isSubmitting || !canSubmit || !selectedPatientId}
+          style={[styles.ctaWrap, (isSubmitting || !canSubmit || !selectedPatientId) && { opacity: 0.75 }]}
+        >
+          <LinearGradient
+            colors={[C.orangeLight, C.orange, C.orangeDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.cta}
           >
             {isSubmitting ? (
-              <ActivityIndicator color="#FFF" />
+              <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.submitButtonText}>Submit Request</Text>
+              <View style={styles.ctaInner}>
+                <Ionicons name="paper-plane-outline" size={18} color="#fff" />
+                <Text style={styles.ctaText}>Submit request</Text>
+              </View>
             )}
-          </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </LinearGradient>
+        </ScalePressable>
+      </ScrollView>
 
-      <Modal visible={reasonModalVisible} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setReasonModalVisible(false)} activeOpacity={1}>
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>Select reason</Text>
-            {REASON_CATEGORIES.map((item) => (
+      <Modal visible={reasonModalVisible} transparent animationType="slide" onRequestClose={() => setReasonModalVisible(false)}>
+        <View style={styles.sheetModalRoot}>
+          <Pressable style={styles.sheetModalBackdrop} onPress={() => setReasonModalVisible(false)} />
+          <View style={[styles.reasonSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <Text style={styles.reasonSheetTitle}>What best describes your reason?</Text>
+            {FAMILY_TEMPORARY_REASON_CATEGORIES.map((item) => (
               <TouchableOpacity
                 key={item}
-                style={styles.optionItem}
+                style={[styles.reasonOption, reasonCategory === item && styles.reasonOptionActive]}
                 onPress={() => {
                   setReasonCategory(item);
+                  if (item !== 'Other') setReasonCategoryOther('');
                   clearFieldError('reasonCategory');
+                  clearFieldError('reasonCategoryOther');
                   setReasonModalVisible(false);
                 }}
               >
-                <Text style={styles.optionText}>{item}</Text>
+                <Text style={[styles.reasonOptionText, reasonCategory === item && styles.reasonOptionTextActive]}>
+                  {item}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
-      <Modal visible={patientModalVisible} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setPatientModalVisible(false)} activeOpacity={1}>
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>Select patient</Text>
-            {patients.map((p) => (
-              <TouchableOpacity
-                key={p.id}
-                style={styles.optionItem}
-                onPress={() => {
-                  setSelectedPatientId(p.id);
-                  clearFieldError('selectedPatientId');
-                  setPatientModalVisible(false);
-                }}
-              >
-                <Text style={styles.optionText}>{p.name}</Text>
-              </TouchableOpacity>
-            ))}
+      <Modal visible={patientModalVisible} transparent animationType="slide" onRequestClose={() => setPatientModalVisible(false)}>
+        <View style={styles.sheetModalRoot}>
+          <Pressable style={styles.sheetModalBackdrop} onPress={() => setPatientModalVisible(false)} />
+          <View style={[styles.reasonSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <Text style={styles.reasonSheetTitle}>Which family member is this for?</Text>
+            {patients.length === 0 ? (
+              <Text style={styles.sheetEmpty}>No admitted residents found.</Text>
+            ) : (
+              patients.map((p) => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.reasonOption, selectedPatientId === p.id && styles.reasonOptionActive]}
+                  onPress={() => {
+                    setSelectedPatientId(p.id);
+                    clearFieldError('selectedPatientId');
+                    setPatientModalVisible(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.reasonOptionText,
+                      selectedPatientId === p.id && styles.reasonOptionTextActive,
+                    ]}
+                  >
+                    {p.name}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {Platform.OS === 'android' && prefDateModal ? (
@@ -508,13 +678,13 @@ export default function DischargeForm() {
 
       <Modal visible={Platform.OS === 'ios' && prefDateModal} transparent animationType="slide">
         <View style={styles.dateModalRoot}>
-          <Pressable style={styles.modalOverlayLight} onPress={() => setPrefDateModal(false)} />
+          <Pressable style={styles.sheetModalBackdrop} onPress={() => setPrefDateModal(false)} />
           <View style={[styles.dateIosSheet, { paddingBottom: insets.bottom + 12 }]}>
             <View style={styles.dateIosHeader}>
               <TouchableOpacity onPress={() => setPrefDateModal(false)}>
                 <Text style={styles.dateIosBtn}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={styles.dateIosTitle}>Preferred date</Text>
+              <Text style={styles.dateIosTitle}>Preferred start date</Text>
               <TouchableOpacity
                 onPress={() => {
                   setPreferredDate(formatIsoDate(prefDateDraft));
@@ -540,190 +710,440 @@ export default function DischargeForm() {
   );
 }
 
-function InputField({
+function SelectField({
   label,
-  placeholder,
   icon,
-  keyboardType = 'default',
+  value,
+  placeholder,
+  error,
+  onPress,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  value: string;
+  placeholder: boolean;
+  error?: string;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TouchableOpacity
+        style={[styles.selectShell, error ? styles.inputShellError : null]}
+        onPress={onPress}
+        activeOpacity={0.85}
+      >
+        <View style={styles.selectIconBox}>
+          <Ionicons name={icon} size={18} color={C.muted} />
+        </View>
+        <Text style={[styles.selectText, placeholder && styles.placeholderText]} numberOfLines={1}>
+          {value}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={C.muted} />
+      </TouchableOpacity>
+      {error ? <Text style={styles.errorSmall}>{error}</Text> : null}
+    </View>
+  );
+}
+
+function AreaField({
+  label,
+  icon,
+  placeholder,
   value,
   onChangeText,
   error,
 }: {
   label: string;
-  placeholder: string;
   icon: keyof typeof Ionicons.glyphMap;
-  keyboardType?: 'default' | 'phone-pad' | 'email-address';
+  placeholder: string;
   value: string;
   onChangeText: (t: string) => void;
-  error?: string;
+  error?: boolean;
 }) {
   return (
-    <View style={styles.inputWrapper}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={[styles.inputContainer, error ? styles.inputError : null]}>
-        <Ionicons name={icon} size={20} color="#AAA" style={styles.icon} />
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={[styles.areaShell, error ? styles.inputShellError : null]}>
+        <View style={styles.selectIconBox}>
+          <Ionicons name={icon} size={18} color={C.muted} />
+        </View>
         <TextInput
           placeholder={placeholder}
-          placeholderTextColor="#AAA"
-          style={styles.input}
-          keyboardType={keyboardType}
+          placeholderTextColor="#94A3B8"
+          style={styles.areaInput}
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
           value={value}
           onChangeText={onChangeText}
+          {...Platform.select({
+            web: { outlineStyle: 'none' as const },
+            default: {},
+          })}
         />
       </View>
-      {error ? <Text style={styles.errorSmall}>{error}</Text> : null}
     </View>
   );
 }
+
+const cardShadow = Platform.select({
+  web: { boxShadow: '0 4px 16px rgba(15, 23, 42, 0.05)' },
+  default: {
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+});
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  flexContainer: {
-    flex: 1,
-  },
+  flex1: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 10,
-    backgroundColor: '#FFF',
+    minHeight: 52,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E9EDF7',
+    borderBottomColor: '#E8EDF3',
+    ...Platform.select({
+      web: { boxShadow: '0 1px 8px rgba(15, 23, 42, 0.06)' },
+      default: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
+        elevation: 2,
+      },
+    }),
   },
-  backButton: {
-    width: 32,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#F54E25',
-  },
-  scrollContent: {
-    paddingHorizontal: isCompactScreen ? 14 : 18,
-    paddingBottom: 40,
-    paddingTop: 14,
-  },
-  formTitle: {
-    fontSize: isCompactScreen ? 22 : 24,
-    fontWeight: '800',
-    color: '#1B2559',
-    marginBottom: 4,
-  },
-  formSubtitle: {
-    fontSize: 13,
-    color: '#64748B',
-    marginBottom: 16,
-  },
-  emptyPatients: {
-    fontSize: 13,
-    color: '#64748B',
-    marginBottom: 12,
-  },
-  inputWrapper: {
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: isCompactScreen ? 12 : 13,
-    fontWeight: '700',
-    color: '#444',
-    marginBottom: 8,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  headerBack: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    borderRadius: 14,
-    minHeight: isCompactScreen ? 50 : 56,
-    paddingHorizontal: isCompactScreen ? 12 : 15,
-    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
-  inputError: {
+  headerCenter: { flex: 1, minWidth: 0 },
+  headerBrandTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: C.orange,
+    letterSpacing: -0.2,
+  },
+  headerWelcomeLine: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.muted,
+    marginTop: 2,
+  },
+  headerSpacer: { width: 40 },
+  heroBand: {
+    overflow: 'hidden',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    position: 'relative',
+  },
+  heroBandWash: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: '50%',
+    backgroundColor: 'rgba(74, 40, 50, 0.4)',
+    borderTopLeftRadius: 80,
+  },
+  heroBandInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    zIndex: 1,
+  },
+  heroIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroCopy: { flex: 1, minWidth: 0 },
+  heroEyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: '#FF8A65',
+    marginBottom: 4,
+  },
+  heroTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: C.white,
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  heroSub: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  scrollContent: {
+    paddingHorizontal: isCompactScreen ? 14 : 20,
+    paddingTop: 16,
+  },
+  noticeCard: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+  },
+  noticeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  noticeTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#9A3412',
+  },
+  noticeBody: {
+    fontSize: 12,
+    color: '#92400E',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  progressCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    ...cardShadow,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.navy,
+  },
+  percentPill: {
+    backgroundColor: 'rgba(245, 78, 37, 0.1)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 78, 37, 0.15)',
+  },
+  percentText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: C.orange,
+  },
+  progressTrack: {
+    height: 8,
+    backgroundColor: '#E8EDF3',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  cardSub: {
+    marginTop: 8,
+    fontSize: 12,
+    color: C.muted,
+    fontWeight: '500',
+  },
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    ...cardShadow,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: C.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 12,
+  },
+  emptyPatients: {
+    fontSize: 12,
+    color: C.muted,
+    marginBottom: 8,
+    marginTop: -4,
+  },
+  fieldWrap: { marginBottom: 14 },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.muted,
+    marginBottom: 6,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  selectShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    minHeight: 54,
+    paddingRight: 14,
+    backgroundColor: '#F8FAFC',
+  },
+  selectIconBox: {
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
+  selectText: {
+    flex: 1,
+    fontSize: 16,
+    color: C.navy,
+    fontWeight: '500',
+  },
+  placeholderText: {
+    color: '#94A3B8',
+  },
+  areaShell: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    minHeight: 110,
+    paddingRight: 14,
+    paddingTop: 10,
+    backgroundColor: '#F8FAFC',
+  },
+  areaInput: {
+    flex: 1,
+    fontSize: 15,
+    color: C.navy,
+    fontWeight: '500',
+    lineHeight: 21,
+    minHeight: 88,
+    paddingTop: 4,
+  },
+  inputShellError: {
     borderColor: '#DC2626',
   },
-  textAreaContainer: {
-    minHeight: 100,
-    alignItems: 'flex-start',
-  },
-  icon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    fontSize: isCompactScreen ? 13 : 14,
-    color: '#000',
-  },
-  textArea: {
-    paddingTop: 15,
-    textAlignVertical: 'top',
-  },
-  pickerText: {
-    fontSize: 14,
-    color: '#0F172A',
-    flex: 1,
-  },
   errorSmall: {
-    marginTop: 4,
+    marginTop: -8,
+    marginBottom: 8,
     fontSize: 12,
     color: '#DC2626',
+    fontWeight: '600',
   },
-  modalOverlay: {
+  ctaWrap: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginTop: 4,
+    ...Platform.select({
+      web: { boxShadow: '0 6px 20px rgba(245, 78, 37, 0.3)' },
+      default: {
+        shadowColor: C.orangeDark,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 4,
+      },
+    }),
+  },
+  cta: {
+    minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ctaText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  sheetModalRoot: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+    justifyContent: 'flex-end',
   },
-  modalOverlayLight: {
+  sheetModalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
   },
-  modalContent: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 20,
-    elevation: 5,
+  reasonSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    maxHeight: '70%',
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
+  reasonSheetTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: C.navy,
+    marginBottom: 12,
     textAlign: 'center',
-    color: '#333',
   },
-  optionItem: {
-    paddingVertical: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  optionText: {
-    fontSize: 16,
+  sheetEmpty: {
     textAlign: 'center',
-    color: '#555',
+    color: C.muted,
+    fontSize: 14,
+    paddingVertical: 20,
   },
-  submitButton: {
-    backgroundColor: '#F54E25',
-    height: isCompactScreen ? 52 : 56,
-    borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 6,
+  reasonOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
   },
-  submitButtonDisabled: {
-    opacity: 0.7,
+  reasonOptionActive: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
   },
-  submitButtonText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 16,
+  reasonOptionText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: C.navy,
+    textAlign: 'center',
+  },
+  reasonOptionTextActive: {
+    color: C.orange,
+    fontWeight: '800',
   },
   dateModalRoot: {
     flex: 1,
@@ -756,6 +1176,6 @@ const styles = StyleSheet.create({
   dateIosBtnPrimary: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#F54E25',
+    color: C.orange,
   },
 });

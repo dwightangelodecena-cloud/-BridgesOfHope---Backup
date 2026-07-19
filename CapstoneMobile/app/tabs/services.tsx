@@ -1,304 +1,270 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
-  Pressable,
-  Dimensions,
-  Image,
+  Platform,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
-import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
-import { LinearGradient } from 'expo-linear-gradient';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
-import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
-const { width } = Dimensions.get('window');
+import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
+import { ScalePressable } from '../../components/auth/ScalePressable';
 
-function deriveInitials(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
-  return parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('') || 'FU';
-}
+const C = {
+  orange: '#F54E25',
+  orangeLight: '#FF6A3D',
+  orangeDark: '#E8441A',
+  navy: '#1A2B4A',
+  muted: '#64748B',
+  white: '#FFFFFF',
+};
+
+const MONTHLY_SECTIONS = [
+  {
+    title: 'Accommodation & Meals',
+    icon: 'bed-outline' as const,
+    items: [
+      'Air-conditioned rooms',
+      'Daily meals: Breakfast, Lunch, PM Snack, Dinner',
+      'Personalized health & diet plan',
+    ],
+  },
+  {
+    title: 'Health & Wellness',
+    icon: 'heart-outline' as const,
+    items: [
+      'Psychoeducation sessions',
+      'Relapse prevention seminar',
+      'Psychiatric & psychological evaluations',
+      'Individual psychotherapy',
+    ],
+  },
+  {
+    title: 'Support & Safety',
+    icon: 'shield-checkmark-outline' as const,
+    items: ['24/7 medical team', '24/7 security', 'Individual & group counseling'],
+  },
+  {
+    title: 'Therapeutic & Holistic Care',
+    icon: 'leaf-outline' as const,
+    items: [
+      'Resident & family healing dialogues',
+      'Spiritual activities',
+      'Aftercare program',
+    ],
+  },
+  {
+    title: 'Additional Services',
+    icon: 'add-circle-outline' as const,
+    items: [
+      'Laundry & haircut (included)',
+      'Medications & personal toiletries – to be provided by family',
+    ],
+  },
+];
 
 export default function ServicesScreen() {
   const insets = useSafeAreaInsets();
+  const { scrollRef, scrollToTop } = useFamilyPageScroll();
   const router = useRouter();
 
-  const [familyUserId, setFamilyUserId] = useState('');
-  const { displayName } = useFamilyUserMobile();
   const [showAdmissionDetails, setShowAdmissionDetails] = useState(false);
   const [showMonthlySections, setShowMonthlySections] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
-    const loadUser = async () => {
-      if (!isSupabaseConfigured()) {
-        setFamilyUserId('');
-        return;
-      }
-      try {
-        const { data } = await supabase.auth.getUser();
-        const user = data?.user;
-        if (!user?.id) {
-          setFamilyUserId('');
-        } else {
-          setFamilyUserId(user.id);
-        }
-        let resolved =
-          (user?.user_metadata?.full_name as string | undefined)?.trim() ||
-          [user?.user_metadata?.first_name, user?.user_metadata?.last_name]
-            .filter(Boolean)
-            .join(' ')
-            .trim() ||
-          'Family User';
-        if (user?.id) {
-          const { data: profileRow } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', user.id)
-            .maybeSingle();
-          if (profileRow?.full_name?.trim()) resolved = profileRow.full_name.trim();
-        }
-        if (mounted) {
-          /* display name from useFamilyUserMobile */
-        }
-      } catch {
-        setFamilyUserId('');
-        /* keep defaults */
-      }
-    };
-    loadUser();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
   return (
     <View style={styles.screen}>
-      <FamilyMobilePageHeader
-        title="Services"
-        subtitle={`Welcome back, ${(displayName || 'Family User').trim().split(/\s+/)[0]}`}
-        showLogo={false}
-      />
+      <StatusBar style="dark" />
+      <FamilyMobilePageHeader title="Services" onBrandPress={scrollToTop} />
+
+      <View style={styles.heroBand}>
+        <LinearGradient
+          colors={['#0B1528', '#152238', '#2A1A28']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.heroBandWash} />
+        <View style={styles.heroBandInner}>
+          <LinearGradient colors={[C.orangeLight, C.orange, C.orangeDark]} style={styles.heroIcon}>
+            <Ionicons name="pricetag-outline" size={24} color="#fff" />
+          </LinearGradient>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroEyebrow}>CARE PACKAGES</Text>
+            <Text style={styles.heroTitle}>Fees & inclusions</Text>
+            <Text style={styles.heroSub}>Transparent pricing for your peace of mind</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.heroCloseBtn}
+            onPress={() => router.navigate(TAB_ROUTES.home)}
+            accessibilityRole="button"
+            accessibilityLabel="Close and go to home"
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={20} color={C.white} />
+          </TouchableOpacity>
+        </View>
+      </View>
 
       <ScrollView
+        ref={scrollRef}
         style={styles.bodyScroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.feesTitleRow}>
-          <View style={styles.feesTitleTextWrap}>
-            <Text style={styles.feesPageTitle}>
-              Fees &amp; <Text style={styles.feesPageAccent}>Inclusions</Text>
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.feesCloseBtn}
-            onPress={() => router.navigate(TAB_ROUTES.home)}
-            accessibilityRole="button"
-            accessibilityLabel="Close and go to home"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        <TouchableOpacity
+          activeOpacity={0.92}
+          style={styles.admissionWrapper}
+          onPress={() => setShowAdmissionDetails((prev) => !prev)}
+        >
+          <LinearGradient
+            colors={[C.orangeLight, C.orange, C.orangeDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.admissionCard}
           >
-            <Ionicons name="close" size={22} color="#1B2559" />
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.feesPageSubtitle}>Transparent pricing for your peace of mind</Text>
-
-        <View style={styles.mainCard}>
-          {/* Admission Fee */}
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={styles.admissionWrapper}
-            onPress={() => setShowAdmissionDetails(prev => !prev)}
-          >
-            <LinearGradient
-              colors={['#FF9A73', '#F54E25']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.admissionCard}
-            >
-              <View style={styles.admissionHeaderRow}>
-                <View>
-                  <Text style={styles.admissionLabel}>Admission Fee</Text>
-                  <Text style={styles.admissionAmount}>₱30,000</Text>
-                </View>
-                <View style={styles.tapHintRow}>
-                  <Text style={styles.tapHintText}>Tap to see Inclusions</Text>
-                  <Ionicons
-                    name={showAdmissionDetails ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color="#FFFFFF"
-                    style={{ marginLeft: 4 }}
-                  />
-                </View>
+            <View style={styles.admissionTopRow}>
+              <View style={styles.admissionTag}>
+                <Ionicons name="sparkles-outline" size={12} color="#fff" />
+                <Text style={styles.admissionTagText}>One-time fee</Text>
               </View>
-
-              {/* Always-visible summary bullets */}
-              <View style={styles.admissionDetails}>
-                <View style={styles.bulletRow}>
-                  <View style={styles.bulletDot} />
-                  <Text style={styles.bulletText}>One-time payment upon admission</Text>
-                </View>
-                <View style={styles.bulletRow}>
-                  <View style={styles.bulletDot} />
-                  <Text style={styles.bulletText}>PWD-discounted rate</Text>
-                </View>
-                <View style={styles.bulletRow}>
-                  <View style={styles.bulletDot} />
-                  <Text style={styles.bulletText}>
-                    The Initial Fee is paid at admission, and the Monthly Fee applies
-                    starting the NEXT MONTH.
-                  </Text>
-                </View>
+              <View style={styles.tapHintRow}>
+                <Text style={styles.tapHintText}>Tap for inclusions</Text>
+                <Ionicons
+                  name={showAdmissionDetails ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color="#fff"
+                />
               </View>
+            </View>
 
-              {/* Extra inclusions only when expanded */}
-              {showAdmissionDetails && (
-                <View style={styles.inclusionsBlock}>
-                  <View style={styles.inclusionsDivider} />
-                  <Text style={styles.inclusionsTitle}>Includes:</Text>
-                  <View style={styles.bulletRow}>
-                    <View style={styles.bulletDot} />
-                    <Text style={styles.bulletText}>Physical &amp; Laboratory Tests</Text>
-                  </View>
-                  <View style={styles.bulletRow}>
-                    <View style={styles.bulletDot} />
-                    <Text style={styles.bulletText}>Psychiatric Evaluation</Text>
-                  </View>
-                  <View style={styles.bulletRow}>
-                    <View style={styles.bulletDot} />
-                    <Text style={styles.bulletText}>
-                      2 Psychological Evaluations (Admission &amp; Reintegration)
-                    </Text>
-                  </View>
-                  <View style={styles.bulletRow}>
-                    <View style={styles.bulletDot} />
-                    <Text style={styles.bulletText}>Drug Test</Text>
-                  </View>
-                  <View style={styles.bulletRow}>
-                    <View style={styles.bulletDot} />
-                    <Text style={styles.bulletText}>Alcohol Test</Text>
-                  </View>
-                  <View style={styles.bulletRow}>
-                    <View style={styles.bulletDot} />
-                    <Text style={styles.bulletText}>
-                      Pregnancy Test (for female patients)
-                    </Text>
-                  </View>
+            <Text style={styles.admissionLabel}>Admission fee</Text>
+            <Text style={styles.admissionAmount}>₱30,000</Text>
+
+            <View style={styles.admissionDetails}>
+              {[
+                'One-time payment upon admission',
+                'PWD-discounted rate',
+                'The Initial Fee is paid at admission, and the Monthly Fee applies starting the NEXT MONTH.',
+              ].map((line) => (
+                <View key={line} style={styles.bulletRow}>
+                  <Ionicons name="checkmark-circle" size={14} color="rgba(255,255,255,0.9)" />
+                  <Text style={styles.bulletText}>{line}</Text>
                 </View>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
+              ))}
+            </View>
 
-          {/* Monthly Fees */}
+            {showAdmissionDetails ? (
+              <View style={styles.inclusionsBlock}>
+                <View style={styles.inclusionsDivider} />
+                <Text style={styles.inclusionsTitle}>Includes</Text>
+                {[
+                  'Physical & Laboratory Tests',
+                  'Psychiatric Evaluation',
+                  '2 Psychological Evaluations (Admission & Reintegration)',
+                  'Drug Test',
+                  'Alcohol Test',
+                  'Pregnancy Test (for female patients)',
+                ].map((line) => (
+                  <View key={line} style={styles.bulletRow}>
+                    <Ionicons name="checkmark" size={12} color="#FFF7ED" />
+                    <Text style={styles.bulletText}>{line}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Monthly Fees</Text>
+            <Text style={styles.sectionTitle}>Monthly fees</Text>
             <View style={styles.pill}>
               <Text style={styles.pillText}>Payable within 30 days</Text>
             </View>
           </View>
 
-          {/* Branch fees */}
           <View style={styles.branchCard}>
             <View style={styles.branchRow}>
               <View style={styles.branchInfo}>
-                <MaterialCommunityIcons
-                  name="office-building-marker-outline"
-                  size={22}
-                  color="#111827"
-                />
-                <View style={{ marginLeft: 10 }}>
+                <LinearGradient colors={['#FFF7ED', '#FFEDD5']} style={styles.branchIcon}>
+                  <MaterialCommunityIcons
+                    name="office-building-marker-outline"
+                    size={22}
+                    color="#EA580C"
+                  />
+                </LinearGradient>
+                <View>
                   <Text style={styles.branchName}>Imus Branch</Text>
-                  <Text style={styles.branchSub}>City Rate</Text>
+                  <Text style={styles.branchSub}>City rate</Text>
                 </View>
               </View>
-              <Text style={styles.branchAmount}>₱35,000</Text>
+              <View style={styles.branchPriceWrap}>
+                <Text style={styles.branchAmount}>₱35,000</Text>
+                <Text style={styles.branchPer}>/ month</Text>
+              </View>
             </View>
 
-            {/* Dropdown arrow for inclusions */}
             <TouchableOpacity
               style={styles.dropdownToggle}
-              onPress={() => setShowMonthlySections(prev => !prev)}
+              onPress={() => setShowMonthlySections((prev) => !prev)}
+              accessibilityRole="button"
+              accessibilityLabel={showMonthlySections ? 'Hide inclusions' : 'Show inclusions'}
             >
+              <Text style={styles.dropdownLabel}>
+                {showMonthlySections ? 'Hide inclusions' : 'View monthly inclusions'}
+              </Text>
               <Ionicons
                 name={showMonthlySections ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color="#6B7280"
+                size={18}
+                color={C.orange}
               />
             </TouchableOpacity>
 
-            {showMonthlySections && (
+            {showMonthlySections ? (
               <View style={styles.sectionsContainer}>
-                <FeeSection
-                  title="Accommodation & Meals"
-                  items={[
-                    'Air-conditioned rooms',
-                    'Daily meals: Breakfast, Lunch, PM Snack, Dinner',
-                    'Personalized health & diet plan',
-                  ]}
-                />
-                <FeeSection
-                  title="Health & Wellness"
-                  items={[
-                    'Psychoeducation sessions',
-                    'Relapse prevention seminar',
-                    'Psychiatric & psychological evaluations',
-                    'Individual psychotherapy',
-                  ]}
-                />
-                <FeeSection
-                  title="Support & Safety"
-                  items={[
-                    '24/7 medical team',
-                    '24/7 security',
-                    'Individual & group counseling',
-                  ]}
-                />
-                <FeeSection
-                  title="Therapeutic & Holistic Care"
-                  items={[
-                    'Resident & family healing dialogues',
-                    'Spiritual activities',
-                    'Aftercare program',
-                  ]}
-                />
-                <FeeSection
-                  title="Additional Services"
-                  items={[
-                    'Laundry & haircut (included)',
-                    'Medications & personal toiletries – to be provided by family',
-                  ]}
-                />
+                {MONTHLY_SECTIONS.map((section) => (
+                  <FeeSection key={section.title} title={section.title} icon={section.icon} items={section.items} />
+                ))}
               </View>
-            )}
+            ) : null}
           </View>
-
-          {/* PWD note */}
-          <View style={styles.infoPillRow}>
-            <View style={styles.infoPillIcon}>
-              <Ionicons name="person-circle-outline" size={20} color="#2B31ED" />
-            </View>
-            <Text style={styles.infoPillText}>
-              PWD-discounted rates available for eligible patients
-            </Text>
-          </View>
-
-          {/* CTA button */}
-          <TouchableOpacity
-            style={styles.ctaButton}
-            onPress={() => router.navigate(TAB_ROUTES.admission)}
-          >
-            <Text style={styles.ctaButtonText}>Admit a patient</Text>
-          </TouchableOpacity>
         </View>
+
+        <View style={styles.infoPillRow}>
+          <View style={styles.infoPillIcon}>
+            <Ionicons name="accessibility-outline" size={18} color="#1D4ED8" />
+          </View>
+          <Text style={styles.infoPillText}>
+            PWD-discounted rates available for eligible patients
+          </Text>
+        </View>
+
+        <ScalePressable
+          onPress={() => router.navigate(TAB_ROUTES.admission)}
+          style={styles.ctaWrap}
+        >
+          <LinearGradient
+            colors={[C.orangeLight, C.orange, C.orangeDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.cta}
+          >
+            <View style={styles.ctaInner}>
+              <Ionicons name="person-add-outline" size={18} color="#fff" />
+              <Text style={styles.ctaText}>Admit a patient</Text>
+            </View>
+          </LinearGradient>
+        </ScalePressable>
       </ScrollView>
 
       <FamilyWebMobileNav active="none" />
@@ -307,401 +273,389 @@ export default function ServicesScreen() {
   );
 }
 
-type FeeSectionProps = {
+function FeeSection({
+  title,
+  icon,
+  items,
+}: {
   title: string;
+  icon: keyof typeof Ionicons.glyphMap;
   items: string[];
-};
-
-const FeeSection = ({ title, items }: FeeSectionProps) => (
-  <View style={styles.sectionBlock}>
-    <Text style={styles.sectionBlockTitle}>{title}</Text>
-    {items.map(item => (
-      <View style={styles.bulletRow} key={item}>
-        <View style={styles.smallBulletDot} />
-        <Text style={styles.sectionItemText}>{item}</Text>
+}) {
+  return (
+    <View style={styles.sectionBlock}>
+      <View style={styles.sectionBlockHead}>
+        <Ionicons name={icon} size={16} color={C.orange} />
+        <Text style={styles.sectionBlockTitle}>{title}</Text>
       </View>
-    ))}
-  </View>
-);
+      {items.map((item) => (
+        <View style={styles.sectionBulletRow} key={item}>
+          <Ionicons name="checkmark-circle" size={13} color="#16A34A" />
+          <Text style={styles.sectionItemText}>{item}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8FAFC',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    minHeight: 56,
-    paddingVertical: 6,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F1',
-    zIndex: 10,
-  },
-  headerCenter: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-  },
-  headerBrandTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#F54E25',
-  },
-  headerWelcomeLine: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-    marginTop: 2,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerCircleBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#F54E25',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#F54E25',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  headerAvatarText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  notifModalRoot: {
-    flex: 1,
-  },
-  notifModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-  },
-  notificationsDropdown: {
-    position: 'absolute',
-    width: Math.min(340, width - 32),
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E9EDF7',
-    borderRadius: 14,
-    padding: 16,
-    shadowColor: '#1B2559',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  notificationsDropdownTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  notificationsDropdownTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#1B2559',
-  },
-  notificationsDropdownRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginBottom: 10,
-  },
-  notificationsDropdownText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#334155',
-    lineHeight: 18,
-  },
-  notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
-  bodyScroll: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    overflow: 'visible',
-  },
-  feesTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  feesTitleTextWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  feesCloseBtn: {
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  feesPageTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    lineHeight: 30,
-    color: '#1B2559',
-  },
-  feesPageAccent: {
-    color: '#F54E25',
-  },
-  feesPageSubtitle: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#A3AED0',
-    marginTop: 6,
-    marginBottom: 14,
-  },
-  mainCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 28,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  admissionWrapper: {
-    marginTop: 4,
-    marginBottom: 20,
-    borderRadius: 24,
+  heroBand: {
     overflow: 'hidden',
-    shadowColor: '#F54E25',
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    position: 'relative',
   },
-  admissionCard: {
-    borderRadius: 24,
-    padding: 18,
+  heroBandWash: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: '50%',
+    backgroundColor: 'rgba(74, 40, 50, 0.4)',
+    borderTopLeftRadius: 80,
   },
-  admissionHeaderRow: {
+  heroBandInner: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: 14,
+    zIndex: 1,
   },
-  admissionLabel: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
+  heroIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroCopy: { flex: 1, minWidth: 0 },
+  heroEyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: '#FF8A65',
     marginBottom: 4,
   },
-  admissionAmount: {
-    color: '#FFFFFF',
-    fontSize: 28,
+  heroTitle: {
+    fontSize: 20,
     fontWeight: '800',
+    color: C.white,
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  heroSub: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  heroCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bodyScroll: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  admissionWrapper: {
+    marginBottom: 14,
+    borderRadius: 20,
+    overflow: 'hidden',
+    ...Platform.select({
+      web: { boxShadow: '0 8px 24px rgba(245, 78, 37, 0.35)' },
+      default: {
+        shadowColor: C.orange,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.35,
+        shadowRadius: 14,
+        elevation: 8,
+      },
+    }),
+  },
+  admissionCard: {
+    padding: 18,
+  },
+  admissionTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  admissionTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  admissionTagText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   tapHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
   tapHintText: {
-    color: '#FEE2E2',
+    color: 'rgba(255,255,255,0.85)',
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  admissionDetails: {
-    marginTop: 14,
+  admissionLabel: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 2,
   },
-  inclusionsBlock: {
-    marginTop: 8,
+  admissionAmount: {
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    marginBottom: 4,
   },
+  admissionDetails: { marginTop: 8 },
+  inclusionsBlock: { marginTop: 10 },
   inclusionsDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#FED7AA',
-    marginBottom: 8,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    marginBottom: 10,
   },
   inclusionsTitle: {
     color: '#FFF7ED',
     fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 4,
+    fontWeight: '800',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   bulletRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 6,
-  },
-  bulletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#FED7AA',
-    marginTop: 6,
-    marginRight: 8,
+    gap: 8,
+    marginBottom: 8,
   },
   bulletText: {
     flex: 1,
-    color: '#FFF7ED',
+    color: 'rgba(255,255,255,0.92)',
     fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  sectionCard: {
+    backgroundColor: C.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    padding: 16,
+    marginBottom: 14,
+    ...Platform.select({
+      web: { boxShadow: '0 4px 16px rgba(15, 23, 42, 0.05)' },
+      default: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2,
+      },
+    }),
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 12,
+    gap: 8,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: '800',
+    color: C.navy,
   },
   pill: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#EEF2FF',
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
   pillText: {
-    fontSize: 11,
-    color: '#4F46E5',
-    fontWeight: '500',
+    fontSize: 10,
+    color: '#1D4ED8',
+    fontWeight: '700',
   },
   branchCard: {
-    borderRadius: 18,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8EDF3',
+    backgroundColor: '#FAFBFC',
     padding: 14,
   },
   branchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
   },
   branchInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    minWidth: 0,
+  },
+  branchIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
   },
   branchName: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: '800',
+    color: C.navy,
   },
   branchSub: {
     fontSize: 11,
-    color: '#6B7280',
+    color: C.muted,
     marginTop: 2,
+    fontWeight: '500',
   },
+  branchPriceWrap: { alignItems: 'flex-end' },
   branchAmount: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: '#16A34A',
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 10,
+  branchPer: {
+    fontSize: 10,
+    color: C.muted,
+    fontWeight: '600',
   },
   dropdownToggle: {
-    marginTop: 4,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E8EDF3',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  dropdownLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.orange,
   },
   sectionsContainer: {
-    marginTop: 10,
+    marginTop: 12,
+    gap: 4,
   },
   sectionBlock: {
-    marginTop: 10,
+    backgroundColor: C.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    padding: 12,
+    marginBottom: 8,
+  },
+  sectionBlockHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
   },
   sectionBlockTitle: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
+    fontWeight: '800',
+    color: C.navy,
   },
-  smallBulletDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#9CA3AF',
-    marginTop: 6,
-    marginRight: 8,
+  sectionBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 6,
   },
   sectionItemText: {
     flex: 1,
     fontSize: 12,
-    color: '#4B5563',
+    color: C.muted,
+    lineHeight: 17,
+    fontWeight: '500',
   },
   infoPillRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#EFF6FF',
     borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginTop: 18,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    gap: 10,
   },
   infoPillIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#E0E7FF',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#DBEAFE',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
   },
   infoPillText: {
     flex: 1,
     fontSize: 12,
-    color: '#1F2937',
-  },
-  ctaButton: {
-    marginTop: 18,
-    backgroundColor: '#F54E25',
-    borderRadius: 18,
-    height: 54,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  ctaButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    borderTopWidth: 1,
-    borderColor: '#F1F1F1',
-    backgroundColor: '#FFFFFF',
-    paddingTop: 10,
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  tabItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  tabIcon: {
-    width: 24,
-    height: 24,
-    marginBottom: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    color: '#999999',
-  },
-  activeTabLabel: {
-    color: '#F54E25',
+    color: '#1E3A8A',
     fontWeight: '600',
+    lineHeight: 17,
+  },
+  ctaWrap: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 8,
+    ...Platform.select({
+      web: {},
+      default: {
+        shadowColor: C.orangeDark,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 4,
+      },
+    }),
+  },
+  cta: {
+    minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ctaText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
   },
 });
-

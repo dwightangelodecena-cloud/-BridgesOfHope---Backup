@@ -5,12 +5,14 @@ import {
   Info, Shield
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logo from '@/assets/kalingalogo.png';
+import FamilySidebar from '@/components/family/FamilySidebar';
+import FamilyMobileBottomNav from '@/components/family/FamilyMobileBottomNav';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
 import FamilyPageHeader from '@/components/family/FamilyPageHeader';
-import FamilySidebarProfileNav from '@/components/family/FamilySidebarProfileNav';
+import { FAMILY_PAGE_HEADERS } from '@/lib/familyPageHeaders';
+import { useFamilyPageScroll } from '@/hooks/useFamilyPageScroll';
 import {
   loadVisitationSettings, loadVisitationSettingsShared,
   listVisitationRequestsByFamily,
@@ -62,6 +64,7 @@ const STATUS_CFG = {
 
 export default function FamilyAppointmentsPage() {
   const navigate = useNavigate();
+  const { scrollToTop } = useFamilyPageScroll();
   const [isExpanded, setIsExpanded] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
   const [patients, setPatients] = useState([]);
@@ -173,25 +176,11 @@ export default function FamilyAppointmentsPage() {
   const selectedDayLabel = form.preferredDate ? formatVisitationWeekdayLong(form.preferredDate) : '';
 
   return (
-    <div style={{display:'flex',width:'100vw',height:'100vh',background:'#F0F4FF',fontFamily:"'DM Sans',-apple-system,sans-serif",overflow:'hidden'}}>
+    <div className="family-portal app-container" style={{ fontFamily: "'DM Sans',-apple-system,sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
         *,*::before,*::after{box-sizing:border-box;}
         button{font-family:inherit;}
-        .desktop-sidebar{width:${isExpanded?'280px':'110px'};height:100vh;flex-shrink:0;background:#fff;border-right:1px solid #F1F1F1;display:flex;flex-direction:column;align-items:center;padding:25px 0 170px;z-index:100;transition:width .3s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden;}
-        .sidebar-expand-hit{position:absolute;top:0;right:0;width:28px;height:100%;cursor:pointer;z-index:2;}
-        .sidebar-logo-container{display:flex;justify-content:center;width:100%;margin-bottom:40px;}
-        .sidebar-logo{width:${isExpanded?'120px':'70px'};transition:width .3s;}
-        .sidebar-nav-item{display:flex;align-items:center;width:100%;padding:0 ${isExpanded?'35px':'0'};justify-content:${isExpanded?'flex-start':'center'};gap:20px;margin-bottom:25px;min-height:52px;box-sizing:border-box;border:2px solid transparent;border-radius:12px;}
-        .sidebar-nav-item.sidebar-nav-active{border-color:#F54E25;}
-        .sidebar-icon-wrap{padding:12px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-        .sidebar-label{display:${isExpanded?'block':'none'};font-weight:700;font-size:18px;line-height:1.2;color:#707EAE;max-width:140px;white-space:normal;overflow-wrap:anywhere;}
-        .sidebar-primary{width:100%;}
-        .sidebar-footer{position:absolute;left:0;right:0;bottom:20px;width:100%;background:#fff;z-index:3;}
-        .sidebar-profile-avatar.user-avatar-top{border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;background:linear-gradient(135deg,#F54E25,#EA580C);color:#fff;overflow:hidden;}
-        .sidebar-profile-avatar.user-avatar-top img{width:100%;height:100%;object-fit:cover;display:block;}
-        .sidebar-footer .sidebar-nav-item{margin-bottom:0;}
-        .sidebar-footer .sidebar-nav-item+.sidebar-nav-item{margin-top:14px;}
         .ntf-trigger{width:40px;height:40px;min-width:40px;padding:0;border-radius:50%;border:none;background:#F54E25;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 14px rgba(245,78,37,.35);}
         .ntf-trigger:hover{background:#e0421a;}
         .ntf-trigger svg{display:block;width:20px;height:20px;stroke:#fff;}
@@ -210,30 +199,18 @@ export default function FamilyAppointmentsPage() {
         .ntf-dropdown-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
         .ntf-clear-all{border:none;background:transparent;color:#94A3B8;font-size:12px;font-weight:700;cursor:pointer;padding:4px 6px;border-radius:8px;}
         .ntf-clear-all:hover{color:#64748b;background:#f1f5f9;}
-        @media(max-width:768px){.desktop-sidebar{display:none;}.scroll-area{padding:14px!important;}.appt-grid{grid-template-columns:1fr!important;}}
+        @media(max-width:768px){.scroll-area{padding:14px!important;}.appt-grid{grid-template-columns:1fr!important;}}
       `}</style>
 
-      {/* ── SIDEBAR (100% unchanged) ── */}
-      <aside className="desktop-sidebar">
-        <div className="sidebar-expand-hit" onClick={() => setIsExpanded(!isExpanded)} aria-hidden />
-        <div className="sidebar-logo-container"><img src={logo} alt="Kalinga" className="sidebar-logo"/></div>
-        <div className="sidebar-primary">
-          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/home');}}><div className="sidebar-icon-wrap"><Home size={22} color="#707EAE"/></div><span className="sidebar-label">Dashboard</span></div>
-          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/patient-details');}}><div className="sidebar-icon-wrap"><BookUser size={22} color="#707EAE"/></div><span className="sidebar-label">Resident Details</span></div>
-          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/progress');}}><div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE"/></div><span className="sidebar-label">Request Management</span></div>
-          <div className="sidebar-nav-item sidebar-nav-active" onClick={e=>e.stopPropagation()}><div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE"/></div><span className="sidebar-label">Appointments</span></div>
-          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/reports');}}><div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE"/></div><span className="sidebar-label">Reports</span></div>
-        </div>
-        <div className="sidebar-footer">
-          <FamilySidebarProfileNav isExpanded={isExpanded} />
-          <div className="sidebar-nav-item" onClick={e=>{e.stopPropagation();navigate('/login');}}><div className="sidebar-icon-wrap"><LogOut size={22} color="#F54E25"/></div><span className="sidebar-label" style={{color:'#F54E25'}}>Logout</span></div>
-        </div>
-      </aside>
+      <FamilySidebar
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+      />
 
       {/* ── MAIN ── */}
-      <main style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      <main className="main-view">
 
-        <FamilyPageHeader title="Appointments" />
+        <FamilyPageHeader {...FAMILY_PAGE_HEADERS.appointments} onBrandPress={scrollToTop} showMobileLogo={false} />
 
         <div className="scroll-area" style={{flex:1,overflowY:'auto',padding:'24px 28px 48px',background:'#F0F4FF'}}>
           <div style={{width:'100%',maxWidth:1560,margin:'0 auto',display:'grid',gap:20}}>
@@ -503,6 +480,7 @@ export default function FamilyAppointmentsPage() {
           </div>
         </div>
       </main>
+      <FamilyMobileBottomNav />
       <FloatingChatHead/>
     </div>
   );

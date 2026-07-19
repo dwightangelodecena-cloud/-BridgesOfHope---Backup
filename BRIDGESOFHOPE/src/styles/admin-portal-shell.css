@@ -1,0 +1,78 @@
+/* Admin portal — reuses family sidebar visuals; fixed sidebar + main offset */
+
+.family-portal.admin-portal-layout,
+.admin-portal-layout.family-portal {
+  --family-header-h: clamp(72px, 8vh, 80px);
+}
+
+.family-portal.admin-portal-layout .desktop-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 120;
+}
+
+.family-portal.admin-portal-layout .admin-sidebar-primary {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+}
+
+.family-portal.admin-portal-layout .admin-sidebar-primary::-webkit-scrollbar {
+  width: 4px;
+}
+
+.family-portal.admin-portal-layout .admin-sidebar-primary::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+}
+
+.family-portal.admin-portal-layout .admin-sidebar-offset {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 100vh;
+  margin-left: var(--family-sidebar-w, 110px);
+  transition: margin-left var(--family-sidebar-duration, 0.42s) var(--family-sidebar-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+/* Messages badge on icon tile */
+.family-portal.admin-portal-layout .sidebar-icon-wrap.messages-nav-host {
+  position: relative;
+}
+
+.family-portal.admin-portal-layout .admin-msg-nav-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #f54e25;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(245, 78, 37, 0.35);
+}
+
+.family-portal.admin-portal-layout .sidebar-nav-active .sidebar-icon-wrap.messages-nav-host svg {
+  stroke: #fff !important;
+  color: #fff !important;
+}
+
+@media (max-width: 899px) {
+  .family-portal.admin-portal-layout .desktop-sidebar {
+    display: none;
+  }
+
+  .family-portal.admin-portal-layout .admin-sidebar-offset {
+    margin-left: 0;
+  }
+}

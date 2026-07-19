@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, BedDouble, FileText, MessageCircle, LayoutTemplate, Calendar } from 'lucide-react';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import AdminSidebar from '@/components/admin/AdminSidebar';
+import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveAccountRole } from '@/components/RoleGuard';
@@ -566,6 +568,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   const isLimited = isNurse || staffLimited || isProgram;
   const isAdminMode = mode === 'admin' && !staffLimited;
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [residentReturnBusy, setResidentReturnBusy] = useState(false);
@@ -1737,108 +1740,15 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   };
 
   return (
-    <div className="db-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', -apple-system, sans-serif", color: '#1B2559' }}>
+    <div className="family-portal admin-portal-layout db-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', -apple-system, sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-
-        .desktop-sidebar {
-          width: ${isExpanded ? '280px' : '110px'};
-          background: white;
-          border-right: 1px solid #F1F1F1;
-          display: flex;
-          flex-direction: column;
-          align-items: stretch;
-          padding: 25px 0 0;
-          z-index: 100;
-          transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          cursor: pointer;
-          position: fixed;
-          top: 0;
-          left: 0;
-          height: 100vh;
-          overflow: hidden;
-        }
-
-        .sidebar-logo-container {
-          display: flex;
-          justify-content: center;
-          width: 100%;
-          margin-bottom: 28px;
-          align-self: center;
-        }
-
-        .sidebar-logo {
-          width: ${isExpanded ? '120px' : '70px'};
-          transition: width 0.3s ease;
-        }
-
-        .sidebar-nav-scroll {
-          flex: 1;
-          min-height: 0;
-          overflow-y: auto;
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .sidebar-nav-item {
-          display: flex;
-          align-items: center;
-          width: 100%;
-          padding: 0 ${isExpanded ? '28px' : '0'};
-          justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 14px;
-          margin-bottom: 6px;
-          min-height: 48px;
-          box-sizing: border-box;
-        }
-
-        .sidebar-label {
-          display: ${isExpanded ? 'block' : 'none'};
-          font-weight: 600;
-          font-size: 15px;
-          color: #A3AED0;
-          line-height: 1.25;
-          white-space: normal;
-          max-width: 210px;
-        }
-
-        .sidebar-footer {
-          flex-shrink: 0;
-          width: 100%;
-          padding: 16px 0 20px;
-          margin-top: auto;
-          border-top: 1px solid #f1f5f9;
-        }
-
-        .icon-box {
-          width: 44px;
-          height: 44px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          transition: all 0.2s;
-        }
-        
-        .icon-box.active {
-          background: #F54E25;
-          color: white;
-        }
-        
-        .icon-box.inactive {
-          background: transparent;
-          color: #A3AED0;
-        }
 
         .db-main {
           flex: 1;
           width: 94vw;
           min-height: 100vh;
-          margin-left: ${isExpanded ? '280px' : '110px'};
-          transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           padding: 40px;
         }
 
@@ -2131,7 +2041,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           .db-mobile-only { display: flex !important; }
           .db-outer { flex-direction: column !important; width: 100vw; overflow-x: hidden; }
           .db-mobile-top-bar { display: flex !important; width: 100vw; background: white; z-index: 1001; position: sticky; top: 0; }
-          .db-main { margin-left: 0 !important; width: 100vw !important; padding: 20px 12px 100px 12px !important; }
+          .db-main { width: 100vw !important; padding: 20px 12px 100px 12px !important; }
           .db-main > div:nth-child(2) { padding: 20px 12px !important; border-radius: 20px !important; width: 100% !important; }
           .db-table-mobile { overflow-x: auto; -webkit-overflow-scrolling: touch; }
           .db-controls-mobile { flex-direction: column !important; align-items: stretch !important; gap: 15px !important; }
@@ -2251,129 +2161,76 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           active="residents"
           onResidentsActivate={() => setSelectedPatient(null)}
         />
-      ) : (
-      <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container">
-          <img src={logoBH} alt="Kalinga" className="sidebar-logo" />
-        </div>
-
-        {isNurse ? (
-          <nav className="sidebar-nav-scroll" aria-label="Nurse navigation">
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}>
-              <LayoutGrid size={22} color="#707EAE" />
-              <span className="sidebar-label">Dashboard</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
-              <div style={{ background: '#F54E25', color: '#fff', borderRadius: 12, padding: 10, display: 'flex' }}>
-                <Users size={22} color="white" />
-              </div>
-              <span className="sidebar-label" style={{ color: '#F54E25' }}>Residents</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}>
-              <Calendar size={22} color="#707EAE" />
-              <span className="sidebar-label">Calendar</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}>
-              <FileText size={22} color="#707EAE" />
-              <span className="sidebar-label">Medical Report</span>
-            </div>
-          </nav>
-        ) : staffLimited ? (
-          <nav className="sidebar-nav-scroll" aria-label="Staff navigation">
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
-              <div className="icon-box active">
-                <BookUser size={22} />
-              </div>
-              <span className="sidebar-label" style={{ color: '#F54E25' }}>Resident records</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
-              <div className="icon-box inactive"><Calendar size={22} /></div>
-              <span className="sidebar-label">Appointments</span>
-            </div>
-          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
-              <div className="icon-box inactive"><FileText size={22} /></div>
-              <span className="sidebar-label">Printable reports</span>
-            </div>
-          </nav>
-        ) : (
-          <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
-              <div className="icon-box inactive">
-                <LayoutGrid size={22} />
-              </div>
-              <span className="sidebar-label">Dashboard</span>
-            </div>
-
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
-              <div className="icon-box active">
-                <BookUser size={22} />
-              </div>
-              <span className="sidebar-label" style={{ color: '#F54E25' }}>Patient Management</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
-              <div className="icon-box inactive"><ClipboardList size={22} /></div>
-              <span className="sidebar-label">Admission Management</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}>
-              <div className="icon-box inactive"><ArrowRightSquare size={22} /></div>
-              <span className="sidebar-label">Discharge Management</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}>
-              <div className="icon-box inactive">
-                <Users size={22} />
-              </div>
-              <span className="sidebar-label">User Management</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
-              <div className="icon-box inactive">
-                <Stethoscope size={22} />
-              </div>
-              <span className="sidebar-label">Staff Management</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
-              <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
-              <span className="sidebar-label">Content management</span>
-            </div>
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
-              <div className="icon-box inactive"><Calendar size={22} /></div>
-              <span className="sidebar-label">Appointments</span>
-            </div>
-          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
-              <div className="icon-box inactive"><FileText size={22} /></div>
-              <span className="sidebar-label">Printable reports</span>
-            </div>
-          </nav>
-        )}
-
-        <div className="sidebar-footer">
-          {isNurse ? (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
-              <User size={22} color="#707EAE" />
-              <span className="sidebar-label">Profile</span>
-            </div>
-          ) : staffLimited ? (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
-              <div className="icon-box inactive">
-                <User size={22} />
-              </div>
-              <span className="sidebar-label">Profile & Security</span>
-            </div>
-          ) : (
-            <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
-              <div className="icon-box inactive">
-                <User size={22} />
-              </div>
-              <span className="sidebar-label">Profile & Security</span>
-            </div>
-          )}
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? '0' : '10px', flexShrink: 0 }} />
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
+      ) : isNurse ? (
+        <AdminSidebar
+          isExpanded={isExpanded}
+          onToggleExpanded={() => setIsExpanded(!isExpanded)}
+          dashboardPath="/nurse-dashboard"
+          brandTagline="Nurse Portal"
+          profilePath="/nurseprofile"
+          profileLabel="Profile"
+        >
+          <div
+            className={`sidebar-nav-item${pathname === '/nurse-dashboard' ? ' sidebar-nav-active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}
+          >
+            <div className="sidebar-icon-wrap"><LayoutGrid size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Dashboard</span>
           </div>
-        </div>
-      </aside>
+          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
+            <div className="sidebar-icon-wrap"><Users size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Residents</span>
+          </div>
+          <div
+            className={`sidebar-nav-item${pathname === '/nurse-calendar' ? ' sidebar-nav-active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}
+          >
+            <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Calendar</span>
+          </div>
+          <div
+            className={`sidebar-nav-item${pathname === '/nurse-medical-report' ? ' sidebar-nav-active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}
+          >
+            <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Medical Report</span>
+          </div>
+        </AdminSidebar>
+      ) : staffLimited ? (
+        <AdminSidebar
+          isExpanded={isExpanded}
+          onToggleExpanded={() => setIsExpanded(!isExpanded)}
+          brandTagline="Staff Portal"
+        >
+          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
+            <div className="sidebar-icon-wrap"><BookUser size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Resident records</span>
+          </div>
+          <div
+            className={`sidebar-nav-item${pathname === '/admin-appointments' || pathname.startsWith('/admin-appointments/') ? ' sidebar-nav-active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}
+          >
+            <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Appointments</span>
+          </div>
+          <AdminMessagesNavItem
+            active={pathname === '/admin-messages' || pathname.startsWith('/admin-messages/')}
+            onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }}
+          />
+          <div
+            className={`sidebar-nav-item${pathname === '/admin-reports' || pathname.startsWith('/admin-reports/') ? ' sidebar-nav-active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}
+          >
+            <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Printable reports</span>
+          </div>
+        </AdminSidebar>
+      ) : (
+        <AdminSidebar
+          isExpanded={isExpanded}
+          onToggleExpanded={() => setIsExpanded(!isExpanded)}
+          onPatientNavClick={() => setSelectedPatient(null)}
+        />
       )}
 
       {/* MOBILE TOP BAR */}
@@ -2384,7 +2241,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       </div>
 
       {/* MAIN CONTENT */}
-      <main className="db-main">
+      <main className="db-main admin-sidebar-offset">
         {isProgram ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
             <div

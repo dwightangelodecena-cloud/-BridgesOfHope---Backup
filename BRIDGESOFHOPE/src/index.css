@@ -1,4 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
+@import './styles/family-chat.css';
+@import './styles/family-sidebar.css';
+@import './styles/family-header-brand.css';
+@import './styles/family-page-header.css';
+@import './styles/family-shell.css';
+@import './styles/admin-portal-shell.css';
 
 /* App-wide light theme — bundled for every user via main.jsx (not machine-local). */
 html {
@@ -146,37 +153,30 @@ button.sidebar-profile-avatar {
 
 /* ── Family portal: unified page header ── */
 .family-page-header {
-  height: 72px;
-  background: #fff;
+  min-height: clamp(64px, 8vh, 76px);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
   display: flex;
   align-items: center;
-  padding: 0 28px;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 0 clamp(16px, 2.5vw, 28px);
+  border-bottom: none;
   box-sizing: border-box;
-  z-index: 300;
   flex-shrink: 0;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  position: relative;
+}
+
+.family-page-header::after {
+  display: none;
 }
 
 .family-page-header__left {
   display: flex;
   align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
   min-width: 0;
-}
-
-.family-page-header__title {
-  color: #f54e25;
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: -0.01em;
-}
-
-.family-page-header__subtitle {
-  color: #64748b;
-  font-weight: 500;
-  font-size: 14px;
+  flex: 1;
+  padding-right: 12px;
 }
 
 .family-page-header__actions,
@@ -184,8 +184,14 @@ button.sidebar-profile-avatar {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   flex-shrink: 0;
+}
+
+.family-mobile-top-bar {
+  backdrop-filter: blur(12px) saturate(1.3);
+  -webkit-backdrop-filter: blur(12px) saturate(1.3);
+  box-shadow: 0 2px 16px rgba(15, 23, 42, 0.04);
 }
 
 .family-header-notif-wrap {
@@ -274,20 +280,15 @@ button.sidebar-profile-avatar {
 }
 
 .family-mobile-top-bar {
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  height: 60px;
+  min-height: 60px;
+  padding-bottom: 10px;
   background: #fff;
-  border-bottom: 1px solid #f1f1f1;
   box-sizing: border-box;
   flex-shrink: 0;
-}
-
-.family-mobile-top-bar__logo {
-  width: 50px;
-  height: auto;
 }
 
 button.family-notifications-trigger--mobile {
@@ -300,16 +301,6 @@ button.family-notifications-trigger--mobile {
 button.family-notifications-trigger--mobile svg {
   width: 18px !important;
   height: 18px !important;
-}
-
-@media (max-width: 899px) {
-  .family-page-header {
-    display: none !important;
-  }
-
-  .family-mobile-top-bar {
-    display: flex !important;
-  }
 }
 
 /*

@@ -785,7 +785,7 @@ const LandingPage = () => {
         }
         /*
           Single-child .container snap sections: do not stretch to 100% width.
-          Default align-items: stretch was overriding width: min(92%, 1200px) + margin: auto,
+          Default align-items: stretch was overriding width: var(--lp-content-width) + margin: auto,
           so content blocks sat full-bleed and felt off-center on the page.
         */
         .problem-section.snap-page,
@@ -857,18 +857,22 @@ const LandingPage = () => {
           --shadow-m: 0 6px 20px rgba(12,10,8,0.055), 0 22px 52px rgba(12,10,8,0.07);
           --shadow-l: 0 10px 28px rgba(12,10,8,0.065), 0 36px 72px rgba(12,10,8,0.09);
           --shadow-xl: 0 28px 72px rgba(12,10,8,0.11);
-          --r-sm: 14px;
+          --r-sm: 16px;
           --r-md: 18px;
-          --r-lg: 26px;
-          --r-xl: 34px;
-          --r-2xl: 42px;
+          --r-lg: 22px;
+          --r-xl: 28px;
+          --r-2xl: 36px;
           --nav-h: 72px;
           /* Section blocks: generous vertical rhythm (8px grid multiples) */
-          --nav-section-inset-y: clamp(2.75rem, 6.25vw, 4.25rem);
-          --section-header-gap: clamp(2rem, 4.5vw, 4.5rem);
+          --nav-section-inset-y: clamp(2.5rem, 5.5vw, 3.75rem);
+          --section-header-gap: clamp(1.75rem, 3.8vw, 3.75rem);
           --section-title-after-eyebrow: 0.875rem;
           --section-lead-top: 1.25rem;
           --section-inner-gap: clamp(var(--s-4), 3.5vw, var(--s-6));
+          /* Layout width — use more viewport on large screens */
+          --lp-content-max: 1480px;
+          --lp-content-width: min(94%, var(--lp-content-max));
+          --transition-ui: 0.2s var(--ease-out-expo);
           font-family: var(--font-sans);
           color: var(--ink);
           background: var(--cream);
@@ -914,21 +918,21 @@ const LandingPage = () => {
           color: var(--ink);
         }
         .section-lead {
-          font-size: 1.125rem;
-          line-height: 1.72;
+          font-size: clamp(1.0625rem, 1.15vw, 1.1875rem);
+          line-height: 1.68;
           color: var(--ink-3);
-          max-width: 40rem;
+          max-width: 46rem;
           font-weight: 400;
-          letter-spacing: 0.005em;
+          letter-spacing: 0.004em;
         }
         .text-accent { color: var(--accent); }
         .italic { font-style: italic; }
 
         /* ── Layout ── */
         .container {
-          width: min(92%, 1200px);
+          width: var(--lp-content-width);
           margin: 0 auto;
-          padding-inline: clamp(var(--s-3), 3vw, var(--s-4));
+          padding-inline: clamp(var(--s-2), 2vw, var(--s-4));
         }
         .full-bleed { width: 100%; max-width: 100%; position: relative; }
 
@@ -937,7 +941,7 @@ const LandingPage = () => {
         ══════════════════════════════════════════ */
         .nav-shell {
           position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
-          padding: var(--s-2) clamp(var(--s-2), 4vw, var(--s-5)) 0;
+          padding: var(--s-2) clamp(var(--s-2), 2.5vw, var(--s-3)) 0;
           pointer-events: none;
           transition: padding 0.35s var(--ease-out-expo);
         }
@@ -947,17 +951,17 @@ const LandingPage = () => {
           position: relative;
           pointer-events: auto;
           min-height: var(--nav-h);
-          width: min(100%, 1200px);
+          width: var(--lp-content-width);
           margin: 0 auto;
           display: flex; align-items: center; justify-content: space-between;
-          padding: 12px 18px 12px var(--s-3);
-          background: rgba(253,252,250,0.78);
+          padding: 12px 20px 12px var(--s-3);
+          background: rgba(253,252,250,0.82);
           backdrop-filter: blur(20px) saturate(1.5);
           -webkit-backdrop-filter: blur(20px) saturate(1.5);
-          border: 1px solid rgba(224,218,208,0.65);
-          border-radius: 24px;
+          border: 1px solid rgba(224,218,208,0.72);
+          border-radius: 20px;
           box-shadow: var(--shadow-s);
-          transition: background 0.35s var(--ease-out-expo), box-shadow 0.35s var(--ease-out-expo), border-color 0.35s var(--ease-out-expo), transform 0.35s var(--ease-out-expo);
+          transition: background var(--transition-ui), box-shadow var(--transition-ui), border-color var(--transition-ui), transform var(--transition-ui);
         }
         .nav::before {
           content: '';
@@ -1124,17 +1128,21 @@ const LandingPage = () => {
         .btn-primary {
           display: inline-flex; align-items: center; gap: var(--s-2);
           background: var(--ink); color: var(--white);
-          padding: 14px 26px; border-radius: 999px; border: 1px solid rgba(12,10,8,0.08);
+          padding: 14px 28px; border-radius: 999px; border: 1px solid rgba(12,10,8,0.08);
           font-family: var(--font-sans); font-size: 0.875rem; font-weight: 600;
           cursor: pointer; letter-spacing: 0.01em;
-          box-shadow: 0 10px 24px rgba(12,10,8,0.14);
-          transition: background 0.25s var(--ease-out-expo), border-color 0.25s var(--ease-out-expo), transform 0.25s var(--ease-out-expo), box-shadow 0.25s var(--ease-out-expo);
+          box-shadow: 0 8px 22px rgba(12,10,8,0.12);
+          transition: background var(--transition-ui), border-color var(--transition-ui), transform var(--transition-ui), box-shadow var(--transition-ui), filter var(--transition-ui);
           touch-action: manipulation;
         }
         .btn-primary:hover {
           background: var(--ink-2);
           transform: translateY(-2px);
-          box-shadow: 0 14px 28px rgba(12,10,8,0.22);
+          box-shadow: 0 12px 28px rgba(12,10,8,0.18);
+        }
+        .btn-primary:active {
+          transform: translateY(0) scale(0.98);
+          box-shadow: 0 4px 14px rgba(12,10,8,0.14);
         }
         .btn-primary:focus-visible,
         .btn-hero-primary:focus-visible,
@@ -1291,18 +1299,18 @@ const LandingPage = () => {
         }
         .hero-inner {
           position: relative; z-index: 2;
-          width: min(94%, 1200px); margin: 0 auto;
+          width: var(--lp-content-width); margin: 0 auto;
           padding: calc(var(--nav-h) + var(--s-4)) 0 max(var(--nav-section-inset-y), var(--s-8));
         }
         .hero-grid {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(200px, 380px);
-          gap: clamp(var(--s-6), 5vw, var(--s-8));
+          grid-template-columns: minmax(0, 1.15fr) minmax(220px, 400px);
+          gap: clamp(var(--s-5), 4vw, var(--s-10));
           align-items: center;
         }
         .hero-content {
           position: relative;
-          max-width: 36rem;
+          max-width: min(46rem, 100%);
           padding: 0;
           border: none;
           background: transparent;
@@ -1342,10 +1350,10 @@ const LandingPage = () => {
 
         .hero-sub {
           font-size: clamp(1.03rem, 1.2vw, 1.125rem);
-          line-height: 1.72; color: rgba(255,255,255,0.9);
-          max-width: 30rem; margin-bottom: var(--s-5);
+          line-height: 1.68; color: rgba(255,255,255,0.9);
+          max-width: 38rem; margin-bottom: var(--s-5);
           font-weight: 400;
-          letter-spacing: 0.01em;
+          letter-spacing: 0.008em;
         }
         .hero-actions { display: flex; flex-wrap: wrap; gap: var(--s-3); }
         .btn-hero-primary {
@@ -1356,9 +1364,10 @@ const LandingPage = () => {
           font-family: var(--font-sans); font-size: 0.9375rem; font-weight: 600;
           cursor: pointer;
           box-shadow: 0 12px 32px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.15);
-          transition: transform 0.25s var(--ease-out-expo), box-shadow 0.25s var(--ease-out-expo), filter 0.25s var(--ease-out-expo);
+          transition: transform var(--transition-ui), box-shadow var(--transition-ui), filter var(--transition-ui);
         }
-        .btn-hero-primary:hover { filter: brightness(1.05); transform: translateY(-3px); box-shadow: 0 18px 40px rgba(217,79,42,0.4); }
+        .btn-hero-primary:hover { filter: brightness(1.05); transform: translateY(-3px); box-shadow: 0 16px 36px rgba(217,79,42,0.38); }
+        .btn-hero-primary:active { transform: translateY(-1px) scale(0.98); }
         .btn-hero-ghost {
           display: inline-flex; align-items: center; gap: var(--s-2);
           background: rgba(255,255,255,0.1); color: white;
@@ -1367,9 +1376,10 @@ const LandingPage = () => {
           font-family: var(--font-sans); font-size: 0.9375rem; font-weight: 500;
           cursor: pointer; backdrop-filter: blur(14px) saturate(1.2);
           -webkit-backdrop-filter: blur(14px) saturate(1.2);
-          transition: background 0.25s var(--ease-out-expo), transform 0.25s var(--ease-out-expo), border-color 0.25s var(--ease-out-expo);
+          transition: background var(--transition-ui), transform var(--transition-ui), border-color var(--transition-ui);
         }
         .btn-hero-ghost:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.45); transform: translateY(-3px); }
+        .btn-hero-ghost:active { transform: translateY(-1px) scale(0.98); }
         .btn-hero-primary, .btn-hero-ghost { touch-action: manipulation; }
 
         .hero-aside {
@@ -1467,7 +1477,7 @@ const LandingPage = () => {
         .testi-header,
         .faq-header {
           text-align: center;
-          max-width: 44rem;
+          max-width: 52rem;
           margin: 0 auto var(--section-header-gap);
         }
         .problem-header h2 {
@@ -1500,8 +1510,8 @@ const LandingPage = () => {
         .problem-grid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: clamp(1rem, 2.2vw, 1.35rem);
-          max-width: 1080px;
+          gap: clamp(1rem, 2vw, 1.35rem);
+          width: 100%;
           margin: 0 auto;
         }
         .problem-card {
@@ -1512,12 +1522,12 @@ const LandingPage = () => {
           padding: clamp(1.15rem, 2.2vw, 1.42rem) clamp(1.05rem, 2.1vw, 1.28rem);
           background: linear-gradient(160deg, rgba(255,255,255,0.98) 0%, rgba(252,250,247,0.95) 100%);
           border: 1px solid rgba(224,218,208,0.9);
-          border-radius: 20px;
+          border-radius: 18px;
           box-shadow:
             0 1px 0 rgba(255,255,255,0.95) inset,
-            0 2px 8px rgba(42,36,32,0.05),
-            0 14px 30px rgba(62,52,42,0.08);
-          transition: transform 0.35s var(--ease-out-expo), box-shadow 0.35s var(--ease-out-expo), border-color 0.35s var(--ease-out-expo);
+            0 2px 8px rgba(42,36,32,0.045),
+            0 16px 32px rgba(62,52,42,0.07);
+          transition: transform var(--transition-ui), box-shadow var(--transition-ui), border-color var(--transition-ui);
           position: relative;
         }
         .problem-card:hover {
@@ -1631,7 +1641,7 @@ const LandingPage = () => {
         .proof-section .container {
           position: relative;
           z-index: 1;
-          max-width: min(100%, 1140px);
+          width: var(--lp-content-width);
         }
         .proof-header {
           margin-bottom: clamp(1.75rem, 3.5vw, 2.5rem);
@@ -1653,7 +1663,7 @@ const LandingPage = () => {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: clamp(1rem, 2vw, 1.35rem);
-          max-width: 1040px;
+          width: 100%;
           margin: 0 auto clamp(2rem, 4vw, 3rem);
           position: relative;
           z-index: 1;
@@ -1665,17 +1675,17 @@ const LandingPage = () => {
           text-align: center;
           min-height: 100%;
           padding: clamp(1.35rem, 2.4vw, 1.75rem) clamp(1.1rem, 2vw, 1.35rem);
-          border-radius: clamp(18px, 2vw, 24px);
+          border-radius: 18px;
           background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(253, 252, 250, 0.94) 100%);
-          border: 1px solid rgba(224, 218, 208, 0.92);
+          border: 1px solid rgba(224, 218, 208, 0.88);
           box-shadow:
             0 1px 0 rgba(255, 255, 255, 0.95) inset,
-            0 2px 6px rgba(42, 36, 32, 0.04),
-            0 20px 44px rgba(62, 52, 42, 0.07);
+            0 2px 6px rgba(42, 36, 32, 0.035),
+            0 16px 36px rgba(62, 52, 42, 0.06);
           transition:
-            transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-            box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-            border-color 0.35s ease;
+            transform var(--transition-ui),
+            box-shadow var(--transition-ui),
+            border-color var(--transition-ui);
           position: relative;
         }
         .proof-stat::before {
@@ -1755,16 +1765,16 @@ const LandingPage = () => {
         }
 
         .partners-inner {
-          max-width: min(100%, 1120px);
+          width: 100%;
           margin: 0 auto;
-          padding: clamp(2.1rem, 3.8vw, 2.85rem) clamp(var(--s-5), 4.5vw, var(--s-8));
+          padding: clamp(2rem, 3.5vw, 2.75rem) clamp(var(--s-4), 3.5vw, var(--s-6));
           background: linear-gradient(168deg, #ffffff 0%, #fdfcfa 40%, #f8f5f0 100%);
-          border: 1px solid rgba(224, 218, 208, 0.72);
-          border-radius: clamp(28px, 4vw, 40px);
+          border: 1px solid rgba(224, 218, 208, 0.78);
+          border-radius: 20px;
           box-shadow:
             0 1px 0 rgba(255, 255, 255, 0.98) inset,
-            0 32px 64px rgba(12, 10, 8, 0.08),
-            0 12px 28px rgba(12, 10, 8, 0.04);
+            0 24px 52px rgba(12, 10, 8, 0.07),
+            0 10px 24px rgba(12, 10, 8, 0.035);
           position: relative;
           z-index: 1;
           overflow: hidden;
@@ -2023,11 +2033,12 @@ const LandingPage = () => {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 0;
-          max-width: 42rem;
+          width: 100%;
+          max-width: 46rem;
           padding: var(--s-2);
           background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(253, 252, 250, 0.88) 100%);
-          border: 1px solid rgba(224, 218, 208, 0.95);
-          border-radius: var(--r-lg);
+          border: 1px solid rgba(224, 218, 208, 0.92);
+          border-radius: 18px;
           box-shadow:
             var(--shadow-s),
             0 1px 0 rgba(255, 255, 255, 0.9) inset;
@@ -2382,7 +2393,7 @@ const LandingPage = () => {
         .programs-header {
           position: relative; z-index: 1;
           margin-bottom: clamp(0.65rem, 1.35vw, 1.1rem);
-          max-width: 44rem;
+          max-width: 52rem;
         }
         .programs-header .eyebrow { color: rgba(217,79,42,0.85); }
         .programs-header .eyebrow::before { background: rgba(217,79,42,0.85); }
@@ -2400,7 +2411,7 @@ const LandingPage = () => {
         }
         .programs-swiper {
           --swiper-pagination-bullet-inactive-color: rgba(255, 255, 255, 0.28);
-          padding: 0 clamp(52px, 5vw, 64px) 50px;
+          padding: 0 clamp(48px, 4.5vw, 56px) 50px;
           box-sizing: border-box;
           overflow: hidden;
         }
@@ -2509,21 +2520,21 @@ const LandingPage = () => {
         .prog-card {
           background: linear-gradient(155deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 42%, rgba(12, 10, 8, 0.15) 100%);
           border: 1px solid rgba(255, 255, 255, 0.16);
-          border-radius: var(--r-xl);
+          border-radius: 20px;
           overflow: hidden;
           display: flex;
           align-items: stretch;
-          min-height: clamp(300px, 46vw, 380px);
+          min-height: clamp(300px, 42vw, 380px);
           backdrop-filter: blur(20px) saturate(1.25);
           -webkit-backdrop-filter: blur(20px) saturate(1.25);
           transition:
-            border-color 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-            transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-            box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+            border-color var(--transition-ui),
+            transform var(--transition-ui),
+            box-shadow var(--transition-ui);
           margin: var(--s-1) var(--s-1);
           box-shadow:
-            0 4px 4px rgba(0, 0, 0, 0.12),
-            0 24px 56px rgba(0, 0, 0, 0.38),
+            0 4px 4px rgba(0, 0, 0, 0.1),
+            0 20px 48px rgba(0, 0, 0, 0.32),
             inset 0 1px 0 rgba(255, 255, 255, 0.14);
         }
         .prog-card:hover {
@@ -2536,7 +2547,7 @@ const LandingPage = () => {
             inset 0 1px 0 rgba(255, 255, 255, 0.18);
         }
         .prog-card-img {
-          flex: 0 0 clamp(220px, 36vw, 400px);
+          flex: 0 0 clamp(240px, 38vw, 440px);
           min-height: 280px;
           overflow: hidden;
           position: relative;
@@ -2653,7 +2664,7 @@ const LandingPage = () => {
           z-index: 1;
           padding-top: clamp(1.25rem, 3vw, 2rem);
           padding-bottom: clamp(0.7rem, 2.4vw, 1.25rem);
-          max-width: min(100%, 1180px);
+          width: var(--lp-content-width);
         }
         .testimonials-section.snap-page {
           min-height: auto;
@@ -2694,18 +2705,18 @@ const LandingPage = () => {
           flex-direction: column;
           min-height: 0;
           padding: clamp(1.35rem, 2.2vw, 1.65rem);
-          border-radius: clamp(20px, 2.2vw, 26px);
+          border-radius: 18px;
           background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(253, 252, 250, 0.92) 55%, rgba(250, 248, 244, 0.98) 100%);
-          border: 1px solid rgba(224, 218, 208, 0.95);
+          border: 1px solid rgba(224, 218, 208, 0.92);
           box-shadow:
             0 1px 0 rgba(255, 255, 255, 0.9) inset,
-            0 2px 4px rgba(42, 36, 32, 0.04),
-            0 28px 56px rgba(62, 48, 38, 0.08);
+            0 2px 4px rgba(42, 36, 32, 0.035),
+            0 20px 44px rgba(62, 48, 38, 0.07);
           overflow: hidden;
           transition:
-            transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-            box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-            border-color 0.35s ease;
+            transform var(--transition-ui),
+            box-shadow var(--transition-ui),
+            border-color var(--transition-ui);
         }
         .testi-card::before {
           content: '';
@@ -2894,19 +2905,19 @@ const LandingPage = () => {
           color: rgba(255, 248, 242, 0.86);
         }
         .faq-list {
-          max-width: 752px;
+          max-width: min(100%, 880px);
           margin: 0 auto;
           display: flex;
           flex-direction: column;
-          gap: var(--s-4);
+          gap: var(--s-3);
         }
         .faq-item {
           background: var(--white);
           border: 1px solid rgba(224,218,208,0.92);
-          border-radius: var(--r-md);
+          border-radius: 18px;
           box-shadow: var(--shadow-s);
           overflow: hidden;
-          transition: border-color 0.28s var(--ease-out-expo), box-shadow 0.28s var(--ease-out-expo);
+          transition: border-color var(--transition-ui), box-shadow var(--transition-ui), transform var(--transition-ui);
         }
         .faq-item.is-open {
           border-color: rgba(217,79,42,0.28);
@@ -2994,13 +3005,13 @@ const LandingPage = () => {
         }
         .footer-cta-layout {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
-          gap: clamp(var(--s-6), 5vw, var(--s-10));
+          grid-template-columns: minmax(0, 1.1fr) minmax(300px, 460px);
+          gap: clamp(var(--s-5), 4vw, var(--s-10));
           align-items: start;
           text-align: left;
           position: relative; z-index: 1;
         }
-        .footer-cta-copy { max-width: 38rem; }
+        .footer-cta-copy { max-width: 44rem; }
         .footer-cta-eyebrow { margin-bottom: var(--s-4); }
         .footer-cta-section h2 {
           font-family: var(--font-sans);
@@ -3042,17 +3053,20 @@ const LandingPage = () => {
           display: flex; align-items: center; gap: var(--s-3);
           padding: var(--s-4) var(--s-4);
           background: var(--white);
-          border: 1px solid rgba(224,218,208,0.95);
-          border-radius: var(--r-md); cursor: pointer;
+          border: 1px solid rgba(224,218,208,0.92);
+          border-radius: 18px; cursor: pointer;
           font-family: var(--font-sans);
           font-size: 0.9rem; font-weight: 600; color: var(--ink);
           box-shadow: var(--shadow-s);
-          transition: transform 0.28s var(--ease-out-expo), box-shadow 0.28s var(--ease-out-expo), border-color 0.28s var(--ease-out-expo), background 0.28s var(--ease-out-expo);
+          transition: transform var(--transition-ui), box-shadow var(--transition-ui), border-color var(--transition-ui), background var(--transition-ui);
         }
         .cta-contact-box:hover {
-          transform: translateY(-4px); box-shadow: var(--shadow-m);
-          border-color: rgba(217,79,42,0.45);
+          transform: translateY(-3px); box-shadow: var(--shadow-m);
+          border-color: rgba(217,79,42,0.4);
           background: var(--surface);
+        }
+        .cta-contact-box:active {
+          transform: translateY(-1px) scale(0.99);
         }
         .cta-contact-box svg { color: var(--accent); flex-shrink: 0; }
         .cta-contact-box-text { text-align: left; flex: 1; min-width: 0; }
@@ -3167,12 +3181,12 @@ const LandingPage = () => {
           background: var(--ink); color: white; border: none;
           border-radius: 999px; font-family: var(--font-sans);
           font-size: 0.8125rem; font-weight: 600; cursor: pointer;
-          box-shadow: var(--shadow-l);
+          box-shadow: var(--shadow-m);
           opacity: 0; visibility: hidden; pointer-events: none;
           transform: translateY(12px);
-          transition: opacity 0.3s ease, visibility 0.3s ease, transform 0.3s ease, background 0.2s ease;
+          transition: opacity var(--transition-ui), visibility var(--transition-ui), transform var(--transition-ui), background var(--transition-ui), box-shadow var(--transition-ui);
         }
-        .back-top:hover { background: #1a1510; transform: translateY(-2px); }
+        .back-top:hover { background: #1a1510; transform: translateY(-2px); box-shadow: var(--shadow-l); }
         .back-top.visible { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); }
         .back-top.visible:hover { transform: translateY(-3px); }
 
@@ -3181,7 +3195,11 @@ const LandingPage = () => {
         ══════════════════════════════════════════ */
         @media (max-width: 1024px) {
           html { scroll-snap-type: y proximity; }
-          .container { width: min(94%, 1168px); }
+          .lp-root {
+            --lp-content-max: 100%;
+            --lp-content-width: min(96%, var(--lp-content-max));
+          }
+          .container { width: var(--lp-content-width); }
           .nav-shell { padding: var(--s-1) var(--s-2) 0; }
           .nav {
             min-height: 66px;
@@ -3281,12 +3299,22 @@ const LandingPage = () => {
             font-size: 0.75rem;
           }
         }
+        @media (min-width: 1366px) {
+          .lp-root {
+            --lp-content-max: 1540px;
+            --lp-content-width: min(94%, var(--lp-content-max));
+          }
+          .hero-content { max-width: min(48rem, 100%); }
+          .hero-sub { max-width: 40rem; }
+        }
         @media (min-width: 1440px) {
-          .container { width: min(90%, 1280px); }
+          .lp-root {
+            --lp-content-max: 1600px;
+            --lp-content-width: min(95%, var(--lp-content-max));
+          }
           .nav {
-            width: min(100%, 1280px);
             min-height: 76px;
-            padding: 10px 20px 10px 24px;
+            padding: 10px 22px 10px 24px;
           }
           .nav-logo img { height: 48px; }
           .nav-links-desktop a {
@@ -3301,13 +3329,30 @@ const LandingPage = () => {
           .value-photo-desc,
           .cta-contact-box-detail { font-size: 0.93rem; }
           .testi-quote { font-size: 1.02rem; }
+          .about-grid {
+            gap: clamp(var(--s-8), 6vw, var(--s-12));
+          }
+        }
+        @media (min-width: 1600px) {
+          .lp-root {
+            --lp-content-max: 1680px;
+            --lp-content-width: min(95.5%, var(--lp-content-max));
+          }
+          .hero-grid {
+            grid-template-columns: minmax(0, 1.2fr) minmax(260px, 420px);
+            gap: clamp(var(--s-6), 3.5vw, var(--s-10));
+          }
         }
         @media (min-width: 1920px) {
-          .container { width: min(86%, 1360px); }
-          .section-title { font-size: clamp(2.5rem, 3.2vw, 4.35rem); }
-          .section-lead { font-size: 1.125rem; }
+          .lp-root {
+            --lp-content-max: 1760px;
+            --lp-content-width: min(96%, var(--lp-content-max));
+          }
+          .section-title { font-size: clamp(2.5rem, 3vw, 4.25rem); }
+          .section-lead { font-size: 1.1875rem; max-width: 50rem; }
           .problem-grid { gap: var(--s-4); }
           .testi-grid { gap: var(--s-4); }
+          .prog-card-img { flex: 0 0 clamp(280px, 34vw, 480px); }
         }
         /* Core values: single column on small phones */
         @media (max-width: 640px) {
@@ -3316,7 +3361,7 @@ const LandingPage = () => {
             --section-header-gap: clamp(1.75rem, 5vw, 2.75rem);
           }
           html { scroll-snap-type: y proximity; }
-          .container { width: min(96%, 1200px); padding-inline: clamp(12px, 4vw, var(--s-3)); }
+          .container { width: var(--lp-content-width); padding-inline: clamp(12px, 3.5vw, var(--s-3)); }
           .snap-page:not(.hero-section) { padding-block: clamp(2.75rem, 7vw, 4rem); }
           .partners-inner { padding: var(--s-4) var(--s-3); border-radius: var(--r-lg); }
           .partners-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }

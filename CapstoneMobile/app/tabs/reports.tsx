@@ -21,6 +21,7 @@ import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
+import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 type PatientCard = {
   id: string;
@@ -121,11 +122,11 @@ function ReportStatCard({
 
 export default function ReportsScreen() {
   const insets = useSafeAreaInsets();
+  const { scrollRef, scrollToTop } = useFamilyPageScroll();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
   const [familyUserId, setFamilyUserId] = useState('');
     const [userInitials, setUserInitials] = useState('FU');
-  const [firstName, setFirstName] = useState('Family');
   const [selectedWeek, setSelectedWeek] = useState<string>('all');
   const [patients, setPatients] = useState<PatientCard[]>([]);
   const [weeklyReportsByPatient, setWeeklyReportsByPatient] = useState<Record<string, ReportRow[]>>({});
@@ -161,9 +162,6 @@ export default function ReportsScreen() {
         }
         const user = authData.user;
         if (!cancelled) setFamilyUserId(user.id);
-        const displayName = (user.user_metadata?.full_name as string) || user.email || 'Family User';
-        if (!cancelled) setFirstName(String(displayName).trim().split(/\s+/)[0] || 'Family');
-
         const { data: patientRows, error: patientErr } = await supabase
           .from('patients')
           .select('id, full_name, admitted_at, progress_percent, clinical_status, family_id, discharged_at, date_of_birth')
@@ -319,11 +317,9 @@ export default function ReportsScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
-      <FamilyMobilePageHeader title="Weekly Reports" showLogo={false} />
+      <FamilyMobilePageHeader title="Weekly Reports" onBrandPress={scrollToTop} />
 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
-        <Text style={styles.welcome}>Welcome Back, {firstName}</Text>
-
+      <ScrollView ref={scrollRef} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
         <LinearGradient
           colors={['#0F172A', '#1E2D4F', '#2D1B69']}
           start={{ x: 0, y: 0 }}
@@ -698,7 +694,6 @@ const styles = StyleSheet.create({
   notifText: { flex: 1, fontSize: 13, color: '#334155' },
   notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 16, paddingTop: 12 },
-  welcome: { fontSize: 14, fontWeight: '600', color: '#1B2559', marginBottom: 12 },
   heroBanner: { borderRadius: 24, padding: 22, marginBottom: 12, overflow: 'hidden' },
   heroKickerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   heroIconBox: {

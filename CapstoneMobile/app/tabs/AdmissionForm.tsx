@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Platform,
@@ -11,9 +10,11 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
@@ -41,7 +42,17 @@ import {
   validatePatientGender,
   validateReasonForAdmission,
 } from '../../lib/admissionFormConfig';
+import { LoginField } from '../../components/auth/LoginField';
+import { ScalePressable } from '../../components/auth/ScalePressable';
 
+const C = {
+  orange: '#F54E25',
+  orangeLight: '#FF6A3D',
+  orangeDark: '#E8441A',
+  navy: '#1A2B4A',
+  muted: '#64748B',
+  white: '#FFFFFF',
+};
 function formatIsoDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -466,6 +477,7 @@ export default function AdmissionForm() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <StatusBar style="dark" />
       <Modal
         visible={showNotifications}
         transparent
@@ -500,12 +512,12 @@ export default function AdmissionForm() {
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.navigate(TAB_ROUTES.home)} style={styles.headerBack} hitSlop={12}>
-          <Ionicons name="arrow-back" size={24} color="#1E293B" />
+          <Ionicons name="arrow-back" size={22} color={C.navy} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerBrandTitle}>Admission</Text>
           <Text style={styles.headerWelcomeLine} numberOfLines={1}>
-            Welcome Back, {(displayName || 'Family User').trim().split(/\s+/)[0]}
+            New resident intake
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -514,7 +526,7 @@ export default function AdmissionForm() {
             onPress={() => setShowNotifications((v) => !v)}
             accessibilityLabel="Notifications"
           >
-            <Ionicons name="notifications" size={18} color="#FFFFFF" />
+            <Ionicons name="notifications-outline" size={18} color={C.white} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerCircleBtn}
@@ -523,6 +535,26 @@ export default function AdmissionForm() {
           >
             <Text style={styles.headerAvatarText}>{userInitials}</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.heroBand}>
+        <LinearGradient
+          colors={['#0B1528', '#152238', '#2A1A28']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.heroBandWash} />
+        <View style={styles.heroBandInner}>
+          <LinearGradient colors={[C.orangeLight, C.orange, C.orangeDark]} style={styles.heroIcon}>
+            <Ionicons name="clipboard-outline" size={24} color="#fff" />
+          </LinearGradient>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroEyebrow}>ADMISSION WORKFLOW</Text>
+            <Text style={styles.heroTitle}>{ADMISSION_FORM_TITLE}</Text>
+            <Text style={styles.heroSub}>{ADMISSION_FORM_SUBTITLE}</Text>
+          </View>
         </View>
       </View>
 
@@ -536,169 +568,165 @@ export default function AdmissionForm() {
       >
           {saveBanner ? (
             <View style={styles.saveBanner}>
+              <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
               <Text style={styles.saveBannerText}>{saveBanner}</Text>
             </View>
           ) : null}
 
-          <View style={styles.admissionIntro}>
-            <Text style={styles.admissionIntroKicker}>Admission workflow</Text>
-            <Text style={styles.admissionIntroTitle}>{ADMISSION_FORM_TITLE}</Text>
-            <Text style={styles.admissionIntroSub}>{ADMISSION_FORM_SUBTITLE}</Text>
-          </View>
-
           <View style={styles.requirementsCard}>
-            <Text style={styles.requirementsTitle}>Requirements before admitting a resident</Text>
+            <View style={styles.requirementsHeader}>
+              <Ionicons name="information-circle-outline" size={18} color={C.orange} />
+              <Text style={styles.requirementsTitle}>Before you submit</Text>
+            </View>
             <Text style={styles.requirementsBody}>{ADMISSION_REQUIREMENTS_NOTE}</Text>
           </View>
 
           <View style={styles.card}>
             <View style={styles.cardTitleRow}>
-              <Text style={styles.cardTitle}>Form Completion</Text>
-              <Text style={styles.percentText}>{progressPercent}%</Text>
+              <Text style={styles.cardTitle}>Form completion</Text>
+              <View style={styles.percentPill}>
+                <Text style={styles.percentText}>{progressPercent}%</Text>
+              </View>
             </View>
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+              <LinearGradient
+                colors={[C.orangeLight, C.orange, C.orangeDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[styles.progressFill, { width: `${Math.max(progressPercent, 4)}%` }]}
+              />
             </View>
             <Text style={styles.cardSub}>
               {completedFields} of {requiredFields.length} required fields completed
             </Text>
+            <View style={styles.checklistWrap}>
+              {requiredFields.map((field) => {
+                const done = isFieldDone(field);
+                return (
+                  <View key={field.key} style={[styles.checkChip, done && styles.checkChipDone]}>
+                    <Ionicons
+                      name={done ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={13}
+                      color={done ? '#16A34A' : '#94A3B8'}
+                    />
+                    <Text style={[styles.checkChipText, done && styles.checkChipTextDone]} numberOfLines={1}>
+                      {field.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.checklistHeading}>Admission Checklist</Text>
-            {requiredFields.map((field) => {
-              const done = isFieldDone(field);
-              return (
-                <View key={field.key} style={styles.checklistRow}>
-                  <Text style={styles.checklistLabel}>{field.label}</Text>
-                  <Text style={[styles.checklistStatus, done ? styles.checklistDone : styles.checklistPending]}>
-                    {done ? 'Done' : 'Pending'}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionLabel}>Resident information</Text>
 
-          <View style={styles.formBlock}>
-            <LabeledInput
-              label="Resident Last Name"
-              placeholder="Resident's last name"
+            <LoginField
+              label="Resident last name"
               icon="person-outline"
+              placeholder="Resident's last name"
               value={formData.patientLastName}
               onChangeText={(t) => setField('patientLastName', t)}
-              error={errors.patientLastName}
+              error={!!errors.patientLastName}
+              autoCapitalize="words"
             />
-            <LabeledInput
-              label="Resident First Name"
-              placeholder="Resident's first name"
+            {errors.patientLastName ? <Text style={styles.errorSmall}>{errors.patientLastName}</Text> : null}
+
+            <LoginField
+              label="Resident first name"
               icon="person-outline"
+              placeholder="Resident's first name"
               value={formData.patientFirstName}
               onChangeText={(t) => setField('patientFirstName', t)}
-              error={errors.patientFirstName}
+              error={!!errors.patientFirstName}
+              autoCapitalize="words"
+            />
+            {errors.patientFirstName ? <Text style={styles.errorSmall}>{errors.patientFirstName}</Text> : null}
+
+            <SelectField
+              label="Date of birth"
+              icon="calendar-outline"
+              value={birthDateDisplay}
+              placeholder={!formData.patientBirthDate}
+              error={errors.patientBirthDate}
+              onPress={openBirthDatePicker}
             />
 
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Date of Birth *</Text>
-              <TouchableOpacity
-                style={[styles.inputShell, errors.patientBirthDate ? styles.inputShellError : null]}
-                onPress={openBirthDatePicker}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="calendar-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                <Text style={[styles.dateInputText, !formData.patientBirthDate && styles.placeholderText]}>
-                  {birthDateDisplay}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color="#94A3B8" />
-              </TouchableOpacity>
-              {errors.patientBirthDate ? <Text style={styles.errorSmall}>{errors.patientBirthDate}</Text> : null}
+            <SelectField
+              label="Gender"
+              icon="male-female-outline"
+              value={genderDisplay}
+              placeholder={!formData.patientGender}
+              error={errors.patientGender}
+              onPress={() => setShowGenderModal(true)}
+            />
+
+            <SelectField
+              label="Reason for admission"
+              icon="medical-outline"
+              value={reasonDisplay}
+              placeholder={!formData.reasonForAdmission}
+              error={errors.reasonForAdmission}
+              onPress={() => setShowReasonModal(true)}
+            />
+
+            <SelectField
+              label="Relationship to resident"
+              icon="people-outline"
+              value={relationshipDisplay}
+              placeholder={!formData.relationshipToResident}
+              error={errors.relationshipToResident}
+              onPress={() => setShowRelationshipModal(true)}
+            />
+          </View>
+
+          <View style={styles.sectionCard}>
+            <View style={styles.docsHeader}>
+              <LinearGradient colors={['#FFF7ED', '#FFEDD5']} style={styles.docsBadge}>
+                <Ionicons name="folder-open-outline" size={18} color="#EA580C" />
+              </LinearGradient>
+              <View style={styles.docsHeaderCopy}>
+                <Text style={styles.docsTitle}>Required documents</Text>
+                <Text style={styles.docsSub}>Upload clear photos or PDF files</Text>
+              </View>
             </View>
 
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Gender *</Text>
-              <TouchableOpacity
-                style={[styles.inputShell, errors.patientGender ? styles.inputShellError : null]}
-                onPress={() => setShowGenderModal(true)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="male-female-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                <Text style={[styles.dateInputText, !formData.patientGender && styles.placeholderText]}>
-                  {genderDisplay}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color="#94A3B8" />
-              </TouchableOpacity>
-              {errors.patientGender ? <Text style={styles.errorSmall}>{errors.patientGender}</Text> : null}
-            </View>
+            <UploadCard
+              title="Valid ID"
+              required
+              fileName={validIdFile?.name}
+              error={errors.validIdFile}
+              onPress={() => void pickSingleDocument('valid_id', setValidIdFile, 'validIdFile')}
+            />
 
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Reason for Admission *</Text>
-              <TouchableOpacity
-                style={[styles.inputShell, errors.reasonForAdmission ? styles.inputShellError : null]}
-                onPress={() => setShowReasonModal(true)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="medical-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                <Text style={[styles.dateInputText, !formData.reasonForAdmission && styles.placeholderText]}>
-                  {reasonDisplay}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color="#94A3B8" />
-              </TouchableOpacity>
-              {errors.reasonForAdmission ? <Text style={styles.errorSmall}>{errors.reasonForAdmission}</Text> : null}
-            </View>
+            <UploadCard
+              title="Birth certificate"
+              required
+              fileName={birthCertFile?.name}
+              error={errors.birthCertFile}
+              onPress={() => void pickSingleDocument('birth_cert', setBirthCertFile, 'birthCertFile')}
+            />
 
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Relationship to Resident</Text>
-              <TouchableOpacity
-                style={[styles.inputShell, errors.relationshipToResident ? styles.inputShellError : null]}
-                onPress={() => setShowRelationshipModal(true)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="people-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                <Text style={[styles.dateInputText, !formData.relationshipToResident && styles.placeholderText]}>
-                  {relationshipDisplay}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color="#94A3B8" />
-              </TouchableOpacity>
-              {errors.relationshipToResident ? <Text style={styles.errorSmall}>{errors.relationshipToResident}</Text> : null}
-            </View>
+            <UploadCard
+              title="Hospital referral"
+              optional
+              fileName={hospitalReferralFile?.name}
+              hint="Optional — families may provide a referral from a hospital."
+              onPress={() => void pickSingleDocument('hospital_referral', setHospitalReferralFile)}
+            />
+          </View>
 
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Valid ID</Text>
-              <TouchableOpacity style={styles.btnSecondary} onPress={() => void pickSingleDocument('valid_id', setValidIdFile, 'validIdFile')}>
-                <Text style={styles.btnSecondaryText}>{validIdFile ? 'Replace Valid ID' : 'Upload Valid ID'}</Text>
-              </TouchableOpacity>
-              {validIdFile ? <Text style={styles.fileNameText} numberOfLines={1}>{validIdFile.name}</Text> : null}
-              {errors.validIdFile ? <Text style={styles.errorSmall}>{errors.validIdFile}</Text> : null}
-            </View>
-
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Birth Certificate</Text>
-              <TouchableOpacity style={styles.btnSecondary} onPress={() => void pickSingleDocument('birth_cert', setBirthCertFile, 'birthCertFile')}>
-                <Text style={styles.btnSecondaryText}>{birthCertFile ? 'Replace Birth Certificate' : 'Upload Birth Certificate'}</Text>
-              </TouchableOpacity>
-              {birthCertFile ? <Text style={styles.fileNameText} numberOfLines={1}>{birthCertFile.name}</Text> : null}
-              {errors.birthCertFile ? <Text style={styles.errorSmall}>{errors.birthCertFile}</Text> : null}
-            </View>
-
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Hospital Referral (Optional)</Text>
-              <Text style={styles.streetHint}>Families may optionally provide a referral from a hospital.</Text>
-              <TouchableOpacity style={styles.btnSecondary} onPress={() => void pickSingleDocument('hospital_referral', setHospitalReferralFile)}>
-                <Text style={styles.btnSecondaryText}>{hospitalReferralFile ? 'Replace Referral' : 'Upload Referral'}</Text>
-              </TouchableOpacity>
-              {hospitalReferralFile ? <Text style={styles.fileNameText} numberOfLines={1}>{hospitalReferralFile.name}</Text> : null}
-            </View>
-
-            <View style={styles.termsRow}>
-              <TouchableOpacity
-                onPress={() => setField('agreeToTerms', !formData.agreeToTerms)}
-                hitSlop={8}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: formData.agreeToTerms }}
-              >
-                <View style={[styles.checkbox, formData.agreeToTerms && styles.checkboxOn]}>
-                  {formData.agreeToTerms ? <Ionicons name="checkmark" size={14} color="#FFF" /> : null}
-                </View>
-              </TouchableOpacity>
+          <View style={styles.termsCard}>
+            <TouchableOpacity
+              style={styles.termsRow}
+              onPress={() => setField('agreeToTerms', !formData.agreeToTerms)}
+              activeOpacity={0.85}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: formData.agreeToTerms }}
+            >
+              <View style={[styles.checkbox, formData.agreeToTerms && styles.checkboxOn]}>
+                {formData.agreeToTerms ? <Ionicons name="checkmark" size={12} color="#FFF" /> : null}
+              </View>
               <Text style={styles.termsText}>
                 I agree to the{' '}
                 <Text style={styles.termsLink} onPress={() => setShowTermsModal(true)}>
@@ -709,84 +737,132 @@ export default function AdmissionForm() {
                   Terms
                 </Text>
               </Text>
-            </View>
+            </TouchableOpacity>
             {errors.agreeToTerms ? <Text style={[styles.errorSmall, styles.errorCenter]}>{errors.agreeToTerms}</Text> : null}
             {errors.submit ? <Text style={[styles.errorSmall, styles.errorCenter]}>{errors.submit}</Text> : null}
+          </View>
 
-            <TouchableOpacity
-              style={[styles.btnPrimary, submitting && { opacity: 0.7 }]}
-              onPress={handleSubmit}
-              disabled={submitting}
+          <ScalePressable
+            onPress={handleSubmit}
+            disabled={submitting}
+            style={[styles.ctaWrap, submitting && { opacity: 0.85 }]}
+          >
+            <LinearGradient
+              colors={[C.orangeLight, C.orange, C.orangeDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.cta}
             >
-              <Text style={styles.btnPrimaryText}>{submitting ? 'Submitting…' : 'Submit Admission'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btnSecondary} onPress={saveDraft}>
-              <Text style={styles.btnSecondaryText}>Save Draft</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btnSecondary} onPress={clearForm}>
-              <Text style={styles.btnSecondaryText}>Reset Form</Text>
-            </TouchableOpacity>
+              <View style={styles.ctaInner}>
+                <Ionicons name="paper-plane-outline" size={18} color="#fff" />
+                <Text style={styles.ctaText}>{submitting ? 'Submitting…' : 'Submit admission'}</Text>
+              </View>
+            </LinearGradient>
+          </ScalePressable>
+
+          <View style={styles.secondaryActions}>
+            <ScalePressable onPress={saveDraft} style={styles.btnSecondary}>
+              <Ionicons name="save-outline" size={16} color={C.orange} />
+              <Text style={styles.btnSecondaryText}>Save draft</Text>
+            </ScalePressable>
+            <ScalePressable onPress={clearForm} style={styles.btnSecondary}>
+              <Ionicons name="refresh-outline" size={16} color={C.orange} />
+              <Text style={styles.btnSecondaryText}>Reset form</Text>
+            </ScalePressable>
           </View>
       </ScrollView>
 
-      <Modal visible={showRelationshipModal} transparent animationType="fade" onRequestClose={() => setShowRelationshipModal(false)}>
-        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowRelationshipModal(false)}>
-          <View style={styles.reasonSheet} onStartShouldSetResponder={() => true}>
-            <Text style={styles.reasonSheetTitle}>Relationship to Resident</Text>
+      <Modal visible={showRelationshipModal} transparent animationType="slide" onRequestClose={() => setShowRelationshipModal(false)}>
+        <View style={styles.sheetModalRoot}>
+          <Pressable style={styles.sheetModalBackdrop} onPress={() => setShowRelationshipModal(false)} />
+          <View style={[styles.reasonSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <Text style={styles.reasonSheetTitle}>Relationship to resident</Text>
             {RELATIONSHIP_OPTIONS.filter((opt) => opt.value).map((opt) => (
               <TouchableOpacity
                 key={opt.value}
-                style={styles.reasonOption}
+                style={[
+                  styles.reasonOption,
+                  formData.relationshipToResident === opt.value && styles.reasonOptionActive,
+                ]}
                 onPress={() => {
                   setField('relationshipToResident', opt.value);
                   setShowRelationshipModal(false);
                 }}
               >
-                <Text style={styles.reasonOptionText}>{opt.label}</Text>
+                <Text
+                  style={[
+                    styles.reasonOptionText,
+                    formData.relationshipToResident === opt.value && styles.reasonOptionTextActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
-      <Modal visible={showReasonModal} transparent animationType="fade" onRequestClose={() => setShowReasonModal(false)}>
-        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowReasonModal(false)}>
-          <View style={styles.reasonSheet} onStartShouldSetResponder={() => true}>
-            <Text style={styles.reasonSheetTitle}>Reason for Admission</Text>
+      <Modal visible={showReasonModal} transparent animationType="slide" onRequestClose={() => setShowReasonModal(false)}>
+        <View style={styles.sheetModalRoot}>
+          <Pressable style={styles.sheetModalBackdrop} onPress={() => setShowReasonModal(false)} />
+          <View style={[styles.reasonSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <Text style={styles.reasonSheetTitle}>Reason for admission</Text>
             {REASON_FOR_ADMISSION_OPTIONS.filter((opt) => opt.value).map((opt) => (
               <TouchableOpacity
                 key={opt.value}
-                style={styles.reasonOption}
+                style={[
+                  styles.reasonOption,
+                  formData.reasonForAdmission === opt.value && styles.reasonOptionActive,
+                ]}
                 onPress={() => {
                   setField('reasonForAdmission', opt.value);
                   setShowReasonModal(false);
                 }}
               >
-                <Text style={styles.reasonOptionText}>{opt.label}</Text>
+                <Text
+                  style={[
+                    styles.reasonOptionText,
+                    formData.reasonForAdmission === opt.value && styles.reasonOptionTextActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
-      <Modal visible={showGenderModal} transparent animationType="fade" onRequestClose={() => setShowGenderModal(false)}>
-        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowGenderModal(false)}>
-          <View style={styles.reasonSheet} onStartShouldSetResponder={() => true}>
+      <Modal visible={showGenderModal} transparent animationType="slide" onRequestClose={() => setShowGenderModal(false)}>
+        <View style={styles.sheetModalRoot}>
+          <Pressable style={styles.sheetModalBackdrop} onPress={() => setShowGenderModal(false)} />
+          <View style={[styles.reasonSheet, { paddingBottom: insets.bottom + 16 }]}>
             <Text style={styles.reasonSheetTitle}>Gender</Text>
             {PATIENT_GENDER_OPTIONS.filter((opt) => opt.value).map((opt) => (
               <TouchableOpacity
                 key={opt.value}
-                style={styles.reasonOption}
+                style={[
+                  styles.reasonOption,
+                  formData.patientGender === opt.value && styles.reasonOptionActive,
+                ]}
                 onPress={() => {
                   setField('patientGender', opt.value);
                   setShowGenderModal(false);
                 }}
               >
-                <Text style={styles.reasonOptionText}>{opt.label}</Text>
+                <Text
+                  style={[
+                    styles.reasonOptionText,
+                    formData.patientGender === opt.value && styles.reasonOptionTextActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {Platform.OS === 'android' && birthDateModal ? (
@@ -920,20 +996,29 @@ export default function AdmissionForm() {
       <Modal visible={showSuccessModal} transparent animationType="fade">
         <View style={styles.successOverlay}>
           <View style={styles.successCard}>
-            <View style={styles.successIconWrap}>
-              <Ionicons name="checkmark-circle" size={44} color="#10B981" />
-            </View>
-            <Text style={styles.successTitle}>Application Submitted!</Text>
-            <Text style={styles.successBody}>Admission request submitted successfully.</Text>
-            <TouchableOpacity
-              style={styles.btnPrimary}
+            <LinearGradient colors={['#22C55E', '#16A34A']} style={styles.successIconWrap}>
+              <Ionicons name="checkmark" size={36} color="#fff" />
+            </LinearGradient>
+            <Text style={styles.successTitle}>Application submitted!</Text>
+            <Text style={styles.successBody}>
+              Your admission request was sent successfully. Our team will review it and update you soon.
+            </Text>
+            <ScalePressable
               onPress={() => {
                 setShowSuccessModal(false);
                 router.navigate(TAB_ROUTES.home);
               }}
+              style={styles.ctaWrap}
             >
-              <Text style={styles.btnPrimaryText}>Continue</Text>
-            </TouchableOpacity>
+              <LinearGradient
+                colors={[C.orangeLight, C.orange, C.orangeDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.cta}
+              >
+                <Text style={styles.ctaText}>Continue to home</Text>
+              </LinearGradient>
+            </ScalePressable>
           </View>
         </View>
       </Modal>
@@ -950,40 +1035,83 @@ function TermsSection({ title, body }: { title: string; body: string }) {
   );
 }
 
-function LabeledInput({
+function SelectField({
   label,
-  placeholder,
   icon,
   value,
-  onChangeText,
+  placeholder,
   error,
-  keyboardType = 'default',
-  autoCapitalize = 'sentences',
+  onPress,
 }: {
   label: string;
-  placeholder: string;
   icon: keyof typeof Ionicons.glyphMap;
   value: string;
-  onChangeText: (t: string) => void;
+  placeholder?: boolean;
   error?: string;
-  keyboardType?: 'default' | 'email-address' | 'phone-pad';
-  autoCapitalize?: 'none' | 'sentences';
+  onPress: () => void;
 }) {
   return (
     <View style={styles.fieldWrap}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <View style={[styles.inputShell, error ? styles.inputShellError : null]}>
-        <Ionicons name={icon} size={20} color="#94A3B8" style={styles.inputIcon} />
-        <TextInput
-          style={styles.textInput}
-          placeholder={placeholder}
-          placeholderTextColor="#94A3B8"
-          value={value}
-          onChangeText={onChangeText}
-          keyboardType={keyboardType}
-          autoCapitalize={autoCapitalize}
-        />
-      </View>
+      <TouchableOpacity
+        style={[styles.selectShell, error ? styles.inputShellError : null]}
+        onPress={onPress}
+        activeOpacity={0.85}
+      >
+        <View style={styles.selectIconBox}>
+          <Ionicons name={icon} size={18} color={C.muted} />
+        </View>
+        <Text style={[styles.selectText, placeholder && styles.placeholderText]} numberOfLines={1}>
+          {value}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={C.muted} />
+      </TouchableOpacity>
+      {error ? <Text style={styles.errorSmall}>{error}</Text> : null}
+    </View>
+  );
+}
+
+function UploadCard({
+  title,
+  required,
+  optional,
+  fileName,
+  hint,
+  error,
+  onPress,
+}: {
+  title: string;
+  required?: boolean;
+  optional?: boolean;
+  fileName?: string;
+  hint?: string;
+  error?: string;
+  onPress: () => void;
+}) {
+  const uploaded = Boolean(fileName);
+  return (
+    <View style={styles.uploadWrap}>
+      {hint ? <Text style={styles.uploadHint}>{hint}</Text> : null}
+      <ScalePressable onPress={onPress} style={styles.uploadCard}>
+        <View style={[styles.uploadIcon, uploaded && styles.uploadIconDone]}>
+          <Ionicons
+            name={uploaded ? 'document-attach' : 'cloud-upload-outline'}
+            size={20}
+            color={uploaded ? '#16A34A' : C.orange}
+          />
+        </View>
+        <View style={styles.uploadCopy}>
+          <View style={styles.uploadTitleRow}>
+            <Text style={styles.uploadTitle}>{title}</Text>
+            {required ? <Text style={styles.uploadBadge}>Required</Text> : null}
+            {optional ? <Text style={styles.uploadBadgeOptional}>Optional</Text> : null}
+          </View>
+          <Text style={styles.uploadSub} numberOfLines={1}>
+            {uploaded ? fileName : 'Tap to upload photo or PDF'}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={C.orange} />
+      </ScalePressable>
       {error ? <Text style={styles.errorSmall}>{error}</Text> : null}
     </View>
   );
@@ -1000,56 +1128,126 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    minHeight: 56,
+    minHeight: 52,
     paddingVertical: 6,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F1',
+    borderBottomColor: '#E8EDF3',
+    ...Platform.select({
+      web: { boxShadow: '0 1px 8px rgba(15, 23, 42, 0.06)' },
+      default: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
+        elevation: 2,
+      },
+    }),
   },
   headerBack: {
-    paddingVertical: 4,
-    marginRight: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 8,
   },
   headerCenter: {
     flex: 1,
     minWidth: 0,
-    alignItems: 'flex-start',
     justifyContent: 'center',
   },
   headerBrandTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#F54E25',
+    color: C.orange,
+    letterSpacing: -0.2,
   },
   headerWelcomeLine: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748B',
+    color: C.muted,
     marginTop: 2,
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   headerCircleBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#F54E25',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: C.orange,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#F54E25',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 4,
+    ...Platform.select({
+      web: { boxShadow: '0 4px 12px rgba(245, 78, 37, 0.35)' },
+      default: {
+        shadowColor: C.orange,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.35,
+        shadowRadius: 6,
+        elevation: 4,
+      },
+    }),
   },
   headerAvatarText: {
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontWeight: '800',
     fontSize: 12,
+  },
+  heroBand: {
+    overflow: 'hidden',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    position: 'relative',
+  },
+  heroBandWash: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: '50%',
+    backgroundColor: 'rgba(74, 40, 50, 0.4)',
+    borderTopLeftRadius: 80,
+  },
+  heroBandInner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+    zIndex: 1,
+  },
+  heroIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroCopy: { flex: 1, minWidth: 0 },
+  heroEyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: '#FF8A65',
+    marginBottom: 4,
+  },
+  heroTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: C.white,
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  heroSub: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 17,
+    fontWeight: '500',
   },
   notifModalRoot: {
     flex: 1,
@@ -1101,10 +1299,14 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   saveBanner: {
-    backgroundColor: '#ECFDF3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#ECFDF5',
     borderWidth: 1,
     borderColor: '#A7F3D0',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
     marginBottom: 14,
@@ -1113,241 +1315,319 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#166534',
-    textAlign: 'center',
   },
   card: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
+    borderColor: '#E8EDF3',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    ...Platform.select({
+      web: { boxShadow: '0 4px 16px rgba(15, 23, 42, 0.05)' },
+      default: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2,
+      },
+    }),
   },
   cardTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   cardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.navy,
+  },
+  percentPill: {
+    backgroundColor: 'rgba(245, 78, 37, 0.1)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 78, 37, 0.15)',
   },
   percentText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#F54E25',
+    fontSize: 12,
+    fontWeight: '800',
+    color: C.orange,
   },
   progressTrack: {
     height: 8,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#E8EDF3',
     borderRadius: 999,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#F54E25',
     borderRadius: 999,
   },
   cardSub: {
     marginTop: 8,
-    fontSize: 13,
-    color: '#64748B',
+    fontSize: 12,
+    color: C.muted,
+    fontWeight: '500',
   },
-  checklistHeading: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
-    marginBottom: 8,
-  },
-  checklistRow: {
+  checklistWrap: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
   },
-  checklistLabel: {
-    fontSize: 13,
-    color: '#475569',
+  checkChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    maxWidth: '100%',
   },
-  checklistStatus: {
-    fontSize: 13,
-    fontWeight: '700',
+  checkChipDone: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
   },
-  checklistPending: {
-    color: '#94A3B8',
-  },
-  checklistDone: {
-    color: '#16A34A',
-  },
-  admissionIntro: {
-    marginBottom: 14,
-  },
-  admissionIntroKicker: {
+  checkChipText: {
     fontSize: 11,
-    fontWeight: '800',
-    color: '#16A34A',
-    letterSpacing: 0.6,
-    marginBottom: 6,
-    textTransform: 'uppercase',
+    fontWeight: '600',
+    color: C.muted,
+    flexShrink: 1,
   },
-  admissionIntroTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 4,
-  },
-  admissionIntroSub: {
-    fontSize: 13,
-    color: '#64748B',
-    lineHeight: 18,
+  checkChipTextDone: {
+    color: '#166534',
   },
   requirementsCard: {
     marginBottom: 14,
     padding: 14,
     borderRadius: 14,
-    backgroundColor: '#FFFBF7',
+    backgroundColor: '#FFF7F4',
     borderWidth: 1,
     borderColor: 'rgba(245, 78, 37, 0.15)',
   },
+  requirementsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
   requirementsTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
-    color: '#1B2559',
-    marginBottom: 6,
+    color: C.navy,
   },
   requirementsBody: {
     fontSize: 12,
-    color: '#475569',
+    color: C.muted,
     lineHeight: 18,
+    fontWeight: '500',
   },
-  fileNameText: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#475569',
-    fontWeight: '600',
-  },
-  birthdayHint: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: -6,
-    marginBottom: 12,
-  },
-  formBlock: {
-    marginTop: 4,
-  },
-  addressSection: {
-    marginBottom: 8,
-    padding: 16,
-    borderRadius: 16,
+  sectionCard: {
     backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    borderColor: '#E8EDF3',
+    padding: 16,
+    marginBottom: 14,
+    ...Platform.select({
+      web: { boxShadow: '0 4px 16px rgba(15, 23, 42, 0.05)' },
+      default: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2,
+      },
+    }),
   },
-  addressKicker: {
+  sectionLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#EA580C',
-    letterSpacing: 1.1,
-    marginBottom: 4,
-  },
-  addressTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 6,
-  },
-  addressSub: {
-    fontSize: 13,
-    color: '#64748B',
-    lineHeight: 18,
+    color: C.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
     marginBottom: 12,
   },
-  addressRestored: {
-    fontSize: 12,
-    color: '#047857',
-    fontWeight: '600',
-    marginBottom: 10,
+  docsHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 14,
   },
-  fetchBanner: {
+  docsBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  docsHeaderCopy: { flex: 1 },
+  docsTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.navy,
+    marginBottom: 2,
+  },
+  docsSub: {
+    fontSize: 12,
+    color: C.muted,
+    lineHeight: 17,
+  },
+  uploadWrap: { marginBottom: 10 },
+  uploadHint: {
+    fontSize: 12,
+    color: C.muted,
+    marginBottom: 8,
+    lineHeight: 16,
+  },
+  uploadCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(245, 78, 37, 0.2)',
+    backgroundColor: '#FFF7F4',
+  },
+  uploadIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(245, 78, 37, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadIconDone: {
+    backgroundColor: '#DCFCE7',
+  },
+  uploadCopy: { flex: 1, minWidth: 0 },
+  uploadTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+    flexWrap: 'wrap',
+  },
+  uploadTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: C.navy,
+  },
+  uploadBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: C.orange,
+    backgroundColor: 'rgba(245, 78, 37, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    overflow: 'hidden',
+  },
+  uploadBadgeOptional: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.muted,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  uploadSub: {
+    fontSize: 12,
+    color: C.muted,
+    fontWeight: '500',
+  },
+  termsCard: {
+    backgroundColor: '#FAFBFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    padding: 14,
+    marginBottom: 16,
+  },
+  ctaWrap: {
+    borderRadius: 14,
+    overflow: 'hidden',
     marginBottom: 12,
+    ...Platform.select({
+      web: {},
+      default: {
+        shadowColor: C.orangeDark,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 4,
+      },
+    }),
+  },
+  cta: {
+    minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  fetchBannerText: { flex: 1, fontSize: 12, color: '#991B1B' },
-  fetchDismiss: { fontSize: 12, fontWeight: '700', color: '#F54E25' },
-  streetHint: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: -10,
-    marginBottom: 14,
-    marginLeft: 2,
+  ctaText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
   },
-  fieldWrap: {
-    marginBottom: 18,
-  },
-  fieldLabel: {
-    fontSize: isCompactScreen ? 14 : 15,
-    fontWeight: '500',
-    color: '#475569',
+  secondaryActions: {
+    flexDirection: 'row',
+    gap: 10,
     marginBottom: 8,
   },
-  inputShell: {
+  fieldWrap: {
+    marginBottom: 14,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.navy,
+    marginBottom: 8,
+  },
+  selectShell: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    minHeight: isCompactScreen ? 48 : 52,
-    paddingHorizontal: isCompactScreen ? 12 : 14,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
+    minHeight: 52,
+    paddingHorizontal: 12,
+  },
+  selectIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  selectText: {
+    flex: 1,
+    fontSize: 14,
+    color: C.navy,
+    fontWeight: '500',
+    paddingVertical: 12,
   },
   inputShellError: {
-    borderColor: '#EF4444',
+    borderColor: '#FCA5A5',
     backgroundColor: '#FEF2F2',
-  },
-  inputShellTextArea: {
-    minHeight: 120,
-    alignItems: 'flex-start',
-    paddingVertical: 12,
-  },
-  textAreaInput: {
-    flex: 1,
-    width: '100%',
-    minHeight: 96,
-    fontSize: isCompactScreen ? 15 : 16,
-    color: '#1E293B',
-    lineHeight: 22,
-    paddingVertical: 0,
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  textInput: {
-    flex: 1,
-    fontSize: isCompactScreen ? 15 : 16,
-    color: '#1E293B',
-    paddingVertical: 12,
-  },
-  dateInputText: {
-    flex: 1,
-    fontSize: isCompactScreen ? 15 : 16,
-    color: '#1E293B',
-    paddingVertical: 12,
-    textAlign: 'left',
   },
   placeholderText: {
     color: '#94A3B8',
@@ -1425,88 +1705,98 @@ const styles = StyleSheet.create({
   },
   termsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
-    marginTop: 8,
-    marginBottom: 8,
   },
   checkbox: {
     width: 20,
     height: 20,
-    borderRadius: 4,
+    borderRadius: 6,
     borderWidth: 2,
     borderColor: '#E2E8F0',
     backgroundColor: '#FFF',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 2,
   },
   checkboxOn: {
-    backgroundColor: '#F54E25',
-    borderColor: '#F54E25',
+    backgroundColor: C.orange,
+    borderColor: C.orange,
   },
   termsText: {
     flex: 1,
-    fontSize: 14,
-    color: '#64748B',
-    lineHeight: 20,
+    fontSize: 13,
+    color: C.muted,
+    lineHeight: 19,
+    fontWeight: '500',
   },
   termsLink: {
-    color: '#F54E25',
-    fontWeight: '600',
-  },
-  btnPrimary: {
-    backgroundColor: '#F54E25',
-    borderRadius: 14,
-    paddingVertical: isCompactScreen ? 14 : 16,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  btnPrimaryText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '600',
+    color: C.orange,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   btnSecondary: {
-    backgroundColor: '#FFF4F1',
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FFF7F4',
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: 'rgba(245, 78, 37, 0.2)',
     borderRadius: 14,
     paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 10,
   },
   btnSecondaryText: {
-    color: '#F54E25',
-    fontSize: 16,
+    color: C.orange,
+    fontSize: 14,
     fontWeight: '700',
   },
-  modalBackdrop: {
+  sheetModalRoot: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
+    justifyContent: 'flex-end',
+  },
+  sheetModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11, 21, 40, 0.45)',
   },
   reasonSheet: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    maxHeight: '70%',
   },
   reasonSheetTitle: {
     fontSize: 17,
-    fontWeight: '700',
-    color: '#1E293B',
+    fontWeight: '800',
+    color: C.navy,
     marginBottom: 12,
     textAlign: 'center',
   },
   reasonOption: {
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E2E8F0',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 6,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+  },
+  reasonOptionActive: {
+    backgroundColor: '#FFF7F4',
+    borderColor: 'rgba(245, 78, 37, 0.25)',
   },
   reasonOptionText: {
-    fontSize: 16,
-    color: '#334155',
+    fontSize: 15,
+    color: C.navy,
     textAlign: 'center',
+    fontWeight: '500',
+  },
+  reasonOptionTextActive: {
+    color: C.orange,
+    fontWeight: '800',
   },
   termsOverlay: {
     flex: 1,
@@ -1577,37 +1867,46 @@ const styles = StyleSheet.create({
   },
   successOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(11, 21, 40, 0.55)',
     justifyContent: 'center',
     paddingHorizontal: 28,
   },
   successCard: {
     backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 32,
+    borderRadius: 24,
+    padding: 28,
     alignItems: 'center',
+    ...Platform.select({
+      web: { boxShadow: '0 16px 48px rgba(0,0,0,0.2)' },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 24,
+        elevation: 12,
+      },
+    }),
   },
   successIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#D1FAE5',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   successTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#1E293B',
-    marginBottom: 12,
+    color: C.navy,
+    marginBottom: 8,
     textAlign: 'center',
   },
   successBody: {
-    fontSize: 16,
-    color: '#475569',
+    fontSize: 14,
+    color: C.muted,
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 28,
+    lineHeight: 20,
+    marginBottom: 20,
   },
 });

@@ -1,48 +1,74 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  SafeAreaView,
-  Image,
   ActivityIndicator,
 } from "react-native";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import { TAB_ROUTES } from "../lib/navigationConfig";
+import { TAB_ROUTES, goBackOrReplace } from "../lib/navigationConfig";
 import {
   ensureFamilyAccountOrSignOut,
   signInWithGoogleMobile,
 } from "../lib/googleAuth";
+import { LoginField } from "../components/auth/LoginField";
+import { ScalePressable } from "../components/auth/ScalePressable";
+import { RecoveryStepBar } from "../components/auth/RecoveryStepBar";
+
+const RECOVERY_EMAIL_KEY = "bh_recovery_email";
+
+const C = {
+  orange: "#F54E25",
+  orangeLight: "#FF6A3D",
+  orangeDark: "#E8441A",
+  navy: "#1A2B4A",
+  muted: "#64748B",
+  white: "#FFFFFF",
+};
+
+const HOW_IT_WORKS = [
+  "Enter the email linked to your account",
+  "Check your inbox for a 6-digit code",
+  "Enter the code and set a new password",
+];
 
 const emailLooksValid = (v: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
 
-const RECOVERY_EMAIL_KEY = "bh_recovery_email";
-
 export default function ForgetPasswordScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const appVersion = Constants.expoConfig?.version ?? "1.0.0";
+
+  const trimmedEmail = email.trim().toLowerCase();
+  const emailValid = useMemo(() => emailLooksValid(trimmedEmail), [trimmedEmail]);
+  const hasEmail = trimmedEmail.length > 0;
+  const canSend = emailValid && !sending;
 
   const handleSendVerification = async () => {
     setError(null);
-    const trimmed = email.trim().toLowerCase();
 
-    if (!trimmed) {
+    if (!trimmedEmail) {
       setError("Please enter an email address.");
       return;
     }
 
-    if (!emailLooksValid(trimmed)) {
+    if (!emailValid) {
       setError("Enter a valid email address.");
       return;
     }
@@ -57,7 +83,7 @@ export default function ForgetPasswordScreen() {
     setSending(true);
     try {
       const { error: otpErr } = await supabase.auth.signInWithOtp({
-        email: trimmed,
+        email: trimmedEmail,
         options: { shouldCreateUser: false },
       });
 
@@ -66,10 +92,10 @@ export default function ForgetPasswordScreen() {
         return;
       }
 
-      await AsyncStorage.setItem(RECOVERY_EMAIL_KEY, trimmed);
+      await AsyncStorage.setItem(RECOVERY_EMAIL_KEY, trimmedEmail);
       router.push({
         pathname: "/verification",
-        params: { email: trimmed },
+        params: { email: trimmedEmail },
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
@@ -120,262 +146,577 @@ export default function ForgetPasswordScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+    <View style={styles.root}>
+      <StatusBar style="light" />
+
+      <View style={[styles.hero, { paddingTop: insets.top + 12 }]}>
+        <LinearGradient
+          colors={["#0B1528", "#152238", "#2A1A28"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.heroBurgundyWash} />
+
         <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
+          style={[styles.backBtn, { top: insets.top + 12 }]}
+          onPress={() => goBackOrReplace(router, "/login")}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
-          <Ionicons name="arrow-back" size={25} color="#333" />
+          <Ionicons name="arrow-back" size={22} color={C.white} />
         </TouchableOpacity>
 
-        <ScrollView
-          contentContainerStyle={styles.scrollContainer}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.headerContainer}>
-            <Text style={styles.screenTitle}>Forgot Password?</Text>
+        <View style={styles.heroContent}>
+          <View style={styles.heroIconOuter}>
+            <LinearGradient
+              colors={[C.orangeLight, C.orange, C.orangeDark]}
+              style={styles.heroIconGradient}
+            >
+              <Ionicons name="lock-open-outline" size={30} color="#fff" />
+            </LinearGradient>
+            <View style={styles.heroLogoBadge}>
+              <Image
+                source={require("../assets/images/kalingalogo.png")}
+                style={styles.heroLogoMini}
+                contentFit="contain"
+                accessibilityLabel="Kalinga"
+              />
+            </View>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              Enter your email address and we’ll send you a 6-digit verification
-              code.
-            </Text>
+          <Text style={styles.heroEyebrow}>ACCOUNT RECOVERY</Text>
+          <Text style={styles.heroTitle}>Reset your password</Text>
+          <Text style={styles.heroSubtitle}>
+            We&apos;ll help you get back into your account securely
+          </Text>
+        </View>
+      </View>
 
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="mail-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your email address"
-                placeholderTextColor="#B0B0B0"
-                value={email}
-                onChangeText={(t) => {
-                  setEmail(t);
-                  if (error) setError(null);
-                }}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                editable={!sending}
-              />
+      <KeyboardAvoidingView
+        style={styles.sheetWrap}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={0}
+      >
+        <View style={styles.sheet}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.sheetScroll,
+              { paddingBottom: insets.bottom + 24 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <RecoveryStepBar activeIndex={0} />
+
+            <View style={styles.formHeader}>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>STEP 1 OF 3</Text>
+              </View>
+              <Text style={styles.formTitle} accessibilityRole="header">
+                Enter your email
+              </Text>
+              <Text style={styles.formSubtitle}>
+                We&apos;ll send a 6-digit verification code to confirm it&apos;s you.
+              </Text>
             </View>
 
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            <View style={styles.howItWorks}>
+              <View style={styles.howItWorksHeader}>
+                <Ionicons name="information-circle-outline" size={18} color={C.orange} />
+                <Text style={styles.howItWorksTitle}>How it works</Text>
+              </View>
+              {HOW_IT_WORKS.map((line, i) => (
+                <View key={line} style={styles.howRow}>
+                  <View style={styles.howNum}>
+                    <Text style={styles.howNumText}>{i + 1}</Text>
+                  </View>
+                  <Text style={styles.howText}>{line}</Text>
+                </View>
+              ))}
+            </View>
+
+            {error ? (
+              <View style={[styles.banner, styles.bannerError]} accessibilityLiveRegion="polite">
+                <Ionicons name="alert-circle" size={18} color="#DC2626" />
+                <Text style={[styles.bannerText, styles.bannerErrorText]}>{error}</Text>
+                <TouchableOpacity onPress={() => setError(null)} hitSlop={8}>
+                  <Ionicons name="close" size={18} color="#DC2626" />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            <LoginField
+              label="Email address"
+              icon="mail-outline"
+              placeholder="you@email.com"
+              value={email}
+              error={!!error}
+              showClear
+              onClear={() => {
+                setEmail("");
+                setError(null);
+              }}
+              onChangeText={(t) => {
+                setEmail(t);
+                if (error) setError(null);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              autoComplete="email"
+              textContentType="emailAddress"
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                if (canSend) void handleSendVerification();
+              }}
+              editable={!sending}
+              accessibilityLabel="Email address"
+              rightElement={
+                emailValid ? (
+                  <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+                ) : null
+              }
+            />
+
+            {hasEmail && !emailValid ? (
+              <Text style={styles.fieldHint}>Enter a valid email address to continue.</Text>
+            ) : null}
+
+            <View style={styles.tipCard}>
+              <Ionicons name="mail-unread-outline" size={18} color="#1D4ED8" />
+              <Text style={styles.tipText}>
+                Check your spam folder if the code doesn&apos;t arrive within a few minutes.
+              </Text>
+            </View>
+
+            <ScalePressable
+              onPress={handleSendVerification}
+              disabled={!canSend}
+              style={[styles.ctaWrap, !canSend && styles.ctaDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Send verification code"
+            >
+              <LinearGradient
+                colors={
+                  canSend
+                    ? [C.orangeLight, C.orange, C.orangeDark]
+                    : ["#CBD5E1", "#94A3B8"]
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.cta}
+              >
+                {sending ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <View style={styles.ctaInner}>
+                    <Ionicons name="paper-plane-outline" size={18} color="#fff" />
+                    <Text style={styles.ctaText}>Send verification code</Text>
+                  </View>
+                )}
+              </LinearGradient>
+            </ScalePressable>
 
             <TouchableOpacity
-              style={styles.backToLoginButton}
               onPress={handleBackToLogin}
               disabled={sending}
+              style={styles.backToLogin}
+              accessibilityRole="link"
             >
-              <Text style={styles.backToLoginText}>Back to Log In</Text>
+              <Ionicons name="arrow-back" size={14} color={C.orange} />
+              <Text style={styles.backToLoginText}>Back to sign in</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.sendButton, sending && styles.sendButtonDisabled]}
-              onPress={handleSendVerification}
-              disabled={sending}
-            >
-              {sending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.sendButtonText}>Send Verification</Text>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.dividerRow}>
-              <View style={styles.line} />
-              <Text style={styles.orText}>or</Text>
-              <View style={styles.line} />
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or sign in with</Text>
+              <View style={styles.dividerLine} />
             </View>
 
-            <TouchableOpacity
-              style={styles.googleButton}
-              disabled={sending}
+            <ScalePressable
               onPress={handleGoogle}
+              disabled={sending}
+              style={[styles.googleBtn, sending && styles.googleDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Continue with Google"
             >
               <Image
                 source={require("../assets/images/google-logo.png")}
                 style={styles.googleIcon}
               />
               <Text style={styles.googleText}>Continue with Google</Text>
-            </TouchableOpacity>
-          </View>
+            </ScalePressable>
 
-          <View style={styles.signupContainer}>
-            <Text style={styles.signupText}>{"Don't have an account? "}</Text>
-            <TouchableOpacity onPress={handleGoToSignup} disabled={sending}>
-              <Text style={styles.signupLink}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
+            <ScalePressable onPress={handleGoToSignup} style={styles.signupPrompt}>
+              <LinearGradient
+                colors={["#FFF7F4", "#FFFFFF"]}
+                style={styles.signupPromptGradient}
+              >
+                <View style={styles.signupPromptIcon}>
+                  <Ionicons name="person-add-outline" size={20} color={C.orange} />
+                </View>
+                <View style={styles.signupPromptCopy}>
+                  <Text style={styles.signupPromptLabel}>Don&apos;t have an account?</Text>
+                  <Text style={styles.signupPromptAction}>Create your free account</Text>
+                </View>
+                <View style={styles.signupPromptArrow}>
+                  <Ionicons name="chevron-forward" size={18} color={C.orange} />
+                </View>
+              </LinearGradient>
+            </ScalePressable>
+
+            <View style={styles.footerMeta}>
+              <Ionicons name="shield-checkmark-outline" size={13} color={C.muted} />
+              <Text style={styles.footerMetaText}>Encrypted & secure</Text>
+              <Text style={styles.footerDot}>·</Text>
+              <Text style={styles.footerMetaText}>Bridges of Hope</Text>
+              <Text style={styles.footerDot}>·</Text>
+              <Text style={styles.footerMetaText}>v{appVersion}</Text>
+            </View>
+          </ScrollView>
+        </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#152238",
+    ...Platform.select({ web: { alignItems: "center" }, default: {} }),
   },
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    paddingHorizontal: 32,
-    paddingTop: 24,
+  hero: {
+    paddingHorizontal: 24,
     paddingBottom: 32,
-    justifyContent: "flex-start",
+    minHeight: 188,
+    overflow: "hidden",
+    width: "100%",
+    maxWidth: Platform.select({ web: 520, default: undefined }),
   },
-  backButton: {
+  heroBurgundyWash: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: "58%",
+    backgroundColor: "rgba(74, 40, 50, 0.45)",
+    borderTopLeftRadius: 120,
+    borderBottomLeftRadius: 40,
+  },
+  backBtn: {
     position: "absolute",
     left: 16,
-    top: 16,
-    padding: 6,
-    zIndex: 20,
-  },
-  headerContainer: {
-    alignItems: "center",
-    marginTop: 4,
-    marginBottom: 40,
-  },
-  screenTitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#444",
-  },
-  card: {
-    width: "100%",
-    alignItems: "stretch",
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#444",
-    marginBottom: 24,
-    textAlign: "center",
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 16,
-    borderWidth: 1.2,
-    borderColor: "#D3D3D3",
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 16,
-    height: 54,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
-    fontSize: 14,
-    color: "#000",
-  },
-  errorText: {
-    fontSize: 13,
-    color: "#E53935",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  backToLoginButton: {
-    alignSelf: "center",
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  backToLoginText: {
-    fontSize: 13,
-    color: "#666",
-  },
-  sendButton: {
-    backgroundColor: "#F54E25",
-    height: 54,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    marginBottom: 16,
-    shadowColor: "#F54E25",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  sendButtonDisabled: {
-    opacity: 0.85,
-  },
-  sendButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-    marginBottom: 24,
-  },
-  line: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#000",
-  },
-  orText: {
-    marginHorizontal: 15,
-    color: "#AAA",
-    fontSize: 14,
-  },
-  googleButton: {
-    flexDirection: "row",
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
-    borderColor: "#E8E8E8",
-    height: 54,
-    borderRadius: 28,
+    borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
-    paddingHorizontal: 12,
   },
-  googleIcon: {
-    width: 20,
-    height: 20,
-    marginRight: 10,
+  heroContent: { alignItems: "center", zIndex: 1, paddingTop: 40 },
+  heroIconOuter: {
+    marginBottom: 12,
+    position: "relative",
   },
-  googleText: {
-    fontWeight: "600",
-    color: "#444",
-    fontSize: 14,
-  },
-  signupContainer: {
-    flexDirection: "row",
+  heroIconGradient: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
     justifyContent: "center",
-    marginTop: 28,
+    ...Platform.select({
+      web: { boxShadow: "0 8px 24px rgba(245, 78, 37, 0.45)" },
+      default: {
+        shadowColor: C.orange,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+        elevation: 8,
+      },
+    }),
   },
-  signupText: {
+  heroLogoBadge: {
+    position: "absolute",
+    bottom: -4,
+    right: -10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  heroLogoMini: { width: 22, height: 22 },
+  heroEyebrow: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    color: "#FF8A65",
+    marginBottom: 4,
+  },
+  heroTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: C.white,
+    letterSpacing: -0.4,
+    marginBottom: 4,
+  },
+  heroSubtitle: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "500",
+    textAlign: "center",
+    paddingHorizontal: 16,
+    lineHeight: 18,
+  },
+  sheetWrap: {
+    flex: 1,
+    marginTop: -20,
+    width: "100%",
+    maxWidth: Platform.select({ web: 520, default: undefined }),
+  },
+  sheet: {
+    flex: 1,
+    backgroundColor: C.white,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    ...Platform.select({
+      web: { boxShadow: "0 -8px 32px rgba(0,0,0,0.12)" },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 16,
+        elevation: 12,
+      },
+    }),
+  },
+  sheetScroll: { paddingHorizontal: 24, paddingTop: 20 },
+  formHeader: { marginBottom: 16 },
+  stepBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(245, 78, 37, 0.1)",
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "rgba(245, 78, 37, 0.15)",
+  },
+  stepBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: C.orange,
+    letterSpacing: 0.8,
+  },
+  formTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: C.navy,
+    letterSpacing: -0.4,
+    marginBottom: 4,
+  },
+  formSubtitle: {
     fontSize: 14,
-    color: "#777",
+    color: C.muted,
+    lineHeight: 20,
   },
-  signupLink: {
-    color: "#F54E25",
-    fontWeight: "bold",
+  howItWorks: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E8EDF3",
+    padding: 14,
+    marginBottom: 18,
+  },
+  howItWorksHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  howItWorksTitle: {
     fontSize: 14,
+    fontWeight: "700",
+    color: C.navy,
   },
+  howRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 8,
+  },
+  howNum: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(245, 78, 37, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  howNumText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: C.orange,
+  },
+  howText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: C.muted,
+    fontWeight: "500",
+  },
+  banner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  bannerError: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
+  bannerText: { flex: 1, fontSize: 13, fontWeight: "600", lineHeight: 18 },
+  bannerErrorText: { color: "#DC2626" },
+  fieldHint: {
+    fontSize: 12,
+    color: "#DC2626",
+    marginTop: -10,
+    marginBottom: 12,
+    fontWeight: "600",
+  },
+  tipCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 18,
+    marginTop: -4,
+  },
+  tipText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#1D4ED8",
+    fontWeight: "500",
+  },
+  ctaWrap: {
+    borderRadius: 14,
+    overflow: "hidden",
+    marginBottom: 14,
+    ...Platform.select({
+      web: {},
+      default: {
+        shadowColor: C.orangeDark,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 4,
+      },
+    }),
+  },
+  ctaDisabled: { opacity: 0.85 },
+  cta: { minHeight: 54, alignItems: "center", justifyContent: "center" },
+  ctaInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+  ctaText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  backToLogin: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginBottom: 18,
+  },
+  backToLoginText: { fontSize: 14, fontWeight: "700", color: C.orange },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 18,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: "#E8EDF3" },
+  dividerText: { fontSize: 12, color: "#94A3B8", fontWeight: "500" },
+  googleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    backgroundColor: C.white,
+    marginBottom: 20,
+  },
+  googleDisabled: { opacity: 0.65 },
+  googleIcon: { width: 20, height: 20 },
+  googleText: { fontSize: 15, fontWeight: "700", color: C.navy },
+  signupPrompt: {
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(245, 78, 37, 0.2)",
+  },
+  signupPromptGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  signupPromptIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(245, 78, 37, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signupPromptCopy: { flex: 1, minWidth: 0 },
+  signupPromptLabel: {
+    fontSize: 12,
+    color: C.muted,
+    fontWeight: "500",
+    marginBottom: 2,
+  },
+  signupPromptAction: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: C.navy,
+    letterSpacing: -0.2,
+  },
+  signupPromptArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: C.white,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(245, 78, 37, 0.15)",
+  },
+  footerMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: 4,
+    paddingBottom: 4,
+  },
+  footerMetaText: { fontSize: 11, color: C.muted, fontWeight: "500" },
+  footerDot: { fontSize: 11, color: "#CBD5E1" },
 });

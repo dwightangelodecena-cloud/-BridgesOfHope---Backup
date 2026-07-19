@@ -5,6 +5,7 @@ const LEGACY_V1_KEY = "bh_family_notifications_v1";
 /** Shared pool from older web/mobile builds; migrated once into the active user’s v3 key. */
 const GLOBAL_V2_KEY = "bh_family_notifications_v2";
 const PER_USER_PREFIX = "bh_family_notifications_v3:";
+const LAST_READ_PREFIX = "bh_family_notifications_last_read_v1:";
 
 export const FAMILY_NOTIFICATIONS_CHANGED = "bh_family_notifications_changed";
 
@@ -30,6 +31,62 @@ export function notificationStorageKeyForUser(userId: string | null | undefined)
   const id = String(userId || "").trim();
   if (!id) return null;
   return `${PER_USER_PREFIX}${id}`;
+}
+
+export function notificationLastReadKeyForUser(userId: string | null | undefined): string | null {
+  const id = String(userId || "").trim();
+  if (!id) return null;
+  return `${LAST_READ_PREFIX}${id}`;
+}
+
+export async function loadFamilyNotificationsLastReadMobileAsync(userId: string | null): Promise<number> {
+  const key = notificationLastReadKeyForUser(userId);
+  if (!key) return 0;
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function saveFamilyNotificationsLastReadMobileAsync(
+  userId: string | null,
+  timestamp: number = Date.now()
+): Promise<number> {
+  const key = notificationLastReadKeyForUser(userId);
+  if (!key) return 0;
+  const ts = Number.isFinite(Number(timestamp)) ? Number(timestamp) : Date.now();
+  try {
+    await AsyncStorage.setItem(key, String(ts));
+    emitChanged();
+  } catch {
+    /* ignore */
+  }
+  return ts;
+}
+
+export function countUnreadFamilyNotificationsMobile(
+  items: FamilyNotificationRow[],
+  lastReadAt = 0
+): number {
+  const last = Number(lastReadAt) || 0;
+  return items.filter((item) => {
+    const createdAt = Number(item?.createdAt) || 0;
+    return createdAt > last;
+  }).length;
+}
+
+export async function markFamilyNotificationsReadMobileAsync(
+  items: FamilyNotificationRow[],
+  userId: string | null
+): Promise<number> {
+  const list = Array.isArray(items) ? items : [];
+  const ts = list.length
+    ? Math.max(...list.map((item) => Number(item?.createdAt) || 0), Date.now())
+    : Date.now();
+  return saveFamilyNotificationsLastReadMobileAsync(userId, ts);
 }
 
 function normalizeRow(raw: unknown, index: number): FamilyNotificationRow | null {
@@ -153,6 +210,7 @@ export async function clearAllFamilyNotificationsMobileAsync(userId: string | nu
     const existing = await AsyncStorage.getItem(key);
     if (existing !== empty) {
       await AsyncStorage.setItem(key, empty);
+      await saveFamilyNotificationsLastReadMobileAsync(userId, Date.now());
       emitChanged();
     }
   } catch {

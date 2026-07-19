@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router/react-navigation';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
@@ -263,7 +263,7 @@ export default function ViewDetailsPage() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerBrandTitle}>Weekly Reports</Text>
           <Text style={styles.headerWelcomeLine} numberOfLines={1}>
-            Welcome Back, {(displayName || 'Family User').trim().split(/\s+/)[0]}
+            View report history and care updates
           </Text>
         </View>
         <View style={styles.headerActions}>

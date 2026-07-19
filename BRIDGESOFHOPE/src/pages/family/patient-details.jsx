@@ -5,7 +5,8 @@ import {
   ArrowRight, ChevronRight, Shield
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logo from '@/assets/kalingalogo.png';
+import FamilySidebar from '@/components/family/FamilySidebar';
+import FamilyMobileBottomNav from '@/components/family/FamilyMobileBottomNav';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { uiPatientFromRow } from '@/lib/dbMappers';
 import { computeAdmissionDisplayId } from '@/lib/admissionDischargeStore';
@@ -28,6 +29,8 @@ import {
 } from '@/components/TemporaryDischargeNotice';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
 import FamilyPageHeader from '@/components/family/FamilyPageHeader';
+import { FAMILY_PAGE_HEADERS } from '@/lib/familyPageHeaders';
+import { useFamilyPageScroll } from '@/hooks/useFamilyPageScroll';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 import {
   canonicalPatientId,
@@ -54,47 +57,48 @@ const calculateAge = (dob) => {
 };
 
 /* ─── design-only components ─── */
-function ProgressRing({ pct = 0, size = 56, stroke = 5, color = '#F54E25' }) {
+function ProgressRing({ pct = 0, size = 68, stroke = 6, color = '#F54E25', className = '' }) {
+  const safePct = Math.min(100, Math.max(0, Number(pct) || 0));
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
-  const filled = (Math.min(100, Math.max(0, pct)) / 100) * circ;
+  const filled = (safePct / 100) * circ;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block', flexShrink: 0 }}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#F1F5F9" strokeWidth={stroke} />
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-        strokeDasharray={`${filled} ${circ-filled}`} strokeLinecap="round"
-        transform={`rotate(-90 ${size/2} ${size/2})`} />
-      <text x={size/2} y={size/2+1} textAnchor="middle" fontSize="11" fontWeight="900" fill="#0F172A" dominantBaseline="middle">{pct}%</text>
+    <div
+      className={`rd-progress-ring${className ? ` ${className}` : ''}`}
+      style={{ width: size, height: size }}
+      aria-label={`${safePct}% recovery`}
+    >
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rd-progress-ring__svg" aria-hidden>
+        <circle className="rd-progress-ring__track" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} />
+        <circle
+          className="rd-progress-ring__fill"
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeDasharray={`${filled} ${circ - filled}`}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
     </svg>
+      <span className="rd-progress-ring__value">{safePct}%</span>
+    </div>
   );
 }
 
 function StatusPill({ progress, dischargedAt, onTemporaryLeave }) {
   if (onTemporaryLeave) {
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>
-        Temporarily discharged
-      </span>
-    );
+    return <span className="rd-status-pill rd-status-pill--temp">Temporarily discharged</span>;
   }
   if (dischargedAt) {
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: '#E2E8F0', color: '#475569', border: '1px solid #CBD5E1' }}>
-        Discharged
-      </span>
-    );
+    return <span className="rd-status-pill rd-status-pill--discharged">Discharged</span>;
   }
   const p = Number(progress) || 0;
-  const cfg = p >= 70
-    ? { label: 'Stable', bg: '#DCFCE7', color: '#166534' }
-    : p >= 40
-    ? { label: 'Recovering', bg: '#FEF3C7', color: '#92400E' }
-    : { label: 'Needs Attention', bg: '#FEE2E2', color: '#991B1B' };
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: cfg.bg, color: cfg.color }}>
-      {cfg.label}
-    </span>
-  );
+  if (p >= 70) return <span className="rd-status-pill rd-status-pill--stable">Stable</span>;
+  if (p >= 40) return <span className="rd-status-pill rd-status-pill--recovering">Recovering</span>;
+  return <span className="rd-status-pill rd-status-pill--attention">Needs Attention</span>;
 }
 
 function VitalRow({ label, value }) {
@@ -115,9 +119,9 @@ function DataRow({ label, value }) {
   );
 }
 
-function SectionCard({ children, style = {}, onTemporaryLeave = false, temporaryPatient = null, temporaryLeaveRequestFields = null }) {
+function SectionCard({ children, style = {}, className = '', onTemporaryLeave = false, temporaryPatient = null, temporaryLeaveRequestFields = null }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #E9EDF7', borderRadius: 20, padding: '18px 20px', boxShadow: '0 4px 20px rgba(15,23,42,0.05)', overflow: 'hidden', ...style }}>
+    <div className={`rd-section-card${className ? ` ${className}` : ''}`} style={style}>
       {onTemporaryLeave ? (
         <TemporaryDischargeCardBanner
           patient={temporaryPatient}
@@ -130,13 +134,13 @@ function SectionCard({ children, style = {}, onTemporaryLeave = false, temporary
   );
 }
 
-function CardTitle({ icon: Icon, children, color = '#F54E25' }) {
+function CardTitle({ icon: Icon, children, color = '#F54E25', className = '' }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-      <div style={{ width: 28, height: 28, borderRadius: 8, background: '#FFF1EB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+    <div className={`rd-card-title${className ? ` ${className}` : ''}`}>
+      <div className="rd-card-title__icon">
         <Icon size={14} color={color} />
       </div>
-      <span style={{ fontSize: 13, fontWeight: 900, color: '#0F172A', letterSpacing: '-0.01em' }}>{children}</span>
+      <span className="rd-card-title__text">{children}</span>
     </div>
   );
 }
@@ -146,6 +150,7 @@ function CardTitle({ icon: Icon, children, color = '#F54E25' }) {
 ══════════════════════════════════════════ */
 const PatientDetailsPage = () => {
   const navigate = useNavigate();
+  const { scrollToTop } = useFamilyPageScroll();
   const [isExpanded, setIsExpanded] = useState(false);
   const [patients, setPatients] = useState([]);
   const [patientDetailsById, setPatientDetailsById] = useState({});
@@ -555,92 +560,466 @@ const PatientDetailsPage = () => {
 
   /* ── RENDER ── */
   return (
-    <div style={{ display: 'flex', width: '100vw', height: '100vh', background: '#F0F4FF', fontFamily: "'DM Sans',-apple-system,sans-serif", overflow: 'hidden' }}>
+    <div className="family-portal app-container rd-page">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
         *, *::before, *::after { box-sizing: border-box; }
         button { font-family: inherit; }
 
-        /* SIDEBAR (structure 100% unchanged) */
-        .desktop-sidebar {
-          width: ${isExpanded ? '280px' : '110px'};
-          background: #fff; border-right: 1px solid #F1F1F1;
-          display: flex; flex-direction: column; align-items: center;
-          padding: 25px 0 170px; z-index: 100;
-          transition: width 0.3s cubic-bezier(0.4,0,0.2,1); cursor: pointer; position: relative;
+        .rd-page.app-container {
+          display: flex;
+          width: 100%;
+          max-width: 100vw;
+          min-height: 100vh;
+          min-height: 100dvh;
+          height: 100vh;
+          height: 100dvh;
+          background: #F8FAFF;
+          font-family: 'DM Sans', -apple-system, sans-serif;
+          overflow: hidden;
         }
-        .sidebar-logo-container { display: flex; justify-content: center; width: 100%; margin-bottom: 40px; }
-        .sidebar-logo { width: ${isExpanded ? '120px' : '70px'}; transition: width .3s; }
-        .sidebar-nav-item { display: flex; align-items: center; width: 100%; padding: 0 ${isExpanded ? '35px' : '0'}; justify-content: ${isExpanded ? 'flex-start' : 'center'}; gap: 20px; margin-bottom: 25px; min-height: 52px; box-sizing: border-box; border: 2px solid transparent; border-radius: 12px; }
-        .sidebar-nav-item.sidebar-nav-active { border-color: #F54E25; }
-        .sidebar-icon-wrap { padding: 12px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 700; font-size: 18px; color: #707EAE; max-width: 140px; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
-        .sidebar-primary { width: 100%; }
-        .sidebar-footer { position: absolute; left: 0; right: 0; bottom: 20px; width: 100%; }
-        .sidebar-footer .sidebar-nav-item { margin-bottom: 0; }
-        .sidebar-footer .sidebar-nav-item + .sidebar-nav-item { margin-top: 14px; }
 
-        /* SCROLL */
-        .scroll-content::-webkit-scrollbar { width: 4px; }
-        .scroll-content::-webkit-scrollbar-track { background: transparent; }
-        .scroll-content::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 999px; }
+        .rd-page .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 
-        /* PATIENT CARD HOVER */
-        .patient-row-card { transition: transform .15s, box-shadow .15s, border-color .15s; }
-        .patient-row-card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(15,23,42,0.1) !important; border-color: #FECDD3 !important; }
+        /* ── Scroll & layout ── */
+        .rd-page .scroll-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: clamp(16px, 2.5vw, 28px) clamp(16px, 2.8vw, 32px) clamp(28px, 4vw, 44px);
+          background: #F8FAFF;
+        }
+        .rd-page .scroll-content::-webkit-scrollbar { width: 5px; }
+        .rd-page .scroll-content::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.4); border-radius: 999px; }
+        .rd-content-wrap { width: 100%; max-width: min(1560px, 100%); margin: 0 auto; display: grid; gap: clamp(16px, 2.2vw, 24px); }
+        .rd-content-wrap > * { animation: rdFadeIn 0.28s cubic-bezier(0.4, 0, 0.2, 1) both; }
+        .rd-content-wrap > *:nth-child(2) { animation-delay: 0.04s; }
+        .rd-content-wrap > *:nth-child(3) { animation-delay: 0.08s; }
+        .rd-content-wrap > *:nth-child(4) { animation-delay: 0.12s; }
+        .rd-content-wrap > *:nth-child(n+5) { animation-delay: 0.16s; }
+        @keyframes rdFadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
 
-        /* DETAIL TABLE */
-        .dt th { text-align: left; color: #94A3B8; font-weight: 700; padding: 8px 14px; background: #F8FAFF; border-bottom: 1px solid #F1F5F9; font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
-        .dt td { padding: 10px 14px; color: #0F172A; border-bottom: 1px solid #F8FAFC; font-weight: 600; font-size: 12px; }
-        .dt tr:last-child td { border-bottom: none; }
-        .dt tbody tr:hover td { background: #FAFBFF; }
+        /* ── Hero ── */
+        .rd-hero-banner {
+          background: linear-gradient(128deg, #0f172a 0%, #1a2744 38%, #243056 62%, #3b2f7a 100%);
+          border-radius: clamp(18px, 2.2vw, 24px);
+          padding: clamp(24px, 3.5vw, 36px) clamp(22px, 3.2vw, 32px);
+          box-shadow: 0 20px 56px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+          position: relative; overflow: hidden;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .rd-hero-banner::before {
+          content: '';
+          position: absolute; inset: 0;
+          background:
+            radial-gradient(ellipse 60% 90% at 0% 0%, rgba(245, 78, 37, 0.22) 0%, transparent 58%),
+            radial-gradient(ellipse 45% 65% at 100% 100%, rgba(99, 102, 241, 0.2) 0%, transparent 52%),
+            radial-gradient(ellipse 30% 40% at 72% 18%, rgba(255, 255, 255, 0.06) 0%, transparent 70%);
+          pointer-events: none;
+        }
+        .rd-hero-deco-1 { position: absolute; top: -55px; right: -35px; width: 220px; height: 220px; border-radius: 50%; background: rgba(255,255,255,0.05); filter: blur(1px); }
+        .rd-hero-deco-2 { position: absolute; bottom: -35px; right: 90px; width: 140px; height: 140px; border-radius: 50%; background: rgba(255,255,255,0.06); }
+        .rd-hero-deco-3 { position: absolute; top: 20px; right: 200px; width: 80px; height: 80px; border-radius: 50%; background: rgba(245,78,37,0.18); box-shadow: 0 0 48px rgba(245, 78, 37, 0.28); }
+        .rd-hero-inner { position: relative; z-index: 1; max-width: 640px; }
+        .rd-hero-kicker { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .rd-hero-kicker-icon {
+          width: 40px; height: 40px; border-radius: 13px;
+          background: rgba(255,255,255,0.14); backdrop-filter: blur(10px);
+          display: flex; align-items: center; justify-content: center;
+          border: 1px solid rgba(255,255,255,0.12);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+        .rd-hero-eyebrow {
+          font-size: clamp(0.625rem, 0.5vw + 0.5rem, 0.6875rem);
+          color: rgba(255,255,255,0.6); font-weight: 600; letter-spacing: 0.11em; text-transform: uppercase;
+        }
+        .rd-hero-title {
+          margin: 0; color: #fff;
+          font-size: clamp(1.625rem, 2.8vw + 0.75rem, 2.125rem);
+          font-weight: 900; letter-spacing: -0.03em; line-height: 1.1;
+        }
+        .rd-hero-sub {
+          margin: 10px 0 0; color: rgba(255,255,255,0.62);
+          font-size: clamp(0.8125rem, 0.5vw + 0.7rem, 0.9375rem); line-height: 1.55; max-width: 520px;
+        }
 
+        /* ── Section cards ── */
+        .rd-section-card {
+          background: rgba(255, 255, 255, 0.96);
+          border: 1px solid #e9edf7;
+          border-radius: 20px;
+          padding: clamp(18px, 2.4vw, 24px) clamp(20px, 2.6vw, 26px);
+          box-shadow: 0 8px 28px rgba(15, 23, 42, 0.05);
+          overflow: hidden;
+          transition: box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+        .rd-section-card--flush { padding: 0; }
+        .rd-card-title {
+          display: flex; align-items: center; gap: 10px;
+          margin-bottom: clamp(14px, 2vw, 18px);
+        }
+        .rd-card-title__icon {
+          width: 34px; height: 34px; border-radius: 11px;
+          background: linear-gradient(145deg, #fff5f0, #fff1eb);
+          border: 1px solid #ffdfd3;
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+          box-shadow: 0 4px 12px rgba(245, 78, 37, 0.1);
+        }
+        .rd-card-title__text {
+          font-size: clamp(0.875rem, 0.5vw + 0.75rem, 0.9375rem);
+          font-weight: 800; color: #0f172a; letter-spacing: -0.02em;
+        }
+        .rd-card-title--inline { margin-bottom: 0; }
+
+        /* ── Status pills ── */
+        .rd-status-pill {
+          display: inline-flex; align-items: center;
+          padding: 5px 11px; border-radius: 999px;
+          font-size: 10px; font-weight: 800; letter-spacing: 0.02em;
+          line-height: 1.2; white-space: nowrap;
+          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+          border: 1px solid transparent;
+        }
+        .rd-status-pill--stable { background: #ecfdf5; color: #166534; border-color: #bbf7d0; }
+        .rd-status-pill--recovering { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+        .rd-status-pill--attention { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+        .rd-status-pill--temp { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+        .rd-status-pill--discharged { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+
+        /* ── Progress ring ── */
+        .rd-progress-ring {
+          position: relative; flex-shrink: 0;
+          filter: drop-shadow(0 4px 12px rgba(15, 23, 42, 0.08));
+        }
+        .rd-progress-ring__svg { display: block; }
+        .rd-progress-ring__track { stroke: #f1f5f9; }
+        .rd-progress-ring__fill {
+          transition: stroke-dasharray 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .rd-progress-ring__value {
+          position: absolute; inset: 0;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 12px; font-weight: 900; color: #0f172a; letter-spacing: -0.02em;
+        }
+
+        /* ── Weekly report strip ── */
+        .rd-report-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+          gap: clamp(12px, 1.8vw, 16px);
+          align-content: start;
+          min-height: 168px;
+        }
+        .rd-report-card {
+          background: linear-gradient(180deg, #fff 0%, #fafbff 100%);
+          border: 1px solid #e9edf7;
+          border-radius: 18px;
+          padding: clamp(16px, 2vw, 20px);
+          cursor: pointer;
+          transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+          min-height: 168px;
+          display: flex; flex-direction: column;
+          box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+        }
+        .rd-report-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+          border-color: #d0dbf5;
+        }
+        .rd-report-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
+        .rd-report-week {
+          font-size: 10px; font-weight: 800; color: #7c3aed;
+          text-transform: uppercase; letter-spacing: 0.08em;
+          background: #f5f3ff; border: 1px solid #ede9fe;
+          padding: 4px 10px; border-radius: 999px;
+        }
+        .rd-report-status {
+          display: inline-flex; align-items: center; gap: 4px;
+          font-size: 10px; font-weight: 700; color: #059669;
+          background: #ecfdf5; border: 1px solid #bbf7d0;
+          padding: 4px 8px; border-radius: 999px;
+        }
+        .rd-report-id {
+          font-size: clamp(0.875rem, 0.5vw + 0.75rem, 0.9375rem);
+          font-weight: 800; color: #0f172a; margin-bottom: 6px; letter-spacing: -0.01em;
+        }
+        .rd-report-meta { font-size: 12px; color: #64748b; margin-bottom: 4px; line-height: 1.45; }
+        .rd-report-meta--muted { color: #94a3b8; font-size: 11px; }
+        .rd-report-cta {
+          margin-top: auto; padding-top: 14px;
+        }
+        .rd-report-cta-btn {
+          display: inline-flex; align-items: center; gap: 6px;
+          font-size: 12px; font-weight: 700; color: #4338ca;
+          background: #eef2ff; border: 1px solid #e0e7ff;
+          padding: 8px 12px; border-radius: 10px;
+          transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+        }
+        .rd-report-card:hover .rd-report-cta-btn {
+          background: #e0e7ff; color: #3730a3; transform: translateX(2px);
+        }
+
+        /* ── Directory table ── */
+        .rd-table-head {
+          padding: clamp(14px, 1.8vw, 18px) clamp(18px, 2.2vw, 22px);
+          border-bottom: 1px solid #f1f5f9;
+          display: flex; align-items: center; justify-content: space-between; gap: 12px;
+          background: linear-gradient(180deg, #fafbff 0%, #fff 100%);
+        }
+        .rd-table-count {
+          font-size: 11px; color: #64748b; font-weight: 700;
+          background: #f8fafc; border: 1px solid #e9edf7;
+          padding: 5px 12px; border-radius: 999px;
+        }
+        .rd-table-scroll {
+          overflow-x: auto;
+          border-radius: 0 0 20px 20px;
+        }
+        .rd-table-scroll--tall {
+          max-height: min(420px, 55vh);
+          overflow-y: auto;
+        }
+        .rd-table-scroll--tall thead th {
+          position: sticky; top: 0; z-index: 2;
+          box-shadow: 0 1px 0 #f1f5f9;
+        }
+        .rd-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+        .rd-table th {
+          text-align: left; color: #64748b; font-weight: 700;
+          padding: 12px 16px; background: #f8faff;
+          border-bottom: 1px solid #e9edf7;
+          font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+          white-space: nowrap;
+        }
+        .rd-table td {
+          padding: 13px 16px; color: #0f172a;
+          border-bottom: 1px solid #f1f5f9; font-weight: 600; font-size: 12px;
+          line-height: 1.4; vertical-align: middle;
+        }
+        .rd-table tbody tr:nth-child(even) td { background: #fcfdff; }
+        .rd-table tbody tr { cursor: pointer; transition: background 0.18s ease, transform 0.18s ease; }
+        .rd-table tbody tr:hover td { background: #f0f4ff !important; }
+        .rd-table tbody tr:last-child td { border-bottom: none; }
+        .rd-resident-cell { display: flex; align-items: center; gap: 12px; min-width: 150px; }
+        .rd-resident-avatar {
+          width: 36px; height: 36px; border-radius: 11px;
+          background: linear-gradient(135deg, #eef2ff, #c7d2fe);
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+          box-shadow: 0 4px 10px rgba(67, 56, 202, 0.12);
+          border: 1px solid #e0e7ff;
+        }
+        .rd-resident-avatar span { font-size: 11px; font-weight: 900; color: #4338ca; }
+        .rd-resident-name { font-weight: 800; color: #0f172a; letter-spacing: -0.01em; }
+        .rd-progress-cell { display: flex; align-items: center; gap: 10px; min-width: 120px; }
+        .rd-progress-track {
+          flex: 1; height: 6px; background: #f1f5f9; border-radius: 999px;
+          overflow: hidden; border: 1px solid #e9edf7;
+        }
+        .rd-progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #f54e25, #ea580c);
+          border-radius: 999px;
+          transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .rd-progress-pct { font-weight: 800; color: #0f172a; font-size: 11px; flex-shrink: 0; min-width: 32px; text-align: right; }
+        .rd-review-pill {
+          display: inline-flex; align-items: center;
+          font-size: 10px; font-weight: 800;
+          padding: 5px 10px; border-radius: 999px;
+          border: 1px solid transparent;
+          box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+        }
+        .rd-review-pill--ready { background: #ecfdf5; color: #065f46; border-color: #bbf7d0; }
+        .rd-review-pill--wait { background: #f8fafc; color: #94a3b8; border-color: #e9edf7; }
+        .rd-table-empty { text-align: center; color: #cbd5e1; padding: 32px 16px; font-weight: 600; }
+
+        /* ── Patient row cards ── */
+        .rd-patient-card {
+          background: #fff;
+          border: 1px solid #e9edf7;
+          border-radius: 22px;
+          padding: clamp(18px, 2.4vw, 24px) clamp(20px, 2.6vw, 28px);
+          display: grid;
+          grid-template-columns: auto 1fr auto auto;
+          gap: clamp(16px, 2vw, 24px);
+          align-items: center;
+          cursor: pointer;
+          min-height: 128px;
+          box-shadow: 0 6px 24px rgba(15, 23, 42, 0.05);
+          transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+        }
+        .rd-patient-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 18px 44px rgba(15, 23, 42, 0.11);
+          border-color: #d0dbf5;
+        }
+        .rd-patient-card-avatar {
+          width: 64px; height: 64px; border-radius: 18px;
+          background: linear-gradient(135deg, #eef2ff, #c7d2fe);
+          display: flex; align-items: center; justify-content: center;
+          overflow: hidden; border: 2px solid #e0e7ff; cursor: pointer; flex-shrink: 0;
+          box-shadow: 0 8px 20px rgba(67, 56, 202, 0.14);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .rd-patient-card:hover .rd-patient-card-avatar { transform: scale(1.03); }
+        .rd-patient-card-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .rd-patient-card-avatar span { font-size: 20px; font-weight: 900; color: #4338ca; }
+        .rd-patient-card-info { min-width: 0; }
+        .rd-patient-card-name-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+        .rd-patient-card-name {
+          font-weight: 900;
+          font-size: clamp(1rem, 0.6vw + 0.85rem, 1.125rem);
+          color: #0f172a; letter-spacing: -0.02em; line-height: 1.2;
+        }
+        .rd-patient-card-meta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .rd-patient-card-meta span { font-size: 12px; color: #64748b; line-height: 1.5; }
+        .rd-patient-card-meta strong { color: #334155; font-weight: 700; }
+        .rd-patient-card-progress {
+          display: flex; flex-direction: column; align-items: center; gap: 6px;
+          padding: 4px 8px;
+        }
+        .rd-patient-card-progress-label {
+          font-size: 10px; color: #94a3b8; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.06em;
+        }
+        .rd-patient-cta {
+          display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+          min-height: 44px; padding: 0 20px; border-radius: 14px; border: none;
+          background: linear-gradient(145deg, #f54e25, #ea580c);
+          color: #fff; font-size: 13px; font-weight: 800; cursor: pointer;
+          box-shadow: 0 8px 22px rgba(245, 78, 37, 0.32);
+          white-space: nowrap;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .rd-patient-cta:hover {
+          transform: translateY(-2px) scale(1.02);
+          box-shadow: 0 12px 28px rgba(245, 78, 37, 0.38);
+        }
+        .rd-patient-cta:active { transform: translateY(0) scale(0.98); }
+
+        .rd-patient-list {
+          display: grid;
+          gap: clamp(12px, 1.8vw, 16px);
+        }
+
+        /* ── Empty state ── */
+        .rd-empty-state { text-align: center; padding: 48px 24px; }
+        .rd-empty-icon {
+          width: 64px; height: 64px; border-radius: 20px;
+          background: linear-gradient(145deg, #f8fafc, #f1f5f9);
+          border: 1px solid #e9edf7;
+          display: flex; align-items: center; justify-content: center;
+          margin: 0 auto 16px;
+          box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+        }
+        .rd-empty-title { margin: 0; font-weight: 900; color: #1e293b; font-size: 16px; letter-spacing: -0.02em; }
+        .rd-empty-sub { margin: 8px 0 0; color: #94a3b8; font-size: 13px; line-height: 1.55; max-width: 320px; margin-inline: auto; }
+
+        /* ── Detail modal (visual only) ── */
+        .rd-modal-overlay {
+          position: fixed; inset: 0;
+          background: rgba(15, 23, 42, 0.55);
+          backdrop-filter: blur(10px);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 4000; padding: 16px;
+        }
+        .rd-modal-shell {
+          width: min(900px, 100%); max-height: 90vh; overflow: hidden;
+          border-radius: 24px; background: #fff;
+          box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
+          display: flex; flex-direction: column;
+          border: 1px solid #e9edf7;
+        }
+        .rd-modal-header {
+          background: linear-gradient(128deg, #0f172a 0%, #1a2744 38%, #243056 62%, #3b2f7a 100%);
+          padding: clamp(18px, 2.5vw, 22px) clamp(20px, 2.8vw, 26px);
+          position: relative; overflow: hidden; flex-shrink: 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .rd-modal-header::before {
+          content: '';
+          position: absolute; inset: 0;
+          background:
+            radial-gradient(ellipse 50% 80% at 100% 0%, rgba(99, 102, 241, 0.2) 0%, transparent 55%),
+            radial-gradient(ellipse 40% 60% at 0% 100%, rgba(245, 78, 37, 0.15) 0%, transparent 50%);
+          pointer-events: none;
+        }
+        .rd-modal-header-inner { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+        .rd-modal-kicker { font-size: 10px; color: rgba(255,255,255,0.5); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+        .rd-modal-title { font-size: clamp(1.125rem, 1.5vw + 0.75rem, 1.375rem); color: #fff; font-weight: 900; letter-spacing: -0.02em; }
+        .rd-modal-meta { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 6px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .rd-modal-meta-dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.25); display: inline-block; }
+        .rd-modal-close {
+          width: 36px; height: 36px; border-radius: 10px; border: none;
+          background: rgba(255,255,255,0.1); color: #fff;
+          display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+          transition: background 0.18s ease;
+        }
+        .rd-modal-close:hover { background: rgba(255,255,255,0.18); }
+        .rd-modal-progress-wrap {
+          margin-top: 16px; background: rgba(255,255,255,0.08);
+          border-radius: 12px; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.1);
+        }
+        .rd-modal-progress-labels { display: flex; justify-content: space-between; font-size: 10px; color: rgba(255,255,255,0.45); margin-bottom: 6px; }
+        .rd-modal-progress-labels strong { font-weight: 900; color: #6ee7b7; }
+        .rd-modal-progress-track { height: 6px; background: rgba(255,255,255,0.15); border-radius: 999px; overflow: hidden; }
+        .rd-modal-progress-fill { height: 100%; background: linear-gradient(90deg, #6ee7b7, #34d399); border-radius: 999px; }
+        .rd-modal-body { flex: 1; overflow: auto; padding: clamp(16px, 2.2vw, 20px) clamp(18px, 2.4vw, 24px) clamp(20px, 2.8vw, 24px); background: #f8faff; }
+
+        @media (min-width: 1600px) {
+          .rd-content-wrap { max-width: min(1680px, 100%); }
+        }
+        @media (max-width: 1199px) {
+          .rd-report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 899px) {
+          .rd-report-grid { grid-template-columns: 1fr; }
+          .rd-patient-card {
+            grid-template-columns: auto 1fr;
+            grid-template-areas: 'avatar info' 'progress cta';
+          }
+          .rd-patient-card-avatar { grid-area: avatar; }
+          .rd-patient-card-info { grid-area: info; }
+          .rd-patient-card-progress { grid-area: progress; justify-self: start; }
+          .rd-patient-cta { grid-area: cta; justify-self: end; }
+        }
         @media (max-width: 768px) {
-          .desktop-sidebar { display: none; }
-          .scroll-content { padding: 14px !important; }
+          .rd-page .scroll-content { padding: 14px !important; }
         }
       `}</style>
 
-      {/* ── SIDEBAR (100% unchanged) ── */}
-      <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container"><img src={logo} alt="Kalinga" className="sidebar-logo" /></div>
-        <div className="sidebar-primary">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}><div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span></div>
-          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}><div className="sidebar-icon-wrap"><BookUser size={22} color="#707EAE" /></div><span className="sidebar-label">Resident Details</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}><div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}><div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div><span className="sidebar-label">Appointments</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}><div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div><span className="sidebar-label">Reports</span></div>
-        </div>
-        <div className="sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}><div className="sidebar-icon-wrap"><User size={22} color="#707EAE" /></div><span className="sidebar-label">Profile</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}><div className="sidebar-icon-wrap"><LogOut size={22} color="#F54E25" /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span></div>
-        </div>
-      </aside>
+      <FamilySidebar
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+      />
 
       {/* ── MAIN ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="main-view">
 
         <FamilyPageHeader
-          title="Resident Details"
-          subtitle={`${patients.length} resident${patients.length !== 1 ? 's' : ''}`}
+          title={FAMILY_PAGE_HEADERS.residents.title}
+          subtitle={`${patients.length} resident${patients.length !== 1 ? 's' : ''} · ${FAMILY_PAGE_HEADERS.residents.subtitle}`}
+          onBrandPress={scrollToTop}
+          showMobileLogo={false}
         />
 
-        <div className="scroll-content" style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 48px', background: '#F0F4FF' }}>
-          <div style={{ width: '100%', maxWidth: 1560, margin: '0 auto', display: 'grid', gap: 20 }}>
+        <div className="scroll-content">
+          <div className="rd-content-wrap">
 
             {/* ── HERO BANNER ── */}
-            <div style={{ background: 'linear-gradient(135deg,#0F172A 0%,#1E2D4F 50%,#2D1B69 100%)', borderRadius: 24, padding: '26px 30px', boxShadow: '0 16px 48px rgba(15,23,42,0.22)', position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: 'radial-gradient(circle,rgba(99,102,241,0.2),transparent 70%)' }} />
-              <div style={{ position: 'absolute', bottom: -20, left: '40%', width: 120, height: 120, borderRadius: '50%', background: 'radial-gradient(circle,rgba(245,78,37,0.15),transparent 70%)' }} />
-              <div style={{ position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <ClipboardList size={16} color="#fff" />
+            <div className="rd-hero-banner">
+              <div className="rd-hero-deco-1" /><div className="rd-hero-deco-2" /><div className="rd-hero-deco-3" />
+              <div className="rd-hero-inner">
+                <div className="rd-hero-kicker">
+                  <div className="rd-hero-kicker-icon">
+                    <BookUser size={16} color="#fff" />
                   </div>
-                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Family Portal · Resident Overview</span>
+                  <span className="rd-hero-eyebrow">Family Portal · Resident Overview</span>
                 </div>
-                <h1 style={{ margin: 0, color: '#fff', fontSize: 26, fontWeight: 900, letterSpacing: '-0.03em' }}>Resident Details</h1>
-                <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>Monitor progress, vitals, and care updates in one place</p>
+                <h1 className="rd-hero-title">Resident Details</h1>
+                <p className="rd-hero-sub">Monitor progress, vitals, and care updates in one place</p>
               </div>
             </div>
 
@@ -648,18 +1027,26 @@ const PatientDetailsPage = () => {
             {latestWeeklyReports.length > 0 && (
               <SectionCard>
                 <CardTitle icon={FileText}>Recent Weekly Reports</CardTitle>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+                <div className="rd-report-grid">
                   {latestWeeklyReports.map((item, idx) => (
-                    <div key={`${item.patientId}-${item.week}-${idx}`} onClick={() => { const t = patients.find((p) => String(p.id) === String(item.patientId)); if (t) setSelectedPatient(t); }} style={{ background: '#FAFBFF', border: '1px solid #E9EDF7', borderRadius: 16, padding: '14px 16px', cursor: 'pointer', transition: 'border-color .15s, box-shadow .15s' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span style={{ fontSize: 10, fontWeight: 800, color: '#8B5CF6', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Week {item.week}</span>
-                        <CheckCircle2 size={14} color="#10B981" />
+                    <div
+                      key={`${item.patientId}-${item.week}-${idx}`}
+                      className="rd-report-card"
+                      onClick={() => { const t = patients.find((p) => String(p.id) === String(item.patientId)); if (t) setSelectedPatient(t); }}
+                    >
+                      <div className="rd-report-card-top">
+                        <span className="rd-report-week">Week {item.week}</span>
+                        <span className="rd-report-status">
+                          <CheckCircle2 size={12} /> Submitted
+                        </span>
                       </div>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: '#0F172A', marginBottom: 4 }}>ID: {formatResidentDisplayId(item.patientId)}</div>
-                      <div style={{ fontSize: 11, color: '#64748B', marginBottom: 3 }}>{formatDate(item.submittedAt)}</div>
-                      <div style={{ fontSize: 11, color: '#94A3B8' }}>Nurse: {item.nurseName}</div>
-                      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#6366F1' }}>
+                      <div className="rd-report-id">ID: {formatResidentDisplayId(item.patientId)}</div>
+                      <div className="rd-report-meta">{formatDate(item.submittedAt)}</div>
+                      <div className="rd-report-meta rd-report-meta--muted">Nurse: {item.nurseName}</div>
+                      <div className="rd-report-cta">
+                        <span className="rd-report-cta-btn">
                         View Resident <ArrowRight size={12} />
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -668,13 +1055,13 @@ const PatientDetailsPage = () => {
             )}
 
             {/* ── DIRECTORY TABLE ── */}
-            <SectionCard style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FAFBFF' }}>
-                <CardTitle icon={BookUser} style={{ marginBottom: 0 }}>Resident Directory</CardTitle>
-                <span style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, background: '#F1F5F9', padding: '3px 10px', borderRadius: 999 }}>{patients.length} entries</span>
+            <SectionCard className="rd-section-card--flush">
+              <div className="rd-table-head">
+                <CardTitle icon={BookUser} className="rd-card-title--inline">Resident Directory</CardTitle>
+                <span className="rd-table-count">{patients.length} entries</span>
               </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="dt" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <div className={`rd-table-scroll${patients.length > 6 ? ' rd-table-scroll--tall' : ''}`}>
+                <table className="rd-table">
                   <thead>
                     <tr>
                       <th>Resident</th>
@@ -689,38 +1076,36 @@ const PatientDetailsPage = () => {
                   </thead>
                   <tbody>
                     {patients.length ? patients.map((p) => (
-                      <tr key={p.id} onClick={() => setSelectedPatient(p)} style={{ cursor: 'pointer' }}>
+                      <tr key={p.id} onClick={() => setSelectedPatient(p)}>
                         <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#EEF2FF,#C7D2FE)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <span style={{ fontSize: 11, fontWeight: 900, color: '#4338CA' }}>{patientInitials(p.name)}</span>
+                          <div className="rd-resident-cell">
+                            <div className="rd-resident-avatar">
+                              <span>{patientInitials(p.name)}</span>
                             </div>
-                            <span style={{ fontWeight: 800, color: '#0F172A' }}>{p.name}</span>
+                            <span className="rd-resident-name">{p.name}</span>
                           </div>
                         </td>
                         <td style={{ color: '#64748B' }}>{p.date || 'N/A'}</td>
                         <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 100 }}>
-                            <div style={{ flex: 1, height: 5, background: '#F1F5F9', borderRadius: 999, overflow: 'hidden' }}>
-                              <div style={{ width: `${Number(p.progress)||0}%`, height: '100%', background: 'linear-gradient(90deg,#F54E25,#EA580C)', borderRadius: 999 }} />
+                          <div className="rd-progress-cell">
+                            <div className="rd-progress-track">
+                              <div className="rd-progress-fill" style={{ width: `${Number(p.progress) || 0}%` }} />
                             </div>
-                            <span style={{ fontWeight: 800, color: '#0F172A', fontSize: 11 }}>{Number(p.progress)||0}%</span>
+                            <span className="rd-progress-pct">{Number(p.progress) || 0}%</span>
                           </div>
                         </td>
                         <td><StatusPill progress={p.progress} dischargedAt={p.discharged_at || patientDetailsById[String(p.id)]?.discharged_at} onTemporaryLeave={isResidentOnTemporaryLeave(p)} /></td>
                         <td style={{ color: '#64748B' }}>{patientDetailsById[String(p.id)]?.primary_concern || p.reason || 'N/A'}</td>
                         <td style={{ color: '#64748B' }}>{patientDetailsById[String(p.id)]?.room_code || p.roomCode || 'Unassigned'}</td>
-                        <td style={{ fontWeight: 800, color: '#0F172A' }}>{reportsForPatient(p).length}</td>
+                        <td style={{ fontWeight: 800 }}>{reportsForPatient(p).length}</td>
                         <td>
-                          <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 999,
-                            background: reportsForPatient(p).length ? '#ECFDF5' : '#F1F5F9',
-                            color: reportsForPatient(p).length ? '#065F46' : '#94A3B8' }}>
+                          <span className={`rd-review-pill ${reportsForPatient(p).length ? 'rd-review-pill--ready' : 'rd-review-pill--wait'}`}>
                             {reportsForPatient(p).length ? 'Available' : 'Waiting'}
                           </span>
                         </td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={8} style={{ textAlign: 'center', color: '#CBD5E1', padding: '28px 14px' }}>No residents yet.</td></tr>
+                      <tr><td colSpan={8} className="rd-table-empty">No residents yet.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -730,56 +1115,56 @@ const PatientDetailsPage = () => {
             {/* ── PATIENT CARDS ── */}
             {patients.length === 0 ? (
               <SectionCard>
-                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                  <div style={{ width: 56, height: 56, borderRadius: 18, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                <div className="rd-empty-state">
+                  <div className="rd-empty-icon">
                     <ClipboardList size={24} color="#CBD5E1" />
                   </div>
-                  <p style={{ margin: 0, fontWeight: 800, color: '#334155', fontSize: 15 }}>No residents yet</p>
-                  <p style={{ margin: '6px 0 0', color: '#94A3B8', fontSize: 13 }}>Once admissions are approved, resident details will appear here.</p>
+                  <p className="rd-empty-title">No residents yet</p>
+                  <p className="rd-empty-sub">Once admissions are approved, resident details will appear here.</p>
                 </div>
               </SectionCard>
             ) : (
-              patients.map((p, i) => {
+              <div className="rd-patient-list">
+              {patients.map((p, i) => {
                 const tone = patientStatusTone(p.progress);
                 const progress = Number(p.progress) || 0;
                 const reportCount = reportsForPatient(p).length;
                 return (
-                  <div key={p.id || i} className="patient-row-card" onClick={() => setSelectedPatient(p)}
-                    style={{ background: '#fff', border: '1px solid #E9EDF7', borderRadius: 22, padding: '20px 24px', display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: '16px 20px', alignItems: 'center', cursor: 'pointer', boxShadow: '0 4px 20px rgba(15,23,42,0.05)' }}>
-                    {/* Avatar */}
-                    <div style={{ position: 'relative' }} onClick={(e) => { e.stopPropagation(); triggerFileInput(i); }}>
+                  <div key={p.id || i} className="rd-patient-card" onClick={() => setSelectedPatient(p)}>
+                    <div onClick={(e) => { e.stopPropagation(); triggerFileInput(i); }}>
                       <input type="file" hidden accept="image/*" ref={(el) => { fileInputRefs.current[i] = el; }} onChange={(e) => handleImageChange(i, e)} />
-                      <div style={{ width: 56, height: 56, borderRadius: 18, background: 'linear-gradient(135deg,#EEF2FF,#C7D2FE)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid #E0E7FF', cursor: 'pointer', flexShrink: 0 }}>
+                      <div className="rd-patient-card-avatar">
                         {patientImages[i]
-                          ? <img src={patientImages[i]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          : <span style={{ fontSize: 18, fontWeight: 900, color: '#4338CA' }}>{patientInitials(p.name)}</span>}
+                          ? <img src={patientImages[i]} alt="" />
+                          : <span>{patientInitials(p.name)}</span>}
                       </div>
                     </div>
-                    {/* Info */}
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 900, fontSize: 16, color: '#0F172A', letterSpacing: '-0.01em' }}>{p.name}</span>
+                    <div className="rd-patient-card-info">
+                      <div className="rd-patient-card-name-row">
+                        <span className="rd-patient-card-name">{p.name}</span>
                         <StatusPill progress={p.progress} dischargedAt={p.discharged_at || patientDetailsById[String(p.id)]?.discharged_at} onTemporaryLeave={isResidentOnTemporaryLeave(p)} />
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 12, color: '#64748B' }}>Admitted <strong style={{ color: '#334155' }}>{p.date}</strong></span>
-                        <span style={{ fontSize: 12, color: '#64748B' }}>Concern: <strong style={{ color: '#334155' }}>{patientDetailsById[String(p.id)]?.primary_concern || 'N/A'}</strong></span>
-                        <span style={{ fontSize: 12, color: '#64748B' }}>Reports: <strong style={{ color: '#334155' }}>{reportCount}</strong></span>
+                      <div className="rd-patient-card-meta">
+                        <span>Admitted <strong>{p.date}</strong></span>
+                        <span>Concern: <strong>{patientDetailsById[String(p.id)]?.primary_concern || 'N/A'}</strong></span>
+                        <span>Reports: <strong>{reportCount}</strong></span>
                       </div>
                     </div>
-                    {/* Progress ring */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                      <ProgressRing pct={progress} size={60} stroke={6} color={tone.color} />
-                      <span style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600 }}>Recovery</span>
+                    <div className="rd-patient-card-progress">
+                      <ProgressRing pct={progress} size={68} stroke={6} color={tone.color} />
+                      <span className="rd-patient-card-progress-label">Recovery</span>
                     </div>
-                    {/* CTA */}
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedPatient(p); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#F54E25,#EA580C)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(245,78,37,0.28)', whiteSpace: 'nowrap' }}>
+                    <button
+                      type="button"
+                      className="rd-patient-cta"
+                      onClick={(e) => { e.stopPropagation(); setSelectedPatient(p); }}
+                    >
                       View Details <ChevronRight size={14} />
                     </button>
                   </div>
                 );
-              })
+              })}
+              </div>
             )}
           </div>
         </div>
@@ -789,31 +1174,28 @@ const PatientDetailsPage = () => {
           DETAIL MODAL (functionality 100% unchanged, design improved)
       ══════════════════════════════════ */}
       {selectedPatient && (
-        <div onClick={() => setSelectedPatient(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(900px,100%)', maxHeight: '90vh', overflow: 'hidden', borderRadius: 24, background: '#fff', boxShadow: '0 30px 80px rgba(15,23,42,0.28)', display: 'flex', flexDirection: 'column' }}>
-            {/* Modal Header */}
-            <div style={{ background: 'linear-gradient(135deg,#0F172A,#1E2D4F)', padding: '22px 26px', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
-              <div style={{ position: 'absolute', top: -30, right: -30, width: 130, height: 130, borderRadius: '50%', background: 'radial-gradient(circle,rgba(99,102,241,0.25),transparent 70%)' }} />
-              <div style={{ position: 'absolute', bottom: -20, left: '40%', width: 90, height: 90, borderRadius: '50%', background: 'radial-gradient(circle,rgba(245,78,37,0.18),transparent 70%)' }} />
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
+        <div className="rd-modal-overlay" onClick={() => setSelectedPatient(null)}>
+          <div className="rd-modal-shell" onClick={(e) => e.stopPropagation()}>
+            <div className="rd-modal-header">
+              <div className="rd-modal-header-inner">
                 <div>
-                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Resident Detail View</div>
-                  <div style={{ fontSize: 22, color: '#fff', fontWeight: 900, letterSpacing: '-0.02em' }}>{selectedPatient.name}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div className="rd-modal-kicker">Resident Detail View</div>
+                  <div className="rd-modal-title">{selectedPatient.name}</div>
+                  <div className="rd-modal-meta">
                     <span>Admitted {selectedPatient.date || 'N/A'}</span>
-                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'inline-block' }} />
-                    <span>Progress: {Number(selectedPatient.progress)||0}%</span>
-                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'inline-block' }} />
+                    <span className="rd-modal-meta-dot" />
+                    <span>Progress: {Number(selectedPatient.progress) || 0}%</span>
+                    <span className="rd-modal-meta-dot" />
                     <span>{selectedReports.length} reports</span>
                     {(selectedPatientDetails?.discharged_at || selectedPatient.discharged_at) ? (
                       <>
-                        <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'inline-block' }} />
+                        <span className="rd-modal-meta-dot" />
                         <span style={{ color: 'rgba(253,164,175,0.95)', fontWeight: 700 }}>Discharged {formatDate(selectedPatientDetails?.discharged_at || selectedPatient.discharged_at)}</span>
                       </>
                     ) : null}
                     {onTemporaryLeave ? (
                       <>
-                        <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'inline-block' }} />
+                        <span className="rd-modal-meta-dot" />
                         <span style={{ color: '#FDE68A', fontWeight: 700 }}>{patientTemporaryDischargeStatusLabel(selectedPatientCare) || 'Temporarily discharged'}</span>
                       </>
                     ) : null}
@@ -823,25 +1205,23 @@ const PatientDetailsPage = () => {
                   {onTemporaryLeave ? (
                     <ResidentReturnedHeaderButton compact busy={residentReturnBusy} onClick={() => setShowResidentReturnConfirm(true)} />
                   ) : null}
-                  <button type="button" onClick={() => setSelectedPatient(null)} style={{ width: 36, height: 36, borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                  <button type="button" className="rd-modal-close" onClick={() => setSelectedPatient(null)} aria-label="Close">
                     <X size={16} />
                   </button>
                 </div>
               </div>
-              {/* Progress bar in header */}
-              <div style={{ marginTop: 16, background: 'rgba(255,255,255,0.08)', borderRadius: 12, padding: '10px 14px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>
+              <div className="rd-modal-progress-wrap">
+                <div className="rd-modal-progress-labels">
                   <span style={{ fontWeight: 700 }}>Recovery Progress</span>
-                  <span style={{ fontWeight: 900, color: '#6EE7B7' }}>{Number(selectedPatient.progress)||0}%</span>
+                  <strong>{Number(selectedPatient.progress) || 0}%</strong>
                 </div>
-                <div style={{ height: 6, background: 'rgba(255,255,255,0.15)', borderRadius: 999, overflow: 'hidden' }}>
-                  <div style={{ width: `${Number(selectedPatient.progress)||0}%`, height: '100%', background: 'linear-gradient(90deg,#6EE7B7,#34D399)', borderRadius: 999 }} />
+                <div className="rd-modal-progress-track">
+                  <div className="rd-modal-progress-fill" style={{ width: `${Number(selectedPatient.progress) || 0}%` }} />
                 </div>
               </div>
             </div>
 
-            {/* Modal Body */}
-            <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px 24px', background: '#F8FAFF' }}>
+            <div className="rd-modal-body">
               {onTemporaryLeave ? (
                 <TemporaryDischargeNotePanel
                   patient={selectedPatientCare}
@@ -948,6 +1328,7 @@ const PatientDetailsPage = () => {
         onConfirm={() => void handleResidentReturned()}
       />
 
+      <FamilyMobileBottomNav />
       <FloatingChatHead />
     </div>
   );

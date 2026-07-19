@@ -1,4 +1,13 @@
 import { Platform } from "react-native";
+import type { Href, Router } from "expo-router";
+
+export function goBackOrReplace(router: Router, fallback: Href) {
+  if (router.canGoBack()) {
+    router.back();
+  } else {
+    router.replace(fallback);
+  }
+}
 
 export const rootStackAnimation =
   Platform.OS === "web"

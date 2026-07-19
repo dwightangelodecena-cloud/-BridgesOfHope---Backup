@@ -17,6 +17,7 @@ import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import AdminPredictiveAnalytics from '@/components/AdminPredictiveAnalytics';
+import '@/styles/admin-analytics.css';
 
 const PERIOD_OPTIONS = [
     { value: 'weekly', label: 'Weekly', days: 7 },
@@ -1878,6 +1879,8 @@ export default function AdminAnalyticsSection() {
             <section id="admin-analytics" className="dashboard-analytics-embed" aria-label="Analytics">
                 <div className="analytics-print-root" style={{ maxWidth: 'min(1920px, 100%)', margin: '0 auto', width: '100%' }}>
                     <div className="analytics-hero">
+                        <div className="analytics-hero-glow analytics-hero-glow--1" aria-hidden="true" />
+                        <div className="analytics-hero-glow analytics-hero-glow--2" aria-hidden="true" />
                         <div className="analytics-hero-text">
                             <div className="analytics-kicker">Insights &amp; reporting</div>
                             <div className="analytics-title">Analytics</div>
@@ -1889,21 +1892,27 @@ export default function AdminAnalyticsSection() {
                             <div className="analytics-hero-badge-icon">
                                 <Activity size={22} strokeWidth={2.2} />
                             </div>
-                            <div>
-                                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>{metrics.total}</div>
-                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total requests</div>
+                            <div className="analytics-hero-badge-metric">
+                                <div className="analytics-hero-badge-value">{metrics.total}</div>
+                                <div className="analytics-hero-badge-label">Total requests</div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="analytics-data-hint" role="status">
-                        {remoteLoading
-                            ? 'Loading analytics from the database…'
-                            : loadError
-                              ? `Could not reach the database — showing saved browser data. (${loadError})`
-                              : isSupabaseConfigured()
-                                ? 'Connected to Supabase — metrics reflect your live workspace.'
-                                : 'Using browser data — configure Supabase env vars for cloud sync.'}
+                    <div
+                        className={`analytics-data-hint${remoteLoading ? ' analytics-data-hint--loading' : loadError ? ' analytics-data-hint--warn' : ''}`}
+                        role="status"
+                    >
+                        <span className="analytics-data-hint-dot" aria-hidden="true" />
+                        <span className="analytics-data-hint-text">
+                            {remoteLoading
+                                ? 'Loading analytics from the database…'
+                                : loadError
+                                  ? `Could not reach the database — showing saved browser data. (${loadError})`
+                                  : isSupabaseConfigured()
+                                    ? 'Connected to Supabase — metrics reflect your live workspace.'
+                                    : 'Using browser data — configure Supabase env vars for cloud sync.'}
+                        </span>
                     </div>
 
                     <div className="filters-export-panel">

@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import Constants from "expo-constants";
+import { isInvalidRefreshTokenError } from "./authErrors";
 
 function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
@@ -21,6 +22,25 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 let client: SupabaseClient | null = null;
 
+async function recoverStaleAuthSession(authClient: SupabaseClient): Promise<void> {
+  try {
+    const { error } = await authClient.auth.getSession();
+    if (isInvalidRefreshTokenError(error)) {
+      await authClient.auth.signOut({ scope: "local" });
+    }
+  } catch (error) {
+    if (isInvalidRefreshTokenError(error as { message?: string })) {
+      await authClient.auth.signOut({ scope: "local" });
+    }
+  }
+}
+
+/** Clears expired local sessions so login is not blocked by stale refresh tokens. */
+export async function ensureAuthSessionHealthy(): Promise<void> {
+  if (!supabaseUrl || !supabaseAnonKey || !client) return;
+  await recoverStaleAuthSession(client);
+}
+
 function getClient(): SupabaseClient {
   const url = supabaseUrl;
   const key = supabaseAnonKey;
@@ -38,6 +58,7 @@ function getClient(): SupabaseClient {
         detectSessionInUrl: false,
       },
     });
+    void recoverStaleAuthSession(client);
   }
   return client;
 }

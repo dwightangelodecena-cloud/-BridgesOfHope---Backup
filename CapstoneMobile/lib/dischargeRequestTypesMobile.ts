@@ -1,5 +1,15 @@
 export const DISCHARGE_TYPE_TEMPORARY = 'temporary';
 
+/** Family portal submits temporary leave requests only. */
+export const FAMILY_DISCHARGE_TYPE = DISCHARGE_TYPE_TEMPORARY;
+
+export const FAMILY_TEMPORARY_REASON_CATEGORIES = [
+  'Family visit or event',
+  'Medical appointment (outside facility)',
+  'Family emergency',
+  'Other',
+] as const;
+
 export const TEMPORARY_LEAVE_OPTIONS = [
   { id: 'day_pass_8h', label: 'Day pass (8 hours)', hours: 8 },
   { id: 'day_off_24h', label: 'Day off 24 Hours', hours: 24 },

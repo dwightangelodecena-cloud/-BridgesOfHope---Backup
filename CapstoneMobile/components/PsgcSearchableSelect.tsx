@@ -29,6 +29,8 @@ type Props = {
   emptyText?: string;
   helperText?: string;
   errorText?: string;
+  /** White shell for fields inside address card */
+  inCard?: boolean;
 };
 
 export function PsgcSearchableSelect({
@@ -44,6 +46,7 @@ export function PsgcSearchableSelect({
   emptyText = 'No matches.',
   helperText = '',
   errorText = '',
+  inCard = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -62,7 +65,12 @@ export function PsgcSearchableSelect({
       <Text style={styles.label}>{label}</Text>
       {description ? <Text style={styles.description}>{description}</Text> : null}
       <TouchableOpacity
-        style={[styles.shell, showError && styles.shellError, dimmed && styles.shellDisabled]}
+        style={[
+          styles.shell,
+          inCard && styles.shellCard,
+          showError && styles.shellError,
+          dimmed && styles.shellDisabled,
+        ]}
         onPress={() => {
           if (dimmed) return;
           setQuery('');
@@ -141,9 +149,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F8FAFC',
     paddingHorizontal: 14,
     minHeight: 50,
     shadowColor: '#0f172a',
@@ -151,6 +159,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+  },
+  shellCard: {
+    backgroundColor: '#FFFFFF',
   },
   shellError: { borderColor: '#FCA5A5', backgroundColor: '#FFFAFA' },
   shellDisabled: { opacity: 0.65 },

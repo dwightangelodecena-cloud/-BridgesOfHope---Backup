@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Mail, X, CheckCircle, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
+import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
+import AuthPageBackground from '@/components/auth/AuthPageBackground';
+import { AUTH_SHELL_STYLES } from '@/components/auth/authShellStyles';
 
 const ChangePass = () => {
   const navigate = useNavigate();
@@ -17,17 +19,17 @@ const ChangePass = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
+      setErrors((prev) => ({ ...prev, [name]: '' }));
     }
     if (formError) setFormError('');
   };
 
   const validateForm = () => {
-    let newErrors = {};
-    if (!formData.email.trim()) newErrors.email = "Email is required";
-    else if (!isValidEmail) newErrors.email = "Invalid email format";
+    const newErrors = {};
+    if (!formData.email.trim()) newErrors.email = 'Email is required';
+    else if (!isValidEmail) newErrors.email = 'Invalid email format';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -67,282 +69,351 @@ const ChangePass = () => {
     }
   };
 
-  const getBorderColor = () => {
-    if (errors.email) return '#ef4444';
-    if (isValidEmail && formData.email) return '#10b981';
-    if (isFocused) return '#F54E25';
-    return '#e2e8f0';
-  };
-
-  const getIconColor = () => {
-    if (errors.email) return '#ef4444';
-    if (isValidEmail && formData.email) return '#10b981';
-    if (isFocused) return '#F54E25';
-    return '#94a3b8';
-  };
+  const inputStateClass = errors.email
+    ? 'changepass-input--error'
+    : isValidEmail && formData.email
+      ? 'changepass-input--valid'
+      : isFocused
+        ? 'changepass-input--focus'
+        : '';
 
   return (
-    <div className="changepass-container">
+    <div className="login-container">
+      <AuthPageBackground />
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600;700&display=swap');
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ${AUTH_SHELL_STYLES}
 
-        .changepass-container {
-          min-height: 100vh;
-          width: 100vw;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background-color: #ffffff;
-          font-family: 'Inter', sans-serif;
+        @keyframes changepassFocusRing {
+          from { box-shadow: 0 0 0 0 rgba(245, 78, 37, 0.2); }
+          to { box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.14), inset 0 1px 2px rgba(26, 43, 74, 0.04); }
         }
 
-        .changepass-content-wrapper {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 120px;
-          width: 90%;
-          max-width: 1400px;
+        @keyframes changepassSpin {
+          to { transform: rotate(360deg); }
         }
 
-        .brand-side { flex: 1; display: flex; justify-content: flex-end; }
-        .brand-side img { width: 100%; max-width: 550px; height: auto; }
-        .form-side { flex: 1; display: flex; justify-content: flex-start; }
+        @keyframes changepassFadeIn {
+          from { opacity: 0; transform: scale(0.85); }
+          to { opacity: 1; transform: scale(1); }
+        }
 
         .changepass-card {
-          background: #ffffff;
-          padding: 44px 40px 48px 40px;
-          border-radius: 28px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.09);
-          width: 100%;
-          max-width: 440px;
-          text-align: center;
           position: relative;
-          border: 1px solid #f1f5f9;
+          background: rgba(255, 255, 255, 0.94);
+          backdrop-filter: blur(14px);
+          padding: clamp(28px, 4vw, 40px);
+          border-radius: 24px;
+          box-shadow:
+            0 1px 2px rgba(26, 43, 74, 0.03),
+            0 8px 24px rgba(26, 43, 74, 0.06),
+            0 28px 56px rgba(26, 43, 74, 0.09);
+          width: 100%;
+          max-width: var(--auth-form-col);
+          text-align: center;
+          border: 1px solid rgba(255, 255, 255, 0.92);
+          box-sizing: border-box;
+          animation: loginFadeIn 0.65s ease-out 0.1s both;
+          transition: box-shadow 0.25s ease;
         }
 
-        .card-close-btn {
+        .changepass-card:hover {
+          box-shadow:
+            0 1px 2px rgba(26, 43, 74, 0.03),
+            0 12px 32px rgba(26, 43, 74, 0.07),
+            0 32px 64px rgba(26, 43, 74, 0.1);
+        }
+
+        .changepass-close-btn {
           position: absolute;
           top: 18px;
-          right: 20px;
-          background: #F8F9FD;
+          right: 18px;
+          width: 36px;
+          height: 36px;
+          background: #f1f5f9;
           border: none;
           cursor: pointer;
           color: #64748b;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 7px;
           border-radius: 50%;
-          transition: all 0.2s ease;
+          transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
         }
 
-        .card-close-btn:hover {
+        .changepass-close-btn:hover {
           background: #fee2d5;
-          color: #F54E25;
+          color: var(--brand-orange);
+          transform: rotate(90deg);
         }
 
-        .card-icon-wrap {
-          width: 62px;
-          height: 62px;
-          background: linear-gradient(135deg, #fff1ec, #fde0d5);
-          border-radius: 18px;
+        .changepass-icon-wrap {
+          width: 56px;
+          height: 56px;
+          background: linear-gradient(135deg, #fff1ec 0%, #fde0d5 100%);
+          border-radius: 16px;
           display: flex;
           align-items: center;
           justify-content: center;
-          margin: 0 auto 20px auto;
+          margin: 0 auto 20px;
+          box-shadow: 0 4px 16px rgba(245, 78, 37, 0.12);
+          color: var(--brand-orange);
         }
 
-        .card-title {
-          font-size: 1.35rem;
-          font-weight: 700;
-          color: #1e293b;
-          margin-bottom: 6px;
+        .changepass-title {
+          font-size: clamp(1.45rem, 2.5vw, 1.75rem);
+          font-weight: 800;
+          color: var(--brand-navy);
+          margin: 0 0 10px;
+          letter-spacing: -0.03em;
+          line-height: 1.25;
         }
 
-        .card-subtitle {
-          font-size: 0.85rem;
-          color: #94a3b8;
-          margin-bottom: 32px;
+        .changepass-subtitle {
+          font-size: 0.95rem;
+          color: #64748b;
+          margin: 0 0 28px;
           font-weight: 400;
-          line-height: 1.5;
+          line-height: 1.6;
         }
 
-        .form-group { text-align: left; margin-bottom: 20px; }
+        .changepass-form-group {
+          text-align: left;
+          margin-bottom: 20px;
+        }
 
-        .input-label {
+        .changepass-label {
           display: block;
           font-size: 0.875rem;
-          color: #475569;
+          color: var(--brand-navy);
           margin-bottom: 8px;
           font-weight: 600;
         }
 
-        .input-wrapper {
+        .changepass-input-wrap {
           position: relative;
           display: flex;
           align-items: center;
         }
 
-        .input-wrapper input {
+        .changepass-input-wrap input {
           width: 100%;
-          padding: 14px 44px 14px 46px;
-          border: 1.5px solid ${getBorderColor()};
+          height: 54px;
+          padding: 0 44px 0 46px;
+          border: 1.5px solid #e2e8f0;
           border-radius: 14px;
-          font-size: 0.95rem;
+          font-size: 1rem;
           outline: none;
-          color: #1e293b;
-          background-color: ${errors.email ? '#fef2f2' : '#ffffff'};
-          transition: all 0.2s ease;
-          font-family: 'Inter', sans-serif;
+          color: var(--brand-navy);
+          background-color: #f8fafc;
+          transition: border-color 0.22s ease, box-shadow 0.22s ease, background-color 0.22s ease;
+          font-family: inherit;
+          box-shadow: inset 0 1px 2px rgba(26, 43, 74, 0.04);
         }
 
-        .input-wrapper input::placeholder { color: #c4cdd9; }
+        .changepass-input-wrap input::placeholder {
+          color: #94a3b8;
+        }
 
-        .input-icon {
+        .changepass-input-wrap input:hover {
+          border-color: #cbd5e1;
+          background-color: #ffffff;
+        }
+
+        .changepass-input--focus input,
+        .changepass-input-wrap input:focus {
+          border-color: var(--brand-orange);
+          background-color: #ffffff;
+          animation: changepassFocusRing 0.22s ease forwards;
+        }
+
+        .changepass-input--valid input {
+          border-color: #10b981;
+          background-color: #f0fdf4;
+        }
+
+        .changepass-input--error input {
+          border-color: #ef4444;
+          background-color: #fef2f2;
+        }
+
+        .changepass-input-icon {
           position: absolute;
-          left: 15px;
+          left: 16px;
           pointer-events: none;
           transition: color 0.2s ease;
+          color: #94a3b8;
         }
 
-        .valid-icon {
+        .changepass-input--focus .changepass-input-icon,
+        .changepass-input-wrap:focus-within .changepass-input-icon {
+          color: var(--brand-orange);
+        }
+
+        .changepass-input--valid .changepass-input-icon {
+          color: #10b981;
+        }
+
+        .changepass-input--error .changepass-input-icon {
+          color: #ef4444;
+        }
+
+        .changepass-valid-icon {
           position: absolute;
           right: 14px;
           pointer-events: none;
-          animation: fadeIn 0.2s ease;
+          animation: changepassFadeIn 0.2s ease;
         }
 
-        @keyframes fadeIn {
-          from { opacity: 0; transform: scale(0.7); }
-          to { opacity: 1; transform: scale(1); }
-        }
-
-        .error-message {
+        .changepass-error {
           color: #ef4444;
-          font-size: 0.75rem;
-          margin-top: 6px;
+          font-size: 0.8rem;
+          margin-top: 8px;
           font-weight: 500;
-          margin-left: 2px;
           display: flex;
           align-items: center;
           gap: 4px;
         }
 
-        .btn-primary {
+        .changepass-form-error {
+          color: #dc2626;
+          font-size: 0.85rem;
+          font-weight: 600;
+          margin-bottom: 16px;
+          padding: 10px 14px;
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          border-radius: 12px;
+          line-height: 1.45;
+        }
+
+        .changepass-btn {
           width: 100%;
-          background: #F54E25;
+          height: 54px;
+          background: linear-gradient(135deg, #FF6A3D 0%, #FF4D1F 100%);
           color: white;
-          padding: 15px;
+          padding: 0 24px;
           border: none;
-          border-radius: 14px;
-          font-size: 1rem;
+          border-radius: 999px;
+          font-size: 1.05rem;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.25s ease;
-          font-family: 'Inter', sans-serif;
-          display: flex;
+          transition: transform 0.22s ease, box-shadow 0.22s ease, filter 0.22s ease, opacity 0.22s ease;
+          font-family: inherit;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 10px;
           margin-top: 8px;
-          opacity: ${isLoading ? '0.8' : '1'};
+          box-shadow: 0 4px 16px rgba(255, 77, 31, 0.32);
         }
 
-        .btn-primary:hover:not(:disabled) {
+        .changepass-btn:hover:not(:disabled) {
+          filter: brightness(1.04);
+          box-shadow: 0 8px 28px rgba(255, 77, 31, 0.38);
           transform: translateY(-2px);
-          box-shadow: 0 10px 24px rgba(245, 78, 37, 0.28);
-          background: #e8441e;
         }
 
-        .btn-primary:active:not(:disabled) {
-          transform: translateY(0);
+        .changepass-btn:active:not(:disabled) {
+          transform: translateY(0) scale(0.99);
         }
 
-        .spinner {
+        .changepass-btn:disabled {
+          opacity: 0.72;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+
+        .changepass-spinner {
           width: 18px;
           height: 18px;
-          border: 2.5px solid rgba(255,255,255,0.4);
-          border-top-color: white;
+          border: 2.5px solid rgba(255, 255, 255, 0.35);
+          border-top-color: #ffffff;
           border-radius: 50%;
-          animation: spin 0.7s linear infinite;
+          animation: changepassSpin 0.7s linear infinite;
         }
 
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-
-        @media (max-width: 1024px) {
-          .changepass-content-wrapper { flex-direction: column; gap: 40px; padding: 40px 20px; }
-          .brand-side { justify-content: center; }
-          .brand-side img { max-width: 300px; }
-          .form-side { justify-content: center; width: 100%; }
-          .changepass-card { max-width: 100%; }
+        @media (max-width: 480px) {
+          .changepass-card {
+            border-radius: 20px;
+            padding: 24px 20px;
+          }
         }
       `}</style>
 
-      <div className="changepass-content-wrapper">
-        <div className="brand-side">
-          <img src={logo} alt="Bridges of Hope" />
-        </div>
+      <div className="login-content-wrapper">
+        <AuthBrandPanel variant="recovery" />
 
         <div className="form-side">
           <div className="changepass-card">
-
-            <button className="card-close-btn" onClick={() => navigate('/profile')}>
+            <button
+              type="button"
+              className="changepass-close-btn"
+              onClick={() => navigate('/profile')}
+              aria-label="Close"
+            >
               <X size={18} />
             </button>
 
-            <div className="card-icon-wrap">
-              <Mail size={28} color="#F54E25" />
+            <div className="changepass-icon-wrap" aria-hidden="true">
+              <Mail size={26} strokeWidth={2.25} />
             </div>
 
-            <h2 className="card-title">Change Password</h2>
-            <p className="card-subtitle">Enter your email address and we'll send you a verification link or code</p>
+            <h1 className="changepass-title">Change Password</h1>
+            <p className="changepass-subtitle">
+              Enter your email address and we&apos;ll send you a verification link or code.
+            </p>
 
             <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="input-label">Enter Email Address</label>
-                <div className="input-wrapper">
-                  <Mail className="input-icon" size={20} color={getIconColor()} />
+              <div className="changepass-form-group">
+                <label className="changepass-label" htmlFor="changepass-email">
+                  Enter Email Address
+                </label>
+                <div className={`changepass-input-wrap ${inputStateClass}`}>
+                  <Mail className="changepass-input-icon" size={20} />
                   <input
+                    id="changepass-email"
                     name="email"
                     type="email"
                     placeholder="example@email.com"
-                    className={errors.email ? 'input-error' : ''}
+                    autoComplete="email"
                     value={formData.email}
                     onChange={handleChange}
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setIsFocused(false)}
                   />
                   {isValidEmail && formData.email && !errors.email && (
-                    <CheckCircle className="valid-icon" size={18} color="#10b981" />
+                    <CheckCircle className="changepass-valid-icon" size={18} color="#10b981" />
                   )}
                 </div>
                 {errors.email && (
-                  <div className="error-message">
+                  <div className="changepass-error">
                     <X size={12} color="#ef4444" /> {errors.email}
                   </div>
                 )}
               </div>
 
               {formError && (
-                <div className="error-message" style={{ justifyContent: 'center', marginBottom: 12 }}>
+                <div className="changepass-form-error" role="alert">
                   {formError}
                 </div>
               )}
 
-              <button type="submit" className="btn-primary" disabled={isLoading}>
+              <button type="submit" className="changepass-btn" disabled={isLoading}>
                 {isLoading ? (
-                  <><div className="spinner" /> Sending...</>
+                  <>
+                    <span className="changepass-spinner" aria-hidden="true" />
+                    Sending…
+                  </>
                 ) : (
-                  <><Send size={17} /> Send Verification</>
+                  <>
+                    <Send size={17} />
+                    Send Verification
+                  </>
                 )}
               </button>
             </form>
-
           </div>
         </div>
       </div>

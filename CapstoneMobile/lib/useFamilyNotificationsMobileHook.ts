@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 import {
   clearAllFamilyNotificationsMobileAsync,
@@ -7,6 +7,9 @@ import {
   saveFamilyNotificationsMobileAsync,
   type FamilyNotificationRow,
   notificationTextMobile,
+  loadFamilyNotificationsLastReadMobileAsync,
+  countUnreadFamilyNotificationsMobile,
+  markFamilyNotificationsReadMobileAsync,
 } from './familyNotificationsMobile';
 
 function itemsEqual(a: FamilyNotificationRow[], b: FamilyNotificationRow[]) {
@@ -23,6 +26,7 @@ function itemsEqual(a: FamilyNotificationRow[], b: FamilyNotificationRow[]) {
  */
 export function useFamilyNotificationsMobile(userId: string) {
   const [items, setItems] = useState<FamilyNotificationRow[]>([]);
+  const [lastReadAt, setLastReadAt] = useState(0);
   const [open, setOpen] = useState(false);
 
   const persist = useCallback(
@@ -40,21 +44,34 @@ export function useFamilyNotificationsMobile(userId: string) {
     [userId]
   );
 
-  useEffect(() => {
+  const reloadAll = useCallback(async () => {
     if (!userId.trim()) {
       setItems([]);
-      return undefined;
+      setLastReadAt(0);
+      return;
     }
-    const reload = async () => {
-      const next = await loadFamilyNotificationsMobileAsync(userId);
-      setItems((prev) => (itemsEqual(prev, next) ? prev : next));
-    };
-    void reload();
+    const [next, readAt] = await Promise.all([
+      loadFamilyNotificationsMobileAsync(userId),
+      loadFamilyNotificationsLastReadMobileAsync(userId),
+    ]);
+    setItems((prev) => (itemsEqual(prev, next) ? prev : next));
+    setLastReadAt(readAt);
+  }, [userId]);
+
+  useEffect(() => {
+    void reloadAll();
     const sub = DeviceEventEmitter.addListener(FAMILY_NOTIFICATIONS_CHANGED, () => {
-      void reload();
+      void reloadAll();
     });
     return () => sub.remove();
-  }, [userId]);
+  }, [reloadAll]);
+
+  useEffect(() => {
+    if (!open || !userId.trim()) return;
+    void markFamilyNotificationsReadMobileAsync(items, userId).then((ts) => {
+      setLastReadAt(ts);
+    });
+  }, [open, userId, items]);
 
   const toggle = useCallback(() => setOpen((v) => !v), []);
   const close = useCallback(() => setOpen(false), []);
@@ -63,6 +80,7 @@ export function useFamilyNotificationsMobile(userId: string) {
     if (!userId.trim()) return;
     const cleared = await clearAllFamilyNotificationsMobileAsync(userId);
     setItems(cleared);
+    setLastReadAt(await loadFamilyNotificationsLastReadMobileAsync(userId));
   }, [userId]);
 
   const removeItem = useCallback(
@@ -72,8 +90,14 @@ export function useFamilyNotificationsMobile(userId: string) {
     [persist]
   );
 
+  const unreadCount = useMemo(
+    () => countUnreadFamilyNotificationsMobile(items, lastReadAt),
+    [items, lastReadAt]
+  );
+
   return {
     items,
+    unreadCount,
     open,
     toggle,
     close,

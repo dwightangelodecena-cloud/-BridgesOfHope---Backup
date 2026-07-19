@@ -1,23 +1,34 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
-  SafeAreaView,
+  Modal,
+  FlatList,
+  ActivityIndicator,
 } from "react-native";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import Constants from "expo-constants";
 import { useTerms } from "../contexts/TermsContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { formatAuthError } from "../lib/authErrors";
+import { goBackOrReplace } from "../lib/navigationConfig";
 import { SIGNUP_CONSENT_STORAGE_KEY } from "../lib/legalDocuments";
+import {
+  getPasswordPolicyError,
+  getPasswordStrengthChecks,
+  PASSWORD_MIN_LENGTH,
+} from "../lib/passwordPolicy";
 import { PsgcSearchableSelect } from "../components/PsgcSearchableSelect";
 import { usePsgcAddressCascade } from "../hooks/usePsgcAddressCascade";
 import {
@@ -25,10 +36,42 @@ import {
   loadAddressDraft,
   saveAddressDraft,
 } from "../lib/addressPersistence";
+import { LoginField } from "../components/auth/LoginField";
+import { ScalePressable } from "../components/auth/ScalePressable";
 
-/** Mirrors BRIDGESOFHOPE/src/pages/auth/signup.jsx validation & user_metadata. */
+const C = {
+  orange: "#F54E25",
+  orangeLight: "#FF6A3D",
+  orangeDark: "#E8441A",
+  navy: "#1A2B4A",
+  muted: "#64748B",
+  white: "#FFFFFF",
+};
+
+const LEARN_ABOUT_OPTIONS = [
+  { value: "", label: "Select an option" },
+  { value: "social_media", label: "Social Media" },
+  { value: "friend_family", label: "Friend or Family" },
+  { value: "healthcare_provider", label: "Healthcare Provider" },
+  { value: "hospital_clinic", label: "Hospital / Clinic" },
+  { value: "online_search", label: "Online Search" },
+  { value: "event_seminar", label: "Event or Seminar" },
+  { value: "other", label: "Other" },
+];
+
+const PASSWORD_REQS = [
+  { key: "lengthOk" as const, label: `At least ${PASSWORD_MIN_LENGTH} characters` },
+  { key: "upper" as const, label: "One uppercase letter" },
+  { key: "lower" as const, label: "One lowercase letter" },
+  { key: "number" as const, label: "One number" },
+  { key: "special" as const, label: "One special character (! @ # $ % …)" },
+  { key: "noSpaces" as const, label: "No spaces" },
+];
+
 export default function SignupScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const appVersion = Constants.expoConfig?.version ?? "1.0.0";
   const {
     acceptTerms,
     acceptPrivacy,
@@ -51,7 +94,7 @@ export default function SignupScreen() {
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
+    void (async () => {
       try {
         const consent = await AsyncStorage.getItem(SIGNUP_CONSENT_STORAGE_KEY);
         if (mounted && !consent) router.replace("/consent" as never);
@@ -75,6 +118,20 @@ export default function SignupScreen() {
     street: "",
   });
   const [houseBlockLot, setHouseBlockLot] = useState("");
+  const [email, setEmail] = useState("");
+  const [learnAboutUs, setLearnAboutUs] = useState("");
+  const [learnPickerOpen, setLearnPickerOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [hidePassword, setHidePassword] = useState(true);
+  const [hideConfirmPassword, setHideConfirmPassword] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const pwChecks = useMemo(() => getPasswordStrengthChecks(password), [password]);
+  const learnAboutLabel =
+    LEARN_ABOUT_OPTIONS.find((o) => o.value === learnAboutUs)?.label ?? "Select an option";
 
   const {
     provinceOptions,
@@ -93,7 +150,7 @@ export default function SignupScreen() {
 
   const psgcCodesRef = useRef({
     provinceCode: "",
-    provinceKind: "province",
+    provinceKind: "province" as "province" | "region",
     cityCode: "",
     barangayCode: "",
   });
@@ -103,7 +160,7 @@ export default function SignupScreen() {
   useEffect(() => {
     if (loadingProvinces) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       const saved = await loadAddressDraft(addressKey);
       if (!saved?.provinceCode || cancelled) return;
       const ok = await hydrateFromSaved(
@@ -166,74 +223,36 @@ export default function SignupScreen() {
     return () => clearTimeout(t);
   }, [addressKey, addr.province, addr.municipality, addr.barangay, addr.street]);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [hidePassword, setHidePassword] = useState(true);
-  const [hideConfirmPassword, setHideConfirmPassword] = useState(true);
+  useEffect(() => {
+    if (!formError) return;
+    const timer = setTimeout(() => setFormError(null), 5000);
+    return () => clearTimeout(timer);
+  }, [formError]);
 
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{
-    firstName?: string;
-    lastName?: string;
-    middleInitial?: string;
-    contactNumber?: string;
-    province?: string;
-    municipality?: string;
-    barangay?: string;
-    street?: string;
-    houseBlockLot?: string;
-    email?: string;
-    password?: string;
-    confirmPassword?: string;
-    terms?: string;
-    privacy?: string;
-  }>({});
+  const hasError = (key: string) => !!fieldErrors[key];
+
+  const clearFieldError = (key: string) => {
+    if (fieldErrors[key]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
 
   const handleContactNumberChange = (text: string) => {
     const cleaned = text.replace(/\D/g, "").slice(0, 13);
     setContactNumber(cleaned);
-    if (fieldErrors.contactNumber) {
-      setFieldErrors((prev) => ({ ...prev, contactNumber: undefined }));
-    }
-  };
-
-  const getPasswordStrength = (value: string) => {
-    const hasMinLength = value.length >= 8;
-    const hasUpper = /[A-Z]/.test(value);
-    const hasNumber = /\d/.test(value);
-    const hasSpace = /\s/.test(value);
-
-    if (!value) {
-      return {
-        message:
-          "Use at least 8 characters with one uppercase letter and one number (special characters optional).",
-        color: "#999999",
-      };
-    }
-    if (hasSpace) {
-      return { message: "Password must not contain spaces.", color: "#E53935" };
-    }
-    if (!hasMinLength || !hasUpper || !hasNumber) {
-      return {
-        message:
-          "Weak password. Add uppercase, a number, and use at least 8 characters.",
-        color: "#E53935",
-      };
-    }
-    return { message: "Strong password.", color: "#43A047" };
+    clearFieldError("contactNumber");
   };
 
   const validateForm = () => {
-    const errors: typeof fieldErrors = {};
+    const errors: Record<string, string> = {};
 
     if (!firstName.trim()) errors.firstName = "First name is required";
     if (!lastName.trim()) errors.lastName = "Last name is required";
-    if (
-      middleInitial.trim() &&
-      !/^[A-Za-z]$/.test(middleInitial.trim())
-    ) {
+    if (middleInitial.trim() && !/^[A-Za-z]$/.test(middleInitial.trim())) {
       errors.middleInitial = "Middle initial must be one letter";
     }
     if (!contactNumber.trim()) {
@@ -242,38 +261,23 @@ export default function SignupScreen() {
       errors.contactNumber = "Contact number must be 10-13 digits";
     }
     if (!addr.province.trim()) errors.province = "Province is required";
-    if (!addr.municipality.trim()) {
-      errors.municipality = "Municipality / City is required";
-    }
-    if (!addr.barangay.trim()) {
-      errors.barangay = "Barangay is required";
-    }
+    if (!addr.municipality.trim()) errors.municipality = "Municipality / City is required";
+    if (!addr.barangay.trim()) errors.barangay = "Barangay is required";
     if (!addr.street.trim()) {
       errors.street = "Street is required";
     } else if (addr.street.trim().length < 2) {
       errors.street = "Enter a valid street (at least 2 characters)";
     }
-    if (!houseBlockLot.trim()) {
-      errors.houseBlockLot = "House # / Block / Lot is required";
-    }
+    if (!houseBlockLot.trim()) errors.houseBlockLot = "House # / Block / Lot is required";
     if (!email.trim()) {
       errors.email = "Email is required";
     } else if (!/\S+@\S+\.\S+/.test(email.trim())) {
       errors.email = "Invalid email format";
     }
+    if (!learnAboutUs) errors.learnAboutUs = "Please tell us how you learned about us";
 
-    const p = password;
-    if (!p.trim()) {
-      errors.password = "Password is required";
-    } else if (/\s/.test(p)) {
-      errors.password = "Password must not contain spaces.";
-    } else if (p.length < 8) {
-      errors.password = "Password must be at least 8 characters long.";
-    } else if (!/[A-Z]/.test(p)) {
-      errors.password = "Password must include at least one uppercase letter.";
-    } else if (!/\d/.test(p)) {
-      errors.password = "Password must include at least one number.";
-    }
+    const pwErr = getPasswordPolicyError(password);
+    if (pwErr) errors.password = pwErr;
 
     if (!confirmPassword.trim()) {
       errors.confirmPassword = "Please confirm your password";
@@ -319,6 +323,8 @@ export default function SignupScreen() {
     const str = addr.street.trim();
     const hb = houseBlockLot.trim();
     const addressLine = [hb, str, brgy, mun, prov].filter(Boolean).join(", ");
+    const learnLabel =
+      LEARN_ABOUT_OPTIONS.find((o) => o.value === learnAboutUs)?.label || learnAboutUs;
 
     setSubmitting(true);
     try {
@@ -338,6 +344,8 @@ export default function SignupScreen() {
             street: str,
             house_block_lot: hb,
             address: addressLine,
+            learn_about_us: learnAboutUs,
+            learn_about_us_label: learnLabel,
             account_type: "family",
           },
         },
@@ -393,183 +401,155 @@ export default function SignupScreen() {
     }
   };
 
-  const hasError = (key: keyof typeof fieldErrors) => !!fieldErrors[key];
-
-  useEffect(() => {
-    if (!formError) return;
-    const timer = setTimeout(() => setFormError(null), 5000);
-    return () => clearTimeout(timer);
-  }, [formError]);
-
-  const clearFieldError = (key: keyof typeof fieldErrors) => {
-    if (fieldErrors[key]) {
-      setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
-    }
-  };
-
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+    <View style={styles.root}>
+      <StatusBar style="light" />
+
+      <View style={[styles.hero, { paddingTop: insets.top + 12 }]}>
+        <LinearGradient
+          colors={["#0B1528", "#152238", "#2A1A28"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.heroBurgundyWash} />
+
         <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
+          style={[styles.backBtn, { top: insets.top + 12 }]}
+          onPress={() => goBackOrReplace(router, "/consent")}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
-          <Ionicons name="arrow-back" size={25} color="#333" />
+          <Ionicons name="arrow-back" size={22} color={C.white} />
         </TouchableOpacity>
 
-        {formError && (
-          <View style={[styles.banner, styles.bannerSpacing]}>
-            <Ionicons name="alert-circle" size={20} color="#fff" />
-            <Text style={styles.bannerText}>{formError}</Text>
+        <View style={styles.heroContent}>
+          <View style={styles.heroIconOuter}>
+            <LinearGradient
+              colors={[C.orangeLight, C.orange, C.orangeDark]}
+              style={styles.heroIconGradient}
+            >
+              <Ionicons name="person-add-outline" size={30} color="#fff" />
+            </LinearGradient>
+            <View style={styles.heroLogoBadge}>
+              <Image
+                source={require("../assets/images/kalingalogo.png")}
+                style={styles.heroLogoMini}
+                contentFit="contain"
+                accessibilityLabel="Kalinga"
+              />
+            </View>
           </View>
-        )}
 
-        <ScrollView
-          contentContainerStyle={styles.scrollContainer}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.logoContainer}>
-            <Image
-              source={require("../assets/images/kalingalogo.png")}
-              style={styles.logo}
-              resizeMode="contain"
+          <Text style={styles.heroEyebrow}>ACCOUNT SETUP</Text>
+          <Text style={styles.heroTitle}>Sign up</Text>
+          <Text style={styles.heroSubtitle}>
+            Create your family member account for the Kalinga Family Portal
+          </Text>
+        </View>
+      </View>
+
+      <KeyboardAvoidingView
+        style={styles.sheetWrap}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={0}
+      >
+        <View style={styles.sheet}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.sheetScroll,
+              { paddingBottom: insets.bottom + 24 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {formError ? (
+              <View style={[styles.banner, styles.bannerError]} accessibilityLiveRegion="polite">
+                <Ionicons name="alert-circle" size={18} color="#DC2626" />
+                <Text style={[styles.bannerText, styles.bannerErrorText]}>{formError}</Text>
+                <TouchableOpacity onPress={() => setFormError(null)} hitSlop={8}>
+                  <Ionicons name="close" size={18} color="#DC2626" />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            <Text style={styles.sectionLabel}>Family member name</Text>
+
+            <LoginField
+              label="First name"
+              icon="person-outline"
+              placeholder="First name"
+              value={firstName}
+              error={hasError("firstName")}
+              onChangeText={(t) => {
+                setFirstName(t);
+                clearFieldError("firstName");
+              }}
+              autoCapitalize="words"
+              returnKeyType="next"
             />
-          </View>
+            {fieldErrors.firstName ? (
+              <Text style={styles.fieldError}>{fieldErrors.firstName}</Text>
+            ) : null}
 
-          <View style={styles.card}>
-            <Text style={styles.label}>First Name</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("firstName") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter first name"
-                placeholderTextColor="#B0B0B0"
-                value={firstName}
-                onChangeText={(t) => {
-                  setFirstName(t);
-                  clearFieldError("firstName");
-                }}
-              />
-            </View>
-            {fieldErrors.firstName && (
-              <Text style={styles.errorText}>{fieldErrors.firstName}</Text>
-            )}
+            <LoginField
+              label="Last name"
+              icon="person-outline"
+              placeholder="Last name"
+              value={lastName}
+              error={hasError("lastName")}
+              onChangeText={(t) => {
+                setLastName(t);
+                clearFieldError("lastName");
+              }}
+              autoCapitalize="words"
+              returnKeyType="next"
+            />
+            {fieldErrors.lastName ? (
+              <Text style={styles.fieldError}>{fieldErrors.lastName}</Text>
+            ) : null}
 
-            <Text style={styles.label}>Last Name</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("lastName") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter last name"
-                placeholderTextColor="#B0B0B0"
-                value={lastName}
-                onChangeText={(t) => {
-                  setLastName(t);
-                  clearFieldError("lastName");
-                }}
-              />
-            </View>
-            {fieldErrors.lastName && (
-              <Text style={styles.errorText}>{fieldErrors.lastName}</Text>
-            )}
-
-            <Text style={styles.label}>Middle Initial (Optional)</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("middleInitial") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. A"
-                placeholderTextColor="#B0B0B0"
-                value={middleInitial}
-                onChangeText={(text) => {
-                  const cleaned = text
-                    .replace(/[^a-zA-Z]/g, "")
-                    .slice(0, 1)
-                    .toUpperCase();
-                  setMiddleInitial(cleaned);
-                  clearFieldError("middleInitial");
-                }}
-                autoCapitalize="characters"
-                maxLength={1}
-              />
-            </View>
-            {fieldErrors.middleInitial && (
-              <Text style={styles.errorText}>{fieldErrors.middleInitial}</Text>
-            )}
-
-            <Text style={styles.label}>Contact Number</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("contactNumber") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="call-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter contact number"
-                placeholderTextColor="#B0B0B0"
-                value={contactNumber}
-                onChangeText={handleContactNumberChange}
-                keyboardType="phone-pad"
-                maxLength={13}
-                textContentType="telephoneNumber"
-              />
-            </View>
-            {fieldErrors.contactNumber && (
-              <Text style={styles.errorText}>{fieldErrors.contactNumber}</Text>
-            )}
+            <LoginField
+              label="Middle initial (optional)"
+              icon="person-outline"
+              placeholder="e.g. A"
+              value={middleInitial}
+              error={hasError("middleInitial")}
+              onChangeText={(text) => {
+                const cleaned = text.replace(/[^a-zA-Z]/g, "").slice(0, 1).toUpperCase();
+                setMiddleInitial(cleaned);
+                clearFieldError("middleInitial");
+              }}
+              autoCapitalize="characters"
+              maxLength={1}
+              returnKeyType="next"
+            />
+            {fieldErrors.middleInitial ? (
+              <Text style={styles.fieldError}>{fieldErrors.middleInitial}</Text>
+            ) : null}
 
             <View style={styles.addressSection}>
-              <Text style={styles.addressSectionKicker}>Location</Text>
-              <Text style={styles.addressSectionTitle}>Philippine address</Text>
-              <Text style={styles.addressSectionSub}>
-                Official PSGC data. Choose province → city → barangay, then add your street line.
-              </Text>
+              <View style={styles.addressHead}>
+                <LinearGradient
+                  colors={["#FFF7ED", "#FFEDD5"]}
+                  style={styles.addressBadge}
+                >
+                  <Ionicons name="location-outline" size={18} color="#EA580C" />
+                </LinearGradient>
+                <View style={styles.addressHeadCopy}>
+                  <Text style={styles.addressTitle}>Address</Text>
+                  <Text style={styles.addressSubtitle}>
+                    Complete province, city, then barangay.
+                  </Text>
+                </View>
+              </View>
+
               {addressRestored ? (
-                <Text style={styles.addressRestoredHint}>
-                  Restored your last address on this device — review if needed.
+                <Text style={styles.addressRestored}>
+                  We restored your last address on this device. Review and update if needed.
                 </Text>
               ) : null}
+
               {fetchError ? (
                 <View style={styles.fetchBanner}>
                   <Text style={styles.fetchBannerText}>{fetchError}</Text>
@@ -579,457 +559,579 @@ export default function SignupScreen() {
                 </View>
               ) : null}
 
-              <PsgcSearchableSelect
-                label="Province"
-                description="Type to filter the list."
-                icon="location-outline"
-                options={provinceOptions}
-                valueName={addr.province}
-                onSelect={(opt) => {
-                  void onProvinceSelected(opt, setAddr);
-                  clearFieldError("province");
-                }}
-                disabled={loadingProvinces}
-                loading={loadingProvinces}
-                placeholder={loadingProvinces ? "Loading provinces…" : "Choose Province"}
-                emptyText="No province matched."
-                errorText={fieldErrors.province || ""}
-              />
-
-              <PsgcSearchableSelect
-                label="City / Municipality"
-                description="Loads after province."
-                icon="business-outline"
-                options={cityOptions}
-                valueName={addr.municipality}
-                onSelect={(opt) => {
-                  void onCitySelected(opt, setAddr);
-                  clearFieldError("municipality");
-                }}
-                disabled={!addr.province.trim() || loadingCities}
-                loading={loadingCities}
-                placeholder={
-                  !addr.province.trim()
-                    ? "Choose Province First"
-                    : loadingCities
-                      ? "Loading cities…"
-                      : "Choose City / Municipality"
-                }
-                emptyText={loadingCities ? "Loading…" : "No match in this province."}
-                errorText={fieldErrors.municipality || ""}
-              />
-
-              <PsgcSearchableSelect
-                label="Barangay"
-                description="Loads after city."
-                icon="pin-outline"
-                options={barangayOptions}
-                valueName={addr.barangay}
-                onSelect={(opt) => {
-                  onBarangaySelected(opt, setAddr);
-                  clearFieldError("barangay");
-                }}
-                disabled={!addr.municipality.trim() || loadingBarangays}
-                loading={loadingBarangays}
-                placeholder={
-                  !addr.municipality.trim()
-                    ? "Choose City First"
-                    : loadingBarangays
-                      ? "Loading barangays…"
-                      : "Choose Barangay"
-                }
-                emptyText={loadingBarangays ? "Loading…" : "No barangay matched."}
-                errorText={fieldErrors.barangay || ""}
-              />
-
-              <Text style={styles.label}>Street / Building Line</Text>
-              <Text style={styles.streetSub}>
-                Block, lot, street, building, or subdivision (not in the lists above).
-              </Text>
-              <View
-                style={[
-                  styles.inputContainer,
-                  hasError("street") && styles.inputErrorBorder,
-                ]}
-              >
-                <Ionicons
-                  name="navigate-outline"
-                  size={20}
-                  color="#64748B"
-                  style={styles.inputIcon}
+              <View style={styles.addressCard}>
+                <PsgcSearchableSelect
+                  label="Province"
+                  icon="location-outline"
+                  options={provinceOptions}
+                  valueName={addr.province}
+                  onSelect={(opt) => {
+                    void onProvinceSelected(opt, setAddr);
+                    clearFieldError("province");
+                  }}
+                  disabled={loadingProvinces}
+                  loading={loadingProvinces}
+                  placeholder={loadingProvinces ? "Loading provinces…" : "Choose Province"}
+                  emptyText="No province matched."
+                  errorText={fieldErrors.province || ""}
+                  inCard
                 />
-                <TextInput
-                  style={styles.input}
+
+                <PsgcSearchableSelect
+                  label="City / Municipality"
+                  icon="business-outline"
+                  options={cityOptions}
+                  valueName={addr.municipality}
+                  onSelect={(opt) => {
+                    void onCitySelected(opt, setAddr);
+                    clearFieldError("municipality");
+                  }}
+                  disabled={!addr.province.trim() || loadingCities}
+                  loading={loadingCities}
+                  placeholder={
+                    !addr.province.trim()
+                      ? "Choose Province First"
+                      : loadingCities
+                        ? "Loading cities…"
+                        : "Choose City / Municipality"
+                  }
+                  emptyText={loadingCities ? "Loading…" : "No match in this province."}
+                  errorText={fieldErrors.municipality || ""}
+                  inCard
+                />
+
+                <PsgcSearchableSelect
+                  label="Barangay"
+                  icon="pin-outline"
+                  options={barangayOptions}
+                  valueName={addr.barangay}
+                  onSelect={(opt) => {
+                    onBarangaySelected(opt, setAddr);
+                    clearFieldError("barangay");
+                  }}
+                  disabled={!addr.municipality.trim() || loadingBarangays}
+                  loading={loadingBarangays}
+                  placeholder={
+                    !addr.municipality.trim()
+                      ? "Choose City First"
+                      : loadingBarangays
+                        ? "Loading barangays…"
+                        : "Choose Barangay"
+                  }
+                  emptyText={loadingBarangays ? "Loading…" : "No barangay matched."}
+                  errorText={fieldErrors.barangay || ""}
+                  inCard
+                />
+
+                <LoginField
+                  label="Street / Building Line"
+                  icon="navigate-outline"
                   placeholder="Enter block, lot, street, or building (e.g. Blk 2 Lot 15)"
-                  placeholderTextColor="#B0B0B0"
                   value={addr.street}
+                  error={hasError("street")}
                   onChangeText={(t) => {
                     setAddr((a) => ({ ...a, street: t }));
                     clearFieldError("street");
                   }}
                   autoComplete="street-address"
                 />
+                <Text style={styles.streetHint}>
+                  Block, lot, street, building, or subdivision (not in the lists above).
+                </Text>
+                {fieldErrors.street ? (
+                  <Text style={styles.fieldError}>{fieldErrors.street}</Text>
+                ) : null}
               </View>
-              {fieldErrors.street && (
-                <Text style={styles.errorText}>{fieldErrors.street}</Text>
-              )}
             </View>
 
-            <Text style={styles.label}>House # / Block / Lot</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("houseBlockLot") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="home-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Blk 2 Lot 15"
-                placeholderTextColor="#B0B0B0"
-                value={houseBlockLot}
-                onChangeText={(t) => {
-                  setHouseBlockLot(t);
-                  clearFieldError("houseBlockLot");
-                }}
-              />
-            </View>
-            {fieldErrors.houseBlockLot && (
-              <Text style={styles.errorText}>{fieldErrors.houseBlockLot}</Text>
-            )}
+            <LoginField
+              label="House # / Block / Lot"
+              icon="home-outline"
+              placeholder="e.g. Blk 2 Lot 15"
+              value={houseBlockLot}
+              error={hasError("houseBlockLot")}
+              onChangeText={(t) => {
+                setHouseBlockLot(t);
+                clearFieldError("houseBlockLot");
+              }}
+            />
+            {fieldErrors.houseBlockLot ? (
+              <Text style={styles.fieldError}>{fieldErrors.houseBlockLot}</Text>
+            ) : null}
 
-            <Text style={styles.label}>Email Address</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("email") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="mail-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your email"
-                placeholderTextColor="#B0B0B0"
-                value={email}
-                onChangeText={(t) => {
-                  setEmail(t);
-                  clearFieldError("email");
-                }}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-            </View>
-            {fieldErrors.email && (
-              <Text style={styles.errorText}>{fieldErrors.email}</Text>
-            )}
+            <LoginField
+              label="Contact number"
+              icon="call-outline"
+              placeholder="Enter contact number"
+              value={contactNumber}
+              error={hasError("contactNumber")}
+              onChangeText={handleContactNumberChange}
+              keyboardType="phone-pad"
+              maxLength={13}
+              textContentType="telephoneNumber"
+            />
+            {fieldErrors.contactNumber ? (
+              <Text style={styles.fieldError}>{fieldErrors.contactNumber}</Text>
+            ) : null}
 
-            <Text style={styles.label}>Password</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                styles.passwordInputContainer,
-                hasError("password") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Create Password"
-                placeholderTextColor="#B0B0B0"
-                secureTextEntry={hidePassword}
-                value={password}
-                onChangeText={(t) => {
-                  setPassword(t);
-                  clearFieldError("password");
-                }}
-              />
-              <TouchableOpacity onPress={() => setHidePassword((v) => !v)}>
-                <Ionicons
-                  name={hidePassword ? "eye-outline" : "eye-off-outline"}
-                  size={20}
-                  color="#999"
-                />
-              </TouchableOpacity>
-            </View>
-            {!!password && (
-              <Text
-                style={[
-                  styles.passwordStrengthText,
-                  { color: getPasswordStrength(password).color },
-                ]}
-              >
-                {getPasswordStrength(password).message}
-              </Text>
-            )}
-            {fieldErrors.password && (
-              <Text style={styles.errorText}>{fieldErrors.password}</Text>
-            )}
+            <LoginField
+              label="Email address"
+              icon="mail-outline"
+              placeholder="Enter your email"
+              value={email}
+              error={hasError("email")}
+              onChangeText={(t) => {
+                setEmail(t);
+                clearFieldError("email");
+              }}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+            />
+            {fieldErrors.email ? (
+              <Text style={styles.fieldError}>{fieldErrors.email}</Text>
+            ) : null}
 
-            <Text style={styles.label}>Confirm Password</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                hasError("confirmPassword") && styles.inputErrorBorder,
-              ]}
-            >
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Confirm Password"
-                placeholderTextColor="#B0B0B0"
-                secureTextEntry={hideConfirmPassword}
-                value={confirmPassword}
-                onChangeText={(t) => {
-                  setConfirmPassword(t);
-                  clearFieldError("confirmPassword");
-                }}
-              />
-              <TouchableOpacity
-                onPress={() => setHideConfirmPassword((v) => !v)}
-              >
-                <Ionicons
-                  name={
-                    hideConfirmPassword ? "eye-outline" : "eye-off-outline"
-                  }
-                  size={20}
-                  color="#999"
-                />
-              </TouchableOpacity>
-            </View>
-            {fieldErrors.confirmPassword && (
-              <Text style={styles.errorText}>{fieldErrors.confirmPassword}</Text>
-            )}
-
-            <View style={styles.termsAcceptList}>
-              <View style={styles.termsRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.checkbox,
-                    acceptTerms && styles.checkboxChecked,
-                    !hasReadTerms && styles.checkboxDisabled,
-                  ]}
-                  disabled={!hasReadTerms}
-                  onPress={() => {
-                    setAcceptTerms(!acceptTerms);
-                    clearFieldError("terms");
-                  }}
-                >
-                  {acceptTerms && (
-                    <Ionicons name="checkmark" size={14} color="#fff" />
-                  )}
-                </TouchableOpacity>
-                <View style={styles.termsRowText}>
-                  <Text style={styles.termsText}>
-                    I have read and agree to the{" "}
-                    <Text
-                      style={styles.linkText}
-                      onPress={() => router.push("/terms")}
-                    >
-                      Terms and Conditions of Use
-                    </Text>
-                    {!hasReadTerms ? " (open and scroll to the end first)" : ""}
-                  </Text>
-                </View>
-              </View>
-              {fieldErrors.terms ? (
-                <Text style={styles.errorText}>{fieldErrors.terms}</Text>
-              ) : null}
-
-              <View style={styles.termsRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.checkbox,
-                    acceptPrivacy && styles.checkboxChecked,
-                    !hasReadPrivacy && styles.checkboxDisabled,
-                  ]}
-                  disabled={!hasReadPrivacy}
-                  onPress={() => {
-                    setAcceptPrivacy(!acceptPrivacy);
-                    clearFieldError("privacy");
-                  }}
-                >
-                  {acceptPrivacy && (
-                    <Ionicons name="checkmark" size={14} color="#fff" />
-                  )}
-                </TouchableOpacity>
-                <View style={styles.termsRowText}>
-                  <Text style={styles.termsText}>
-                    I have read and agree to the{" "}
-                    <Text
-                      style={styles.linkText}
-                      onPress={() => router.push("/privacypolicy")}
-                    >
-                      Privacy Policy
-                    </Text>
-                    {!hasReadPrivacy ? " (open and scroll to the end first)" : ""}
-                  </Text>
-                </View>
-              </View>
-              {fieldErrors.privacy ? (
-                <Text style={styles.errorText}>{fieldErrors.privacy}</Text>
-              ) : null}
-            </View>
-
+            <Text style={styles.sectionLabel}>How did you learn about us?</Text>
             <TouchableOpacity
               style={[
-                styles.createButton,
-                (submitting || !canCreateAccount) && { opacity: 0.5 },
+                styles.learnShell,
+                hasError("learnAboutUs") && styles.learnShellError,
               ]}
-              onPress={handleCreateAccount}
-              disabled={submitting || !canCreateAccount}
+              onPress={() => setLearnPickerOpen(true)}
+              activeOpacity={0.85}
             >
-              <Text style={styles.createButtonText}>
-                {submitting ? "Creating account…" : "Create Account"}
+              <View style={styles.learnIconBox}>
+                <Ionicons name="help-circle-outline" size={18} color={C.muted} />
+              </View>
+              <Text
+                style={[styles.learnText, !learnAboutUs && styles.learnPlaceholder]}
+                numberOfLines={1}
+              >
+                {learnAboutLabel}
               </Text>
+              <Ionicons name="chevron-down" size={18} color={C.muted} />
             </TouchableOpacity>
+            {fieldErrors.learnAboutUs ? (
+              <Text style={styles.fieldError}>{fieldErrors.learnAboutUs}</Text>
+            ) : null}
 
-            <View style={styles.loginPromptRow}>
-              <Text style={styles.loginPromptText}>Already have an account? </Text>
+            <LoginField
+              label="Password"
+              icon="lock-closed-outline"
+              placeholder="Create password"
+              value={password}
+              secureTextEntry={hidePassword}
+              error={hasError("password")}
+              onChangeText={(t) => {
+                setPassword(t);
+                clearFieldError("password");
+              }}
+              autoCapitalize="none"
+              textContentType="newPassword"
+              rightElement={
+                <TouchableOpacity onPress={() => setHidePassword((v) => !v)} hitSlop={8}>
+                  <Ionicons
+                    name={hidePassword ? "eye-outline" : "eye-off-outline"}
+                    size={20}
+                    color={C.muted}
+                  />
+                </TouchableOpacity>
+              }
+            />
+            {fieldErrors.password ? (
+              <Text style={styles.fieldError}>{fieldErrors.password}</Text>
+            ) : null}
+
+            <View style={styles.passwordReqs}>
+              {PASSWORD_REQS.map((req) => {
+                const met = pwChecks[req.key];
+                return (
+                  <View key={req.key} style={styles.reqRow}>
+                    <Ionicons
+                      name={met ? "checkmark-circle" : "ellipse-outline"}
+                      size={14}
+                      color={met ? "#059669" : "#94A3B8"}
+                    />
+                    <Text style={[styles.reqText, met && styles.reqTextMet]}>{req.label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            <LoginField
+              label="Confirm password"
+              icon="lock-closed-outline"
+              placeholder="Confirm password"
+              value={confirmPassword}
+              secureTextEntry={hideConfirmPassword}
+              error={hasError("confirmPassword")}
+              onChangeText={(t) => {
+                setConfirmPassword(t);
+                clearFieldError("confirmPassword");
+              }}
+              autoCapitalize="none"
+              textContentType="newPassword"
+              rightElement={
+                <TouchableOpacity
+                  onPress={() => setHideConfirmPassword((v) => !v)}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name={hideConfirmPassword ? "eye-outline" : "eye-off-outline"}
+                    size={20}
+                    color={C.muted}
+                  />
+                </TouchableOpacity>
+              }
+            />
+            {fieldErrors.confirmPassword ? (
+              <Text style={styles.fieldError}>{fieldErrors.confirmPassword}</Text>
+            ) : null}
+
+            <View style={styles.termsList}>
+              <TouchableOpacity
+                style={[styles.termsRow, !hasReadTerms && styles.termsRowDisabled]}
+                onPress={() => {
+                  if (!hasReadTerms) return;
+                  setAcceptTerms(!acceptTerms);
+                  clearFieldError("terms");
+                }}
+                activeOpacity={0.85}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: acceptTerms, disabled: !hasReadTerms }}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    acceptTerms && styles.checkboxOn,
+                    !hasReadTerms && styles.checkboxDisabled,
+                  ]}
+                >
+                  {acceptTerms ? <Ionicons name="checkmark" size={12} color="#fff" /> : null}
+                </View>
+                <Text style={styles.termsText}>
+                  I have read and agree to the{" "}
+                  <Text style={styles.termsLink} onPress={() => router.push("/terms")}>
+                    Terms and Conditions of Use
+                  </Text>
+                  {!hasReadTerms ? " (open and scroll to the end first)" : ""}
+                </Text>
+              </TouchableOpacity>
+              {fieldErrors.terms ? (
+                <Text style={styles.fieldError}>{fieldErrors.terms}</Text>
+              ) : null}
+
+              <TouchableOpacity
+                style={[styles.termsRow, !hasReadPrivacy && styles.termsRowDisabled]}
+                onPress={() => {
+                  if (!hasReadPrivacy) return;
+                  setAcceptPrivacy(!acceptPrivacy);
+                  clearFieldError("privacy");
+                }}
+                activeOpacity={0.85}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: acceptPrivacy, disabled: !hasReadPrivacy }}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    acceptPrivacy && styles.checkboxOn,
+                    !hasReadPrivacy && styles.checkboxDisabled,
+                  ]}
+                >
+                  {acceptPrivacy ? <Ionicons name="checkmark" size={12} color="#fff" /> : null}
+                </View>
+                <Text style={styles.termsText}>
+                  I have read and agree to the{" "}
+                  <Text style={styles.termsLink} onPress={() => router.push("/privacypolicy")}>
+                    Privacy Policy
+                  </Text>
+                  {!hasReadPrivacy ? " (open and scroll to the end first)" : ""}
+                </Text>
+              </TouchableOpacity>
+              {fieldErrors.privacy ? (
+                <Text style={styles.fieldError}>{fieldErrors.privacy}</Text>
+              ) : null}
+            </View>
+
+            <ScalePressable
+              onPress={() => void handleCreateAccount()}
+              disabled={submitting || !canCreateAccount}
+              style={[styles.ctaWrap, (submitting || !canCreateAccount) && styles.ctaDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Create account"
+            >
+              <LinearGradient
+                colors={
+                  submitting || !canCreateAccount
+                    ? ["#CBD5E1", "#94A3B8"]
+                    : [C.orangeLight, C.orange, C.orangeDark]
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.cta}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.ctaText}>Create account</Text>
+                )}
+              </LinearGradient>
+            </ScalePressable>
+
+            <View style={styles.signInRow}>
+              <Text style={styles.signInMuted}>Already have an account?</Text>
               <TouchableOpacity onPress={() => router.replace("/login")}>
-                <Text style={styles.loginPromptLink}>Sign In</Text>
+                <Text style={styles.signInLink}> Sign in</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </ScrollView>
+
+            <View style={styles.footerMeta}>
+              <Ionicons name="shield-checkmark-outline" size={13} color={C.muted} />
+              <Text style={styles.footerMetaText}>Encrypted & secure</Text>
+              <Text style={styles.footerDot}>·</Text>
+              <Text style={styles.footerMetaText}>Bridges of Hope</Text>
+              <Text style={styles.footerDot}>·</Text>
+              <Text style={styles.footerMetaText}>v{appVersion}</Text>
+            </View>
+          </ScrollView>
+        </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+
+      <Modal
+        visible={learnPickerOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setLearnPickerOpen(false)}
+      >
+        <View style={styles.modalRoot}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setLearnPickerOpen(false)}
+          />
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>How did you learn about us?</Text>
+              <TouchableOpacity onPress={() => setLearnPickerOpen(false)}>
+                <Text style={styles.modalClose}>Close</Text>
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={LEARN_ABOUT_OPTIONS.filter((o) => o.value)}
+              keyExtractor={(item) => item.value}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.modalItem,
+                    learnAboutUs === item.value && styles.modalItemActive,
+                  ]}
+                  onPress={() => {
+                    setLearnAboutUs(item.value);
+                    clearFieldError("learnAboutUs");
+                    setLearnPickerOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.modalItemText,
+                      learnAboutUs === item.value && styles.modalItemTextActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {learnAboutUs === item.value ? (
+                    <Ionicons name="checkmark" size={18} color={C.orange} />
+                  ) : null}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#152238",
+    ...Platform.select({ web: { alignItems: "center" }, default: {} }),
   },
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  bannerSpacing: {
-    marginTop: 12,
-    marginHorizontal: 20,
-  },
-  banner: {
-    backgroundColor: "#C94A5A",
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-    alignSelf: "center",
-  },
-  bannerText: {
-    color: "#fff",
-    fontWeight: "500",
-    marginLeft: 8,
-    fontSize: 14,
-    flex: 1,
-  },
-  scrollContainer: {
-    paddingHorizontal: 30,
-    paddingTop: 8,
-    paddingBottom: 40,
-  },
-  logoContainer: {
+  hero: {
+    paddingHorizontal: 24,
+    paddingBottom: 28,
+    minHeight: 176,
+    overflow: "hidden",
     width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-    marginBottom: 16,
+    maxWidth: Platform.select({ web: 520, default: undefined }),
   },
-  backButton: {
+  heroBurgundyWash: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: "58%",
+    backgroundColor: "rgba(74, 40, 50, 0.45)",
+    borderTopLeftRadius: 120,
+    borderBottomLeftRadius: 40,
+  },
+  backBtn: {
     position: "absolute",
     left: 16,
-    top: 16,
-    padding: 8,
-    zIndex: 20,
-  },
-  logo: {
-    width: "100%",
-    height: 120,
-  },
-  card: {
-    width: "100%",
-    marginTop: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#444",
-    marginBottom: 6,
-  },
-  sectionLabel: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1F2937",
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  addressSection: {
-    marginTop: 8,
-    marginBottom: 8,
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: "#FFFFFF",
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
-    borderColor: "#F1F5F9",
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    borderColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  addressSectionKicker: {
-    fontSize: 11,
+  heroContent: { alignItems: "center", zIndex: 1, paddingTop: 40 },
+  heroIconOuter: { marginBottom: 12, position: "relative" },
+  heroIconGradient: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    ...Platform.select({
+      web: { boxShadow: "0 8px 24px rgba(245, 78, 37, 0.45)" },
+      default: {
+        shadowColor: C.orange,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+        elevation: 8,
+      },
+    }),
+  },
+  heroLogoBadge: {
+    position: "absolute",
+    bottom: -4,
+    right: -10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  heroLogoMini: { width: 22, height: 22 },
+  heroEyebrow: {
+    fontSize: 10,
     fontWeight: "800",
-    color: "#EA580C",
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
+    color: "#FF8A65",
     marginBottom: 4,
   },
-  addressSectionTitle: {
-    fontSize: 17,
+  heroTitle: {
+    fontSize: 24,
     fontWeight: "800",
-    color: "#0F172A",
-    marginBottom: 6,
+    color: C.white,
+    letterSpacing: -0.4,
+    marginBottom: 4,
   },
-  addressSectionSub: {
+  heroSubtitle: {
     fontSize: 13,
-    color: "#64748B",
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "500",
+    textAlign: "center",
+    paddingHorizontal: 16,
     lineHeight: 18,
+  },
+  sheetWrap: {
+    flex: 1,
+    marginTop: -20,
+    width: "100%",
+    maxWidth: Platform.select({ web: 520, default: undefined }),
+  },
+  sheet: {
+    flex: 1,
+    backgroundColor: C.white,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    ...Platform.select({
+      web: { boxShadow: "0 -8px 32px rgba(0,0,0,0.12)" },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 16,
+        elevation: 12,
+      },
+    }),
+  },
+  sheetScroll: { paddingHorizontal: 24, paddingTop: 20 },
+  banner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  bannerError: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
+  bannerText: { flex: 1, fontSize: 13, fontWeight: "600", lineHeight: 18 },
+  bannerErrorText: { color: "#DC2626" },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: C.muted,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  fieldError: {
+    fontSize: 12,
+    color: "#DC2626",
+    marginTop: -8,
+    marginBottom: 10,
+    fontWeight: "500",
+  },
+  addressSection: { marginBottom: 8 },
+  addressHead: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
     marginBottom: 12,
   },
-  addressRestoredHint: {
+  addressBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+  },
+  addressHeadCopy: { flex: 1 },
+  addressTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginBottom: 2,
+  },
+  addressSubtitle: {
+    fontSize: 13,
+    color: C.muted,
+    lineHeight: 18,
+  },
+  addressRestored: {
     fontSize: 12,
     color: "#047857",
-    fontWeight: "600",
-    marginBottom: 12,
-  },
-  streetSub: {
-    fontSize: 12,
-    color: "#94A3B8",
-    marginBottom: 8,
-    marginTop: -4,
+    fontWeight: "500",
+    marginBottom: 10,
+    paddingLeft: 52,
   },
   fetchBanner: {
     flexDirection: "row",
@@ -1038,125 +1140,180 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEF2F2",
     borderWidth: 1,
     borderColor: "#FECACA",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 10,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
     gap: 8,
   },
   fetchBannerText: { flex: 1, fontSize: 12, color: "#991B1B" },
-  fetchDismiss: { fontSize: 12, fontWeight: "700", color: "#F54E25" },
-  inputContainer: {
+  fetchDismiss: { fontSize: 12, fontWeight: "700", color: "#DC2626" },
+  addressCard: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 16,
+    gap: 4,
+    ...Platform.select({
+      web: { boxShadow: "0 4px 16px rgba(15, 23, 42, 0.05)" },
+      default: {
+        shadowColor: "#0f172a",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2,
+      },
+    }),
+  },
+  streetHint: {
+    fontSize: 12,
+    color: "#94A3B8",
+    marginTop: -6,
+    marginBottom: 8,
+    lineHeight: 16,
+  },
+  learnShell: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    backgroundColor: "#FAFAFA",
-    paddingHorizontal: 14,
-    height: 52,
-    marginBottom: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 12,
+    minHeight: 52,
+    marginBottom: 14,
   },
-  inputIcon: {
+  learnShellError: {
+    borderColor: "#FCA5A5",
+    backgroundColor: "#FEF2F2",
+  },
+  learnIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 8,
   },
-  input: {
-    flex: 1,
-    fontSize: 14,
-    color: "#000",
+  learnText: { flex: 1, fontSize: 14, color: C.navy, fontWeight: "500" },
+  learnPlaceholder: { color: "#94A3B8" },
+  passwordReqs: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E8EDF3",
+    padding: 12,
+    marginTop: -8,
+    marginBottom: 14,
   },
-  inputErrorBorder: {
-    borderColor: "#E53935",
+  reqRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
   },
-  errorText: {
-    fontSize: 12,
-    color: "#E53935",
-    marginBottom: 10,
-  },
-  passwordStrengthText: {
-    fontSize: 12,
-    marginTop: 4,
-    marginBottom: 10,
-  },
-  passwordInputContainer: {
-    marginBottom: 6,
-  },
-  termsAcceptList: {
-    marginTop: 8,
-    marginBottom: 6,
-    gap: 4,
-    width: "100%",
-    alignSelf: "stretch",
-  },
+  reqText: { fontSize: 12, color: C.muted, fontWeight: "500" },
+  reqTextMet: { color: "#059669", fontWeight: "600" },
+  termsList: { marginBottom: 16, gap: 8 },
   termsRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    alignSelf: "stretch",
-    width: "100%",
-    marginTop: 4,
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E8EDF3",
+    backgroundColor: "#FAFBFC",
   },
+  termsRowDisabled: { opacity: 0.75 },
   checkbox: {
     width: 18,
     height: 18,
     borderRadius: 4,
-    borderWidth: 1,
-    borderColor: "#CCC",
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 8,
+    marginTop: 2,
     backgroundColor: "#fff",
   },
-  checkboxChecked: {
-    backgroundColor: "#F54E25",
-    borderColor: "#F54E25",
-  },
-  checkboxDisabled: {
-    opacity: 0.45,
-  },
-  termsRowText: {
-    flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "flex-start",
-  },
-  termsText: {
-    fontSize: 12,
-    color: "#555",
-  },
-  linkText: {
-    color: "#F54E25",
+  checkboxOn: { backgroundColor: C.orange, borderColor: C.orange },
+  checkboxDisabled: { backgroundColor: "#F1F5F9" },
+  termsText: { flex: 1, fontSize: 13, color: C.muted, lineHeight: 19 },
+  termsLink: {
+    color: C.orange,
     fontWeight: "700",
-    fontSize: 13,
     textDecorationLine: "underline",
-    textDecorationStyle: "solid",
   },
-  createButton: {
-    marginTop: 24,
-    backgroundColor: "#F54E25",
-    height: 52,
-    borderRadius: 30,
+  ctaWrap: {
+    borderRadius: 14,
+    overflow: "hidden",
+    marginBottom: 16,
+    ...Platform.select({
+      web: {},
+      default: {
+        shadowColor: C.orangeDark,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 4,
+      },
+    }),
+  },
+  ctaDisabled: { opacity: 0.9 },
+  cta: { minHeight: 54, alignItems: "center", justifyContent: "center" },
+  ctaText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  signInRow: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    width: "100%",
+    marginBottom: 16,
   },
-  createButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  loginPromptRow: {
+  signInMuted: { fontSize: 14, color: C.muted },
+  signInLink: { fontSize: 14, fontWeight: "800", color: C.orange },
+  footerMeta: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
-    marginTop: 20,
     flexWrap: "wrap",
+    gap: 4,
+    paddingBottom: 4,
   },
-  loginPromptText: {
-    fontSize: 14,
-    color: "#777",
+  footerMetaText: { fontSize: 11, color: C.muted, fontWeight: "500" },
+  footerDot: { fontSize: 11, color: "#CBD5E1" },
+  modalRoot: { flex: 1, justifyContent: "flex-end" },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(11, 21, 40, 0.45)",
   },
-  loginPromptLink: {
-    fontSize: 14,
-    color: "#F54E25",
-    fontWeight: "700",
+  modalSheet: {
+    backgroundColor: C.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "70%",
+    paddingTop: 16,
   },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  modalTitle: { fontSize: 16, fontWeight: "800", color: C.navy },
+  modalClose: { fontSize: 14, fontWeight: "700", color: C.orange },
+  modalItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F8FAFC",
+  },
+  modalItemActive: { backgroundColor: "#FFF7F4" },
+  modalItemText: { fontSize: 15, color: C.navy, fontWeight: "500" },
+  modalItemTextActive: { color: C.orange, fontWeight: "700" },
 });

@@ -9,12 +9,13 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router/react-navigation';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FAMILY_ACTIVE_ADMISSION_STATUSES } from '../../lib/admissionWorkflow';
@@ -31,7 +32,9 @@ import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
+import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
+import { getFamilyFirstName, getFamilyGreetingIcon, getFamilyTimeGreeting } from '../../lib/familyGreeting';
 import {
   listVisitationRequestsByFamily,
   mergeRequestsFromSupabase,
@@ -41,6 +44,7 @@ import {
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
+const heroDecoScale = isCompactScreen ? 0.78 : 0.9;
 const BG = '#F8FAFF';
 
 function deriveInitials(name: string): string {
@@ -119,8 +123,29 @@ function patientStatus(progress: number) {
   return { label: 'Needs Attention', color: '#991B1B', bg: '#FEE2E2' };
 }
 
+function ReportFieldCard({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+}) {
+  return (
+    <View style={styles.reportFieldCard}>
+      <View style={styles.reportFieldCardHead}>
+        <Ionicons name={icon} size={13} color="#F54E25" />
+        <Text style={styles.reportFieldCardLbl}>{label}</Text>
+      </View>
+      <Text style={styles.reportFieldCardVal}>{value || '—'}</Text>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { scrollRef, scrollToTop } = useFamilyPageScroll();
   const router = useRouter();
   const { displayName } = useFamilyUserMobile();
   const { unreadCount: supportUnreadCount } = useSupportChatMobile();
@@ -138,11 +163,7 @@ export default function HomeScreen() {
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [supabaseReadError, setSupabaseReadError] = useState<string | null>(null);
 
-  const firstName =
-    String(displayName || 'Family User')
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)[0] || 'Family';
+  const firstName = getFamilyFirstName(displayName);
 
   const loadDashboard = useCallback(async () => {
     if (!isSupabaseConfigured()) {
@@ -416,9 +437,8 @@ export default function HomeScreen() {
 
   const patientTableRows = patients;
 
-  const hour = new Date().getHours();
-  const greeting =
-    hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const greeting = getFamilyTimeGreeting();
+  const greetingIcon = getFamilyGreetingIcon();
   const dateStr = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
@@ -428,18 +448,27 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: BG }]}>
-      <FamilyMobilePageHeader />
+      <FamilyMobilePageHeader onBrandPress={scrollToTop} />
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
         <LinearGradient
-          colors={['#1E293B', '#1D2D50', '#312e81']}
+          colors={['#0f172a', '#1e293b', '#312e81']}
+          locations={[0, 0.42, 1]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.heroBanner}
         >
+          <View style={styles.heroDecoLayer} pointerEvents="none">
+            <View style={styles.heroRadialOrange} />
+            <View style={styles.heroRadialIndigo} />
+            <View style={styles.heroDeco1} />
+            <View style={styles.heroDeco2} />
+            <View style={styles.heroDeco3} />
+          </View>
           <View style={styles.heroInner}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <View style={styles.heroEyebrowRow}>
@@ -450,9 +479,17 @@ export default function HomeScreen() {
                   Bridges of Hope — Family Portal
                 </Text>
               </View>
-              <Text style={styles.heroTitle}>
-                {greeting}, {firstName} 👋
-              </Text>
+              <View style={styles.heroTitleRow}>
+                <Text style={styles.heroTitle}>
+                  {greeting}, {firstName}
+                </Text>
+                <Ionicons
+                  name={greetingIcon}
+                  size={isCompactScreen ? 20 : 24}
+                  color="#F54E25"
+                  style={styles.heroTitleIcon}
+                />
+              </View>
               <Text style={styles.heroSub}>{dateStr} · Your care overview at a glance</Text>
             </View>
           </View>
@@ -831,10 +868,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.cleanListItem}>
-              <View style={styles.cleanListItemLeft}>
-                <FamilyMessageIcon size="sm" badge={supportUnreadCount} />
-                <Text style={styles.cleanTitle}>Messages</Text>
-              </View>
+              <Text style={styles.cleanTitle}>Messages</Text>
               <TouchableOpacity style={styles.openBtnOrange} onPress={() => router.navigate(TAB_ROUTES.messages)}>
                 <Text style={[styles.openBtnText, { color: '#C2410C' }]}>Open</Text>
               </TouchableOpacity>
@@ -859,67 +893,103 @@ export default function HomeScreen() {
           setWeeklyReportExpandedPatientId(null);
         }}
       >
-        <View style={[styles.reportModalRoot, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-          <View style={styles.reportModalHeader}>
-            {weeklyReportDetail ? (
-              <TouchableOpacity
-                onPress={() => setWeeklyReportDetail(null)}
-                style={styles.reportModalBack}
-                accessibilityRole="button"
-                accessibilityLabel="Back to patient list"
-              >
-                <Ionicons name="chevron-back" size={22} color="#F54E25" />
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.reportModalBackSpacer} />
-            )}
-            <View style={{ flex: 1 }}>
-              <Text style={styles.reportModalKicker}>Care updates</Text>
-              <Text style={styles.reportModalTitle}>
-                {weeklyReportDetail
-                  ? `Week ${weeklyReportDetail.week}`
-                  : 'Weekly nurse reports'}
-              </Text>
+        <View style={[styles.reportModalRoot, { paddingBottom: insets.bottom }]}>
+          <LinearGradient
+            colors={['#0B1528', '#152238', '#2A1A28']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.reportModalHero, { paddingTop: insets.top + 12 }]}
+          >
+            <View style={styles.reportModalHeroWash} />
+            <View style={styles.reportModalHeroRow}>
               {weeklyReportDetail ? (
-                <Text style={styles.reportModalSub}>{weeklyReportDetail.patientName}</Text>
+                <TouchableOpacity
+                  onPress={() => setWeeklyReportDetail(null)}
+                  style={styles.reportModalIconBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to patient list"
+                >
+                  <Ionicons name="chevron-back" size={20} color="#fff" />
+                </TouchableOpacity>
               ) : (
-                <Text style={styles.reportModalSub}>Choose a resident, then a week (1–7)</Text>
+                <LinearGradient colors={['#FF6A3D', '#F54E25', '#E8441A']} style={styles.reportModalHeroIcon}>
+                  <Ionicons name="medkit-outline" size={22} color="#fff" />
+                </LinearGradient>
               )}
+              <View style={styles.reportModalHeroCopy}>
+                <Text style={styles.reportModalKicker}>Care updates</Text>
+                <Text style={styles.reportModalTitle}>
+                  {weeklyReportDetail
+                    ? `Week ${weeklyReportDetail.week}`
+                    : 'Weekly nurse reports'}
+                </Text>
+                <Text style={styles.reportModalSub}>
+                  {weeklyReportDetail
+                    ? weeklyReportDetail.patientName
+                    : 'Choose a resident, then a week (1–7)'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowReportModal(false);
+                  setWeeklyReportDetail(null);
+                  setWeeklyReportExpandedPatientId(null);
+                }}
+                style={styles.reportModalIconBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                hitSlop={8}
+              >
+                <Ionicons name="close" size={20} color="#fff" />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              onPress={() => {
-                setShowReportModal(false);
-                setWeeklyReportDetail(null);
-                setWeeklyReportExpandedPatientId(null);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-            >
-              <Ionicons name="close" size={24} color="#64748B" />
-            </TouchableOpacity>
-          </View>
+          </LinearGradient>
 
           {!weeklyReportDetail ? (
             <ScrollView
               style={styles.reportModalScroll}
-              contentContainerStyle={{ paddingBottom: 24 }}
+              contentContainerStyle={styles.reportModalScrollContent}
               keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
               {patients.length === 0 ? (
-                <Text style={styles.emptyMuted}>No patient records yet.</Text>
+                <View style={styles.reportEmptyCard}>
+                  <Ionicons name="document-text-outline" size={28} color="#94A3B8" />
+                  <Text style={styles.reportEmptyTitle}>No patient records yet</Text>
+                  <Text style={styles.reportEmptySub}>
+                    Weekly care updates will appear here once a resident is admitted.
+                  </Text>
+                </View>
               ) : (
                 patients.map((p) => {
                   const expanded = weeklyReportExpandedPatientId === p.id;
                   const count = patientReportCount(p.id);
+                  const reportPct = Math.round((count / 7) * 100);
                   return (
-                    <View key={p.id} style={styles.reportPatientBlock}>
+                    <View
+                      key={p.id}
+                      style={[styles.reportPatientBlock, expanded && styles.reportPatientBlockOn]}
+                    >
                       <TouchableOpacity
                         style={styles.reportPatientRow}
                         onPress={() =>
                           setWeeklyReportExpandedPatientId(expanded ? null : String(p.id))
                         }
-                        activeOpacity={0.85}
+                        activeOpacity={0.9}
                       >
+                        <LinearGradient
+                          colors={expanded ? ['#F54E25', '#EA580C'] : ['#EEF2FF', '#C7D2FE']}
+                          style={styles.reportPatientAvatar}
+                        >
+                          <Text
+                            style={[
+                              styles.reportPatientInitials,
+                              expanded && styles.reportPatientInitialsOn,
+                            ]}
+                          >
+                            {deriveInitials(p.name)}
+                          </Text>
+                        </LinearGradient>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={styles.reportPatientName} numberOfLines={1}>
                             {p.name}
@@ -927,48 +997,68 @@ export default function HomeScreen() {
                           <Text style={styles.reportPatientMeta}>
                             Reports submitted: {count}/7
                           </Text>
+                          <View style={styles.reportPatientTrack}>
+                            <LinearGradient
+                              colors={expanded ? ['#F54E25', '#EA580C'] : ['#6366F1', '#818CF8']}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 0 }}
+                              style={[styles.reportPatientFill, { width: `${reportPct}%` }]}
+                            />
+                          </View>
                         </View>
-                        <Ionicons
-                          name={expanded ? 'chevron-up' : 'chevron-down'}
-                          size={20}
-                          color="#64748B"
-                        />
+                        <View style={[styles.reportChevronWrap, expanded && styles.reportChevronWrapOn]}>
+                          <Ionicons
+                            name={expanded ? 'chevron-up' : 'chevron-down'}
+                            size={18}
+                            color={expanded ? '#F54E25' : '#64748B'}
+                          />
+                        </View>
                       </TouchableOpacity>
                       {expanded ? (
-                        <View style={styles.reportWeekGrid}>
-                          {[1, 2, 3, 4, 5, 6, 7].map((w) => {
-                            const weekKey = String(w);
-                            const rec = nurseWeeklyByPatient[String(p.id)]?.[weekKey];
-                            const has = !!rec;
-                            return (
-                              <TouchableOpacity
-                                key={weekKey}
-                                style={[
-                                  styles.reportWeekChip,
-                                  has ? styles.reportWeekChipOn : styles.reportWeekChipOff,
-                                ]}
-                                disabled={!has}
-                                onPress={() => {
-                                  if (!rec) return;
-                                  setWeeklyReportDetail({
-                                    patientId: String(p.id),
-                                    patientName: p.name,
-                                    week: weekKey,
-                                    ...rec,
-                                  });
-                                }}
-                              >
-                                <Text
+                        <View style={styles.reportWeekSection}>
+                          <Text style={styles.reportWeekLabel}>Select a week</Text>
+                          <View style={styles.reportWeekGrid}>
+                            {[1, 2, 3, 4, 5, 6, 7].map((w) => {
+                              const weekKey = String(w);
+                              const rec = nurseWeeklyByPatient[String(p.id)]?.[weekKey];
+                              const has = !!rec;
+                              return (
+                                <TouchableOpacity
+                                  key={weekKey}
                                   style={[
-                                    styles.reportWeekChipText,
-                                    has ? styles.reportWeekChipTextOn : styles.reportWeekChipTextOff,
+                                    styles.reportWeekChip,
+                                    has ? styles.reportWeekChipOn : styles.reportWeekChipOff,
                                   ]}
+                                  disabled={!has}
+                                  onPress={() => {
+                                    if (!rec) return;
+                                    setWeeklyReportDetail({
+                                      patientId: String(p.id),
+                                      patientName: p.name,
+                                      week: weekKey,
+                                      ...rec,
+                                    });
+                                  }}
                                 >
-                                  W{w}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
+                                  {has ? (
+                                    <LinearGradient
+                                      colors={['#FFF7ED', '#FFEDD5']}
+                                      style={StyleSheet.absoluteFill}
+                                    />
+                                  ) : null}
+                                  <Text
+                                    style={[
+                                      styles.reportWeekChipText,
+                                      has ? styles.reportWeekChipTextOn : styles.reportWeekChipTextOff,
+                                    ]}
+                                  >
+                                    W{w}
+                                  </Text>
+                                  {has ? <View style={styles.reportWeekDot} /> : null}
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
                         </View>
                       ) : null}
                     </View>
@@ -979,55 +1069,102 @@ export default function HomeScreen() {
           ) : (
             <ScrollView
               style={styles.reportModalScroll}
-              contentContainerStyle={{ paddingBottom: 32 }}
+              contentContainerStyle={styles.reportModalScrollContent}
               keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
               <View style={styles.reportDetailMeta}>
-                <Text style={styles.reportDetailMetaText}>
-                  Nurse: {weeklyReportDetail.nurseName || '—'}
-                </Text>
-                <Text style={styles.reportDetailMetaText}>
-                  Report date:{' '}
-                  {weeklyReportDetail.reportDate
-                    ? formatNurseReportDate(weeklyReportDetail.reportDate)
-                    : formatNurseReportDate(weeklyReportDetail.submittedAt ?? undefined) || '—'}
-                </Text>
-                <Text style={styles.reportDetailMetaText}>
-                  Submitted:{' '}
-                  {formatNurseReportDate(weeklyReportDetail.submittedAt ?? undefined) || '—'}
-                </Text>
+                <View style={styles.reportDetailMetaRow}>
+                  <Ionicons name="person-outline" size={14} color="#F54E25" />
+                  <Text style={styles.reportDetailMetaText}>
+                    Nurse: {weeklyReportDetail.nurseName || '—'}
+                  </Text>
+                </View>
+                <View style={styles.reportDetailMetaRow}>
+                  <Ionicons name="calendar-outline" size={14} color="#F54E25" />
+                  <Text style={styles.reportDetailMetaText}>
+                    Report date:{' '}
+                    {weeklyReportDetail.reportDate
+                      ? formatNurseReportDate(weeklyReportDetail.reportDate)
+                      : formatNurseReportDate(weeklyReportDetail.submittedAt ?? undefined) || '—'}
+                  </Text>
+                </View>
+                <View style={styles.reportDetailMetaRow}>
+                  <Ionicons name="time-outline" size={14} color="#F54E25" />
+                  <Text style={styles.reportDetailMetaText}>
+                    Submitted:{' '}
+                    {formatNurseReportDate(weeklyReportDetail.submittedAt ?? undefined) || '—'}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.reportDetailLabel}>Summary</Text>
-              <Text style={styles.reportDetailVal}>
-                {weeklyReportDetail.summary || 'No summary for this week.'}
-              </Text>
-              <Text style={styles.reportDetailLabel}>Progress</Text>
-              <Text style={styles.reportDetailVal}>
-                {weeklyReportDetail.progressPercent != null &&
-                !Number.isNaN(Number(weeklyReportDetail.progressPercent))
-                  ? `${weeklyReportDetail.progressPercent}%`
-                  : 'N/A'}
-              </Text>
-              <Text style={styles.reportDetailLabel}>Nurse notes</Text>
-              <Text style={styles.reportDetailVal}>
-                {weeklyReportDetail.nurseNote || 'No notes available.'}
-              </Text>
-              <Text style={styles.reportDetailLabel}>Behavior / observation</Text>
-              <Text style={styles.reportDetailVal}>
-                {weeklyReportDetail.behaviorObservation || 'No behavior notes recorded.'}
-              </Text>
-              <Text style={styles.reportDetailLabel}>Recommendations</Text>
-              <Text style={styles.reportDetailVal}>
-                {weeklyReportDetail.recommendations || 'No recommendations recorded.'}
-              </Text>
-              <Text style={styles.reportDetailLabel}>Current medications</Text>
-              <Text style={styles.reportDetailVal}>
-                {weeklyReportDetail.currentMedications || 'None listed.'}
-              </Text>
-              <Text style={styles.reportDetailLabel}>Medication intervention</Text>
-              <Text style={styles.reportDetailVal}>
-                {weeklyReportDetail.medicationIntervention || 'None listed.'}
-              </Text>
+
+              {weeklyReportDetail.progressPercent != null &&
+              !Number.isNaN(Number(weeklyReportDetail.progressPercent)) ? (
+                <View style={styles.reportDetailProgCard}>
+                  <View style={styles.reportDetailProgHead}>
+                    <Text style={styles.reportDetailProgLbl}>Progress this week</Text>
+                    <Text style={styles.reportDetailProgPct}>
+                      {weeklyReportDetail.progressPercent}%
+                    </Text>
+                  </View>
+                  <View style={styles.reportDetailProgTrack}>
+                    <LinearGradient
+                      colors={['#F54E25', '#EA580C']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[
+                        styles.reportDetailProgFill,
+                        {
+                          width: `${Math.min(100, Math.max(0, Number(weeklyReportDetail.progressPercent) || 0))}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={styles.reportFieldGrid}>
+                <ReportFieldCard
+                  label="Summary"
+                  value={weeklyReportDetail.summary || 'No summary for this week.'}
+                  icon="reader"
+                />
+                <ReportFieldCard
+                  label="Progress"
+                  value={
+                    weeklyReportDetail.progressPercent != null &&
+                    !Number.isNaN(Number(weeklyReportDetail.progressPercent))
+                      ? `${weeklyReportDetail.progressPercent}%`
+                      : 'N/A'
+                  }
+                  icon="stats-chart"
+                />
+                <ReportFieldCard
+                  label="Nurse notes"
+                  value={weeklyReportDetail.nurseNote || 'No notes available.'}
+                  icon="document-text"
+                />
+                <ReportFieldCard
+                  label="Behavior / observation"
+                  value={weeklyReportDetail.behaviorObservation || 'No behavior notes recorded.'}
+                  icon="heart"
+                />
+                <ReportFieldCard
+                  label="Recommendations"
+                  value={weeklyReportDetail.recommendations || 'No recommendations recorded.'}
+                  icon="checkmark-circle"
+                />
+                <ReportFieldCard
+                  label="Current medications"
+                  value={weeklyReportDetail.currentMedications || 'None listed.'}
+                  icon="flask"
+                />
+                <ReportFieldCard
+                  label="Medication intervention"
+                  value={weeklyReportDetail.medicationIntervention || 'None listed.'}
+                  icon="shield-checkmark"
+                />
+              </View>
             </ScrollView>
           )}
         </View>
@@ -1102,13 +1239,71 @@ const styles = StyleSheet.create({
     padding: isCompactScreen ? 16 : 22,
     marginBottom: 14,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.07)',
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
     elevation: 8,
+    minHeight: isCompactScreen ? 128 : 136,
   },
-  heroInner: { gap: 14 },
+  heroDecoLayer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  heroRadialOrange: {
+    position: 'absolute',
+    top: -36,
+    right: -18,
+    width: 150 * heroDecoScale,
+    height: 130 * heroDecoScale,
+    borderRadius: 999,
+    backgroundColor: 'rgba(245, 78, 37, 0.14)',
+  },
+  heroRadialIndigo: {
+    position: 'absolute',
+    bottom: -48,
+    right: -28,
+    width: 170 * heroDecoScale,
+    height: 120 * heroDecoScale,
+    borderRadius: 999,
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+  },
+  heroDeco1: {
+    position: 'absolute',
+    top: -52 * heroDecoScale,
+    right: -34 * heroDecoScale,
+    width: 168 * heroDecoScale,
+    height: 168 * heroDecoScale,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  heroDeco2: {
+    position: 'absolute',
+    bottom: -28 * heroDecoScale,
+    right: 18 * heroDecoScale,
+    width: 96 * heroDecoScale,
+    height: 96 * heroDecoScale,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  heroDeco3: {
+    position: 'absolute',
+    top: 10 * heroDecoScale,
+    right: 10 * heroDecoScale,
+    width: 58 * heroDecoScale,
+    height: 58 * heroDecoScale,
+    borderRadius: 999,
+    backgroundColor: 'rgba(245, 78, 37, 0.16)',
+    shadowColor: '#F54E25',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  heroInner: { gap: 14, position: 'relative', zIndex: 2 },
   heroEyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   heroHeartWrap: {
     width: 32,
@@ -1131,6 +1326,15 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -0.5,
+  },
+  heroTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  heroTitleIcon: {
+    marginTop: 2,
   },
   heroSub: { marginTop: 4, fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.45)' },
   statGrid: {
@@ -1337,80 +1541,243 @@ const styles = StyleSheet.create({
   },
   reqPillText: { fontSize: 10, fontWeight: '800', color: '#475569', textTransform: 'lowercase' },
   reqDismiss: { fontSize: 20, lineHeight: 22, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 4 },
-  reportModalRoot: { flex: 1, backgroundColor: '#FFFFFF' },
-  reportModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    backgroundColor: '#FFFBF9',
+  reportModalRoot: { flex: 1, backgroundColor: '#F8FAFC' },
+  reportModalHero: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  reportModalBack: { padding: 4, marginRight: 4 },
-  reportModalBackSpacer: { width: 30 },
+  reportModalHeroWash: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: '50%',
+    backgroundColor: 'rgba(74, 40, 50, 0.35)',
+    borderTopLeftRadius: 80,
+  },
+  reportModalHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    zIndex: 1,
+  },
+  reportModalHeroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportModalHeroCopy: { flex: 1, minWidth: 0 },
+  reportModalIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   reportModalKicker: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#C2410C',
+    fontWeight: '800',
+    color: '#FF8A65',
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 1.1,
+    marginBottom: 4,
   },
-  reportModalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginTop: 4 },
-  reportModalSub: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 4 },
-  reportModalScroll: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  reportModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  reportModalSub: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '500',
+    lineHeight: 17,
+  },
+  reportModalScroll: { flex: 1 },
+  reportModalScrollContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 32 },
+  reportEmptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    padding: 28,
+    alignItems: 'center',
+    gap: 8,
+  },
+  reportEmptyTitle: { fontSize: 15, fontWeight: '800', color: '#1A2B4A', marginTop: 4 },
+  reportEmptySub: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 19,
+  },
   reportPatientBlock: {
     borderWidth: 1,
-    borderColor: '#E9EDF7',
-    borderRadius: 14,
-    marginBottom: 10,
+    borderColor: '#E8EDF3',
+    borderRadius: 16,
+    marginBottom: 12,
     overflow: 'hidden',
-    backgroundColor: '#FBFDFF',
+    backgroundColor: '#FFFFFF',
+    ...Platform.select({
+      web: { boxShadow: '0 4px 16px rgba(15, 23, 42, 0.05)' },
+      default: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2,
+      },
+    }),
+  },
+  reportPatientBlockOn: {
+    borderColor: '#FED7AA',
+    backgroundColor: '#FFFBF7',
   },
   reportPatientRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
-    gap: 10,
+    gap: 12,
   },
-  reportPatientName: { fontSize: 16, fontWeight: '800', color: '#1B2559' },
-  reportPatientMeta: { fontSize: 12, color: '#64748B', fontWeight: '600', marginTop: 4 },
+  reportPatientAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportPatientInitials: { fontSize: 14, fontWeight: '800', color: '#4338CA' },
+  reportPatientInitialsOn: { color: '#FFFFFF' },
+  reportPatientName: { fontSize: 15, fontWeight: '800', color: '#1A2B4A' },
+  reportPatientMeta: { fontSize: 11, color: '#64748B', fontWeight: '600', marginTop: 3 },
+  reportPatientTrack: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#E8EDF3',
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  reportPatientFill: { height: '100%', borderRadius: 3 },
+  reportChevronWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+  },
+  reportChevronWrapOn: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
+  },
+  reportWeekSection: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 12,
+  },
+  reportWeekLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 10,
+  },
   reportWeekGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    paddingHorizontal: 14,
-    paddingBottom: 14,
   },
   reportWeekChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  reportWeekChipOn: { borderColor: '#F54E25', backgroundColor: '#FFF7F4' },
-  reportWeekChipOff: { borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', opacity: 0.7 },
-  reportWeekChipText: { fontSize: 13, fontWeight: '800' },
-  reportWeekChipTextOn: { color: '#F54E25' },
-  reportWeekChipTextOff: { color: '#94A3B8' },
-  reportDetailMeta: {
-    backgroundColor: '#F8FAFC',
+    minWidth: 52,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#E9EDF7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    position: 'relative',
   },
-  reportDetailMetaText: { fontSize: 12, color: '#475569', fontWeight: '600', marginBottom: 4 },
-  reportDetailLabel: {
-    fontSize: 12,
-    color: '#475569',
+  reportWeekChipOn: { borderColor: '#F54E25' },
+  reportWeekChipOff: { borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', opacity: 0.65 },
+  reportWeekChipText: { fontSize: 13, fontWeight: '800' },
+  reportWeekChipTextOn: { color: '#C2410C' },
+  reportWeekChipTextOff: { color: '#94A3B8' },
+  reportWeekDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F54E25',
+  },
+  reportDetailMeta: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    gap: 8,
+  },
+  reportDetailMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reportDetailMetaText: { flex: 1, fontSize: 12, color: '#475569', fontWeight: '600' },
+  reportDetailProgCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+  },
+  reportDetailProgHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  reportDetailProgLbl: { fontSize: 12, fontWeight: '800', color: '#1A2B4A' },
+  reportDetailProgPct: { fontSize: 14, fontWeight: '800', color: '#F54E25' },
+  reportDetailProgTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
+    overflow: 'hidden',
+  },
+  reportDetailProgFill: { height: '100%', borderRadius: 4 },
+  reportFieldGrid: { gap: 10 },
+  reportFieldCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    padding: 14,
+  },
+  reportFieldCardHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  reportFieldCardLbl: {
+    fontSize: 11,
     fontWeight: '800',
-    marginTop: 14,
-    marginBottom: 6,
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  reportDetailVal: { fontSize: 14, color: '#0F172A', fontWeight: '600', lineHeight: 22 },
+  reportFieldCardVal: { fontSize: 14, color: '#1A2B4A', fontWeight: '600', lineHeight: 21 },
   highlightsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
   overviewItem: {
     width: (width - 36 - 32) / 2 - 5,
@@ -1436,13 +1803,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-  },
-  cleanListItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    minWidth: 0,
   },
   cleanTitle: { color: '#1B2559', fontWeight: '700', fontSize: 13 },
   cleanDesc: { color: '#64748B', fontSize: 12, marginTop: 2 },

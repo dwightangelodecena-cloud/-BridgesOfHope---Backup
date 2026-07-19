@@ -6,9 +6,13 @@ import { appendActivityFeed } from '@/lib/activityFeed';
 import { refreshAppData, APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { uiPatientFromRow } from '@/lib/dbMappers';
 import { FAMILY_COLORS } from '@/components/family/shared/ui';
-import logo from '@/assets/kalingalogo.png';
+import FamilySidebar, { FAMILY_SIDEBAR_WIDTH } from '@/components/family/FamilySidebar';
+import FamilyMobileBottomNav from '@/components/family/FamilyMobileBottomNav';
+import { FAMILY_SIDEBAR_TRANSITION } from '@/lib/familySidebarStyle';
 import FloatingChatHead from '@/components/family/FloatingChatHead';
 import FamilyPageHeader from '@/components/family/FamilyPageHeader';
+import { FAMILY_PAGE_HEADERS } from '@/lib/familyPageHeaders';
+import { useFamilyPageScroll } from '@/hooks/useFamilyPageScroll';
 import { appendFamilyNotificationsIfNew } from '@/lib/familyNotifications';
 import { useFamilyPatientProgressRealtime } from '@/hooks/useFamilyPatientProgressRealtime';
 import {
@@ -73,6 +77,7 @@ function formatRelativeTime(iso) {
 const Progress = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { scrollToTop } = useFamilyPageScroll();
   const [isExpanded, setIsExpanded] = useState(false);
   const [familyNotifUserId, setFamilyNotifUserId] = useState('');
   const [patients, setPatients] = useState([]);
@@ -773,21 +778,10 @@ const Progress = () => {
   };
 
   return (
-    <div className="progress-container">
+    <div className="family-portal progress-container">
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        .progress-container { display: flex; width: 100vw; height: 100vh; background: #F4F7FE; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }
-        .sidebar { width: ${isExpanded ? '280px' : '110px'}; background: white; border-right: 1px solid #F1F1F1; display: flex; flex-direction: column; padding: 25px 0 170px; z-index: 100; transition: width 0.3s; cursor: pointer; position: relative; }
-        .sidebar-logo-container { display: flex; justify-content: center; width: 100%; margin-bottom: 40px; }
-        .sidebar-logo { width: ${isExpanded ? '180px' : '70px'}; transition: width 0.3s; }
-        .sidebar-nav-item { display: flex; align-items: center; width: 100%; padding: 0 ${isExpanded ? '35px' : '0'}; justify-content: ${isExpanded ? 'flex-start' : 'center'}; gap: 20px; margin-bottom: 25px; min-height: 52px; box-sizing: border-box; border: 2px solid transparent; border-radius: 12px; color: #707EAE; }
-        .sidebar-nav-item.sidebar-nav-active { border-color: #F54E25; }
-        .sidebar-icon-wrap { padding: 12px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-        .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 700; font-size: 18px; color: #707EAE; }
-        .sidebar-primary { width: 100%; }
-        .sidebar-footer { position: absolute; left: 0; right: 0; bottom: 20px; width: 100%; }
-        .sidebar-footer .sidebar-nav-item { margin-bottom: 0; }
-        .sidebar-footer .sidebar-nav-item + .sidebar-nav-item { margin-top: 14px; }
+        .progress-container { display: flex; width: 100vw; height: 100vh; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }
         .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .top-nav { height: 85px; background: white; display: flex; align-items: center; padding: 0 30px; border-bottom: 1px solid #F1F1F1; }
         .top-nav-left { display: flex; align-items: center; gap: 40px; }
@@ -1007,7 +1001,7 @@ const Progress = () => {
           border-top: 1px solid #E9EDF7;
           box-shadow: 0 -6px 28px rgba(15, 23, 42, 0.07);
           backdrop-filter: blur(12px);
-          transition: left 0.3s ease;
+          transition: left ${FAMILY_SIDEBAR_TRANSITION};
         }
         .req-sticky-bar__meta {
           display: flex;
@@ -1169,7 +1163,7 @@ const Progress = () => {
         }
         .mobile-top-bar, .mobile-bottom-nav { display: none; }
         @media (max-width: 768px) {
-          .sidebar, .top-nav { display: none; }
+          .desktop-sidebar, .top-nav { display: none; }
           .progress-container { flex-direction: column; overflow: auto; min-height: 100vh; height: auto; }
           .main-view { overflow: visible; }
           .mobile-top-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: #fff; border-bottom: 1px solid #F1F1F1; }
@@ -1192,44 +1186,23 @@ const Progress = () => {
         }
       `}</style>
 
-      <aside className="sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container"><img src={logo} alt="Kalinga" className="sidebar-logo" /></div>
-        <div className="sidebar-primary">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/home'); }}>
-            <div className="sidebar-icon-wrap"><Home size={22} color="#707EAE" /></div><span className="sidebar-label">Dashboard</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-details'); }}>
-            <div className="sidebar-icon-wrap"><BookUser size={22} color="#707EAE" /></div><span className="sidebar-label">Resident Details</span>
-          </div>
-          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); navigate('/progress'); }}>
-            <div className="sidebar-icon-wrap"><ClipboardList size={22} color="#707EAE" /></div><span className="sidebar-label">Request Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/appointments'); }}>
-            <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
-            <span className="sidebar-label">Appointments</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/reports'); }}>
-            <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
-            <span className="sidebar-label">Reports</span>
-          </div>
-        </div>
-        <div className="sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/profile'); }}><User size={22} /><span className="sidebar-label">Profile</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}><LogOut size={22} color="#F54E25" /><span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span></div>
-        </div>
-      </aside>
+      <FamilySidebar
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+      />
 
       <main className="main-view">
-        <FamilyPageHeader title="Request Management" />
+        <FamilyPageHeader
+          {...FAMILY_PAGE_HEADERS.requests}
+          onBrandPress={scrollToTop}
+          showMobileLogo={false}
+        />
 
         <div className="content-area" style={{ background: FAMILY_COLORS.background }}>
           <div className="req-page-bg-shape req-page-bg-shape--1" aria-hidden />
           <div className="req-page-bg-shape req-page-bg-shape--2" aria-hidden />
           <div className="content-wrap">
             <div className="req-page-intro">
-              <p className="req-page-subtitle">
-                Submit admission requests and manage resident requirements.
-              </p>
               <div className="req-workflow" aria-label="Admission workflow">
                 <span className={`req-workflow__step ${activeTab === 'admission' ? 'req-workflow__step--active' : ''}`}>
                   Admission
@@ -1368,7 +1341,7 @@ const Progress = () => {
         {activeTab === 'admission' && (
           <div
             className="req-sticky-bar"
-            style={{ left: isExpanded ? 280 : 110 }}
+            style={{ left: isExpanded ? FAMILY_SIDEBAR_WIDTH.expanded : FAMILY_SIDEBAR_WIDTH.collapsed }}
             role="region"
             aria-label="Admission form actions"
           >
@@ -1398,32 +1371,7 @@ const Progress = () => {
           </div>
         )}
 
-        <nav className="mobile-bottom-nav">
-          <Home size={24} color="#A3AED0" onClick={() => navigate('/home')} />
-          <BookUser size={24} color="#A3AED0" onClick={() => navigate('/patient-details')} />
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} onClick={() => navigate('/progress')}>
-            <ClipboardList size={24} color="#F54E25" />
-            <span style={{ fontSize: '10px', fontWeight: 700, color: '#F54E25' }}>Requests</span>
-          </div>
-          <button
-            type="button"
-            aria-label="Appointments"
-            onClick={() => navigate('/appointments')}
-            style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Calendar size={24} color="#A3AED0" />
-          </button>
-          <button
-            type="button"
-            aria-label="Reports"
-            onClick={() => navigate('/reports')}
-            style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <FileText size={24} color="#A3AED0" />
-          </button>
-          <User size={24} color="#A3AED0" onClick={() => navigate('/profile')} />
-          <LogOut size={24} color="#A3AED0" onClick={() => navigate('/login')} />
-        </nav>
+        <FamilyMobileBottomNav />
       </main>
       <FloatingChatHead bottomOffset={activeTab === 'admission' ? CHAT_BOTTOM_WITH_STICKY : 24} />
 

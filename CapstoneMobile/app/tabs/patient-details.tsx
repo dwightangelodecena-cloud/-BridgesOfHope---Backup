@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router/react-navigation';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
@@ -23,7 +23,7 @@ import { computeAdmissionDisplayId } from '../../lib/admissionDisplayId';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
-import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
+import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import {
   canonicalPatientId,
   fetchWeeklyReportsForPatientId,
@@ -283,9 +283,9 @@ function DetailCardSection({
 
 export default function PatientDetailsScreen() {
   const insets = useSafeAreaInsets();
+  const { scrollRef, scrollToTop } = useFamilyPageScroll();
   const router = useRouter();
   const [familyUserId, setFamilyUserId] = useState('');
-  const { displayName } = useFamilyUserMobile();
   const [patients, setPatients] = useState<PatientListEntry[]>([]);
   const [patientDetailsById, setPatientDetailsById] = useState<Record<string, Record<string, unknown>>>({});
   const [weeklyReportsByPatient, setWeeklyReportsByPatient] = useState<Record<string, ReportRow[]>>({});
@@ -580,8 +580,6 @@ export default function PatientDetailsScreen() {
 
   useFocusEffect(useCallback(() => void load(), [load]));
 
-  const first = (displayName || 'Family User').trim().split(/\s+/)[0];
-
   const reportsForPatient = useCallback(
     (patient: PatientListEntry | null | undefined) =>
       resolveWeeklyReportsForPatient(patient, weeklyReportsByPatient, patientDetailsById),
@@ -783,16 +781,9 @@ export default function PatientDetailsScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
-      <FamilyMobilePageHeader
-        title="Resident Details"
-        subtitle={`${patients.length} resident${patients.length !== 1 ? 's' : ''}`}
-        showLogo={false}
-      />
+      <FamilyMobilePageHeader title="Resident Details" onBrandPress={scrollToTop} />
 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
-        <Text style={styles.welcome}>Welcome Back, {first}</Text>
-        <Text style={styles.sub}>Assigned residents, weekly updates, vitals, and care summary.</Text>
-
+      <ScrollView ref={scrollRef} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
         {loading ? (
           <View style={styles.loading}>
             <ActivityIndicator color="#F54E25" />
@@ -1523,8 +1514,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   goalCardTxt: { flex: 1, fontSize: 12, color: '#334155', lineHeight: 18, fontWeight: '600' },
-  welcome: { fontSize: 20, fontWeight: '800', color: '#1B2559' },
-  sub: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 6, marginBottom: 14 },
   loading: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 24 },
   loadingTxt: { color: '#64748B', fontWeight: '700' },
   emptyCard: {

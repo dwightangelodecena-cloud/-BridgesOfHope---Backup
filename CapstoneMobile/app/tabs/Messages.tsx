@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
   Keyboard,
   Platform,
-  InteractionManager,
   ScrollView,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -21,17 +20,19 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router/react-navigation';
+import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
-import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
-import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
 import { notificationTextMobile } from '../../lib/familyNotificationsMobile';
 import { useFamilyNotificationsState } from '../../lib/useFamilyNotificationsMobile';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
 import { supportWelcomeMessage, type SupportUiMessage } from '../../lib/supportMessagingMobile';
+import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
+import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 
 const { width } = Dimensions.get('window');
 
@@ -52,13 +53,41 @@ function deriveInitials(name: string): string {
   return parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('') || 'FU';
 }
 
-function patientInitials(name: string): string {
-  const parts = String(name || '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2);
-  const s = parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('');
-  return s || 'P';
+function SupportBrandAvatar({ size = 32 }: { size?: number }) {
+  const badge = size;
+  const radius = Math.round(badge * 0.28);
+  const pad = Math.max(4, Math.round(badge * 0.12));
+  return (
+    <View
+      style={[
+        styles.supportBrandBadge,
+        { width: badge, height: badge, borderRadius: radius, padding: pad },
+      ]}
+    >
+      <Image
+        source={require('../../assets/images/BRIDGESOFHOPELOGO.png')}
+        style={styles.supportBrandLogo}
+        resizeMode="contain"
+        accessibilityLabel="Bridges of Hope"
+      />
+    </View>
+  );
+}
+
+function ChatWelcomeBanner() {
+  return (
+    <View style={styles.chatWelcomeBanner}>
+      <LinearGradient colors={['#FFF7ED', '#FFEDD5']} style={styles.chatWelcomeIcon}>
+        <Ionicons name="chatbubble-ellipses-outline" size={18} color="#EA580C" />
+      </LinearGradient>
+      <View style={styles.chatWelcomeCopy}>
+        <Text style={styles.chatWelcomeTitle}>You’re connected to the care team</Text>
+        <Text style={styles.chatWelcomeSub}>
+          Ask about visits, updates, or billing. We typically reply during business hours.
+        </Text>
+      </View>
+    </View>
+  );
 }
 
 /** Centered row label, e.g. "Sat 11:22 PM" */
@@ -87,7 +116,7 @@ function formatMessageTime(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-const AVATAR_HEAD = 34;
+const AVATAR_HEAD = 32;
 const AVATAR_GAP = 8;
 
 interface Message {
@@ -141,12 +170,11 @@ function supportRowsToMessages(rows: SupportUiMessage[]): Message[] {
   return list;
 }
 
-type ThreadRow =
-  | { id: string; kind: 'support'; title: string; subtitle: string }
-  | { id: string; kind: 'patient'; patient: UIPatient; subtitle: string };
+type ThreadRow = { id: string; kind: 'support'; title: string; subtitle: string };
 
 export default function MessageScreen() {
   const insets = useSafeAreaInsets();
+  const { scrollRef, scrollToTop } = useFamilyPageScroll();
   const router = useRouter();
   const [inputText, setInputText] = useState('');
   /** Scroll container (FlatList). */
@@ -154,8 +182,6 @@ export default function MessageScreen() {
   const flatListViewportHRef = useRef(0);
   /** Web: DOM node at end of thread for scrollIntoView / scrollHeight sync; native: list footer anchor. */
   const bottomAnchorRef = useRef<View>(null);
-  const latestPendingSeenIdRef = useRef<string | null>(null);
-
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   type InboxFilterTab = 'all' | 'unread';
@@ -178,9 +204,6 @@ export default function MessageScreen() {
     refreshUnread: refreshSupportUnread,
     markSupportAsRead,
   } = useSupportChatMobile();
-  const [patients, setPatients] = useState<UIPatient[]>([]);
-  const [patientsLoading, setPatientsLoading] = useState(true);
-
   const [messagesByThread, setMessagesByThread] = useState<Record<string, Message[]>>({});
   const [supportSendError, setSupportSendError] = useState('');
   const [supportSending, setSupportSending] = useState(false);
@@ -226,44 +249,10 @@ export default function MessageScreen() {
     };
   }, []);
 
-  const loadPatients = useCallback(async () => {
-    if (!isSupabaseConfigured() || !familyUserId) {
-      setPatients([]);
-      setPatientsLoading(false);
-      return;
-    }
-    setPatientsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('patients')
-        .select(
-          'id, full_name, admitted_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at'
-        )
-        .eq('family_id', familyUserId)
-        .is('discharged_at', null)
-        .order('admitted_at', { ascending: false });
-
-      if (error) {
-        console.warn('[messages patients]', error.message);
-        setPatients([]);
-        return;
-      }
-      const list = (data || [])
-        .map((r) => uiPatientFromRow(r as unknown as PatientRow))
-        .filter((x): x is UIPatient => x != null);
-      setPatients(list);
-    } catch {
-      setPatients([]);
-    } finally {
-      setPatientsLoading(false);
-    }
-  }, [familyUserId]);
-
   useFocusEffect(
     useCallback(() => {
-      loadPatients();
       void reloadSupportChat({ silent: true });
-    }, [loadPatients, reloadSupportChat])
+    }, [reloadSupportChat])
   );
 
   useEffect(() => {
@@ -301,31 +290,11 @@ export default function MessageScreen() {
       subtitle: supportPreview,
     };
     const q = searchQuery.trim().toLowerCase();
-    const patientRows: ThreadRow[] = patients.map((p) => {
-      const tmsgs = messagesByThread[String(p.id)] ?? [];
-      const last = tmsgs[tmsgs.length - 1];
-      const sub = last
-        ? `${last.text.slice(0, 36)}${last.text.length > 36 ? '…' : ''} · ${formatRelativeShort(nowTick, last.createdAtMs)}`
-        : `Resident · Admitted ${p.date || '—'}`;
-      return {
-        id: String(p.id),
-        kind: 'patient' as const,
-        patient: p,
-        subtitle: sub,
-      };
-    });
-    const all = [support, ...patientRows];
-    if (!q) return all;
-    return all.filter((row) => {
-      if (row.kind === 'support') {
-        return (
-          row.title.toLowerCase().includes(q) ||
-          row.subtitle.toLowerCase().includes(q)
-        );
-      }
-      return (row.patient.name || '').toLowerCase().includes(q);
-    });
-  }, [patients, searchQuery, messagesByThread, nowTick]);
+    if (!q) return [support];
+    return [support.title, support.subtitle].some((part) => part.toLowerCase().includes(q))
+      ? [support]
+      : [];
+  }, [searchQuery, messagesByThread, nowTick]);
 
   const filteredInboxThreadRows = useMemo(() => {
     let rows = threadRows.filter((r) => !deletedByThread[r.id]);
@@ -377,12 +346,7 @@ export default function MessageScreen() {
     return -1;
   }, [messages]);
 
-  const activeThreadTitle = useMemo(() => {
-    if (!activeThreadId) return '';
-    if (activeThreadId === SUPPORT_THREAD_ID) return 'Bridges of Hope';
-    const p = patients.find((x) => String(x.id) === activeThreadId);
-    return p?.name || 'Chat';
-  }, [activeThreadId, patients]);
+  const activeThreadTitle = 'Bridges of Hope';
 
   /**
    * Messenger-style: move viewport to latest message.
@@ -463,9 +427,14 @@ export default function MessageScreen() {
    * scroll area (Messenger). Same array identity avoids FlatList scroll reset on iOS.
    */
   const chatListContentStyle = useMemo(
-    () => [styles.chatList, styles.chatListContentMessenger],
+    () => [styles.chatList, styles.chatListContent],
     []
   );
+
+  const chatListHeaderEl = useMemo(() => {
+    if (activeThreadId !== SUPPORT_THREAD_ID) return null;
+    return <ChatWelcomeBanner />;
+  }, [activeThreadId]);
 
   const chatListFooterEl = useMemo(
     () => (
@@ -528,6 +497,7 @@ export default function MessageScreen() {
   }, [messages, activeThreadId, scrollChatToBottom]);
 
   const openThread = (id: string) => {
+    if (id !== SUPPORT_THREAD_ID) return;
     setUnreadByThread((prev) => {
       if (!prev[id]) return prev;
       const next = { ...prev };
@@ -540,26 +510,10 @@ export default function MessageScreen() {
       void markSupportAsRead();
     }
     setMessagesByThread((prev) => {
-      if (prev[id]?.length) return prev;
-      if (id === SUPPORT_THREAD_ID) {
-        return {
-          ...prev,
-          [SUPPORT_THREAD_ID]: prev[SUPPORT_THREAD_ID]?.length
-            ? prev[SUPPORT_THREAD_ID]
-            : [supportUiToMessage(supportWelcomeMessage())],
-        };
-      }
+      if (prev[SUPPORT_THREAD_ID]?.length) return prev;
       return {
         ...prev,
-        [id]: [
-          {
-            id: `welcome-${id}`,
-            text: 'Start a conversation about this patient. Our care team may reply during business hours.',
-            sender: 'support',
-            createdAtMs: Date.now(),
-            showTime: false,
-          },
-        ],
+        [SUPPORT_THREAD_ID]: [supportUiToMessage(supportWelcomeMessage())],
       };
     });
     nearBottomRef.current = true;
@@ -591,65 +545,6 @@ export default function MessageScreen() {
       }
       return;
     }
-
-    const nowMs = Date.now();
-    const messageId = `${nowMs}`;
-    const newMessage: Message = {
-      id: messageId,
-      text,
-      sender: 'user',
-      createdAtMs: nowMs,
-      receipt: 'sent',
-    };
-
-    pendingUserSendRef.current = true;
-    suppressLayoutAutoScrollRef.current = false;
-    if (suppressLayoutAutoScrollTimerRef.current) {
-      clearTimeout(suppressLayoutAutoScrollTimerRef.current);
-      suppressLayoutAutoScrollTimerRef.current = null;
-    }
-
-    setMessagesByThread((prev) => {
-      const list = prev[activeThreadId] ?? [];
-      const cleared = list.map((m) =>
-        m.sender === 'user' ? { ...m, seenAt: undefined, receipt: undefined } : m
-      );
-      return { ...prev, [activeThreadId]: [...cleared, newMessage] };
-    });
-    setInputText('');
-    nearBottomRef.current = true;
-
-    scrollChatToBottom(false, { bypassLayoutSuppress: true, ignoreNearBottom: true });
-    scrollChatToBottom(true, { bypassLayoutSuppress: true, ignoreNearBottom: true });
-    InteractionManager.runAfterInteractions(() => {
-      scrollChatToBottom(false, { bypassLayoutSuppress: true, ignoreNearBottom: true });
-      scrollChatToBottom(true, { bypassLayoutSuppress: true, ignoreNearBottom: true });
-    });
-
-    latestPendingSeenIdRef.current = messageId;
-
-    setTimeout(() => {
-      if (latestPendingSeenIdRef.current !== messageId) return;
-      setMessagesByThread((prev) => ({
-        ...prev,
-        [activeThreadId]: prev[activeThreadId]?.map((m) =>
-          m.id === messageId ? { ...m, receipt: 'delivered' as const } : m
-        ) ?? [],
-      }));
-      setTimeout(() => scrollChatToBottom(true, { bypassLayoutSuppress: true }), 16);
-    }, 450);
-
-    setTimeout(() => {
-      if (latestPendingSeenIdRef.current !== messageId) return;
-      const seenTime = formatMessageTime(Date.now());
-      setMessagesByThread((prev) => ({
-        ...prev,
-        [activeThreadId]: prev[activeThreadId]?.map((m) =>
-          m.id === messageId ? { ...m, seenAt: seenTime, receipt: undefined } : m
-        ) ?? [],
-      }));
-      setTimeout(() => scrollChatToBottom(true, { bypassLayoutSuppress: true }), 16);
-    }, 2200);
   };
 
   const toggleTime = (id: string) => {
@@ -698,6 +593,14 @@ export default function MessageScreen() {
         onPress={() => toggleTime(msg.id)}
         style={[styles.messageBubble, isUser ? styles.userBubble : styles.supportBubble]}
       >
+        {isUser ? (
+          <LinearGradient
+            colors={['#FF6A3D', '#F54E25', '#E8441A']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : null}
         <Text style={[styles.messageText, isUser ? styles.userText : styles.supportText]}>{msg.text}</Text>
       </TouchableOpacity>
     );
@@ -725,8 +628,8 @@ export default function MessageScreen() {
     );
 
     const supportHead = showSupportHead ? (
-      <View style={[styles.bubbleHead, styles.bubbleHeadSupport, { marginRight: AVATAR_GAP }]}>
-        <Ionicons name="medkit" size={16} color="#FFFFFF" />
+      <View style={[styles.bubbleHeadWrap, { marginRight: AVATAR_GAP }]}>
+        <SupportBrandAvatar size={AVATAR_HEAD} />
       </View>
     ) : (
       <View style={{ width: headSpacerW }} />
@@ -799,16 +702,14 @@ export default function MessageScreen() {
   };
 
   const renderThreadRow = ({ item }: { item: ThreadRow }) => {
-    const isSupport = item.kind === 'support';
-    const title = isSupport ? item.title : item.patient.name;
-    const subtitle = item.subtitle;
     const selected = !!selectedThreadIds[item.id];
+    const unread = !!unreadByThread[item.id];
 
     return (
       <TouchableOpacity
-        style={styles.threadRow}
+        style={[styles.threadRow, selected && styles.threadRowSelected]}
         onPress={() => onInboxRowPress(item.id)}
-        activeOpacity={0.85}
+        activeOpacity={0.9}
       >
         {inboxSelectionMode ? (
           <View style={styles.threadSelectCol}>
@@ -824,23 +725,24 @@ export default function MessageScreen() {
             </View>
           </View>
         ) : null}
-        <View style={[styles.threadAvatar, isSupport ? styles.threadAvatarSupport : null]}>
-          {isSupport ? (
-            <Ionicons name="medkit" size={22} color="#FFFFFF" />
-          ) : (
-            <Text style={styles.threadAvatarText}>{patientInitials(item.patient.name)}</Text>
-          )}
+        <View style={styles.threadAvatarWrap}>
+          <SupportBrandAvatar size={40} />
         </View>
         <View style={styles.threadBody}>
-          <Text style={styles.threadTitle} numberOfLines={1}>
-            {title}
-          </Text>
+          <View style={styles.threadTitleRow}>
+            <Text style={styles.threadTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {unread && !inboxSelectionMode ? <View style={styles.threadUnreadDot} /> : null}
+          </View>
           <Text style={styles.threadSubtitle} numberOfLines={1}>
-            {subtitle}
+            {item.subtitle}
           </Text>
         </View>
         {inboxSelectionMode ? null : (
-          <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+          <View style={styles.threadChevronWrap}>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </View>
         )}
       </TouchableOpacity>
     );
@@ -859,7 +761,9 @@ export default function MessageScreen() {
   }, [showArchivedOnly, inboxFilterTab, searchQuery]);
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
+      <StatusBar style="dark" />
+
       <Modal
         visible={showInboxOverflowMenu}
         transparent
@@ -882,7 +786,7 @@ export default function MessageScreen() {
               activeOpacity={0.85}
             >
               <Text style={styles.inboxOverflowMenuText}>Select chats</Text>
-              <Ionicons name="checkmark-circle" size={20} color="#2B31ED" />
+              <Ionicons name="checkmark-circle" size={20} color="#F54E25" />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inboxOverflowMenuRow}
@@ -914,82 +818,80 @@ export default function MessageScreen() {
               <Text style={styles.notificationsDropdownTitle}>Notifications</Text>
             </View>
             {notificationItems.length === 0 ? (
-              <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>No notifications.</Text>
-            ) : notificationItems.map((notif, idx) => (
-              <View key={`${notif.id}-${idx}`} style={styles.notificationsDropdownRow}>
-                <Ionicons name="checkmark-circle" size={15} color="#2B31ED" />
-                <Text style={styles.notificationsDropdownText}>{notificationTextMobile(notif)}</Text>
-                <TouchableOpacity
-                  onPress={() => setNotificationItems((prev) => prev.filter((r) => r.id !== notif.id))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Remove notification"
-                >
-                  <Text style={styles.notificationDismiss}>×</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+              <Text style={[styles.notificationsDropdownText, { color: '#94A3B8', fontWeight: '700' }]}>
+                No notifications.
+              </Text>
+            ) : (
+              notificationItems.map((notif, idx) => (
+                <View key={`${notif.id}-${idx}`} style={styles.notificationsDropdownRow}>
+                  <Ionicons name="checkmark-circle" size={15} color="#6366F1" />
+                  <Text style={styles.notificationsDropdownText}>{notificationTextMobile(notif)}</Text>
+                  <TouchableOpacity
+                    onPress={() => setNotificationItems((prev) => prev.filter((r) => r.id !== notif.id))}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove notification"
+                  >
+                    <Text style={styles.notificationDismiss}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
           </View>
         </View>
       </Modal>
 
       {!activeThreadId ? (
         <>
-          <View style={styles.header}>
-            {inboxSelectionMode ? (
-              <>
-                <TouchableOpacity
-                  onPress={exitInboxSelectionMode}
-                  hitSlop={12}
-                  style={styles.headerCancelBtn}
-                  accessibilityLabel="Cancel selection"
-                >
-                  <Text style={styles.headerCancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <View style={[styles.headerCenter, styles.headerCenterSelection]}>
-                  <Text style={styles.headerBrandTitle}>Select chats</Text>
-                  {selectedInboxIds.length > 0 ? (
-                    <Text style={styles.headerWelcomeLine} numberOfLines={1}>
-                      {selectedInboxIds.length} selected
-                    </Text>
-                  ) : null}
+          {inboxSelectionMode ? (
+            <View style={[styles.selectionHeader, { paddingTop: insets.top + 8 }]}>
+              <TouchableOpacity
+                onPress={exitInboxSelectionMode}
+                hitSlop={12}
+                style={styles.headerCancelBtn}
+                accessibilityLabel="Cancel selection"
+              >
+                <Text style={styles.headerCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <View style={styles.selectionHeaderCenter}>
+                <Text style={styles.selectionHeaderTitle}>Select chats</Text>
+                {selectedInboxIds.length > 0 ? (
+                  <Text style={styles.selectionHeaderSub}>{selectedInboxIds.length} selected</Text>
+                ) : null}
+              </View>
+              <View style={styles.headerEndSpacer} />
+            </View>
+          ) : (
+            <>
+              <FamilyMobilePageHeader title="Messages" onBrandPress={scrollToTop} />
+              <View style={styles.inboxHero}>
+                <LinearGradient
+                  colors={['#0B1528', '#152238', '#2A1A28']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={styles.inboxHeroWash} />
+                <View style={styles.inboxHeroInner}>
+                  <LinearGradient colors={['#FF6A3D', '#F54E25', '#E8441A']} style={styles.inboxHeroIcon}>
+                    <Ionicons name="chatbubbles-outline" size={22} color="#fff" />
+                  </LinearGradient>
+                  <View style={styles.inboxHeroCopy}>
+                    <Text style={styles.inboxHeroEyebrow}>FAMILY PORTAL</Text>
+                    <Text style={styles.inboxHeroTitle}>Care conversations</Text>
+                    <Text style={styles.inboxHeroSub}>Message the care team or follow up about a resident</Text>
+                  </View>
                 </View>
-                <View style={styles.headerEndSpacer} />
-              </>
-            ) : (
-              <>
-                <View style={styles.headerCenter}>
-                  <Text style={styles.headerBrandTitle}>Messages</Text>
-                  <Text style={styles.headerWelcomeLine} numberOfLines={1}>
-                    Welcome Back, {(displayName || 'Family User').trim().split(/\s+/)[0]}
-                  </Text>
-                </View>
-                <View style={styles.headerActions}>
-                  <TouchableOpacity
-                    style={styles.headerCircleBtn}
-                    onPress={() => setShowNotifications((v) => !v)}
-                    accessibilityLabel="Notifications"
-                  >
-                    <Ionicons name="notifications" size={18} color="#FFFFFF" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.headerCircleBtn}
-                    onPress={() => router.navigate(TAB_ROUTES.profile)}
-                    accessibilityLabel="Profile"
-                  >
-                    <Text style={styles.headerAvatarText}>{userInitials}</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
+              </View>
+            </>
+          )}
 
           <View style={styles.inboxBody}>
             <View style={styles.searchWrap}>
-              <Ionicons name="search-outline" size={18} color="#A3AED0" style={styles.searchIcon} />
+              <Ionicons name="search-outline" size={18} color="#64748B" style={styles.searchIcon} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search people to message…"
-                placeholderTextColor="#A3AED0"
+                placeholder="Search care team messages…"
+                placeholderTextColor="#94A3B8"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
@@ -1052,31 +954,25 @@ export default function MessageScreen() {
               )}
             </View>
 
-            {patientsLoading ? (
-              <View style={styles.inboxLoading}>
-                <ActivityIndicator size="large" color="#F54E25" />
-              </View>
-            ) : (
-              <FlatList
-                data={filteredInboxThreadRows}
-                keyExtractor={(row) => row.id}
-                renderItem={renderThreadRow}
-                style={styles.threadListFlex}
-                contentContainerStyle={[
-                  styles.threadList,
-                  { paddingBottom: threadListBottomPad },
-                ]}
-                showsVerticalScrollIndicator={false}
-                ListHeaderComponent={
-                  showArchivedOnly || inboxSelectionMode ? null : (
-                    <Text style={styles.inboxHint}>Choose who you’d like to message</Text>
-                  )
-                }
-                ListEmptyComponent={
-                  <Text style={styles.inboxEmptyText}>{inboxEmptyLabel}</Text>
-                }
-              />
-            )}
+            <FlatList
+              data={filteredInboxThreadRows}
+              keyExtractor={(row) => row.id}
+              renderItem={renderThreadRow}
+              style={styles.threadListFlex}
+              contentContainerStyle={[
+                styles.threadList,
+                { paddingBottom: threadListBottomPad },
+              ]}
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={
+                showArchivedOnly || inboxSelectionMode ? null : (
+                  <Text style={styles.inboxHint}>Message the Bridges of Hope care team</Text>
+                )
+              }
+              ListEmptyComponent={
+                <Text style={styles.inboxEmptyText}>{inboxEmptyLabel}</Text>
+              }
+            />
             {inboxSelectionMode ? (
               <View
                 style={[styles.inboxSelectionBar, { bottom: inboxSelectionBarBottom }]}
@@ -1095,38 +991,37 @@ export default function MessageScreen() {
           </View>
         </>
       ) : (
-        <View style={styles.chatRoot}>
+        <View style={[styles.chatRoot, { paddingTop: insets.top }]}>
           <View style={styles.chatHeader}>
+            <LinearGradient
+              colors={['#FFFFFF', '#FFF9F6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.chatHeaderAccent} />
             <TouchableOpacity
               style={styles.chatBackBtn}
               onPress={() => setActiveThreadId(null)}
               hitSlop={12}
               accessibilityLabel="Back to inbox"
             >
-              <Ionicons name="arrow-back" size={24} color="#1B2559" />
+              <Ionicons name="arrow-back" size={22} color="#1A2B4A" />
             </TouchableOpacity>
             <View style={styles.chatHeaderInfo}>
-              <View
-                style={[
-                  styles.chatHeaderAvatar,
-                  activeThreadId === SUPPORT_THREAD_ID ? styles.threadAvatarSupport : null,
-                ]}
-              >
-                {activeThreadId === SUPPORT_THREAD_ID ? (
-                  <Ionicons name="medkit" size={18} color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.chatHeaderAvatarText}>
-                    {patientInitials(activeThreadTitle)}
-                  </Text>
-                )}
+              <View style={styles.chatHeaderAvatarWrap}>
+                <SupportBrandAvatar size={36} />
               </View>
               <View style={styles.chatHeaderTextCol}>
                 <Text style={styles.chatHeaderTitle} numberOfLines={1}>
                   {activeThreadTitle}
                 </Text>
-                <Text style={styles.chatHeaderSubtitle} numberOfLines={1}>
-                  {activeThreadId === SUPPORT_THREAD_ID ? 'Care team' : 'Resident conversation'}
-                </Text>
+                <View style={styles.chatHeaderStatusRow}>
+                  <View style={styles.chatHeaderStatusDot} />
+                  <Text style={styles.chatHeaderSubtitle} numberOfLines={1}>
+                    Care team · Available during business hours
+                  </Text>
+                </View>
               </View>
             </View>
             <View style={styles.chatHeaderSpacer} />
@@ -1139,6 +1034,7 @@ export default function MessageScreen() {
               data={chatRows}
               keyExtractor={(row) => (row.type === 'separator' ? row.id : row.message.id)}
               renderItem={renderChatRow}
+              ListHeaderComponent={chatListHeaderEl}
               ListFooterComponent={chatListFooterEl}
               contentContainerStyle={chatListContentStyle}
               showsVerticalScrollIndicator={false}
@@ -1180,16 +1076,39 @@ export default function MessageScreen() {
                 ) : null}
                 <View style={styles.inputAreaWrapper}>
                   <View style={styles.inputContainer}>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Message…"
-                      placeholderTextColor="#94A3B8"
-                      value={inputText}
-                      onChangeText={setInputText}
-                      multiline
-                    />
-                    <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-                      <Ionicons name="send" size={22} color="#FFFFFF" />
+                    <View style={styles.inputWrap}>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Message…"
+                        placeholderTextColor="#94A3B8"
+                        value={inputText}
+                        onChangeText={setInputText}
+                        multiline
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={styles.sendButtonWrap}
+                      onPress={sendMessage}
+                      disabled={supportSending}
+                      activeOpacity={0.85}
+                    >
+                      <LinearGradient
+                        colors={['#FF6A3D', '#F54E25', '#E8441A']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.sendButton}
+                      >
+                        {supportSending ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Ionicons
+                            name="send"
+                            size={17}
+                            color="#FFFFFF"
+                            style={styles.sendIcon}
+                          />
+                        )}
+                      </LinearGradient>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1212,63 +1131,102 @@ export default function MessageScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8FAFC',
   },
-  header: {
+  selectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    minHeight: 56,
-    paddingVertical: 6,
+    paddingBottom: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F1',
-    zIndex: 10,
+    borderBottomColor: '#E8EDF3',
   },
-  headerCenter: {
+  selectionHeaderCenter: {
     flex: 1,
-    minWidth: 0,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-  },
-  /** Centers title + subtitle in the header row (selection mode). */
-  headerCenterSelection: {
     alignItems: 'center',
   },
-  headerBrandTitle: {
-    fontSize: 17,
+  selectionHeaderTitle: {
+    fontSize: 16,
     fontWeight: '800',
-    color: '#F54E25',
+    color: '#1A2B4A',
   },
-  headerWelcomeLine: {
+  selectionHeaderSub: {
     fontSize: 12,
     fontWeight: '600',
     color: '#64748B',
     marginTop: 2,
   },
-  headerActions: {
+  inboxHero: {
+    overflow: 'hidden',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    position: 'relative',
+  },
+  inboxHeroWash: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: '50%',
+    backgroundColor: 'rgba(74, 40, 50, 0.35)',
+    borderTopLeftRadius: 80,
+  },
+  inboxHeroInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
+    zIndex: 1,
   },
-  headerCircleBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#F54E25',
+  inboxHeroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#F54E25',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 4,
   },
-  headerAvatarText: {
+  inboxHeroCopy: { flex: 1, minWidth: 0 },
+  inboxHeroEyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    color: '#FF8A65',
+    marginBottom: 4,
+  },
+  inboxHeroTitle: {
+    fontSize: 18,
+    fontWeight: '800',
     color: '#FFFFFF',
-    fontWeight: '700',
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  inboxHeroSub: {
     fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  supportBrandBadge: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    ...Platform.select({
+      web: { boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)' },
+      default: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
+        elevation: 2,
+      },
+    }),
+  },
+  supportBrandLogo: {
+    width: '100%',
+    height: '100%',
   },
   notifModalRoot: {
     flex: 1,
@@ -1350,7 +1308,7 @@ const styles = StyleSheet.create({
   headerCancelText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#2B31ED',
+    color: '#F54E25',
   },
   archivesBanner: {
     flexDirection: 'row',
@@ -1392,18 +1350,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
   },
   inboxFilterPillActive: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
   },
   inboxFilterPillText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1B2559',
+    color: '#64748B',
   },
   inboxFilterPillTextActive: {
-    color: '#1D4ED8',
+    color: '#C2410C',
   },
   inboxFilterPillTextDisabled: {
     opacity: 0.45,
@@ -1460,20 +1421,25 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 8,
     paddingHorizontal: 14,
-    height: 48,
+    minHeight: 48,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E9EDF7',
-    backgroundColor: '#FAFAFA',
+    borderColor: '#E8EDF3',
+    backgroundColor: '#F8FAFC',
   },
   searchIcon: {
     marginRight: 10,
+    alignSelf: 'center',
   },
   searchInput: {
     flex: 1,
     fontSize: 15,
-    color: '#1B2559',
-    paddingVertical: 0,
+    color: '#1A2B4A',
+    paddingVertical: Platform.OS === 'web' ? 12 : 10,
+    ...Platform.select({
+      web: { outlineStyle: 'none' as const },
+      default: {},
+    }),
   },
   inboxHint: {
     fontSize: 13,
@@ -1517,35 +1483,73 @@ const styles = StyleSheet.create({
   threadRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E9EDF7',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    ...Platform.select({
+      web: { boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)' },
+      default: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+        elevation: 1,
+      },
+    }),
+  },
+  threadRowSelected: {
+    borderColor: '#FED7AA',
+    backgroundColor: '#FFFBF7',
+  },
+  threadAvatarWrap: {
+    marginRight: 12,
   },
   threadAvatar: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: '#E0E7FF',
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  threadAvatarSupport: {
-    backgroundColor: '#F54E25',
-  },
   threadAvatarText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#4338CA',
+  },
+  threadTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  threadUnreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F54E25',
+  },
+  threadChevronWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
   },
   threadBody: {
     flex: 1,
     minWidth: 0,
   },
   threadTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1B2559',
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1A2B4A',
+    flexShrink: 1,
   },
   threadSubtitle: {
     fontSize: 13,
@@ -1556,6 +1560,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     flexDirection: 'column',
+    backgroundColor: '#F4F7FE',
   },
   chatKav: {
     flex: 1,
@@ -1566,27 +1571,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    minHeight: 56,
-    paddingVertical: 8,
+    minHeight: 60,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F1',
-    backgroundColor: '#FFFFFF',
+    borderBottomColor: '#E8EDF3',
+    overflow: 'hidden',
+    position: 'relative',
+    zIndex: 2,
+  },
+  chatHeaderAccent: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 3,
+    backgroundColor: '#F54E25',
+    opacity: 0.85,
   },
   chatBackBtn: {
-    padding: 4,
-    marginRight: 4,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    zIndex: 1,
   },
   chatHeaderInfo: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 0,
+    zIndex: 1,
+  },
+  chatHeaderAvatarWrap: {
+    marginRight: 10,
   },
   chatHeaderAvatar: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#E0E7FF',
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -1602,16 +1629,30 @@ const styles = StyleSheet.create({
   },
   chatHeaderTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#1B2559',
+    fontWeight: '800',
+    color: '#1A2B4A',
   },
   chatHeaderSubtitle: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 2,
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  chatHeaderStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 3,
+  },
+  chatHeaderStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#22C55E',
   },
   chatHeaderSpacer: {
-    width: 32,
+    width: 36,
+    zIndex: 1,
   },
   chatMessagesFlex: {
     flex: 1,
@@ -1627,30 +1668,67 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   chatList: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
-  /** Short threads align to bottom of the list viewport; long threads scroll normally. */
-  chatListContentMessenger: {
+  chatListContent: {
     flexGrow: 1,
-    justifyContent: 'flex-end',
+  },
+  chatWelcomeBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    padding: 14,
+    marginBottom: 16,
+  },
+  chatWelcomeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  chatWelcomeCopy: { flex: 1, minWidth: 0 },
+  chatWelcomeTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1A2B4A',
+    marginBottom: 4,
+  },
+  chatWelcomeSub: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+    fontWeight: '500',
   },
   dateSeparatorWrap: {
     alignItems: 'center',
-    marginTop: 6,
-    marginBottom: 14,
+    marginTop: 4,
+    marginBottom: 12,
   },
   dateSeparatorText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#94A3B8',
+    backgroundColor: '#EEF2F6',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
   messageBlock: {
     width: '100%',
   },
   messageRowSupport: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'flex-start',
     width: '100%',
   },
@@ -1671,23 +1749,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     alignItems: 'flex-end',
   },
-  bubbleHead: {
-    width: AVATAR_HEAD,
-    height: AVATAR_HEAD,
-    borderRadius: AVATAR_HEAD / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bubbleHeadSupport: {
-    backgroundColor: '#F54E25',
-  },
-  bubbleHeadUser: {
-    backgroundColor: '#E0E7FF',
-  },
-  bubbleHeadUserText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#4338CA',
+  bubbleHeadWrap: {
+    alignSelf: 'center',
   },
   bubbleColumn: {
     flexShrink: 1,
@@ -1711,19 +1774,30 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
   },
   messageBubble: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 25,
+    borderRadius: 20,
+    overflow: 'hidden',
+    position: 'relative',
   },
   userBubble: {
-    backgroundColor: '#F54E25',
-    borderBottomRightRadius: 5,
+    borderBottomRightRadius: 6,
+    ...Platform.select({
+      web: { boxShadow: '0 4px 14px rgba(245, 78, 37, 0.28)' },
+      default: {
+        shadowColor: '#F54E25',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.28,
+        shadowRadius: 10,
+        elevation: 3,
+      },
+    }),
   },
   supportBubble: {
     backgroundColor: '#FFFFFF',
-    borderBottomLeftRadius: 5,
+    borderBottomLeftRadius: 6,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
+    borderColor: '#E8EDF3',
   },
   messageText: {
     fontSize: 15,
@@ -1732,7 +1806,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   supportText: {
-    color: '#333333',
+    color: '#1A2B4A',
+    lineHeight: 21,
   },
   timestamp: {
     fontSize: 11,
@@ -1756,7 +1831,7 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: '#E8EDF3',
   },
   inputAreaWrapper: {
     backgroundColor: '#FFFFFF',
@@ -1764,26 +1839,57 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 10,
+    gap: 10,
+  },
+  inputWrap: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 100,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: Platform.select({ web: 12, ios: 11, default: 10 }),
   },
   input: {
-    flex: 1,
-    backgroundColor: '#F2F3F5',
-    borderRadius: 25,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    marginRight: 10,
-    fontSize: 14,
-    maxHeight: 100,
+    width: '100%',
+    fontSize: 15,
+    lineHeight: 20,
+    color: '#1A2B4A',
+    padding: 0,
+    margin: 0,
+    minHeight: 20,
+    maxHeight: 80,
+    ...Platform.select({
+      web: {
+        outlineStyle: 'none' as const,
+      },
+      android: {
+        textAlignVertical: 'center' as const,
+        includeFontPadding: false,
+      },
+      default: {},
+    }),
+  },
+  sendButtonWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+    flexShrink: 0,
   },
   sendButton: {
-    width: 45,
-    height: 45,
-    borderRadius: 22.5,
-    backgroundColor: '#F54E25',
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  sendIcon: {
+    marginLeft: 1,
   },
   bottomNav: {
     flexDirection: 'row',

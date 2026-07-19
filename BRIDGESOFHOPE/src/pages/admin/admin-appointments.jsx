@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { LayoutGrid, BookUser, ClipboardList, ArrowRightSquare, Users, Stethoscope, LayoutTemplate, User, LogOut, Calendar, FileText, MessageCircle } from 'lucide-react';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { useNavigate } from 'react-router-dom';
+import AdminSidebar from '@/components/admin/AdminSidebar';
+import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import logoBH from '@/assets/kalingalogo.png';
 
 /** Inline SVG so the X is always visible (avoids Lucide + global `button` / `currentColor` quirks). */
@@ -353,95 +355,11 @@ export default function AdminAppointmentsPage() {
   const queueToRender = shouldFallbackToAll ? visibleQueue : filteredQueue;
 
   return (
-    <div className="ap-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559' }}>
+    <div className="family-portal admin-portal-layout ap-outer" style={{display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         .ap-outer { width: 100%; max-width: 100%; overflow-x: hidden; }
-        .ap-outer .desktop-sidebar,
-        .ap-outer .desktop-sidebar * { box-sizing: border-box; }
-        .desktop-sidebar {
-          width: ${isExpanded ? '280px' : '110px'};
-          background: white;
-          border-right: 1px solid #F1F1F1;
-          display: flex;
-          flex-direction: column;
-          align-items: stretch;
-          padding: 25px 0 0;
-          z-index: 100;
-          transition: width 0.3s cubic-bezier(0.4,0,0.2,1);
-          cursor: pointer;
-          position: fixed;
-          top: 0;
-          left: 0;
-          height: 100vh;
-          overflow: hidden;
-          flex-shrink: 0;
-          box-shadow: 4px 0 24px rgba(27, 37, 89, 0.06);
-        }
-        .sidebar-logo-container {
-          display: flex;
-          justify-content: center;
-          width: 100%;
-          margin-bottom: 28px;
-          align-self: center;
-          flex-shrink: 0;
-        }
-        .sidebar-logo { width: ${isExpanded ? '120px' : '70px'}; transition: width 0.3s ease; }
-        .sidebar-nav-scroll {
-          flex: 1 1 0;
-          min-height: 0;
-          overflow-y: auto;
-          overflow-x: hidden;
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          justify-content: flex-start;
-          align-items: stretch;
-          margin: 0;
-          padding: 0;
-        }
-        .sidebar-nav-item {
-          display: flex;
-          align-items: center;
-          width: 100%;
-          padding: 0 ${isExpanded ? '28px' : '0'};
-          justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 14px;
-          margin: 0 0 6px 0;
-          min-height: 48px;
-          box-sizing: border-box;
-        }
-        .sidebar-label {
-          display: ${isExpanded ? 'block' : 'none'};
-          font-weight: 600;
-          font-size: 15px;
-          color: #707EAE;
-          line-height: 1.25;
-          white-space: normal;
-          max-width: 210px;
-        }
-        .sidebar-footer {
-          flex-shrink: 0;
-          width: 100%;
-          padding: 16px 0 20px;
-          margin-top: auto;
-          border-top: 1px solid #f1f5f9;
-        }
-        .icon-box {
-          width: 44px;
-          height: 44px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          transition: all 0.2s;
-          background: #E9EDF7;
-          color: #1B2559;
-        }
-        .icon-box.active { background: #F54E25; color: white; }
-        .icon-box.inactive { background: transparent; color: #A3AED0; }
-        .ap-main { flex: 1; min-height: 100vh; margin-left: ${isExpanded ? '280px' : '110px'}; transition: margin-left 0.3s cubic-bezier(0.4,0,0.2,1); padding: 34px 30px 42px; }
+        .ap-main { flex: 1; min-height: 100vh;   padding: 34px 30px 42px; }
         .mini-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
         .calendar-shell {
           margin-top: 12px;
@@ -969,35 +887,12 @@ export default function AdminAppointmentsPage() {
           .res-mini-cal-day { height: 28px; }
         }
       `}</style>
-      <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container"><img src={logoBH} alt="Kalinga" className="sidebar-logo" /></div>
-        <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
-            <div className="icon-box inactive"><LayoutGrid size={22} /></div>
-            <span className="sidebar-label">Dashboard</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}><div className="icon-box inactive"><BookUser size={22} /></div><span className="sidebar-label">Patient Management</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}><div className="icon-box inactive"><ClipboardList size={22} /></div><span className="sidebar-label">Admission Management</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-discharge-management'); }}><div className="icon-box inactive"><ArrowRightSquare size={22} /></div><span className="sidebar-label">Discharge Management</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}><div className="icon-box inactive"><Users size={22} /></div><span className="sidebar-label">User Management</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}><div className="icon-box inactive"><Stethoscope size={22} /></div><span className="sidebar-label">Staff Management</span></div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}><div className="icon-box inactive"><LayoutTemplate size={22} /></div><span className="sidebar-label">Content management</span></div>
-          <div className="sidebar-nav-item"><div className="icon-box active"><Calendar size={22} /></div><span className="sidebar-label" style={{ color: '#F54E25' }}>Appointments</span></div>
-          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}><div className="icon-box inactive"><FileText size={22} /></div><span className="sidebar-label">Printable reports</span></div>
-        </nav>
-        <div className="sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
-            <div className="icon-box inactive"><User size={22} /></div>
-            <span className="sidebar-label">Profile & Security</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? '0' : '10px', flexShrink: 0 }} />
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
-          </div>
-        </div>
-      </aside>
-      <main className="ap-main">
+      <AdminSidebar
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+      />
+
+      <main className="ap-main admin-sidebar-offset">
         <div className="admin-appt-hero">
           <div>
             <div className="admin-appt-title">Admin Appointment Management</div>

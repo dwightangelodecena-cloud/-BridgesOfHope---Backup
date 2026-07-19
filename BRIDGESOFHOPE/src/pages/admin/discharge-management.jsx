@@ -1,9 +1,6 @@
-﻿import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
-  LayoutGrid,
-  BookUser,
   Users,
-  LogOut,
   Search,
   Filter,
   Eye,
@@ -25,9 +22,12 @@ import {
   FileText,
   MessageCircle,
   UserPlus,
+  LayoutGrid,
+  BookUser,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
+import AdminSidebar from '@/components/admin/AdminSidebar';
+import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
@@ -472,22 +472,12 @@ const DischargeManagement = () => {
   };
 
   return (
-    <div className="dm-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559' }}>
+    <div className="family-portal admin-portal-layout dm-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .dm-outer { width: 100%; overflow-x: clip; }
-        .desktop-sidebar { width: ${isExpanded ? '280px' : '110px'}; background: white; border-right: 1px solid #F1F1F1; display: flex; flex-direction: column; align-items: stretch; padding: 25px 0 0; z-index: 100; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; position: fixed; top: 0; left: 0; height: 100vh; overflow: hidden; }
-        .sidebar-logo-container { display: flex; justify-content: center; width: 100%; margin-bottom: 28px; align-self: center; }
-        .sidebar-logo { width: ${isExpanded ? '120px' : '70px'}; transition: width 0.3s ease; }
-        .sidebar-nav-scroll { flex: 1; min-height: 0; overflow-y: auto; width: 100%; display: flex; flex-direction: column; }
-        .sidebar-nav-item { display: flex; align-items: center; width: 100%; padding: 0 ${isExpanded ? '28px' : '0'}; justify-content: ${isExpanded ? 'flex-start' : 'center'}; gap: 14px; margin-bottom: 6px; min-height: 48px; box-sizing: border-box; }
-        .sidebar-label { display: ${isExpanded ? 'block' : 'none'}; font-weight: 600; font-size: 15px; color: #707EAE; line-height: 1.25; white-space: normal; max-width: 210px; }
-        .sidebar-footer { flex-shrink: 0; width: 100%; padding: 16px 0 20px; margin-top: auto; border-top: 1px solid #f1f5f9; }
-        .icon-box { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: #E9EDF7; color: #1B2559; flex-shrink: 0; }
-        .icon-box.active { background: #F54E25; color: white; }
-        .icon-box.inactive { background: transparent; color: #A3AED0; }
-        .dm-main { flex: 0 0 auto; width: calc(100vw - ${isExpanded ? '280px' : '110px'}); min-height: 100vh; margin-left: ${isExpanded ? '280px' : '110px'}; transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1); padding: 24px; }
+        .dm-main { flex: 0 0 auto; min-height: 100vh; padding: 24px; }
         .dm-card { background: white; border: 1px solid #E9EDF7; border-radius: 20px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
         .db-search-input { padding: 10px 12px 10px 36px; border: 1px solid #E9EDF7; border-radius: 12px; font-size: 13px; width: 280px; outline: none; font-family: 'Inter', sans-serif; color: #1B2559; background: white; }
         .db-search-input:focus { border-color: #2563EB; }
@@ -584,7 +574,7 @@ const DischargeManagement = () => {
         @media (max-width: 768px) {
           .desktop-sidebar { display: none !important; }
           .db-mobile-only { display: flex !important; }
-          .dm-main { margin-left: 0 !important; width: 100vw !important; padding: 20px 12px 100px 12px !important; }
+          .dm-main { padding: 20px 12px 100px 12px !important; }
           .db-search-input { width: 100% !important; }
           .dm-modal-body { grid-template-columns: 1fr; }
           .dm-family-request-grid { grid-template-columns: 1fr; }
@@ -595,60 +585,10 @@ const DischargeManagement = () => {
         }
       `}</style>
 
-      <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container">
-          <img src={logoBH} alt="Kalinga" className="sidebar-logo" />
-        </div>
-        <nav className="sidebar-nav-scroll" aria-label="Admin navigation">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-dashboard'); }}>
-            <div className="icon-box inactive"><LayoutGrid size={22} /></div>
-            <span className="sidebar-label">Dashboard</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-patient-database'); }}>
-            <div className="icon-box inactive"><BookUser size={22} /></div>
-            <span className="sidebar-label">Patient Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-admission-management'); }}>
-            <div className="icon-box inactive"><ClipboardList size={22} /></div>
-            <span className="sidebar-label">Admission Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
-            <div className="icon-box active"><ArrowRightSquare size={22} /></div>
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Discharge Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-user-management'); }}>
-            <div className="icon-box inactive"><Users size={22} /></div>
-            <span className="sidebar-label">User Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-staff-management'); }}>
-            <div className="icon-box inactive"><Stethoscope size={22} /></div>
-            <span className="sidebar-label">Staff Management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-content-management'); }}>
-            <div className="icon-box inactive"><LayoutTemplate size={22} /></div>
-            <span className="sidebar-label">Content management</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-appointments'); }}>
-            <div className="icon-box inactive"><Calendar size={22} /></div>
-            <span className="sidebar-label">Appointments</span>
-          </div>
-          <AdminMessagesNavItem onClick={(e) => { e.stopPropagation(); navigate('/admin-messages'); }} />
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-reports'); }}>
-            <div className="icon-box inactive"><FileText size={22} /></div>
-            <span className="sidebar-label">Printable reports</span>
-          </div>
-        </nav>
-        <div className="sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/admin-profile'); }}>
-            <div className="icon-box inactive"><User size={22} /></div>
-            <span className="sidebar-label">Profile & Security</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" style={{ marginLeft: isExpanded ? 0 : 10, flexShrink: 0 }} />
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
-          </div>
-        </div>
-      </aside>
+      <AdminSidebar
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+      />
 
       <div className="db-mobile-only db-mobile-top-bar">
         <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
@@ -656,7 +596,7 @@ const DischargeManagement = () => {
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>AD</div>
       </div>
 
-      <main className="dm-main">
+      <main className="dm-main admin-sidebar-offset">
         <div style={{ width: '100%' }} className="dm-print-area">
           <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Discharge Management</h1>
           <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 20, fontWeight: 500 }}>
