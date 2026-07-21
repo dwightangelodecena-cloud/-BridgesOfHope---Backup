@@ -6,6 +6,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { loadWorkflowOverrides, loadDischargeRecords } from '@/lib/admissionDischargeStore';
 
 export const REPORTS_BED_CAPACITY = 50;
 
@@ -753,3 +754,70 @@ export function downloadGuardianWeeklyConsolidatedPdf(snapshot) {
 
   finalizePdf(doc, `guardian-weekly-consolidated-${reportFileDateStamp()}.pdf`);
 }
+
+function weekRangeLabel(weekStart, weekEndExcl) {
+  return `${formatShortDate(weekStart.toISOString())} – ${formatShortDate(
+    new Date(weekEndExcl.getTime() - 86400000).toISOString()
+  )}`;
+}
+
+/** Admission requests received vs. patients admitted, one row per calendar week (Mon–Sun). */
+export function buildAdmissionsPerWeekRows(snapshot, weeksBack = 8) {
+  const admissionRequests = snapshot.admissionRequests || [];
+  const patients = snapshot.patients || [];
+  const rows = [];
+
+  for (let i = weeksBack - 1; i >= 0; i -= 1) {
+    const anchor = new Date();
+    anchor.setDate(anchor.getDate() - i * 7);
+    const weekStart = startOfWeekMonday(anchor);
+    const weekEnd = endOfWeekExclusive(anchor);
+
+    const requestsCount = admissionRequests.filter((r) => tsInRange(r.created_at, weekStart, weekEnd)).length;
+    const admittedCount = patients.filter((p) => tsInRange(p.admitted_at, weekStart, weekEnd)).length;
+
+    rows.push([weekRangeLabel(weekStart, weekEnd), String(requestsCount), String(admittedCount)]);
+  }
+
+  return rows;
+}
+
+/** Residents flagged as possible/upcoming discharges: admission-workflow "For Discharge" plus discharge-management "Ready for Discharge". */
+export function buildPossibleDischargeRows(snapshot) {
+  const admissionById = new Map((snapshot.admissionRequests || []).map((r) => [String(r.id), r]));
+  const overrides = loadWorkflowOverrides();
+  const dischargeRecords = loadDischargeRecords();
+
+  const rows = [];
+  const requestIdsInDischargeMgmt = new Set(
+    dischargeRecords.filter((d) => !d.archived).map((d) => String(d.admissionRequestId))
+  );
+
+  for (const rec of dischargeRecords) {
+    if (rec.archived || rec.finalStatus !== 'Ready for Discharge') continue;
+    rows.push([
+      rec.patientName || '—',
+      'Ready for discharge',
+      rec.assignedStaff || '—',
+      formatShortDate(rec.admissionDate),
+      formatShortDate(rec.createdAt),
+    ]);
+  }
+
+  for (const [requestId, override] of Object.entries(overrides)) {
+    if (override?.archived || override?.workflowStatus !== 'For Discharge') continue;
+    if (requestIdsInDischargeMgmt.has(String(requestId))) continue;
+    const admissionRow = admissionById.get(String(requestId));
+    rows.push([
+      admissionRow?.patient_name || override?.patientName || '—',
+      'For discharge (admission workflow)',
+      override?.assignedStaff || '—',
+      formatShortDate(admissionRow?.created_at),
+      formatShortDate(override?.updatedAt),
+    ]);
+  }
+
+  rows.sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { sensitivity: 'base' }));
+  return rows;
+}
+
