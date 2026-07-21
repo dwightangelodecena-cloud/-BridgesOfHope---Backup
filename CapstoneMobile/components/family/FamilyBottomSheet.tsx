@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BH } from '../../theme/tokens';
 
 const NAV_CLEARANCE = 72;
 const OPEN_DURATION = 280;
@@ -141,7 +142,7 @@ export function FamilyBottomSheet({
             },
           ]}
         >
-          <LinearGradient colors={['#F54E25', '#EA580C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.sheetAccent} />
+          <LinearGradient colors={[BH.brand, BH.brand600]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.sheetAccent} />
           <View style={styles.sheetHandleWrap}>
             <View style={styles.sheetHandle} />
           </View>
@@ -149,7 +150,7 @@ export function FamilyBottomSheet({
           <LinearGradient colors={['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={styles.sheetHeader}>
             <View style={styles.sheetHeaderLeft}>
               <View style={styles.sheetIconWrap}>
-                <Ionicons name={icon} size={20} color="#F54E25" />
+                <Ionicons name={icon} size={20} color={BH.brand} />
               </View>
               <View style={styles.sheetHeaderText}>
                 <Text style={styles.sheetTitle} numberOfLines={1}>
@@ -163,7 +164,7 @@ export function FamilyBottomSheet({
               </View>
             </View>
             <Pressable style={styles.closeBtn} onPress={handleClose} accessibilityRole="button" accessibilityLabel="Close">
-              <Ionicons name="close" size={20} color="#64748B" />
+              <Ionicons name="close" size={20} color={BH.slate500} />
             </Pressable>
           </LinearGradient>
 
@@ -192,14 +193,14 @@ const styles = StyleSheet.create({
     }),
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: BH.surface,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     overflow: 'hidden',
     borderWidth: 1,
     borderBottomWidth: 0,
     borderColor: 'rgba(233, 237, 247, 0.9)',
-    shadowColor: '#0F172A',
+    shadowColor: BH.slate900,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.12,
     shadowRadius: 24,
@@ -213,13 +214,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 10,
     paddingBottom: 2,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: BH.surface,
   },
   sheetHandle: {
     width: 40,
     height: 4,
     borderRadius: 999,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: BH.slate200,
   },
   sheetHeader: {
     flexDirection: 'row',
@@ -241,9 +242,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: BH.brandSurface,
     borderWidth: 1,
-    borderColor: '#FED7AA',
+    borderColor: BH.brandSurfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -255,12 +256,12 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
+    color: BH.slate900,
     letterSpacing: -0.3,
   },
   sheetSub: {
     fontSize: 12,
-    color: '#64748B',
+    color: BH.slate500,
     fontWeight: '600',
   },
   closeBtn: {
@@ -273,6 +274,6 @@ const styles = StyleSheet.create({
   },
   sheetBody: {
     flex: 1,
-    backgroundColor: '#F8FAFF',
+    backgroundColor: BH.surface2,
   },
 });

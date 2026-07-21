@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, Eye, EyeOff, Shield } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Shield, UserPlus, ChevronRight } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
@@ -242,7 +242,8 @@ const Login = () => {
     } else if (accountRole === 'program') {
       navigate('/program');
     } else {
-      navigate('/home');
+      // Family portal is mobile-only now — there is no web dashboard to send them to.
+      navigate('/get-the-app');
     }
   };
 
@@ -272,69 +273,75 @@ const Login = () => {
 
         ${AUTH_SHELL_STYLES}
 
-        @keyframes loginFocusRing {
-          from { box-shadow: 0 0 0 0 rgba(245, 78, 37, 0.2); }
-          to { box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.14), inset 0 1px 2px rgba(26, 43, 74, 0.04); }
-        }
+        /* ──────────────────────────────────────────────────────────────
+           Auth card — mirrors the mobile login sheet.
+           Source of truth: CapstoneMobile/app/login.tsx +
+           CapstoneMobile/components/auth/LoginField.tsx
+           Mobile palette: navy #1A2B4A · muted #64748B · placeholder #94A3B8
+           border #E2E8F0 · field bg #F8FAFC · orange #F54E25 / #FF6A3D / #E8441A
+           ────────────────────────────────────────────────────────────── */
 
         .login-card {
-          background: rgba(255, 255, 255, 0.92);
-          backdrop-filter: blur(12px);
-          padding: var(--space-4);
-          border-radius: 26px;
-          box-shadow:
-            0 1px 2px rgba(26, 43, 74, 0.03),
-            0 8px 24px rgba(26, 43, 74, 0.06),
-            0 28px 56px rgba(26, 43, 74, 0.09);
+          /* Shared glass-card system: same radius/elevation as every other auth
+             page (var(--auth-radius-card) / var(--auth-shadow-card)), so login,
+             signup, forgot, verify, and reset-password read as one experience. */
+          background: rgba(255, 255, 255, 0.96);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+          /* mobile sheet padding 24 — scales up gently on desktop */
+          padding: clamp(24px, 2.4vw, 34px);
+          border-radius: var(--auth-radius-card);
+          box-shadow: var(--auth-shadow-card);
           width: 100%;
           max-width: var(--auth-form-col);
           text-align: left;
-          border: 1px solid rgba(255, 255, 255, 0.9);
+          border: 1px solid rgba(255, 255, 255, 0.7);
           box-sizing: border-box;
           animation: loginFadeIn 0.7s ease-out 0.12s both;
-          transition: box-shadow 0.35s ease, transform 0.35s ease;
+          transition: box-shadow 0.35s var(--bh-ease, ease), transform 0.35s var(--bh-ease, ease);
         }
 
         .login-card:hover {
-          box-shadow:
-            0 1px 2px rgba(26, 43, 74, 0.03),
-            0 12px 32px rgba(26, 43, 74, 0.07),
-            0 32px 64px rgba(26, 43, 74, 0.1);
+          box-shadow: var(--auth-shadow-card-hover);
+          transform: translateY(-2px);
         }
 
-        .login-header {
-          margin-bottom: var(--space-3);
-        }
+        /* mobile: formTitle mb 4, formSubtitle mb 22 */
+        .login-header { margin-bottom: 22px; }
 
         .login-heading {
-          font-size: clamp(1.5rem, 2.5vw, 1.75rem);
+          font-size: clamp(1.625rem, 2.1vw, 1.875rem);   /* 26 → 30 */
           font-weight: 800;
           color: var(--brand-navy);
-          margin: 0 0 var(--space-1);
-          letter-spacing: -0.03em;
-          line-height: 1.25;
+          margin: 0 0 4px;
+          letter-spacing: -0.5px;
+          line-height: 1.2;
         }
 
         .login-subtitle {
-          font-size: 0.95rem;
+          font-size: 0.875rem;          /* 14 */
           color: #64748b;
-          line-height: 1.55;
+          line-height: 1.43;            /* 20/14 */
           margin: 0;
           font-weight: 400;
         }
 
-        .form-group {
-          margin-bottom: var(--space-2);
-        }
+        .form-group { margin-bottom: 16px; }
 
+        /* mobile LoginField label: 12 / 600 / uppercase / ls .3 / muted→navy */
         .form-group label {
           display: block;
-          font-size: 0.875rem;
-          color: var(--brand-navy);
-          margin-bottom: var(--space-1);
+          font-size: 0.75rem;
+          color: #64748b;
+          margin-bottom: 6px;
           font-weight: 600;
-          line-height: 1.4;
+          letter-spacing: 0.3px;
+          text-transform: uppercase;
+          line-height: 1.3;
+          transition: color 0.2s ease;
         }
+
+        .form-group:focus-within label { color: var(--brand-navy); }
 
         .input-wrapper {
           position: relative;
@@ -342,60 +349,63 @@ const Login = () => {
           align-items: center;
         }
 
+        /* mobile row: border 1.5 / radius 16 / minHeight 54 / iconBox 44+4 */
         .input-wrapper input {
           width: 100%;
-          height: 54px;
-          padding: 0 48px;
+          min-height: 54px;
+          padding: 14px 46px 14px 48px;
           border: 1.5px solid #e2e8f0;
-          border-radius: 14px;
-          font-size: 1rem;
+          border-radius: 16px;
+          font-size: 1rem;              /* 16 */
+          font-weight: 500;
           color: var(--brand-navy);
-          outline: none;
-          transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease, transform 0.2s ease;
           background-color: #f8fafc;
+          outline: none;
           box-sizing: border-box;
-          box-shadow: inset 0 1px 2px rgba(26, 43, 74, 0.04);
           font-family: inherit;
+          transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
 
         .input-wrapper input::placeholder {
           color: #94a3b8;
+          font-weight: 400;
         }
 
-        .input-wrapper input:hover {
-          border-color: #cbd5e1;
-          background-color: #ffffff;
-        }
+        .input-wrapper input:hover { border-color: #cbd5e1; }
 
-        .input-wrapper input:focus {
+        .input-wrapper input:focus,
+        .input-wrapper input:focus-visible {
           border-color: var(--brand-orange);
           background-color: #ffffff;
-          animation: loginFocusRing 0.3s ease forwards;
+          box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.10);
+          transform: translateY(-1px);
         }
 
         .input-icon {
           position: absolute;
-          left: 16px;
+          left: 4px;
+          width: 44px;                  /* mobile iconBox */
+          display: flex;
+          align-items: center;
+          justify-content: center;
           color: #94a3b8;
           transition: color 0.2s ease;
           pointer-events: none;
         }
 
-        .input-wrapper:focus-within .input-icon {
-          color: var(--brand-orange);
-        }
+        .input-wrapper:focus-within .input-icon { color: var(--brand-orange); }
 
         .eye-icon {
           position: absolute;
           right: 14px;
-          color: #94a3b8;
+          color: #64748b;
           cursor: pointer;
           background: none;
           border: none;
           display: flex;
           align-items: center;
           padding: 4px;
-          border-radius: 6px;
+          border-radius: 8px;
           transition: color 0.2s ease, background-color 0.2s ease;
         }
 
@@ -404,13 +414,20 @@ const Login = () => {
           background-color: #f1f5f9;
         }
 
+        .eye-icon:focus-visible {
+          outline: 2px solid var(--brand-orange);
+          outline-offset: 2px;
+        }
+
+        /* mobile banner: padding 12 / radius 12 / border 1 / mb 16 / 13-600 */
         .status-msg {
-          padding: var(--space-2);
+          padding: 12px;
           border-radius: 12px;
-          font-size: 0.875rem;
-          margin-bottom: var(--space-2);
-          text-align: center;
-          line-height: 1.5;
+          font-size: 0.8125rem;
+          font-weight: 600;
+          margin-bottom: 16px;
+          text-align: left;
+          line-height: 1.38;
         }
 
         .error-msg {
@@ -431,30 +448,30 @@ const Login = () => {
           border: 1px solid #bfdbfe;
         }
 
+        /* mobile extrasRow: mt -4 / mb 20 */
         .form-extras {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin: var(--space-1) 0 var(--space-3);
+          margin: -4px 0 20px;
           font-size: 0.875rem;
-          gap: var(--space-2);
+          gap: 12px;
           flex-wrap: wrap;
         }
 
         .remember-me {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
           color: #64748b;
+          font-weight: 500;
           cursor: pointer;
           position: relative;
           user-select: none;
           transition: color 0.2s ease;
         }
 
-        .remember-me:hover {
-          color: var(--brand-navy);
-        }
+        .remember-me:hover { color: var(--brand-navy); }
 
         .remember-me input {
           position: absolute;
@@ -464,21 +481,27 @@ const Login = () => {
           width: 0;
         }
 
+        /* mobile checkbox: 20 / radius 6 / border 1.5 */
         .checkmark {
-          height: 18px;
-          width: 18px;
+          height: 20px;
+          width: 20px;
           background-color: #ffffff;
           border: 1.5px solid #e2e8f0;
-          border-radius: 5px;
+          border-radius: 6px;
           display: inline-block;
           position: relative;
-          transition: all 0.2s;
+          transition: background-color 0.2s ease, border-color 0.2s ease;
           flex-shrink: 0;
         }
 
         .remember-me input:checked ~ .checkmark {
           background-color: var(--brand-orange);
           border-color: var(--brand-orange);
+        }
+
+        .remember-me input:focus-visible ~ .checkmark {
+          outline: 2px solid var(--brand-orange);
+          outline-offset: 2px;
         }
 
         .checkmark:after {
@@ -494,59 +517,65 @@ const Login = () => {
           transform: translate(-50%, -50%) rotate(45deg);
         }
 
-        .remember-me input:checked ~ .checkmark:after {
-          display: block;
-        }
+        .remember-me input:checked ~ .checkmark:after { display: block; }
 
+        /* mobile forgotLink: 14 / 700 / orange */
         .forgot-link {
-          color: var(--brand-navy);
+          color: var(--brand-orange);
           text-decoration: none;
-          font-weight: 600;
+          font-weight: 700;
+          font-size: 0.875rem;
           transition: color 0.2s ease;
         }
 
         .forgot-link:hover {
-          color: var(--brand-orange);
+          color: #e8441a;
+          text-decoration: underline;
+          text-underline-offset: 2px;
         }
 
+        /* mobile CTA: radius 14 / minHeight 54 / 16-800 / mb 18 */
         .btn-primary {
           width: 100%;
-          height: 54px;
-          background: linear-gradient(135deg, #FF6A3D 0%, #FF4D1F 100%);
-          color: white;
+          min-height: 54px;
+          background: linear-gradient(90deg, #ff6a3d 0%, #f54e25 55%, #e8441a 100%);
+          color: #ffffff;
           padding: 0 24px;
           border: none;
           border-radius: 14px;
-          font-size: 1.05rem;
-          font-weight: 600;
+          font-size: 1rem;
+          font-weight: 800;
           font-family: inherit;
           cursor: pointer;
-          transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
-          box-shadow: 0 4px 16px rgba(255, 77, 31, 0.32);
+          margin-bottom: 18px;
+          box-shadow: 0 4px 10px rgba(232, 68, 26, 0.3);
+          transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
         }
 
         .btn-primary:hover:not(:disabled) {
           filter: brightness(1.04);
-          box-shadow: 0 8px 28px rgba(255, 77, 31, 0.38);
-          transform: translateY(-2px) scale(1.01);
+          box-shadow: 0 6px 16px rgba(232, 68, 26, 0.36);
+          transform: translateY(-1px);
         }
 
         .btn-primary:active:not(:disabled) {
-          transform: translateY(0) scale(0.99);
-          box-shadow: 0 3px 12px rgba(255, 77, 31, 0.28);
+          transform: translateY(0);
+          box-shadow: 0 3px 8px rgba(232, 68, 26, 0.28);
         }
 
+        /* mobile disabled CTA fades to the grey gradient */
         .btn-primary:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
+          background: linear-gradient(90deg, #cbd5e1 0%, #94a3b8 100%);
           box-shadow: none;
+          cursor: not-allowed;
         }
 
+        /* mobile divider: gap 12 / mb 18 / "or" 13-500 #94A3B8 */
         .or-divider {
           display: flex;
           align-items: center;
-          margin: var(--space-2) 0;
-          gap: var(--space-2);
+          gap: 12px;
+          margin: 0 0 18px;
         }
 
         .or-divider::before,
@@ -554,29 +583,23 @@ const Login = () => {
           content: "";
           flex: 1;
           height: 1px;
-          background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+          background: #e8edf3;
         }
 
         .or-divider span {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 36px;
-          font-size: 0.65rem;
-          font-weight: 700;
+          font-size: 0.8125rem;
+          font-weight: 500;
           color: #94a3b8;
-          letter-spacing: 0.06em;
-          background: #f8fafc;
-          border-radius: 50%;
-          border: 1.5px solid #e8edf3;
-          flex-shrink: 0;
+          text-transform: lowercase;
+          letter-spacing: 0;
           line-height: 1;
+          flex-shrink: 0;
         }
 
+        /* mobile google: minHeight 52 / radius 14 / border 1.5 / 15-700 / mb 20 */
         .btn-google {
           width: 100%;
-          height: 52px;
+          min-height: 52px;
           background: #ffffff;
           border: 1.5px solid #e2e8f0;
           padding: 0 20px;
@@ -584,98 +607,141 @@ const Login = () => {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 12px;
-          font-weight: 500;
-          font-size: 0.975rem;
+          gap: 10px;
+          font-weight: 700;
+          font-size: 0.9375rem;
           font-family: inherit;
           color: var(--brand-navy);
           cursor: pointer;
-          margin-bottom: var(--space-2);
+          margin-bottom: 20px;
           box-sizing: border-box;
-          transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+          transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
 
         .btn-google:hover:not(:disabled) {
           background: #f8fafc;
           border-color: #cbd5e1;
-          box-shadow: 0 2px 8px rgba(26, 43, 74, 0.06);
+          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
           transform: translateY(-1px);
         }
 
-        .btn-google:active:not(:disabled) {
-          transform: translateY(0);
+        .btn-google:active:not(:disabled) { transform: translateY(0); }
+
+        .btn-google:disabled { opacity: 0.65; cursor: not-allowed; }
+
+        /* mobile signupPrompt card: radius 16 / border rgba(245,78,37,.2) /
+           gradient #FFF7F4 → #FFF / pad 14 / gap 12 / mb 16 */
+        .signup-cta {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 14px;
+          margin-bottom: 16px;
+          border-radius: 16px;
+          border: 1px solid rgba(245, 78, 37, 0.2);
+          background: linear-gradient(120deg, #fff7f4 0%, #ffffff 100%);
+          text-decoration: none;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
 
-        .btn-google:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
+        .signup-cta:hover {
+          border-color: rgba(245, 78, 37, 0.38);
+          box-shadow: 0 6px 18px rgba(245, 78, 37, 0.12);
+          transform: translateY(-1px);
         }
 
+        .signup-cta:focus-visible {
+          outline: 2px solid var(--brand-orange);
+          outline-offset: 2px;
+        }
+
+        .signup-cta-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
+          background: rgba(245, 78, 37, 0.12);
+          color: var(--brand-orange);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .signup-cta-copy {
+          display: block;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .signup-cta-label {
+          display: block;
+          font-size: 0.75rem;
+          color: #64748b;
+          font-weight: 500;
+          margin: 0 0 2px;
+          line-height: 1.3;
+        }
+
+        .signup-cta-action {
+          display: block;
+          font-size: 0.9375rem;
+          font-weight: 800;
+          color: var(--brand-navy);
+          letter-spacing: -0.2px;
+          margin: 0;
+          line-height: 1.3;
+        }
+
+        .signup-cta-arrow {
+          width: 32px;
+          height: 32px;
+          border-radius: 16px;
+          background: #ffffff;
+          border: 1px solid rgba(245, 78, 37, 0.15);
+          color: var(--brand-orange);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: transform 0.2s ease;
+        }
+
+        .signup-cta:hover .signup-cta-arrow { transform: translateX(2px); }
+
+        /* mobile footerMeta: centered, 11-500 muted */
         .security-note {
           display: flex;
           align-items: center;
-          gap: var(--space-2);
-          font-size: 0.78rem;
+          justify-content: center;
+          gap: 6px;
+          font-size: 0.6875rem;
+          font-weight: 500;
           color: #64748b;
-          margin: var(--space-2) auto var(--space-2);
-          padding: var(--space-2);
-          max-width: 92%;
-          width: 100%;
-          background: linear-gradient(135deg, rgba(248, 250, 252, 0.95) 0%, rgba(255, 247, 244, 0.6) 100%);
-          border-radius: 12px;
-          border: 1px solid rgba(245, 78, 37, 0.08);
-          line-height: 1.5;
-          transition: border-color 0.25s ease, box-shadow 0.25s ease;
-          box-sizing: border-box;
-        }
-
-        .security-note:hover {
-          border-color: rgba(245, 78, 37, 0.14);
-          box-shadow: 0 2px 12px rgba(245, 78, 37, 0.06);
+          line-height: 1.4;
+          margin: 0;
+          padding: 0;
+          background: none;
+          border: none;
+          text-align: center;
         }
 
         .security-note-icon {
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 28px;
-          height: 28px;
-          border-radius: 8px;
-          background: rgba(245, 78, 37, 0.09);
-          color: var(--brand-orange);
-          flex-shrink: 0;
-        }
-
-        .signup-prompt {
-          font-size: 0.9rem;
           color: #64748b;
-          text-align: center;
-          margin: var(--space-1) 0 0;
-          line-height: 1.5;
-        }
-
-        .signup-prompt span {
-          color: var(--brand-orange);
-          font-weight: 700;
-          cursor: pointer;
-          margin-left: 4px;
-          transition: color 0.2s ease;
-        }
-
-        .signup-prompt span:hover {
-          color: #e0441f;
-          text-decoration: underline;
-          text-underline-offset: 2px;
+          flex-shrink: 0;
         }
 
         @media (max-width: 900px) {
           .login-card {
-            padding: var(--space-3);
+            padding: 24px;
+            border-radius: 24px;
           }
 
           .login-header {
             text-align: center;
-            margin-bottom: var(--space-3);
+            margin-bottom: 20px;
           }
         }
       `}</style>
@@ -702,7 +768,7 @@ const Login = () => {
               <div className="form-group">
                 <label>Email or Contact Number</label>
                 <div className="input-wrapper">
-                  <Mail className="input-icon" size={22} />
+                  <Mail className="input-icon" size={18} />
                   <input
                     name="identifier"
                     type="text"
@@ -716,7 +782,7 @@ const Login = () => {
               <div className="form-group">
                 <label>Password</label>
                 <div className="input-wrapper">
-                  <Lock className="input-icon" size={22} />
+                  <Lock className="input-icon" size={18} />
                   <input
                     name="password"
                     type={showPassword ? "text" : "password"}
@@ -771,19 +837,25 @@ const Login = () => {
                 Continue with Google
               </button>
 
+              <Link to="/get-the-app" className="signup-cta">
+                <span className="signup-cta-icon">
+                  <UserPlus size={20} />
+                </span>
+                <span className="signup-cta-copy">
+                  <span className="signup-cta-label">Don&apos;t have an account?</span>
+                  <span className="signup-cta-action">Create your free account</span>
+                </span>
+                <span className="signup-cta-arrow">
+                  <ChevronRight size={18} />
+                </span>
+              </Link>
+
               <div className="security-note">
                 <span className="security-note-icon">
-                  <Shield size={15} />
+                  <Shield size={13} />
                 </span>
                 <span>Your information is securely protected and encrypted.</span>
               </div>
-
-              <p className="signup-prompt">
-                Don't have an account?
-                <Link to="/consent" style={{ textDecoration: 'none' }}>
-                  <span>Sign Up</span>
-                </Link>
-              </p>
             </form>
           </div>
         </div>

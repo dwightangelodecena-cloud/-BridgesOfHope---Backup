@@ -398,6 +398,14 @@
   box-sizing: border-box;
   border: none;
   border-radius: 14px;
+  /* Nav rows are real <button>s (keyboard reachable) — neutralise UA styling. */
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
   transition:
     padding var(--family-sidebar-duration) var(--family-sidebar-ease),
     background-color 0.2s ease,
@@ -406,6 +414,15 @@
 
 .family-portal .sidebar-nav-item:hover {
   background: rgba(241, 245, 249, 0.9);
+}
+
+.family-portal .sidebar-nav-item:focus-visible {
+  outline: 2px solid rgba(245, 78, 37, 0.55);
+  outline-offset: -2px;
+}
+
+.family-portal .sidebar-nav-item:active {
+  transform: scale(0.985);
 }
 
 .family-portal .sidebar-nav-item.sidebar-nav-active {
@@ -434,11 +451,19 @@
   justify-content: center;
   flex-shrink: 0;
   background: #f4f7fe;
-  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  /* Icons inherit this via currentColor, so they can animate with state. */
+  color: #707eae;
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, color 0.2s ease;
 }
 
 .family-portal .sidebar-nav-item:hover .sidebar-icon-wrap {
   transform: translateY(-1px);
+  background: rgba(245, 78, 37, 0.1);
+  color: #f54e25;
+}
+
+.family-portal .sidebar-nav-item:hover .sidebar-label {
+  color: #1b2559;
 }
 
 .family-portal .sidebar-nav-active .sidebar-icon-wrap {
@@ -518,11 +543,27 @@
   box-shadow: none;
 }
 
-.family-portal .sidebar-footer .sidebar-nav-active .sidebar-icon-wrap,
-.family-portal .sidebar-footer .sidebar-nav-item:hover .sidebar-icon-wrap {
+/* Footer tiles stay flat (no lift/shadow) but still respond on hover. */
+.family-portal .sidebar-footer .sidebar-nav-active .sidebar-icon-wrap {
   background: #f4f7fe;
   box-shadow: none;
   transform: none;
+}
+
+.family-portal .sidebar-footer .sidebar-nav-item:hover .sidebar-icon-wrap {
+  background: rgba(245, 78, 37, 0.1);
+  box-shadow: none;
+  transform: none;
+}
+
+/* Logout — brand-coloured label (was an inline style) + soft tint on hover. */
+.family-portal .sidebar-nav-item--logout .sidebar-label,
+.family-portal .sidebar-nav-item--logout:hover .sidebar-label {
+  color: #f54e25;
+}
+
+.family-portal .sidebar-nav-item--logout:hover {
+  background: rgba(245, 78, 37, 0.08);
 }
 
 .family-portal .sidebar-footer .sidebar-nav-active .sidebar-icon-wrap svg {

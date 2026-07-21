@@ -121,28 +121,25 @@ const VerifyStep2 = () => {
         }
 
         .verify-card {
-          background: rgba(255, 255, 255, 0.94);
+          /* Same glass-card system as login/signup/forgot/reset-password. */
+          background: rgba(255, 255, 255, 0.96);
           backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
           padding: clamp(28px, 4vw, 40px);
-          border-radius: 24px;
-          box-shadow:
-            0 1px 2px rgba(26, 43, 74, 0.03),
-            0 8px 24px rgba(26, 43, 74, 0.06),
-            0 28px 56px rgba(26, 43, 74, 0.09);
+          border-radius: var(--auth-radius-card);
+          box-shadow: var(--auth-shadow-card);
           width: 100%;
           max-width: var(--auth-form-col);
           text-align: center;
-          border: 1px solid rgba(255, 255, 255, 0.92);
+          border: 1px solid rgba(255, 255, 255, 0.7);
           box-sizing: border-box;
           animation: loginFadeIn 0.65s ease-out 0.1s both;
-          transition: box-shadow 0.25s ease;
+          transition: box-shadow 0.35s var(--bh-ease, ease), transform 0.35s var(--bh-ease, ease);
         }
 
         .verify-card:hover {
-          box-shadow:
-            0 1px 2px rgba(26, 43, 74, 0.03),
-            0 12px 32px rgba(26, 43, 74, 0.07),
-            0 32px 64px rgba(26, 43, 74, 0.1);
+          box-shadow: var(--auth-shadow-card-hover);
+          transform: translateY(-2px);
         }
 
         .verify-card-icon {
@@ -253,7 +250,7 @@ const VerifyStep2 = () => {
         .btn-primary {
           width: 100%;
           height: 54px;
-          background: linear-gradient(135deg, #FF6A3D 0%, #FF4D1F 100%);
+          background: var(--bh-brand-gradient);
           color: white;
           padding: 0 24px;
           border: none;
@@ -263,7 +260,7 @@ const VerifyStep2 = () => {
           font-family: inherit;
           cursor: pointer;
           transition: transform 0.22s ease, box-shadow 0.22s ease, filter 0.22s ease, opacity 0.22s ease;
-          box-shadow: 0 4px 16px rgba(255, 77, 31, 0.32);
+          box-shadow: var(--bh-shadow-brand);
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -272,13 +269,13 @@ const VerifyStep2 = () => {
 
         .btn-primary:hover:not(:disabled) {
           filter: brightness(1.04);
-          box-shadow: 0 8px 28px rgba(255, 77, 31, 0.38);
+          box-shadow: var(--bh-shadow-brand-hover);
           transform: translateY(-2px);
         }
 
         .btn-primary:active:not(:disabled) {
           transform: translateY(0) scale(0.99);
-          box-shadow: 0 3px 12px rgba(255, 77, 31, 0.28);
+          box-shadow: var(--bh-shadow-brand-active);
         }
 
         .btn-primary:disabled {
@@ -336,7 +333,7 @@ const VerifyStep2 = () => {
           background: #ffffff;
           border: 1.5px solid #e2e8f0;
           padding: 0 20px;
-          border-radius: 14px;
+          border-radius: var(--bh-radius-lg);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -431,7 +428,7 @@ const VerifyStep2 = () => {
           }
 
           .otp-input {
-            border-radius: 14px;
+            border-radius: var(--bh-radius-lg);
           }
         }
       `}</style>
@@ -522,7 +519,7 @@ const VerifyStep2 = () => {
 
             <p className="verify-footer-prompt">
               Don&apos;t have an account?{' '}
-              <button type="button" onClick={() => navigate('/signup')}>
+              <button type="button" onClick={() => navigate('/get-the-app')}>
                 Sign Up
               </button>
             </p>

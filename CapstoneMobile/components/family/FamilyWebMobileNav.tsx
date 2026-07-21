@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { performFamilyLogoutMobile } from '../../lib/familyLogoutMobile';
 import { FamilyLogoutConfirmModal } from './FamilyLogoutConfirmModal';
+import { BH } from '../../theme/tokens';
 
 /** Matches web FamilySidebar primary + footer nav (Dashboard → Reports, Profile, Logout). */
 export type FamilyNavTab =
@@ -62,8 +63,8 @@ const NAV_ITEMS: {
   { key: 'profile', icon: 'person-outline', route: TAB_ROUTES.profile, label: 'Profile', a11y: 'Profile' },
 ];
 
-const INACTIVE = '#A3AED0';
-const ACTIVE = '#F54E25';
+const INACTIVE = BH.textFaint;
+const ACTIVE = BH.brand;
 
 export function FamilyWebMobileNav({ active }: Props) {
   const insets = useSafeAreaInsets();
@@ -134,15 +135,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: BH.surface,
     borderTopWidth: 1,
-    borderTopColor: '#EAEFFB',
+    borderTopColor: BH.border,
     paddingTop: 6,
     minHeight: 64,
     zIndex: 2000,
     ...Platform.select({
       ios: {
-        shadowColor: '#0F172A',
+        shadowColor: BH.slate900,
         shadowOffset: { width: 0, height: -4 },
         shadowOpacity: 0.06,
         shadowRadius: 16,
