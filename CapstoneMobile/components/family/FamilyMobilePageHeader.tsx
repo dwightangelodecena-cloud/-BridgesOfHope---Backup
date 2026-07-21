@@ -18,6 +18,7 @@ import { FamilyHeaderAvatarMobile } from './FamilyHeaderAvatarMobile';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 import { useFamilyNotificationsMobile } from '../../lib/useFamilyNotificationsMobileHook';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
+import { BH } from '../../theme/tokens';
 
 type Props = {
   /** Page title — inner pages use unified title brand (no subtitle on mobile). */
@@ -56,10 +57,10 @@ export function FamilyMobilePageHeader({
       >
         <View style={styles.notifRoot}>
           <Pressable style={styles.notifBackdrop} onPress={notif.close} />
-          <View style={[styles.notifPanel, { top: insets.top + 52, right: 16 }]}>
+          <View style={[styles.notifPanel, { top: insets.top + 46, right: 16 }]}>
             <View style={styles.notifHead}>
               <View style={styles.notifTitleRow}>
-                <Ionicons name="notifications" size={16} color="#F54E25" />
+                <Ionicons name="notifications" size={16} color={BH.brand} />
                 <Text style={styles.notifTitle}>Notifications</Text>
               </View>
               {notif.items.length > 0 ? (
@@ -74,7 +75,7 @@ export function FamilyMobilePageHeader({
               <ScrollView style={styles.notifScroll} keyboardShouldPersistTaps="handled">
                 {notif.items.map((item, idx) => (
                   <View key={item.id || `n-${idx}`} style={styles.notifRow}>
-                    <Ionicons name="checkmark-circle" size={15} color="#6366F1" style={{ marginTop: 2 }} />
+                    <Ionicons name="checkmark-circle" size={15} color={BH.indigo500} style={{ marginTop: 2 }} />
                     <Text style={styles.notifText}>{notif.notificationDisplayText(item)}</Text>
                     <TouchableOpacity
                       onPress={() => notif.removeItem(item, idx)}
@@ -106,12 +107,12 @@ export function FamilyMobilePageHeader({
             ) : title ? (
               <FamilyPageTitleBrand title={title} />
             ) : (
-              <KalingaLogoMark size={44} variant="boxed" />
+              <KalingaLogoMark size={38} variant="boxed" />
             )}
           </TouchableOpacity>
           <View style={styles.actions}>
             <TouchableOpacity
-              style={styles.notifyBtn}
+              style={[styles.notifyBtn, notif.unreadCount > 0 ? styles.notifyBtnActive : styles.notifyBtnIdle]}
               onPress={notif.toggle}
               accessibilityRole="button"
               accessibilityLabel={
@@ -119,9 +120,14 @@ export function FamilyMobilePageHeader({
                   ? `Notifications, ${notif.unreadCount} unread`
                   : 'Notifications'
               }
-              activeOpacity={0.88}
+              activeOpacity={0.85}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="notifications" size={18} color="#FFFFFF" />
+              <Ionicons
+                name="notifications"
+                size={17}
+                color={notif.unreadCount > 0 ? BH.brandContrast : BH.slate500}
+              />
               {notif.unreadCount > 0 ? (
                 <View style={styles.notifBadge}>
                   <Text style={styles.notifBadgeText}>
@@ -130,10 +136,15 @@ export function FamilyMobilePageHeader({
                 </View>
               ) : null}
             </TouchableOpacity>
-            <FamilyHeaderAvatarMobile userId={userId} initials={initials} onPress={onProfile} size={36} />
+            <FamilyHeaderAvatarMobile
+              userId={userId}
+              initials={initials}
+              onPress={onProfile}
+              size={34}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            />
           </View>
         </View>
-        <View style={styles.themeAccent} />
       </View>
     </>
   );
@@ -141,18 +152,28 @@ export function FamilyMobilePageHeader({
 
 const styles = StyleSheet.create({
   headerShell: {
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    backgroundColor: BH.surface,
+    // No hard border — the diffuse shadow alone carries the separation from
+    // content below, for a lighter, "floating" feel.
+    ...Platform.select({
+      ios: {
+        shadowColor: BH.slate900,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.04,
+        shadowRadius: 14,
+      },
+      android: { elevation: 2 },
+      default: {},
+    }),
   },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-    minHeight: 56,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    minHeight: 48,
+    backgroundColor: BH.surface,
   },
   brandArea: {
     flex: 1,
@@ -160,33 +181,34 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     justifyContent: 'center',
   },
-  themeAccent: {
-    height: 2,
-    backgroundColor: 'rgba(245, 78, 37, 0.45)',
-    marginHorizontal: 20,
-    marginBottom: -1,
-    borderRadius: 2,
-  },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   notifyBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F54E25',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
     overflow: 'visible',
+  },
+  // Unread: strong brand fill + soft colour glow — draws the eye only when
+  // there's something to see.
+  notifyBtnActive: {
+    backgroundColor: BH.brand,
     ...Platform.select({
       ios: {
-        shadowColor: '#F54E25',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.22,
-        shadowRadius: 6,
+        shadowColor: BH.brand,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.14,
+        shadowRadius: 10,
       },
-      android: { elevation: 3 },
+      android: { elevation: 2 },
       default: {},
     }),
+  },
+  // Idle: quiet neutral tile — no glow, minimal visual weight.
+  notifyBtnIdle: {
+    backgroundColor: BH.slate100,
   },
   notifRoot: { flex: 1 },
   notifBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' },
@@ -194,12 +216,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: Math.min(360, 340),
     maxHeight: 360,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: BH.surface,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E9EDF7',
+    borderColor: BH.border,
     padding: 18,
-    shadowColor: '#0F172A',
+    shadowColor: BH.slate900,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.14,
     shadowRadius: 24,
@@ -212,13 +234,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   notifTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  notifTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  clearAll: { fontSize: 12, fontWeight: '700', color: '#94A3B8' },
+  notifTitle: { fontSize: 15, fontWeight: '800', color: BH.slate900 },
+  clearAll: { fontSize: 12, fontWeight: '700', color: BH.slate400 },
   notifScroll: { maxHeight: 280 },
-  notifEmpty: { fontSize: 12, fontWeight: '600', color: '#94A3B8' },
+  notifEmpty: { fontSize: 12, fontWeight: '600', color: BH.slate400 },
   notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
-  notifText: { flex: 1, fontSize: 13, color: '#334155', lineHeight: 18 },
-  notifDismiss: { fontSize: 16, color: '#94A3B8', paddingHorizontal: 4 },
+  notifText: { flex: 1, fontSize: 13, color: BH.slate700, lineHeight: 18 },
+  notifDismiss: { fontSize: 16, color: BH.slate400, paddingHorizontal: 4 },
   notifBadge: {
     position: 'absolute',
     top: -2,
@@ -226,15 +248,15 @@ const styles = StyleSheet.create({
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#1B2559',
+    backgroundColor: BH.navy,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: BH.surface,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
   notifBadgeText: {
-    color: '#FFFFFF',
+    color: BH.brandContrast,
     fontSize: 10,
     fontWeight: '800',
     lineHeight: 12,

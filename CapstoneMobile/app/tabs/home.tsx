@@ -41,11 +41,12 @@ import {
   normalizeVisitationStatus,
   type VisitationRequestRow,
 } from '../../lib/visitationAppointmentsMobile';
+import { BH, SHADOW } from '../../theme/tokens';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
 const heroDecoScale = isCompactScreen ? 0.78 : 0.9;
-const BG = '#F8FAFF';
+const BG = BH.surface2;
 
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -486,7 +487,7 @@ export default function HomeScreen() {
                 <Ionicons
                   name={greetingIcon}
                   size={isCompactScreen ? 20 : 24}
-                  color="#F54E25"
+                  color={BH.brand}
                   style={styles.heroTitleIcon}
                 />
               </View>
@@ -1340,30 +1341,30 @@ const styles = StyleSheet.create({
   statGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 14,
+    gap: 12,
+    marginBottom: 18,
   },
   statCard: {
-    width: (width - (isCompactScreen ? 28 : 36) - 10) / 2,
-    borderRadius: 18,
+    width: (width - (isCompactScreen ? 28 : 36) - 12) / 2,
+    borderRadius: 22,
     borderWidth: 1,
-    backgroundColor: '#FFFFFF',
-    padding: 14,
+    backgroundColor: BH.surface,
+    padding: 16,
     overflow: 'hidden',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowColor: BH.slate900,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
+    elevation: 3,
   },
   statCardDeco: {
     position: 'absolute',
     top: 0,
     right: 0,
-    width: 72,
-    height: 72,
-    borderBottomLeftRadius: 72,
-    opacity: 0.45,
+    width: 88,
+    height: 88,
+    borderBottomLeftRadius: 88,
+    opacity: 0.3,
   },
   statCardInner: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   statCardLabel: {
@@ -1373,12 +1374,12 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.7,
   },
-  statCardValue: { marginTop: 6, fontSize: 28, fontWeight: '900', color: '#0F172A', letterSpacing: -0.5 },
-  statCardSub: { marginTop: 2, fontSize: 11, color: '#94A3B8', fontWeight: '500' },
+  statCardValue: { marginTop: 8, fontSize: 30, fontWeight: '900', color: BH.slate900, letterSpacing: -0.6 },
+  statCardSub: { marginTop: 3, fontSize: 11, color: BH.slate400, fontWeight: '500' },
   statCardIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -1387,16 +1388,16 @@ const styles = StyleSheet.create({
   sectionTitleText: { fontSize: 14, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
   sectionSub: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '500' },
   panelCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: BH.surface,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#E9EDF7',
-    padding: 16,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.05,
-    shadowRadius: 20,
-    elevation: 2,
+    borderColor: BH.border,
+    padding: 18,
+    shadowColor: BH.slate900,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 28,
+    elevation: 4,
   },
   quickActionsHeaderRow: {
     marginBottom: 14,
@@ -1404,22 +1405,23 @@ const styles = StyleSheet.create({
   actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E9EDF7',
-    marginBottom: 10,
-    backgroundColor: '#FBFDFF',
+    borderColor: BH.border,
+    marginBottom: 12,
+    backgroundColor: BH.surface2,
   },
   iconSquare: {
     width: 48,
     height: 48,
-    borderRadius: 12,
-    backgroundColor: '#F54E25',
+    borderRadius: 14,
+    backgroundColor: BH.brand,
     alignItems: 'center',
     justifyContent: 'center',
+    ...SHADOW.brand,
   },
   actionMain: { flex: 1, minWidth: 0 },
   actionTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
@@ -1481,11 +1483,11 @@ const styles = StyleSheet.create({
     width: (width - 36 - 32) / 2 - 5,
     minWidth: 140,
     flexGrow: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E9EDF7',
-    padding: 12,
-    backgroundColor: '#FBFDFF',
+    borderColor: BH.border,
+    padding: 14,
+    backgroundColor: BH.surface2,
   },
   kpiLabel: { color: '#64748B', fontSize: 11, fontWeight: '700' },
   kpiValue: { color: '#1B2559', fontWeight: '800', fontSize: 20, marginTop: 6 },
@@ -1499,11 +1501,11 @@ const styles = StyleSheet.create({
   emptyMuted: { color: '#94A3B8', fontSize: 13, fontWeight: '700', textAlign: 'center', paddingVertical: 12 },
   tableRow: {
     borderWidth: 1,
-    borderColor: '#E9EDF7',
-    borderRadius: 12,
-    padding: 12,
+    borderColor: BH.border,
+    borderRadius: 16,
+    padding: 14,
     marginBottom: 10,
-    backgroundColor: '#FBFDFF',
+    backgroundColor: BH.surface2,
   },
   tableRowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   tablePatientName: { flex: 1, fontSize: 15, fontWeight: '800', color: '#1B2559' },
@@ -1783,11 +1785,11 @@ const styles = StyleSheet.create({
     width: (width - 36 - 32) / 2 - 5,
     minWidth: 140,
     flexGrow: 1,
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC',
-    padding: 12,
+    borderRadius: 16,
+    backgroundColor: BH.slate50,
+    padding: 14,
     borderWidth: 1,
-    borderColor: '#E9EDF7',
+    borderColor: BH.border,
   },
   overviewLabel: { fontSize: 12, color: '#64748B', fontWeight: '700' },
   overviewValue: { fontSize: 22, fontWeight: '900', color: '#1B2559', marginTop: 6 },

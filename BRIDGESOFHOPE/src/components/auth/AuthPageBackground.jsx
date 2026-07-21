@@ -11,6 +11,8 @@ export default function AuthPageBackground() {
       <div className="login-bg-geo login-bg-geo--1" aria-hidden="true" />
       <div className="login-bg-geo login-bg-geo--2" aria-hidden="true" />
       <div className="login-bg-geo login-bg-geo--3" aria-hidden="true" />
+      <div className="login-dot-grid login-dot-grid--tr" aria-hidden="true" />
+      <div className="login-dot-grid login-dot-grid--bl" aria-hidden="true" />
     </>
   );
 }

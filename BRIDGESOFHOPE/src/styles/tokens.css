@@ -1,0 +1,168 @@
+/*
+ * ──────────────────────────────────────────────────────────────────────────
+ *  Bridges of Hope / Kalinga — Design Tokens (single source of truth)
+ * ──────────────────────────────────────────────────────────────────────────
+ *  ADDITIVE ONLY. This file defines CSS custom properties; it changes nothing
+ *  on its own. Surfaces opt in by referencing var(--bh-*) instead of raw hex.
+ *
+ *  Prefix: --bh-  (Bridges of Hope) — never collides with the per-feature
+ *  scopes already in the codebase (landing --lp, admin --aa / --am / --rp,
+ *  auth --space / --brand). Those keep working; they can migrate to point at
+ *  these canonical values over time.
+ *
+ *  Values below are the DOMINANT real usages in the codebase, so adopting a
+ *  token is a no-visual-change swap. Near-duplicates are normalised to one.
+ * ──────────────────────────────────────────────────────────────────────────
+ */
+
+:root {
+  /* ── Brand (Bridges of Hope orange) ───────────────────────────────────── */
+  --bh-brand: #f54e25;          /* canonical primary — 350+ real uses          */
+  --bh-brand-hover: #e0421a;    /* darker hover                                 */
+  --bh-brand-strong: #d63e17;   /* pressed / high-emphasis                      */
+  --bh-brand-light: #ff6a3d;    /* gradient top / soft accent                   */
+  --bh-brand-contrast: #ffffff; /* text/icon on brand fills                     */
+  /* Warm brand gradient (auth CTAs, hero buttons) */
+  --bh-brand-gradient: linear-gradient(135deg, #ff6a3d 0%, #ff4d1f 100%);
+  /* Brand tints for soft fills, rings, borders */
+  --bh-brand-a06: rgba(245, 78, 37, 0.06);
+  --bh-brand-a08: rgba(245, 78, 37, 0.08);
+  --bh-brand-a10: rgba(245, 78, 37, 0.10);
+  --bh-brand-a14: rgba(245, 78, 37, 0.14);
+  --bh-brand-a30: rgba(245, 78, 37, 0.30);
+
+  /* ── Ink & neutrals (navy + slate ramp) ───────────────────────────────── */
+  --bh-navy: #1b2559;           /* primary headings / brand navy               */
+  --bh-slate-900: #0f172a;      /* strong body / input text                    */
+  --bh-slate-800: #1e293b;
+  --bh-slate-700: #334155;
+  --bh-slate-600: #475569;
+  --bh-slate-500: #64748b;      /* secondary text                              */
+  --bh-slate-400: #94a3b8;      /* muted / placeholder                         */
+  --bh-slate-300: #cbd5e1;      /* input border (rest)                         */
+  --bh-slate-200: #e2e8f0;      /* divider / border                            */
+  --bh-slate-100: #f1f5f9;      /* subtle fill                                 */
+  --bh-slate-50: #f8fafc;       /* faint fill                                  */
+
+  /* Semantic text aliases (read at call sites) */
+  --bh-text: var(--bh-slate-700);
+  --bh-text-strong: var(--bh-navy);
+  --bh-text-muted: var(--bh-slate-500);
+  --bh-text-subtle: var(--bh-slate-400);
+  --bh-text-faint: #a3aed0;     /* Horizon-UI muted label                      */
+
+  /* ── Surfaces & borders ───────────────────────────────────────────────── */
+  --bh-bg: #f8f9fd;             /* app background                              */
+  --bh-bg-alt: #f4f7fe;         /* alt / section background                    */
+  --bh-surface: #ffffff;        /* cards, panels                              */
+  --bh-surface-2: #f8faff;      /* nested / inset surface                      */
+  --bh-border: #e9edf7;         /* Horizon soft border (card edges)           */
+  --bh-border-strong: #e2e8f0;  /* stronger divider                           */
+
+  /* ── Accent (focus, links, informational indigo) ──────────────────────── */
+  --bh-indigo: #4338ca;
+  --bh-indigo-500: #6366f1;
+  --bh-indigo-tint: #eef2ff;
+
+  /* ── Semantic status ──────────────────────────────────────────────────── */
+  --bh-success: #10b981;
+  --bh-success-text: #166534;
+  --bh-success-bg: #f0fdf4;
+  --bh-success-border: #bbf7d0;
+
+  --bh-danger: #dc2626;
+  --bh-danger-strong: #be123c;
+  --bh-danger-text: #dc2626;
+  --bh-danger-bg: #fef2f2;
+  --bh-danger-border: #fecaca;
+
+  --bh-info: #1d4ed8;
+  --bh-info-bg: #eff6ff;
+  --bh-info-border: #bfdbfe;
+
+  --bh-warning: #d97706;
+  --bh-warning-bg: #fffbeb;
+  --bh-warning-border: #fde68a;
+
+  /* ── Spacing (8px grid, 4px half-step) ────────────────────────────────── */
+  --bh-space-0-5: 4px;
+  --bh-space-1: 8px;
+  --bh-space-2: 16px;
+  --bh-space-3: 24px;
+  --bh-space-4: 32px;
+  --bh-space-5: 40px;
+  --bh-space-6: 48px;
+  --bh-space-8: 64px;
+  --bh-space-10: 80px;
+  --bh-space-12: 96px;
+
+  /* ── Radius ────────────────────────────────────────────────────────────── */
+  --bh-radius-xs: 6px;
+  --bh-radius-sm: 8px;
+  --bh-radius-md: 12px;
+  --bh-radius-lg: 14px;   /* inputs / buttons                                 */
+  --bh-radius-xl: 18px;
+  --bh-radius-2xl: 24px;
+  --bh-radius-3xl: 26px;  /* auth card                                        */
+  --bh-radius-pill: 999px;
+
+  /* ── Elevation (slate-tinted, consistent light) ───────────────────────── */
+  --bh-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --bh-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.03), 0 2px 8px rgba(15, 23, 42, 0.05);
+  --bh-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06), 0 2px 6px rgba(15, 23, 42, 0.04);
+  --bh-shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
+  --bh-shadow-xl: 0 24px 56px rgba(15, 23, 42, 0.12), 0 8px 24px rgba(15, 23, 42, 0.06);
+  /*
+   * Layered card shadow — auth / premium glass surfaces.
+   * Composed of a top inner highlight (glass "catch light"), a tight contact
+   * shadow, a soft ambient layer, and a broad diffuse layer for depth — instead
+   * of one heavy shadow. --bh-shadow-card-hover deepens only the far layers so
+   * the card lifts without the highlight or contact shadow changing.
+   */
+  --bh-shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px rgba(15, 23, 42, 0.04),
+    0 10px 24px rgba(15, 23, 42, 0.07), 0 32px 64px rgba(15, 23, 42, 0.1);
+  --bh-shadow-card-hover: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 1px 2px rgba(15, 23, 42, 0.04),
+    0 14px 32px rgba(15, 23, 42, 0.09), 0 40px 80px rgba(15, 23, 42, 0.13);
+  /* Brand-tinted glow for primary CTAs */
+  --bh-shadow-brand: 0 4px 16px rgba(255, 77, 31, 0.30);
+  --bh-shadow-brand-hover: 0 10px 30px rgba(255, 77, 31, 0.4);
+  --bh-shadow-brand-active: 0 3px 12px rgba(255, 77, 31, 0.28);
+
+  /* ── Typography ───────────────────────────────────────────────────────── */
+  --bh-font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --bh-font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+
+  --bh-text-xs: 0.75rem;    /* 12 */
+  --bh-text-sm: 0.875rem;   /* 14 */
+  --bh-text-base: 1rem;     /* 16 */
+  --bh-text-md: 1.05rem;
+  --bh-text-lg: 1.25rem;    /* 20 */
+  --bh-text-xl: 1.5rem;     /* 24 */
+  --bh-text-2xl: 1.75rem;   /* 28 */
+  --bh-text-3xl: 2.25rem;   /* 36 */
+
+  --bh-leading-tight: 1.2;
+  --bh-leading-snug: 1.4;
+  --bh-leading-normal: 1.55;
+  --bh-leading-relaxed: 1.65;
+
+  --bh-tracking-tight: -0.03em;
+  --bh-tracking-snug: -0.01em;
+  --bh-tracking-wide: 0.06em;
+  --bh-tracking-wider: 0.16em;
+
+  /* ── Motion ───────────────────────────────────────────────────────────── */
+  --bh-ease: cubic-bezier(0.22, 1, 0.36, 1);   /* standard "settle" easing     */
+  --bh-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --bh-dur-fast: 0.15s;
+  --bh-dur-base: 0.25s;
+  --bh-dur-slow: 0.4s;
+
+  /* ── Focus ring (keyboard accessibility) ──────────────────────────────── */
+  --bh-focus-ring: 0 0 0 3px rgba(67, 56, 202, 0.35);
+  --bh-focus-ring-brand: 0 0 0 4px rgba(245, 78, 37, 0.16);
+
+  /* ── Controls (shared field/button geometry) ──────────────────────────── */
+  --bh-control-h: 44px;         /* default control height                     */
+  --bh-control-h-lg: 54px;      /* auth inputs / primary CTA                   */
+}

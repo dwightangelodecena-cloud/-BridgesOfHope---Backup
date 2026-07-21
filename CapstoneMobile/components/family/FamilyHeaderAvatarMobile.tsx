@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, type Insets } from 'react-native';
 import { DeviceEventEmitter } from 'react-native';
 import {
   FAMILY_PROFILE_AVATAR_CHANGED,
   resolveFamilyProfileAvatarMobile,
 } from '../../lib/familyProfileAvatarMobile';
+import { BH } from '../../theme/tokens';
 
 type Props = {
   userId: string;
   initials: string;
   onPress: () => void;
   size?: number;
+  /** Expands the tappable area without growing the visual circle. */
+  hitSlop?: Insets;
 };
 
-export function FamilyHeaderAvatarMobile({ userId, initials, onPress, size = 36 }: Props) {
+export function FamilyHeaderAvatarMobile({ userId, initials, onPress, size = 36, hitSlop }: Props) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,6 +44,7 @@ export function FamilyHeaderAvatarMobile({ userId, initials, onPress, size = 36 
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel="Profile"
+      hitSlop={hitSlop}
       style={[styles.wrap, { width: size, height: size, borderRadius: size / 2 }]}
     >
       {src ? (
@@ -60,9 +64,9 @@ const styles = StyleSheet.create({
   fallback: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#F54E25',
+    backgroundColor: BH.brand,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  initials: { color: '#FFFFFF', fontWeight: '700' },
+  initials: { color: BH.brandContrast, fontWeight: '700' },
 });

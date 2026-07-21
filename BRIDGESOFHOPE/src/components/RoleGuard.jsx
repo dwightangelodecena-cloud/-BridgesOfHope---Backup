@@ -51,7 +51,8 @@ function homeForRole(role) {
   if (role === 'admin') return '/admin-dashboard';
   if (role === 'nurse') return '/nurse-dashboard';
   if (role === 'program') return '/program';
-  return '/home';
+  // Family portal is mobile-only now — there is no web dashboard to send them to.
+  return '/get-the-app';
 }
 
 /**

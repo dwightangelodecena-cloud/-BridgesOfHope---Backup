@@ -19,7 +19,6 @@ import {
   SITE_CONTENT_EVENT,
   getLandingThemeStyles,
   normalizeSectionOrder,
-  parseBrandingLogoHeightPx,
 } from '@/lib/siteContentStore';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { pullSiteContentFromSupabase } from '@/lib/siteContentRemote';
@@ -392,14 +391,6 @@ const LandingPage = () => {
       }),
     [m.about.values],
   );
-
-  const logoSrc =
-    typeof m.branding?.logoUrl === 'string' && m.branding.logoUrl.trim() ? m.branding.logoUrl.trim() : logo;
-
-  const headerLogoImgStyle = useMemo(() => {
-    const h = parseBrandingLogoHeightPx(m.branding?.headerLogoHeightPx);
-    return h ? { height: h, width: 'auto' } : undefined;
-  }, [m.branding?.headerLogoHeightPx]);
 
   const pressOutletRows = useMemo(
     () =>
@@ -1002,6 +993,7 @@ const LandingPage = () => {
         }
         .nav-shell.elevated .nav::after { opacity: 1; }
         .nav-logo {
+          position: relative;
           display: flex;
           align-items: center;
           cursor: pointer;
@@ -1018,6 +1010,47 @@ const LandingPage = () => {
           box-shadow: none;
         }
         .nav-logo img { height: 44px; width: auto; display: block; }
+        /* Brand-accent underline — echoes the pill/hover language used by the
+           nav links elsewhere in this header, so the wordmark feels like part
+           of the same interactive system instead of static text. */
+        .nav-logo::after {
+          content: '';
+          position: absolute;
+          left: 1px;
+          right: 1px;
+          bottom: -6px;
+          height: 2px;
+          border-radius: 999px;
+          background: linear-gradient(90deg, var(--accent), var(--accent-2));
+          transform: scaleX(0);
+          transform-origin: left;
+          transition: transform 0.4s var(--ease-out-expo);
+        }
+        .nav-logo:hover::after { transform: scaleX(1); }
+        /* Default wordmark (no admin-uploaded custom logo) — warm sunrise
+           gradient from ink to the terracotta accent, matching the landing
+           page's own editorial palette rather than the auth navy/orange. */
+        .nav-wordmark {
+          font-family: 'DM Sans', var(--font-sans);
+          font-weight: 900;
+          font-size: 1.55rem;
+          letter-spacing: 0.01em;
+          text-transform: uppercase;
+          line-height: 1;
+          white-space: nowrap;
+          background: linear-gradient(95deg, var(--ink-2) 0%, var(--accent) 42%, var(--accent-2) 100%);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          color: var(--accent);
+          text-shadow: 0 2px 10px rgba(217, 79, 42, 0.12);
+        }
+        /* First letter reads as a small anchor mark — a quiet nod to the old
+           "K" monogram — solid-colored rather than clipped by the gradient. */
+        .nav-wordmark-k {
+          color: var(--accent-h);
+          -webkit-text-fill-color: var(--accent-h);
+        }
         .nav-links-desktop {
           display: flex; align-items: center; gap: var(--s-1);
           position: absolute; left: 50%; transform: translateX(-50%);
@@ -1212,6 +1245,9 @@ const LandingPage = () => {
         .nav-drawer-brand img {
           height: 28px;
           width: auto;
+        }
+        .nav-drawer-brand .nav-wordmark {
+          font-size: 1.15rem;
         }
         .nav-drawer-links {
           display: grid;
@@ -3499,7 +3535,9 @@ const LandingPage = () => {
       <nav className={`nav-drawer${isMenuOpen ? ' open' : ''}`}>
         <div className="nav-drawer-head">
           <div className="nav-drawer-brand">
-            <img src={logoSrc} alt="" aria-hidden style={headerLogoImgStyle} />
+            <span className="nav-wordmark">
+              <span className="nav-wordmark-k">K</span>alinga
+            </span>
             Menu
           </div>
           <button
@@ -3537,7 +3575,9 @@ const LandingPage = () => {
       <header className={`nav-shell${navElevated ? ' elevated' : ''}`}>
         <div className="nav">
           <button type="button" className="nav-logo" onClick={scrollToTop} aria-label="Bridges of Hope — Home">
-            <img src={logoSrc} alt="Bridges of Hope" style={headerLogoImgStyle} />
+            <span className="nav-wordmark">
+              <span className="nav-wordmark-k">K</span>alinga
+            </span>
           </button>
           <LayoutGroup id="nav-desktop-pills">
             <nav className="nav-links-desktop" aria-label="Primary">

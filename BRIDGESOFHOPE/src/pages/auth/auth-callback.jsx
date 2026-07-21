@@ -8,7 +8,8 @@ function navigateForRole(navigate, role) {
   if (r === 'nurse') navigate('/nurse-dashboard', { replace: true });
   else if (r === 'admin') navigate('/admin-dashboard', { replace: true });
   else if (r === 'program') navigate('/program', { replace: true });
-  else navigate('/home', { replace: true });
+  // Family portal is mobile-only now — there is no web dashboard to send them to.
+  else navigate('/get-the-app', { replace: true });
 }
 
 export default function AuthCallback() {

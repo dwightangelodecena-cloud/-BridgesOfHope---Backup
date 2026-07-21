@@ -1,9 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { Lock, CheckCircle, XCircle } from 'lucide-react';
+import { Lock, CheckCircle, XCircle, ChevronLeft, KeyRound } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import logo from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { getPasswordStrengthChecks, getPasswordPolicyError, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
+import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
+import AuthPageBackground from '@/components/auth/AuthPageBackground';
+import { AUTH_SHELL_STYLES } from '@/components/auth/authShellStyles';
 
 const NewPass = () => {
   const navigate = useNavigate();
@@ -14,7 +16,6 @@ const NewPass = () => {
     password: '',
     confirmPassword: ''
   });
-  const [isFocused, setIsFocused] = useState('');
   const [saveError, setSaveError] = useState('');
 
   const confirmRef = useRef(null);
@@ -61,193 +62,326 @@ const NewPass = () => {
   };
 
   return (
-    <div className="newpass-container">
+    <div className="login-container">
+      <AuthPageBackground />
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600;700&display=swap');
 
-        .newpass-container {
-          min-height: 100vh;
-          width: 100vw;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background-color: #ffffff;
-          font-family: 'Inter', sans-serif;
-          margin: 0;
-          padding: 0;
+        ${AUTH_SHELL_STYLES}
+
+        @keyframes newpassFocusRing {
+          from { box-shadow: 0 0 0 0 rgba(245, 78, 37, 0.2); }
+          to { box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.14), inset 0 1px 2px rgba(26, 43, 74, 0.04); }
         }
-
-        .newpass-content-wrapper {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 120px;
-          width: 90%;
-          max-width: 1400px;
-        }
-
-        .brand-side { flex: 1; display: flex; justify-content: flex-end; }
-        .brand-side img { width: 100%; max-width: 550px; height: auto; }
-        .form-side { flex: 1; display: flex; justify-content: flex-start; }
 
         .newpass-card {
-          background: #ffffff;
-          padding: 60px 50px;
-          border-radius: 50px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+          background: rgba(255, 255, 255, 0.96);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+          padding: clamp(28px, 4vw, 40px);
+          border-radius: var(--auth-radius-card);
+          box-shadow: var(--auth-shadow-card);
           width: 100%;
-          max-width: 500px;
+          max-width: var(--auth-form-col);
           text-align: center;
-          border: 1px solid #f1f5f9;
+          border: 1px solid rgba(255, 255, 255, 0.7);
+          box-sizing: border-box;
+          animation: loginFadeIn 0.65s ease-out 0.1s both;
+          transition: box-shadow 0.35s var(--bh-ease, ease), transform 0.35s var(--bh-ease, ease);
         }
 
-        .step-title {
-          color: #1e293b;
-          font-size: 1.8rem;
-          margin-bottom: 10px;
-          font-weight: 700;
+        .newpass-card:hover {
+          box-shadow: var(--auth-shadow-card-hover);
+          transform: translateY(-2px);
         }
 
-        .step-subtitle {
-          color: #64748b;
-          font-size: 0.95rem;
-          margin-bottom: 40px;
-          display: block;
-        }
-
-        .form-group { text-align: left; margin-bottom: 25px; }
-
-        .input-label {
-          display: block;
-          font-size: 0.9rem;
-          color: #475569;
-          margin-bottom: 10px;
+        .newpass-back-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 0.8125rem;
           font-weight: 600;
+          color: var(--bh-text-muted);
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 6px 10px 6px 6px;
+          margin: 0 0 14px -6px;
+          border-radius: 999px;
+          font-family: inherit;
+          transition: color 0.2s ease, background-color 0.2s ease;
         }
 
-        .password-requirements {
-          margin-top: 10px;
-          text-align: left;
-          font-size: 0.72rem;
-          color: #64748b;
-          line-height: 1.55;
+        .newpass-back-link:hover {
+          color: var(--brand-navy);
+          background: var(--bh-slate-100);
         }
-        .password-requirements .req-row {
+
+        .newpass-card-icon {
+          width: 56px;
+          height: 56px;
+          margin: 0 auto 20px;
+          border-radius: 16px;
           display: flex;
           align-items: center;
-          gap: 6px;
-          margin-bottom: 3px;
-          font-weight: 500;
-        }
-        .password-requirements .req-row.met { color: #059669; }
-        .password-requirements .req-dot {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          border: 1.5px solid #94a3b8;
-          flex-shrink: 0;
+          justify-content: center;
+          background: linear-gradient(135deg, #fff1ec 0%, #fde0d5 100%);
+          box-shadow: 0 4px 16px rgba(245, 78, 37, 0.12);
+          color: var(--brand-orange);
         }
 
-        .input-wrapper { position: relative; display: flex; align-items: center; }
+        .newpass-card-title {
+          font-size: clamp(1.45rem, 2.5vw, 1.75rem);
+          font-weight: 800;
+          color: var(--brand-navy);
+          margin: 0 0 8px;
+          letter-spacing: -0.03em;
+          line-height: 1.25;
+        }
+
+        .newpass-card-subtitle {
+          font-size: 0.9rem;
+          color: var(--bh-text-muted);
+          line-height: 1.55;
+          margin: 0 0 24px;
+          font-weight: 400;
+        }
+
+        .form-group {
+          margin-bottom: 18px;
+          text-align: left;
+        }
+
+        .form-group label {
+          display: block;
+          font-size: 0.75rem;
+          color: var(--bh-text-muted);
+          margin-bottom: 6px;
+          font-weight: 600;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          line-height: 1.3;
+          transition: color 0.2s ease;
+        }
+
+        .form-group:focus-within label {
+          color: var(--brand-navy);
+        }
+
+        .input-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
 
         .input-wrapper input {
           width: 100%;
-          padding: 14px 15px 14px 48px;
-          border: 1.5px solid #e2e8f0;
-          border-radius: 14px;
+          height: var(--auth-input-h);
+          padding: 0 44px 0 48px;
+          border: 1.5px solid var(--auth-field-border);
+          border-radius: var(--auth-radius-field);
           font-size: 1rem;
+          font-weight: 500;
+          color: var(--brand-navy);
           outline: none;
-          color: #1e293b;
-          background-color: #ffffff;
-          transition: all 0.2s ease;
-          font-family: 'Inter', sans-serif;
+          background-color: var(--auth-field-bg);
+          box-sizing: border-box;
+          box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+          font-family: inherit;
+          transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease, transform 0.2s ease;
         }
 
-        .input-password { border-color: ${pwChecks.isValid ? '#10b981' : '#e2e8f0'} !important; }
-        .input-confirm {
-          border-color: ${formData.confirmPassword === '' ? '#e2e8f0' : (passwordsMatch ? '#10b981' : '#ef4444')} !important;
+        .input-wrapper input::placeholder {
+          color: var(--bh-text-subtle);
+        }
+
+        .input-wrapper input:hover {
+          border-color: var(--bh-slate-300);
+          background-color: var(--bh-surface);
         }
 
         .input-wrapper input:focus {
-          border-color: #F54E25 !important;
-          box-shadow: 0 0 0 4px rgba(245, 78, 37, 0.1);
+          border-color: var(--brand-orange);
+          background-color: var(--bh-surface);
+          animation: newpassFocusRing 0.3s ease forwards;
+          transform: translateY(-1px);
+        }
+
+        .input-wrapper input.input-valid {
+          border-color: var(--bh-success);
+        }
+
+        .input-wrapper input.input-invalid {
+          border-color: var(--bh-danger);
         }
 
         .input-icon {
           position: absolute;
-          left: 18px;
-          color: #94a3b8;
+          left: 16px;
+          color: var(--bh-text-subtle);
           transition: color 0.2s ease;
+          pointer-events: none;
+        }
+
+        .input-wrapper:focus-within .input-icon {
+          color: var(--brand-orange);
         }
 
         .validation-icon {
           position: absolute;
           right: 15px;
-          transition: opacity 0.2s ease;
+          display: flex;
+          align-items: center;
+          pointer-events: none;
+        }
+
+        .status-msg {
+          padding: 12px 14px;
+          border-radius: 12px;
+          font-size: 0.8125rem;
+          font-weight: 600;
+          margin-bottom: 16px;
+          text-align: left;
+          line-height: 1.4;
+        }
+
+        .error-msg {
+          background-color: var(--bh-danger-bg);
+          color: var(--bh-danger);
+          border: 1px solid var(--bh-danger-border);
+        }
+
+        .mismatch-msg {
+          color: var(--bh-danger);
+          font-size: 0.75rem;
+          font-weight: 600;
+          margin-top: 6px;
+          display: block;
+          text-align: left;
+        }
+
+        .password-requirements {
+          margin-top: 12px;
+          text-align: left;
+          font-size: 0.75rem;
+          color: var(--bh-text-muted);
+          line-height: 1.6;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 4px 12px;
+        }
+
+        .password-requirements .req-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-weight: 500;
+          transition: color 0.2s ease;
+        }
+
+        .password-requirements .req-row.met {
+          color: var(--bh-success-text);
+        }
+
+        .password-requirements .req-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          border: 1.5px solid var(--bh-slate-400);
+          flex-shrink: 0;
         }
 
         .btn-primary {
           width: 100%;
-          background: #F54E25;
-          color: white;
-          padding: 16px;
+          height: var(--auth-input-h);
+          background: var(--bh-brand-gradient);
+          color: var(--bh-brand-contrast);
+          padding: 0 24px;
           border: none;
-          border-radius: 14px;
-          font-size: 1.1rem;
+          border-radius: var(--auth-radius-field);
+          font-size: 1.05rem;
           font-weight: 600;
+          font-family: inherit;
           cursor: pointer;
-          transition: all 0.3s ease;
-          margin-top: 20px;
-          opacity: ${canSubmit ? '1' : '0.6'};
+          margin-top: 22px;
+          transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease, opacity 0.25s ease;
+          box-shadow: var(--bh-shadow-brand);
         }
 
-        .btn-primary:hover {
-          transform: ${canSubmit ? 'translateY(-2px)' : 'none'};
-          box-shadow: ${canSubmit ? '0 10px 20px rgba(245, 78, 37, 0.2)' : 'none'};
+        .btn-primary:hover:not(:disabled) {
+          filter: brightness(1.04);
+          box-shadow: var(--bh-shadow-brand-hover);
+          transform: translateY(-2px) scale(1.01);
         }
 
-        @media (max-width: 1024px) {
-          .newpass-content-wrapper { flex-direction: column; gap: 40px; padding: 40px 20px; }
-          .brand-side { justify-content: center; }
-          .brand-side img { max-width: 300px; }
-          .form-side { justify-content: center; width: 100%; }
-          .newpass-card { padding: 40px 25px; border-radius: 30px; box-shadow: none; border: none; }
+        .btn-primary:active:not(:disabled) {
+          transform: translateY(0) scale(0.99);
+          box-shadow: var(--bh-shadow-brand-active);
+        }
+
+        .btn-primary:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          box-shadow: none;
+          transform: none;
+        }
+
+        @media (max-width: 900px) {
+          .newpass-card {
+            padding: 24px;
+          }
+
+          .password-requirements {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
 
-      <div className="newpass-content-wrapper">
-        <div className="brand-side">
-          <img src={logo} alt="Bridges of Hope Logo" />
-        </div>
+      <div className="login-content-wrapper">
+        <AuthBrandPanel variant="recovery" />
 
         <div className="form-side">
-          <div className="newpass-card">
-            <h2 className="step-title">New Password</h2>
-            <span className="step-subtitle">Please create a secure password for your account</span>
+          <div className="newpass-card" role="main">
+            <button
+              type="button"
+              className="newpass-back-link"
+              onClick={() => navigate('/login')}
+            >
+              <ChevronLeft size={15} />
+              Back to Log In
+            </button>
+
+            <div className="newpass-card-icon" aria-hidden="true">
+              <KeyRound size={26} strokeWidth={2.25} />
+            </div>
+
+            <h1 className="newpass-card-title">New Password</h1>
+            <p className="newpass-card-subtitle">
+              Please create a secure password for your account.
+            </p>
+
+            {saveError ? <div className="status-msg error-msg">{saveError}</div> : null}
 
             <form onSubmit={handleSubmit}>
-              {saveError ? (
-                <div style={{ color: '#ef4444', fontSize: 13, fontWeight: 600, marginBottom: 16, textAlign: 'left' }}>
-                  {saveError}
-                </div>
-              ) : null}
               <div className="form-group">
-                <label className="input-label">Enter New Password</label>
+                <label>Enter New Password</label>
                 <div className="input-wrapper">
+                  <Lock className="input-icon" size={18} />
                   <input
-                    className="input-password"
+                    className={pwChecks.isValid ? 'input-valid' : ''}
                     name="password"
                     type="password"
                     placeholder="••••••••"
                     value={formData.password}
                     onChange={handleChange}
-                    onFocus={() => setIsFocused('pass')}
-                    onBlur={() => setIsFocused('')}
                     onKeyDown={(e) => handleKeyDown(e, 'password')}
                     required
                   />
-                  <Lock className="input-icon" size={20} style={{ color: isFocused === 'pass' ? '#F54E25' : '#94a3b8' }} />
-                  {pwChecks.isValid && <CheckCircle className="validation-icon" size={18} color="#10b981" />}
+                  {pwChecks.isValid && (
+                    <span className="validation-icon">
+                      <CheckCircle size={18} color="var(--bh-success)" />
+                    </span>
+                  )}
                 </div>
                 <div className="password-requirements" aria-label="Password requirements">
                   <div className={`req-row ${pwChecks.lengthOk ? 'met' : ''}`}>
@@ -268,7 +402,7 @@ const NewPass = () => {
                   </div>
                   <div className={`req-row ${pwChecks.special ? 'met' : ''}`}>
                     {pwChecks.special ? <CheckCircle size={13} /> : <span className="req-dot" />}
-                    One special character (! @ # $ % …)
+                    One special character
                   </div>
                   <div className={`req-row ${pwChecks.noSpaces ? 'met' : ''}`}>
                     {pwChecks.noSpaces ? <CheckCircle size={13} /> : <span className="req-dot" />}
@@ -278,32 +412,34 @@ const NewPass = () => {
               </div>
 
               <div className="form-group">
-                <label className="input-label">Confirm New Password</label>
+                <label>Confirm New Password</label>
                 <div className="input-wrapper">
+                  <Lock className="input-icon" size={18} />
                   <input
                     ref={confirmRef}
-                    className="input-confirm"
+                    className={
+                      formData.confirmPassword === '' ? '' : passwordsMatch ? 'input-valid' : 'input-invalid'
+                    }
                     name="confirmPassword"
                     type="password"
                     placeholder="••••••••"
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    onFocus={() => setIsFocused('confirm')}
-                    onBlur={() => setIsFocused('')}
                     onKeyDown={(e) => handleKeyDown(e, 'confirmPassword')}
                     required
                   />
-                  <Lock className="input-icon" size={20} style={{ color: isFocused === 'confirm' ? '#F54E25' : '#94a3b8' }} />
                   {formData.confirmPassword !== '' && (
-                    passwordsMatch ?
-                      <CheckCircle className="validation-icon" size={18} color="#10b981" /> :
-                      <XCircle className="validation-icon" size={18} color="#ef4444" />
+                    <span className="validation-icon">
+                      {passwordsMatch ? (
+                        <CheckCircle size={18} color="var(--bh-success)" />
+                      ) : (
+                        <XCircle size={18} color="var(--bh-danger)" />
+                      )}
+                    </span>
                   )}
                 </div>
                 {formData.confirmPassword !== '' && !passwordsMatch && (
-                  <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '5px', display: 'block' }}>
-                    Passwords do not match
-                  </span>
+                  <span className="mismatch-msg">Passwords do not match</span>
                 )}
               </div>
 

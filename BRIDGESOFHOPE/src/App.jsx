@@ -1,25 +1,14 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 
 // Component Imports
 import LandingPage from '@/landingpage'; // Using @ for src/
 import Login from '@/pages/auth/login';
-import SignUp from '@/pages/auth/signup';
-import SignupConsent from '@/pages/auth/consent';
 import ForgotPassword from '@/pages/auth/forgot';
 import Verify from '@/pages/auth/verify';
 import NewPass from '@/pages/auth/newpass';
 import AuthCallback from '@/pages/auth/auth-callback';
-
-// Family/User Pages
-import HomeDashboard from '@/pages/family/home';
-import Service from '@/pages/family/service';
-import Progress from '@/pages/family/requestmanagement';
-import FamilyAppointmentsPage from '@/pages/family/appointments';
-import FamilyReportsPage from '@/pages/family/reports';
-import PatientDetailsPage from '@/pages/family/patient-details';
-import Profile from '@/pages/family/profile';
-import ChangePass from '@/pages/auth/changepass';
+import GetTheApp from '@/pages/public/GetTheApp';
 
 // Nurse & Admin Pages
 import NurseDashboard from '@/pages/nurse/nurse-dashboard';
@@ -47,67 +36,14 @@ import ProgramDischargeManagement from '@/pages/program/program-discharge';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
-import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
-import { runFamilyNotificationSync } from '@/lib/familyNotificationSync';
-
-const FAMILY_NOTIFICATION_PATHS = [
-  '/home',
-  '/services',
-  '/progress',
-  '/appointments',
-  '/reports',
-  '/patient-details',
-  '/profile',
-  '/changepass',
-];
-
-function FamilyNotificationSyncRunner() {
-  const location = useLocation();
-  const debounceRef = useRef(null);
-
-  const scheduleSync = useCallback(() => {
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      debounceRef.current = null;
-      void runFamilyNotificationSync();
-    }, 400);
-  }, []);
-
-  useEffect(() => {
-    const p = location.pathname;
-    const isFamily = FAMILY_NOTIFICATION_PATHS.some((prefix) => p === prefix || p.startsWith(`${prefix}/`));
-    if (!isFamily) return;
-    scheduleSync();
-    return () => {
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    };
-  }, [location.pathname, scheduleSync]);
-
-  useEffect(() => {
-    const onRefresh = () => scheduleSync();
-    window.addEventListener(APP_DATA_REFRESH, onRefresh);
-    return () => window.removeEventListener(APP_DATA_REFRESH, onRefresh);
-  }, [scheduleSync]);
-
-  return null;
-}
 
 const ROUTE_TITLES = {
   '/': 'Home',
-  '/home': 'Home',
   '/login': 'Login',
-  '/consent': 'Consent',
-  '/signup': 'Sign up',
   '/forgot': 'Forgot password',
   '/verify': 'Verify',
   '/newpass': 'New password',
-  '/services': 'Services',
-  '/progress': 'Progress',
-  '/appointments': 'Appointments',
-  '/reports': 'Reports',
-  '/patient-details': 'Resident details',
-  '/profile': 'Profile',
-  '/changepass': 'Change password',
+  '/get-the-app': 'Get the App',
   '/nurse-dashboard': 'Nurse dashboard',
   '/nurse-calendar': 'Nurse calendar',
   '/nurse-medical-report': 'Medical report',
@@ -166,91 +102,15 @@ function App() {
     <AppErrorBoundary>
       <Router>
         <RouteMeta />
-        <FamilyNotificationSyncRunner />
         <Routes>
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/consent" element={<SignupConsent />} />
-        <Route path="/signup" element={<SignUp />} />
         <Route path="/forgot" element={<ForgotPassword />} />
         <Route path="/verify" element={<Verify />} />
         <Route path="/newpass" element={<NewPass />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
-
-        {/* Family/User Routes */}
-        <Route
-          path="/home"
-          element={
-            <RoleGuard allowedRoles={['family']}>
-              <HomeDashboard />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/services"
-          element={
-            <RoleGuard allowedRoles={['family']}>
-              <Service />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/progress"
-          element={
-            <RoleGuard allowedRoles={['family']}>
-              <Progress />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/appointments"
-          element={
-            <RoleGuard allowedRoles={['family']}>
-              <FamilyAppointmentsPage />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/reports"
-          element={
-            <RoleGuard allowedRoles={['family']}>
-              <FamilyReportsPage />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/reports/:patientId"
-          element={
-            <RoleGuard allowedRoles={['family']}>
-              <FamilyReportsPage />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/patient-details"
-          element={
-            <RoleGuard allowedRoles={['family']}>
-              <PatientDetailsPage />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <RoleGuard allowedRoles={['family']}>
-              <Profile />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/changepass"
-          element={
-            <RoleGuard allowedRoles={['family']}>
-              <ChangePass />
-            </RoleGuard>
-          }
-        />
+        <Route path="/get-the-app" element={<GetTheApp />} />
 
         {/* Nurse Routes */}
         <Route

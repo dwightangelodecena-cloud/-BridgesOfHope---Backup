@@ -1,5 +1,5 @@
 /**
- * Canonical fee amounts from `src/pages/family/service.jsx` (Fees & Inclusions).
+ * Canonical fee amounts (Fees & Inclusions).
  * Do not invent prices elsewhere — import from here.
  */
 export const ADMISSION_FEE_PHP = 30_000;

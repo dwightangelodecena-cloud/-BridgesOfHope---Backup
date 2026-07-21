@@ -1,9 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
-@import './styles/family-chat.css';
+@import './styles/tokens.css';
+/* family-sidebar.css / family-shell.css are shared shell CSS — the admin portal
+   layout (admin-portal-shell.css) reuses these ".family-portal"-scoped
+   selectors, so they stay even though the family web pages are gone. */
 @import './styles/family-sidebar.css';
-@import './styles/family-header-brand.css';
-@import './styles/family-page-header.css';
 @import './styles/family-shell.css';
 @import './styles/admin-portal-shell.css';
 
