@@ -18,6 +18,7 @@ import { approveAdmissionInDatabase } from '@/lib/approveAdmissionSupabase';
 import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
 import { dischargeTypeLabel, isTemporaryDischargeRequest } from '@/lib/dischargeRequestTypes';
 import { approveFamilyDischargeRequest } from '@/lib/dischargeRequestWorkflow';
+import { loadAdminReportsSnapshot, buildAdmissionsPerWeekRows, buildPossibleDischargeRows } from '@/lib/adminPrintableReports';
 
 const AdminAnalyticsSection = lazy(() =>
   import('@/components/AdminAnalyticsSection').catch((err) => {
@@ -320,6 +321,36 @@ const AdminDashboard = () => {
   const [dischargeReadyChecked, setDischargeReadyChecked] = useState(false);
   const [twoFAError, setTwoFAError] = useState('');
   const [twoFAConfirming, setTwoFAConfirming] = useState(false);
+
+  const [weeklyAdmissionRows, setWeeklyAdmissionRows] = useState([]);
+  const [possibleDischargeRows, setPossibleDischargeRows] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  const [reportsError, setReportsError] = useState('');
+
+  const loadDashboardReports = async () => {
+    setReportsLoading(true);
+    setReportsError('');
+    try {
+      const snapshot = await loadAdminReportsSnapshot();
+      setWeeklyAdmissionRows(buildAdmissionsPerWeekRows(snapshot));
+      setPossibleDischargeRows(buildPossibleDischargeRows(snapshot));
+    } catch (e) {
+      console.warn('[dashboard] report load failed', e);
+      setReportsError(e?.message || 'Could not load report data.');
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDashboardReports();
+    window.addEventListener('storage', loadDashboardReports);
+    window.addEventListener(APP_DATA_REFRESH, loadDashboardReports);
+    return () => {
+      window.removeEventListener('storage', loadDashboardReports);
+      window.removeEventListener(APP_DATA_REFRESH, loadDashboardReports);
+    };
+  }, []);
 
   // Computed metrics
   const totalPatients = patients.length;
@@ -735,6 +766,27 @@ const AdminDashboard = () => {
         .metric-title { font-size: 14px; font-weight: 600; color: #707EAE; margin-bottom: 2px; }
         .metric-subtitle { font-size: 12px; font-weight: 500; color: #A3AED0; }
 
+        .dashboard-report-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 12px;
+        }
+        .dashboard-report-table th {
+          text-align: left;
+          background: #F4F7FE;
+          color: #4A628A;
+          padding: 8px 10px;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+        .dashboard-report-table td {
+          padding: 8px 10px;
+          border-bottom: 1px solid #F4F7FE;
+          color: #1B2559;
+          white-space: nowrap;
+        }
+        .dashboard-report-table tr:last-child td { border-bottom: none; }
+
         .recent-activity-card {
           background: white; border-radius: 16px; padding: 32px; border: 1px solid #E9EDF7;
           box-shadow: 0 4px 12px rgba(0,0,0,0.02); margin-top: 32px;
@@ -841,6 +893,7 @@ const AdminDashboard = () => {
           .mob-nav-item.active { color: #F54E25; }
           .dashboard-top-split { grid-template-columns: 1fr !important; }
           .dashboard-three-panels { grid-template-columns: 1fr !important; }
+          .dashboard-reports-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
           .metric-cards-container { flex-direction: column !important; gap: 15px !important; }
           .metric-card { width: 100% !important; min-width: unset !important; }
           .recent-activity-card { padding: 20px !important; }
@@ -1052,6 +1105,79 @@ const AdminDashboard = () => {
 
               </div>
             </section>
+          </div>
+
+          {/* Reports */}
+          <div className="recent-activity-card">
+            <div className="recent-activity-header">
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1B2559' }}>Reports</h2>
+            </div>
+            {reportsError ? (
+              <div style={{ color: '#dc2626', fontSize: 13, fontWeight: 600, marginBottom: 16 }}>{reportsError}</div>
+            ) : null}
+            <div className="dashboard-reports-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 28 }}>
+              <div style={{ minWidth: 0 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: '#1B2559', marginBottom: 2 }}>Admissions per week</h3>
+                <p style={{ fontSize: 12, color: '#A3AED0', marginBottom: 12 }}>New requests vs. patients admitted, last 8 calendar weeks (Mon–Sun).</p>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="dashboard-report-table">
+                    <thead>
+                      <tr>
+                        <th>Week</th>
+                        <th>New requests</th>
+                        <th>Admitted</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportsLoading ? (
+                        <tr><td colSpan={3} style={{ textAlign: 'center', color: '#A3AED0' }}>Loading…</td></tr>
+                      ) : weeklyAdmissionRows.length === 0 ? (
+                        <tr><td colSpan={3} style={{ textAlign: 'center', color: '#A3AED0' }}>No data.</td></tr>
+                      ) : weeklyAdmissionRows.map((row, idx) => (
+                        <tr key={`week-${idx}`}>
+                          <td>{row[0]}</td>
+                          <td>{row[1]}</td>
+                          <td>{row[2]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: '#1B2559', marginBottom: 2 }}>Possible discharges</h3>
+                <p style={{ fontSize: 12, color: '#A3AED0', marginBottom: 12 }}>Residents marked "For Discharge" or "Ready for Discharge".</p>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="dashboard-report-table">
+                    <thead>
+                      <tr>
+                        <th>Resident</th>
+                        <th>Status</th>
+                        <th>Staff</th>
+                        <th>Admitted</th>
+                        <th>Since</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportsLoading ? (
+                        <tr><td colSpan={5} style={{ textAlign: 'center', color: '#A3AED0' }}>Loading…</td></tr>
+                      ) : possibleDischargeRows.length === 0 ? (
+                        <tr><td colSpan={5} style={{ textAlign: 'center', color: '#A3AED0' }}>No residents currently flagged for discharge.</td></tr>
+                      ) : possibleDischargeRows.map((row, idx) => (
+                        <tr key={`discharge-${idx}`}>
+                          <td>{row[0]}</td>
+                          <td>{row[1]}</td>
+                          <td>{row[2]}</td>
+                          <td>{row[3]}</td>
+                          <td>{row[4]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Recent Activity */}
