@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Dimensions,
   Modal,
-  Pressable,
   ActivityIndicator,
   Platform,
 } from 'react-native';
@@ -29,7 +28,6 @@ import { fetchActivityFeedForCurrentUser } from '../../lib/activityFeed';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
-import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
@@ -102,6 +100,17 @@ function patientStatus(progress: number) {
   if (p >= 70) return { label: 'Stable', color: '#166534', bg: '#DCFCE7' };
   if (p >= 40) return { label: 'Recovering', color: '#92400E', bg: '#FEF3C7' };
   return { label: 'Needs Attention', color: '#991B1B', bg: '#FEE2E2' };
+}
+
+function requestStatusStyle(status: string) {
+  const s = String(status || '').toLowerCase();
+  if (s.includes('approve') || s.includes('accept') || s.includes('confirm') || s.includes('complete')) {
+    return { bg: '#DCFCE7', color: '#166534' };
+  }
+  if (s.includes('declin') || s.includes('reject') || s.includes('deni') || s.includes('cancel')) {
+    return { bg: '#FEE2E2', color: '#991B1B' };
+  }
+  return { bg: '#FEF3C7', color: '#92400E' };
 }
 
 function ReportFieldCard({
@@ -539,18 +548,25 @@ export default function HomeScreen() {
                   activeOpacity={0.85}
                 >
                   <View style={styles.tableRowTop}>
-                    <Text style={styles.tablePatientName} numberOfLines={1}>
-                      {p.name}
-                    </Text>
+                    <View style={styles.residentIdentity}>
+                      <View style={[styles.residentAvatar, { backgroundColor: st.bg }]}>
+                        <Ionicons name="person" size={16} color={st.color} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.tablePatientName} numberOfLines={1}>
+                          {p.name}
+                        </Text>
+                        <Text style={styles.tableMini}>Admitted {p.date || 'N/A'}</Text>
+                      </View>
+                    </View>
                     <View style={[styles.statusPill, { backgroundColor: st.bg }]}>
                       <Text style={[styles.statusPillText, { color: st.color }]}>{st.label}</Text>
                     </View>
                   </View>
-                  <Text style={styles.tableMini}>Admitted: {p.date || 'N/A'}</Text>
                   <View style={styles.tableProgressRow}>
                     <Text style={styles.tableProgressPct}>{p.progress}%</Text>
                     <View style={styles.tableProgressTrack}>
-                      <View style={[styles.tableProgressFill, { width: `${p.progress}%` }]} />
+                      <View style={[styles.tableProgressFill, { width: `${p.progress}%`, backgroundColor: st.color }]} />
                     </View>
                   </View>
                   <Text style={styles.tableMini}>Reports: {patientReportCount(p.id)}/7</Text>
@@ -592,8 +608,10 @@ export default function HomeScreen() {
                     ) : null}
                   </View>
                   <View style={styles.reqStatusCell}>
-                    <View style={styles.reqPill}>
-                      <Text style={styles.reqPillText}>{String(r.status || 'pending').toLowerCase()}</Text>
+                    <View style={[styles.reqPill, { backgroundColor: requestStatusStyle(r.status).bg }]}>
+                      <Text style={[styles.reqPillText, { color: requestStatusStyle(r.status).color }]}>
+                        {String(r.status || 'pending').toLowerCase()}
+                      </Text>
                     </View>
                     <TouchableOpacity
                       onPress={() => dismissRequestRow(r.key)}
@@ -611,31 +629,64 @@ export default function HomeScreen() {
         </View>
 
         <View style={[styles.panelCard, { marginTop: 14 }]}>
-          <View style={styles.tableHeadLeft}>
-            <Ionicons name="bar-chart" size={16} color="#F54E25" />
-            <Text style={styles.panelTitleInline}>Dashboard Highlights</Text>
+          <View style={styles.tableHead}>
+            <View style={styles.tableHeadLeft}>
+              <Ionicons name="bar-chart" size={16} color="#F54E25" />
+              <Text style={styles.panelTitleInline}>Dashboard Highlights</Text>
+            </View>
+            <View style={styles.weekPill}>
+              <Text style={styles.weekPillText}>This week</Text>
+              <Ionicons name="chevron-down" size={12} color="#64748B" />
+            </View>
           </View>
           <View style={styles.highlightsGrid}>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Active Residents</Text>
-              <Text style={styles.overviewValue}>{patients.length}</Text>
-              <Text style={styles.overviewSub}>Currently under care</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Pending Requests</Text>
-              <Text style={styles.overviewValue}>{totalPendingRequests}</Text>
-              <Text style={styles.overviewSub}>Admissions, discharges, and appointments</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Average Progress</Text>
-              <Text style={styles.overviewValue}>{averageProgress}%</Text>
-              <Text style={styles.overviewSub}>Across all assigned patients</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Reports Received</Text>
-              <Text style={styles.overviewValue}>{reportsReceivedCount}</Text>
-              <Text style={styles.overviewSub}>Weekly reports submitted by nurse</Text>
-            </View>
+            {[
+              {
+                key: 'active',
+                icon: 'people' as const,
+                label: 'Active Residents',
+                value: String(patients.length),
+                sub: 'Currently under care',
+                bg: '#EEF2FF',
+                color: '#4338CA',
+              },
+              {
+                key: 'pending',
+                icon: 'hourglass' as const,
+                label: 'Pending Requests',
+                value: String(totalPendingRequests),
+                sub: 'Admissions, discharges, appointments',
+                bg: '#FFFBEB',
+                color: '#B45309',
+              },
+              {
+                key: 'progress',
+                icon: 'trending-up' as const,
+                label: 'Average Progress',
+                value: `${averageProgress}%`,
+                sub: 'Across all assigned patients',
+                bg: '#ECFDF5',
+                color: '#047857',
+              },
+              {
+                key: 'reports',
+                icon: 'document-text' as const,
+                label: 'Reports Received',
+                value: String(reportsReceivedCount),
+                sub: 'Weekly reports submitted by nurse',
+                bg: BH.brandSurface,
+                color: BH.brand700,
+              },
+            ].map((item) => (
+              <View key={item.key} style={[styles.overviewItem, { backgroundColor: item.bg }]}>
+                <View style={styles.overviewIconWrap}>
+                  <Ionicons name={item.icon} size={13} color={item.color} />
+                </View>
+                <Text style={styles.overviewLabel}>{item.label}</Text>
+                <Text style={[styles.overviewValue, { color: item.color }]}>{item.value}</Text>
+                <Text style={styles.overviewSub}>{item.sub}</Text>
+              </View>
+            ))}
           </View>
         </View>
 
@@ -647,6 +698,9 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.nextSub}>Suggested actions to keep care coordination on track.</Text>
             <View style={styles.cleanListItem}>
+              <View style={[styles.cleanListIcon, { backgroundColor: '#FFFBEB' }]}>
+                <Ionicons name="layers" size={15} color="#B45309" />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cleanTitle}>Review request management queue</Text>
                 <Text style={styles.cleanDesc}>Check admission/discharge updates from staff</Text>
@@ -656,6 +710,9 @@ export default function HomeScreen() {
               </View>
             </View>
             <View style={styles.cleanListItem}>
+              <View style={[styles.cleanListIcon, { backgroundColor: '#EEF2FF' }]}>
+                <Ionicons name="id-card" size={15} color="#4338CA" />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cleanTitle}>Open patient details</Text>
                 <Text style={styles.cleanDesc}>View status and progress of all patients</Text>
@@ -665,6 +722,9 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.cleanListItem}>
+              <View style={[styles.cleanListIcon, { backgroundColor: '#ECFDF5' }]}>
+                <Ionicons name="calendar" size={15} color="#047857" />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cleanTitle}>Check appointment slots</Text>
                 <Text style={styles.cleanDesc}>Plan follow-ups and visit schedules</Text>
@@ -680,29 +740,52 @@ export default function HomeScreen() {
               <Ionicons name="document-text" size={16} color="#F54E25" />
               <Text style={styles.panelTitleInline}>Care Resources</Text>
             </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>View Weekly Reports</Text>
-              <TouchableOpacity style={styles.openBtnOrange} onPress={openWeeklyReportsModal}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>Go to Services</Text>
-              <TouchableOpacity style={styles.openBtnIndigo} onPress={() => router.navigate(TAB_ROUTES.services)}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>Messages</Text>
-              <TouchableOpacity style={styles.openBtnOrange} onPress={() => router.navigate(TAB_ROUTES.messages)}>
-                <Text style={[styles.openBtnText, { color: '#C2410C' }]}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>Manage Your Profile</Text>
-              <TouchableOpacity style={styles.openBtnGreen} onPress={() => router.navigate(TAB_ROUTES.profile)}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
+            <Text style={styles.nextSub}>Shortcuts to the tools you use most.</Text>
+            <View style={styles.shortcutsGrid}>
+              {[
+                {
+                  key: 'reports',
+                  icon: 'document-text' as const,
+                  label: 'Weekly Reports',
+                  color: BH.brand,
+                  onPress: openWeeklyReportsModal,
+                },
+                {
+                  key: 'services',
+                  icon: 'briefcase' as const,
+                  label: 'Services',
+                  color: '#2563EB',
+                  onPress: () => router.navigate(TAB_ROUTES.services),
+                },
+                {
+                  key: 'messages',
+                  icon: 'chatbubble-ellipses' as const,
+                  label: 'Messages',
+                  color: '#7C3AED',
+                  onPress: () => router.navigate(TAB_ROUTES.messages),
+                },
+                {
+                  key: 'profile',
+                  icon: 'person-circle' as const,
+                  label: 'Your Profile',
+                  color: '#16A34A',
+                  onPress: () => router.navigate(TAB_ROUTES.profile),
+                },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={styles.shortcutTile}
+                  onPress={item.onPress}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.shortcutIconWrap, { backgroundColor: `${item.color}1A` }]}>
+                    <Ionicons name={item.icon} size={18} color={item.color} />
+                  </View>
+                  <Text style={styles.shortcutLabel} numberOfLines={1}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         </View>
@@ -1229,6 +1312,16 @@ const styles = StyleSheet.create({
   tableHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelTitleInline: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
   tableMeta: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  weekPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: BH.slate100,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  weekPillText: { fontSize: 11, fontWeight: '700', color: '#475569' },
   emptyMuted: { color: '#94A3B8', fontSize: 13, fontWeight: '700', textAlign: 'center', paddingVertical: 12 },
   tableRow: {
     borderWidth: 1,
@@ -1239,6 +1332,15 @@ const styles = StyleSheet.create({
     backgroundColor: BH.surface2,
   },
   tableRowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  residentIdentity: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  residentAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   tablePatientName: { flex: 1, fontSize: 15, fontWeight: '800', color: '#1B2559' },
   statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   statusPillText: { fontSize: 11, fontWeight: '800' },
@@ -1517,10 +1619,16 @@ const styles = StyleSheet.create({
     minWidth: 140,
     flexGrow: 1,
     borderRadius: 16,
-    backgroundColor: BH.slate50,
     padding: 14,
-    borderWidth: 1,
-    borderColor: BH.border,
+  },
+  overviewIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   overviewLabel: { fontSize: 12, color: '#64748B', fontWeight: '700' },
   overviewValue: { fontSize: 22, fontWeight: '900', color: '#1B2559', marginTop: 6 },
@@ -1537,6 +1645,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
+  cleanListIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   cleanTitle: { color: '#1B2559', fontWeight: '700', fontSize: 13 },
   cleanDesc: { color: '#64748B', fontSize: 12, marginTop: 2 },
   miniPill: { backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
@@ -1550,4 +1666,27 @@ const styles = StyleSheet.create({
   openBtnGreen: { backgroundColor: '#ECFDF3', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   openBtnOrange: { backgroundColor: '#FFF1EB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   openBtnText: { fontSize: 11, fontWeight: '800', color: '#3730A3' },
+  shortcutsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
+  shortcutTile: {
+    width: (width - 36 - 36 - 10) / 2,
+    minWidth: 140,
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 16,
+    backgroundColor: BH.surface2,
+    borderWidth: 1,
+    borderColor: BH.border,
+    padding: 12,
+  },
+  shortcutIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  shortcutLabel: { flex: 1, fontSize: 12.5, fontWeight: '700', color: '#1B2559' },
 });

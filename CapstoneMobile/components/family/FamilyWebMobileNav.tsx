@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
@@ -63,7 +64,7 @@ const NAV_ITEMS: {
 /** The center tab gets the raised, always-on circular treatment. */
 const POPPED_KEY: FamilyNavTab = 'progress';
 
-const INACTIVE = 'rgba(255,255,255,0.5)';
+const INACTIVE = BH.textFaint;
 const ACTIVE = BH.brand;
 
 export function FamilyWebMobileNav({ active }: Props) {
@@ -90,9 +91,14 @@ export function FamilyWebMobileNav({ active }: Props) {
                 accessibilityLabel={item.a11y}
                 accessibilityState={{ selected: isActive }}
               >
-                <View style={styles.poppedCircle}>
+                <LinearGradient
+                  colors={[BH.brandLight, BH.brand]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.poppedCircle}
+                >
                   <Ionicons name={item.icon} size={24} color="#FFFFFF" />
-                </View>
+                </LinearGradient>
               </TouchableOpacity>
             );
           }
@@ -122,7 +128,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: BH.navy,
+    backgroundColor: BH.surface,
     paddingTop: 10,
     minHeight: 68,
     zIndex: 2000,
@@ -130,11 +136,11 @@ const styles = StyleSheet.create({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.18,
+        shadowOpacity: 0.1,
         shadowRadius: 16,
       },
       android: { elevation: 12 },
-      web: { boxShadow: '0 -4px 16px rgba(0, 0, 0, 0.18)' },
+      web: { boxShadow: '0 -4px 16px rgba(15, 23, 42, 0.1)' },
     }),
   },
   row: {
@@ -173,21 +179,20 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: BH.brand,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: -26,
-    borderWidth: 4,
-    borderColor: BH.navy,
+    borderWidth: 5,
+    borderColor: BH.surface,
     ...Platform.select({
       ios: {
-        shadowColor: '#FFFFFF',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.55,
-        shadowRadius: 12,
+        shadowColor: BH.brand,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.32,
+        shadowRadius: 14,
       },
       android: { elevation: 6 },
-      web: { boxShadow: '0 0 16px rgba(255, 255, 255, 0.55)' },
+      web: { boxShadow: '0 6px 18px rgba(245, 78, 37, 0.35)' },
     }),
   },
 });
