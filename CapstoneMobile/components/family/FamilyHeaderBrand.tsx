@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, Image, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KalingaLogoMark } from './KalingaLogoMark';
@@ -10,7 +10,12 @@ export function FamilyHeaderBrand() {
   return (
     <View style={styles.row}>
       <View style={styles.logoPlate}>
-        <KalingaLogoMark size={40} variant="plain" />
+        <Image
+          source={require('../../assets/images/new-logo.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
+          accessibilityLabel="Kalinga logo"
+        />
       </View>
 
       <View style={styles.textWrap}>
@@ -57,6 +62,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    // new-logo.png is a huge padded canvas (1332x2000) with the mark centered
+    // and small — clip the plate and oversize the image below to zoom past
+    // the whitespace instead of rendering a tiny glyph via plain "contain".
+    overflow: 'hidden',
     ...Platform.select({
       ios: {
         shadowColor: BH.brand,
@@ -67,6 +76,10 @@ const styles = StyleSheet.create({
       android: { elevation: 2 },
       default: {},
     }),
+  },
+  logoImage: {
+    width: 75,
+    height: 112,
   },
   textWrap: {
     flex: 1,

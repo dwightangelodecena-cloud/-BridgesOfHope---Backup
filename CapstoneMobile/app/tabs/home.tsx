@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
+  ImageBackground,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -27,14 +28,13 @@ import {
 import { fetchActivityFeedForCurrentUser } from '../../lib/activityFeed';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
-import { FamilyMessageIcon } from '../../components/family/FamilyMessageIcon';
 import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
-import { getFamilyFirstName, getFamilyGreetingIcon, getFamilyTimeGreeting } from '../../lib/familyGreeting';
+import { getFamilyFirstName, getFamilyTimeGreeting } from '../../lib/familyGreeting';
 import {
   listVisitationRequestsByFamily,
   mergeRequestsFromSupabase,
@@ -45,7 +45,6 @@ import { BH, SHADOW } from '../../theme/tokens';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
-const heroDecoScale = isCompactScreen ? 0.78 : 0.9;
 const BG = BH.surface2;
 
 function deriveInitials(name: string): string {
@@ -439,13 +438,6 @@ export default function HomeScreen() {
   const patientTableRows = patients;
 
   const greeting = getFamilyTimeGreeting();
-  const greetingIcon = getFamilyGreetingIcon();
-  const dateStr = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
 
   return (
     <View style={[styles.container, { backgroundColor: BG }]}>
@@ -456,45 +448,18 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        <LinearGradient
-          colors={['#0f172a', '#1e293b', '#312e81']}
-          locations={[0, 0.42, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+        <ImageBackground
+          source={require('../../assets/images/home-header.jpg')}
           style={styles.heroBanner}
+          imageStyle={styles.heroBannerImage}
         >
-          <View style={styles.heroDecoLayer} pointerEvents="none">
-            <View style={styles.heroRadialOrange} />
-            <View style={styles.heroRadialIndigo} />
-            <View style={styles.heroDeco1} />
-            <View style={styles.heroDeco2} />
-            <View style={styles.heroDeco3} />
-          </View>
           <View style={styles.heroInner}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <View style={styles.heroEyebrowRow}>
-                <View style={styles.heroHeartWrap}>
-                  <Ionicons name="heart" size={16} color="#FFFFFF" />
-                </View>
-                <Text style={styles.heroEyebrow} numberOfLines={1}>
-                  Bridges of Hope — Family Portal
-                </Text>
-              </View>
-              <View style={styles.heroTitleRow}>
-                <Text style={styles.heroTitle}>
-                  {greeting}, {firstName}
-                </Text>
-                <Ionicons
-                  name={greetingIcon}
-                  size={isCompactScreen ? 20 : 24}
-                  color={BH.brand}
-                  style={styles.heroTitleIcon}
-                />
-              </View>
-              <Text style={styles.heroSub}>{dateStr} · Your care overview at a glance</Text>
-            </View>
+            <Text style={styles.heroTitle}>
+              {greeting}, {firstName}! <Text style={styles.heroWave}>👋</Text>
+            </Text>
+            <Text style={styles.heroSub}>Here&apos;s an overview of your loved one&apos;s care today.</Text>
           </View>
-        </LinearGradient>
+        </ImageBackground>
 
         <View style={styles.statGrid}>
           {[
@@ -561,78 +526,61 @@ export default function HomeScreen() {
               <Text style={styles.sectionSub}>Your most-used tools — one tap away</Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={openWeeklyReportsModal}
-            activeOpacity={0.9}
-          >
-            <View style={styles.iconSquare}>
-              <Ionicons name="document-text" size={22} color="#FFFFFF" />
-            </View>
-            <View style={styles.actionMain}>
-              <Text style={styles.actionTitle}>Weekly Report</Text>
-              <Text style={styles.actionSubtitle}>Review submitted weekly care updates from nursing staff</Text>
-              <View style={[styles.actionBadge, { backgroundColor: '#FFF1EB' }]}>
-                <Text style={[styles.actionBadgeText, { color: '#C2410C' }]}>{reportsReceivedCount} received</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.navigate(TAB_ROUTES.admission)}
-            activeOpacity={0.9}
-          >
-            <View style={styles.iconSquare}>
-              <Ionicons name="clipboard" size={22} color="#FFFFFF" />
-            </View>
-            <View style={styles.actionMain}>
-              <Text style={styles.actionTitle}>Admission</Text>
-              <Text style={styles.actionSubtitle}>Submit and track new admission request forms</Text>
-              <View style={[styles.actionBadge, { backgroundColor: '#FEF3C7' }]}>
-                <Text style={[styles.actionBadgeText, { color: '#92400E' }]}>
-                  {pendingAdmissions.length} pending
+          <View style={styles.quickActionsRow}>
+            {[
+              {
+                key: 'reports',
+                icon: 'document-text' as const,
+                label: 'Weekly Report',
+                color: BH.brand,
+                onPress: openWeeklyReportsModal,
+                badge: reportsReceivedCount,
+              },
+              {
+                key: 'admission',
+                icon: 'clipboard' as const,
+                label: 'Admission',
+                color: '#2563EB',
+                onPress: () => router.navigate(TAB_ROUTES.admission),
+                badge: pendingAdmissions.length,
+              },
+              {
+                key: 'services',
+                icon: 'briefcase' as const,
+                label: 'Services',
+                color: '#16A34A',
+                onPress: () => router.navigate(TAB_ROUTES.services),
+                badge: 0,
+              },
+              {
+                key: 'messages',
+                icon: 'chatbubble-ellipses' as const,
+                label: 'Messages',
+                color: '#7C3AED',
+                onPress: () => router.navigate(TAB_ROUTES.messages),
+                badge: supportUnreadCount,
+              },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={styles.quickActionItem}
+                onPress={item.onPress}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.quickActionCircle, { backgroundColor: item.color }]}>
+                  <Ionicons name={item.icon} size={24} color="#FFFFFF" />
+                  {item.badge > 0 ? (
+                    <View style={styles.quickActionBadge}>
+                      <Text style={styles.quickActionBadgeText}>{item.badge > 9 ? '9+' : item.badge}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={styles.quickActionLabel} numberOfLines={1}>
+                  {item.label}
                 </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.navigate(TAB_ROUTES.services)}
-            activeOpacity={0.9}
-          >
-            <View style={styles.iconSquare}>
-              <Ionicons name="briefcase" size={22} color="#FFFFFF" />
-            </View>
-            <View style={styles.actionMain}>
-              <Text style={styles.actionTitle}>Services</Text>
-              <Text style={styles.actionSubtitle}>Open billing, inclusions, and care support details</Text>
-              <View style={[styles.actionBadge, { backgroundColor: '#EEF2FF' }]}>
-                <Text style={[styles.actionBadgeText, { color: '#3730A3' }]}>Care resources</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.navigate(TAB_ROUTES.messages)}
-            activeOpacity={0.9}
-          >
-            <FamilyMessageIcon size="md" badge={supportUnreadCount} />
-            <View style={styles.actionMain}>
-              <Text style={styles.actionTitle}>Messages</Text>
-              <Text style={styles.actionSubtitle}>Chat with the Bridges of Hope care team</Text>
-              {supportUnreadCount > 0 ? (
-                <View style={[styles.actionBadge, { backgroundColor: '#FEE2E2' }]}>
-                  <Text style={[styles.actionBadgeText, { color: '#DC2626' }]}>
-                    {supportUnreadCount} new {supportUnreadCount === 1 ? 'reply' : 'replies'}
-                  </Text>
-                </View>
-              ) : (
-                <View style={[styles.actionBadge, { backgroundColor: '#FFF1EB' }]}>
-                  <Text style={[styles.actionBadgeText, { color: '#C2410C' }]}>Support chat</Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         <View style={[styles.panelCard, { marginTop: 14 }]}>
@@ -1237,107 +1185,37 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: isCompactScreen ? 14 : 18, paddingTop: 12 },
   heroBanner: {
     borderRadius: 22,
-    padding: isCompactScreen ? 16 : 22,
+    padding: isCompactScreen ? 18 : 24,
     marginBottom: 14,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.07)',
+    backgroundColor: '#0f172a',
+    justifyContent: 'flex-end',
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.22,
     shadowRadius: 28,
     elevation: 8,
-    minHeight: isCompactScreen ? 128 : 136,
+    minHeight: isCompactScreen ? 168 : 188,
   },
-  heroDecoLayer: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-    zIndex: 0,
+  heroBannerImage: {
+    borderRadius: 22,
   },
-  heroRadialOrange: {
-    position: 'absolute',
-    top: -36,
-    right: -18,
-    width: 150 * heroDecoScale,
-    height: 130 * heroDecoScale,
-    borderRadius: 999,
-    backgroundColor: 'rgba(245, 78, 37, 0.14)',
-  },
-  heroRadialIndigo: {
-    position: 'absolute',
-    bottom: -48,
-    right: -28,
-    width: 170 * heroDecoScale,
-    height: 120 * heroDecoScale,
-    borderRadius: 999,
-    backgroundColor: 'rgba(99, 102, 241, 0.12)',
-  },
-  heroDeco1: {
-    position: 'absolute',
-    top: -52 * heroDecoScale,
-    right: -34 * heroDecoScale,
-    width: 168 * heroDecoScale,
-    height: 168 * heroDecoScale,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-  },
-  heroDeco2: {
-    position: 'absolute',
-    bottom: -28 * heroDecoScale,
-    right: 18 * heroDecoScale,
-    width: 96 * heroDecoScale,
-    height: 96 * heroDecoScale,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  heroDeco3: {
-    position: 'absolute',
-    top: 10 * heroDecoScale,
-    right: 10 * heroDecoScale,
-    width: 58 * heroDecoScale,
-    height: 58 * heroDecoScale,
-    borderRadius: 999,
-    backgroundColor: 'rgba(245, 78, 37, 0.16)',
-    shadowColor: '#F54E25',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 2,
-  },
-  heroInner: { gap: 14, position: 'relative', zIndex: 2 },
-  heroEyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  heroHeartWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroEyebrow: {
-    flex: 1,
-    fontSize: 10,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.45)',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
+  heroInner: { gap: 6 },
   heroTitle: {
-    fontSize: isCompactScreen ? 22 : 26,
+    fontSize: isCompactScreen ? 21 : 24,
     fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
   },
-  heroTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
+  heroWave: {
+    fontSize: isCompactScreen ? 18 : 20,
   },
-  heroTitleIcon: {
-    marginTop: 2,
+  heroSub: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.82)',
+    maxWidth: '78%',
   },
-  heroSub: { marginTop: 4, fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.45)' },
   statGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1402,32 +1280,39 @@ const styles = StyleSheet.create({
   quickActionsHeaderRow: {
     marginBottom: 14,
   },
-  actionCard: {
+  quickActionsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BH.border,
-    marginBottom: 12,
-    backgroundColor: BH.surface2,
+    justifyContent: 'space-between',
   },
-  iconSquare: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: BH.brand,
+  quickActionItem: {
+    alignItems: 'center',
+    gap: 8,
+    width: (width - (isCompactScreen ? 28 : 36) - 2 * 18) / 4,
+  },
+  quickActionCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOW.brand,
   },
-  actionMain: { flex: 1, minWidth: 0 },
-  actionTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  actionSubtitle: { fontSize: 12, color: '#64748B', fontWeight: '600', marginTop: 4 },
-  actionBadge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  actionBadgeText: { fontSize: 10, fontWeight: '800' },
+  quickActionBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: BH.danger,
+    borderWidth: 2,
+    borderColor: BH.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionBadgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF' },
+  quickActionLabel: { fontSize: 11.5, fontWeight: '700', color: '#334155', textAlign: 'center' },
   chartTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   chartTitle: { color: '#1B2559', fontWeight: '800', fontSize: 16 },
   chartSub: { color: '#64748B', fontSize: 12, marginTop: 4 },
