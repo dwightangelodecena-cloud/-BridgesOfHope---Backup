@@ -31,7 +31,7 @@ export function FamilyHeaderBrand() {
             <Text style={styles.titleAccent}>Hope</Text>
           </Text>
           <View style={styles.subRow}>
-            <Ionicons name="heart" size={9} color={BH.brandLight} />
+            <Ionicons name="heart" size={9} color={BH.brand} />
             <Text style={styles.sub} numberOfLines={1}>
               Family Portal
             </Text>
@@ -106,10 +106,10 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   titleLead: {
-    color: '#FFFFFF',
+    color: BH.navy,
   },
   titleAccent: {
-    color: BH.brandLight,
+    color: BH.brand,
   },
   subRow: {
     flexDirection: 'row',
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
   sub: {
     fontSize: 10.5,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.75)',
+    color: BH.brand,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
