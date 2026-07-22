@@ -181,13 +181,13 @@ const styles = StyleSheet.create({
     borderColor: BH.navy,
     ...Platform.select({
       ios: {
-        shadowColor: BH.brand,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 10,
+        shadowColor: '#FFFFFF',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.55,
+        shadowRadius: 12,
       },
       android: { elevation: 6 },
-      web: { boxShadow: '0 4px 14px rgba(245, 78, 37, 0.45)' },
+      web: { boxShadow: '0 0 16px rgba(255, 255, 255, 0.55)' },
     }),
   },
 });
