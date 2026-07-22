@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { BH } from '../../theme/tokens';
 
-/** Matches web FamilySidebar primary nav (Dashboard → Reports, Profile). Logout lives in Profile. */
+/** Matches web FamilySidebar primary nav (Dashboard → Reports). Profile is reached via the header avatar. */
 export type FamilyNavTab =
   | 'home'
   | 'patientDetails'
@@ -58,7 +58,6 @@ const NAV_ITEMS: {
     label: 'Reports',
     a11y: 'Reports',
   },
-  { key: 'profile', icon: 'person-outline', route: TAB_ROUTES.profile, label: 'Profile', a11y: 'Profile' },
 ];
 
 const INACTIVE = BH.textFaint;
