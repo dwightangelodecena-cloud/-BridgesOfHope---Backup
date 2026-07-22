@@ -25,7 +25,7 @@ import {
   uiAdmissionRequestFromRow,
   uiDischargeRequestFromRow,
 } from '../../lib/dbMappers';
-import { fetchActivityFeedForCurrentUser } from '../../lib/activityFeed';
+import { fetchActivityFeedForCurrentUser, activityDayLabel, type ActivityFeedItem } from '../../lib/activityFeed';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
@@ -84,25 +84,6 @@ type RequestTableRow = {
 
 const HIDDEN_REQUEST_KEYS_PREFIX = 'bh_mobile_hidden_request_keys_v1:';
 
-function computeStayDays(admittedAt?: string | null, dischargedAt?: string | null): number {
-  const a = new Date(admittedAt || 0).getTime();
-  if (!a || Number.isNaN(a)) return 0;
-  const d = dischargedAt ? new Date(dischargedAt).getTime() : Date.now();
-  if (!d || Number.isNaN(d)) return 0;
-  if (d < a) return 1;
-  return Math.max(1, Math.ceil((d - a) / (24 * 60 * 60 * 1000)));
-}
-
-function computeAverageStayDays(
-  list: { admitted_at?: string | null; discharged_at?: string | null }[] | null | undefined
-): number {
-  const stays = (list || [])
-    .map((p) => computeStayDays(p.admitted_at, p.discharged_at))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  if (!stays.length) return 0;
-  return Math.round(stays.reduce((sum, n) => sum + n, 0) / stays.length);
-}
-
 function formatNurseReportDate(iso: string | null | undefined): string {
   if (!iso) return '';
   try {
@@ -121,6 +102,23 @@ function patientStatus(progress: number) {
   if (p >= 70) return { label: 'Stable', color: '#166534', bg: '#DCFCE7' };
   if (p >= 40) return { label: 'Recovering', color: '#92400E', bg: '#FEF3C7' };
   return { label: 'Needs Attention', color: '#991B1B', bg: '#FEE2E2' };
+}
+
+/** Picks an icon/color for an activity feed row from keywords in its text — the
+ * feed itself only stores free-text descriptions, not a structured type. */
+function activityVisual(text: string): { icon: React.ComponentProps<typeof Ionicons>['name']; color: string; bg: string } {
+  const t = text.toLowerCase();
+  if (t.includes('report')) return { icon: 'document-text', color: BH.brand700, bg: BH.brandSurface };
+  if (t.includes('vital')) return { icon: 'pulse', color: '#16A34A', bg: '#DCFCE7' };
+  if (t.includes('medicat')) return { icon: 'medical', color: '#D97706', bg: '#FEF3C7' };
+  if (t.includes('meal') || t.includes('breakfast') || t.includes('lunch') || t.includes('dinner'))
+    return { icon: 'restaurant', color: '#7C3AED', bg: '#EDE9FE' };
+  if (t.includes('admission')) return { icon: 'clipboard', color: '#2563EB', bg: '#DBEAFE' };
+  if (t.includes('discharge')) return { icon: 'exit', color: '#DC2626', bg: '#FEE2E2' };
+  if (t.includes('appointment') || t.includes('visit')) return { icon: 'calendar', color: '#0369A1', bg: '#E0F2FE' };
+  if (t.includes('login') || t.includes('logged in')) return { icon: 'log-in', color: '#475569', bg: '#F1F5F9' };
+  if (t.includes('message') || t.includes('chat')) return { icon: 'chatbubble-ellipses', color: '#7C3AED', bg: '#EDE9FE' };
+  return { icon: 'notifications', color: BH.brand700, bg: BH.brandSurface };
 }
 
 function ReportFieldCard({
@@ -154,7 +152,6 @@ export default function HomeScreen() {
   const [pendingDischarges, setPendingDischarges] = useState<PendingDischarge[]>([]);
   const [nurseWeeklyByPatient, setNurseWeeklyByPatient] = useState<Record<string, Record<string, NurseWeekRecord>>>({});
   const [familyVisitationRequests, setFamilyVisitationRequests] = useState<VisitationRequestRow[]>([]);
-  const [averageStayDays, setAverageStayDays] = useState(0);
   const [hiddenRequestKeys, setHiddenRequestKeys] = useState<string[]>([]);
   const [familyUserId, setFamilyUserId] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
@@ -162,6 +159,7 @@ export default function HomeScreen() {
   const [weeklyReportDetail, setWeeklyReportDetail] = useState<WeeklyReportDetailState | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [supabaseReadError, setSupabaseReadError] = useState<string | null>(null);
+  const [recentActivity, setRecentActivity] = useState<ActivityFeedItem[]>([]);
 
   const firstName = getFamilyFirstName(displayName);
 
@@ -172,7 +170,7 @@ export default function HomeScreen() {
       setPendingDischarges([]);
       setNurseWeeklyByPatient({});
       setFamilyVisitationRequests([]);
-      setAverageStayDays(0);
+      setRecentActivity([]);
       setDashboardLoading(false);
       return;
     }
@@ -188,7 +186,7 @@ export default function HomeScreen() {
         setPendingDischarges([]);
         setNurseWeeklyByPatient({});
         setFamilyVisitationRequests([]);
-        setAverageStayDays(0);
+        setRecentActivity([]);
         setFamilyUserId('');
         return;
       }
@@ -212,11 +210,6 @@ export default function HomeScreen() {
         .eq('family_id', user.id)
         .order('admitted_at', { ascending: false });
 
-      const { data: allFamilyRows } = await supabase
-        .from('patients')
-        .select('admitted_at, discharged_at')
-        .eq('family_id', user.id);
-
       if (pErr) {
         console.warn('[home patients]', pErr.message);
         setPatients([]);
@@ -227,7 +220,6 @@ export default function HomeScreen() {
             .filter((x): x is UIPatient => x != null)
         );
       }
-      setAverageStayDays(computeAverageStayDays(allFamilyRows || []));
 
       const localVisit = await listVisitationRequestsByFamily(user.id);
       const mergedVisit = await mergeRequestsFromSupabase(user.id, localVisit);
@@ -285,14 +277,15 @@ export default function HomeScreen() {
         }
       }
       setNurseWeeklyByPatient(byPatient);
-      void fetchActivityFeedForCurrentUser();
+      const activity = await fetchActivityFeedForCurrentUser();
+      setRecentActivity(activity);
     } catch {
       setPatients([]);
       setPendingAdmissions([]);
       setPendingDischarges([]);
       setNurseWeeklyByPatient({});
       setFamilyVisitationRequests([]);
-      setAverageStayDays(0);
+      setRecentActivity([]);
     } finally {
       setDashboardLoading(false);
     }
@@ -313,65 +306,9 @@ export default function HomeScreen() {
   );
   const totalPendingRequests =
     pendingAdmissions.length + pendingDischarges.length + pendingAppointmentRequests.length;
-  const summaryGraphData = [
-    { label: 'Residents', value: patients.length, color: '#F54E25' },
-    { label: 'Admissions', value: pendingAdmissions.length, color: '#EA580C' },
-    { label: 'Discharges', value: pendingDischarges.length, color: '#6366F1' },
-    {
-      label: 'Avg Progress',
-      value: patients.length
-        ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
-        : 0,
-      color: '#16A34A',
-    },
-    { label: 'Reports', value: reportsReceivedCount, color: '#7C3AED' },
-    { label: 'Avg Stay', value: averageStayDays, color: '#0369A1' },
-  ];
-  const summaryGraphMax = Math.max(5, ...summaryGraphData.map((d) => Number(d.value) || 0));
   const averageProgress = patients.length
     ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
     : 0;
-  const reportCoverageRate = patients.length
-    ? Math.min(100, Math.round((reportsReceivedCount / Math.max(1, patients.length * 7)) * 100))
-    : 0;
-  const metricInsights = [
-    {
-      label: 'Care Load',
-      value: String(totalPendingRequests),
-      note:
-        totalPendingRequests > 5 ? 'High queue' : totalPendingRequests > 0 ? 'Manageable queue' : 'No pending requests',
-      color: '#F59E0B',
-    },
-    {
-      label: 'Avg Recovery',
-      value: `${averageProgress}%`,
-      note:
-        averageProgress >= 70 ? 'Strong recovery trend' : averageProgress >= 40 ? 'Steady recovery' : 'Needs support focus',
-      color: '#16A34A',
-    },
-    {
-      label: 'Report Coverage',
-      value: `${reportCoverageRate}%`,
-      note: 'Nurse reports vs expected weekly slots',
-      color: '#7C3AED',
-    },
-    {
-      label: 'Admission Pressure',
-      value: String(pendingAdmissions.length),
-      note: pendingAdmissions.length ? 'Follow up with admin' : 'No pending admissions',
-      color: '#EA580C',
-    },
-    {
-      label: 'Avg Stay Days',
-      value: String(averageStayDays),
-      note: 'Includes active and discharged',
-      color: '#0369A1',
-    },
-  ];
-  const highestMetric = summaryGraphData.reduce(
-    (max, item) => ((Number(item.value) || 0) > (Number(max.value) || 0) ? item : max),
-    summaryGraphData[0] || { label: 'Residents', value: 0, color: '#F54E25' }
-  );
 
   const resolveRequestPatientName = (row: PendingAdmission | PendingDischarge | VisitationRequestRow) => {
     const asRecord = row as Record<string, unknown>;
@@ -461,59 +398,45 @@ export default function HomeScreen() {
           </View>
         </ImageBackground>
 
-        <View style={styles.statGrid}>
-          {[
-            {
-              label: 'Active Residents',
-              value: String(patients.length),
-              sub: 'Currently under care',
-              icon: 'pulse' as const,
-              accent: '#6366F1',
-              bg: '#EEF2FF',
-              border: '#C7D2FE',
-            },
-            {
-              label: 'Avg Progress',
-              value: `${averageProgress}%`,
-              sub: averageProgress >= 70 ? 'Strong trend' : 'Steady recovery',
-              icon: 'trending-up' as const,
-              accent: '#10B981',
-              bg: '#ECFDF5',
-              border: '#A7F3D0',
-            },
-            {
-              label: 'Pending Requests',
-              value: String(totalPendingRequests),
-              sub: 'Admissions, discharges, appointments',
-              icon: 'alert-circle' as const,
-              accent: '#F59E0B',
-              bg: '#FFFBEB',
-              border: '#FDE68A',
-            },
-            {
-              label: 'Reports Received',
-              value: String(reportsReceivedCount),
-              sub: 'From nursing staff',
-              icon: 'document-text' as const,
-              accent: '#8B5CF6',
-              bg: '#F5F3FF',
-              border: '#DDD6FE',
-            },
-          ].map((card) => (
-            <View key={card.label} style={[styles.statCard, { borderColor: card.border }]}>
-              <View style={[styles.statCardDeco, { backgroundColor: card.bg }]} />
-              <View style={styles.statCardInner}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.statCardLabel}>{card.label}</Text>
-                  <Text style={styles.statCardValue}>{card.value}</Text>
-                  <Text style={styles.statCardSub}>{card.sub}</Text>
-                </View>
-                <View style={[styles.statCardIconWrap, { backgroundColor: card.bg, borderColor: card.border }]}>
-                  <Ionicons name={card.icon} size={20} color={card.accent} />
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryHeadRow}>
+            <Text style={styles.summaryTitle}>Today&apos;s Summary</Text>
+            <TouchableOpacity onPress={() => router.navigate(TAB_ROUTES.patientDetails)} hitSlop={8}>
+              <Text style={styles.summaryViewAll}>View all</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.summaryStatsRow}>
+            <View style={styles.summaryStatCol}>
+              <Text style={styles.summaryStatLabel}>Active Residents</Text>
+              <View style={styles.summaryStatValueRow}>
+                <Text style={styles.summaryStatValue}>{patients.length}</Text>
+                <View style={styles.summaryStatIconWrap}>
+                  <Ionicons name="people" size={14} color={BH.indigo} />
                 </View>
               </View>
+              <Text style={styles.summaryStatSub}>Currently under care</Text>
             </View>
-          ))}
+            <View style={styles.summaryDividerV} />
+            <View style={styles.summaryStatCol}>
+              <Text style={styles.summaryStatLabel}>Average Progress</Text>
+              <View style={styles.summaryStatValueRow}>
+                <Text style={styles.summaryStatValue}>{averageProgress}%</Text>
+                <Ionicons name="trending-up" size={16} color="#16A34A" />
+              </View>
+              <Text style={styles.summaryStatSub}>{averageProgress >= 70 ? 'Strong trend' : 'Steady recovery'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.summaryDividerH} />
+
+          <View style={styles.summaryProgressRow}>
+            <Text style={styles.summaryProgressLabel}>Overall Progress</Text>
+            <Text style={styles.summaryProgressPct}>{averageProgress}%</Text>
+          </View>
+          <View style={styles.summaryProgressTrack}>
+            <View style={[styles.summaryProgressFill, { width: `${averageProgress}%` }]} />
+          </View>
         </View>
 
         <View style={styles.panelCard}>
@@ -583,58 +506,70 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        <View style={styles.supportCard}>
+          <View style={styles.supportHeartWatermark}>
+            <Ionicons name="heart" size={96} color="rgba(245, 78, 37, 0.12)" />
+          </View>
+          <View style={styles.supportTitleRow}>
+            <Text style={styles.supportTitle}>You&apos;re not alone.</Text>
+            <Ionicons name="heart" size={16} color={BH.brand} />
+          </View>
+          <Text style={styles.supportSub}>We&apos;re here to support you every step of the way.</Text>
+          <TouchableOpacity
+            style={styles.supportBtn}
+            onPress={() => router.navigate(TAB_ROUTES.messages)}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.supportBtnText}>Contact Us</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={[styles.panelCard, { marginTop: 14 }]}>
           <View style={styles.chartTop}>
-            <View>
-              <Text style={styles.chartTitle}>Dashboard Summary</Text>
-              <Text style={styles.chartSub}>Clear overview of patient, request, and report data</Text>
-            </View>
-            <Text style={styles.chartMeta}>Live data</Text>
+            <Text style={styles.chartTitle}>Recent Updates</Text>
           </View>
           {dashboardLoading ? (
             <View style={styles.loadingRow}>
               <ActivityIndicator color="#F54E25" />
               <Text style={styles.loadingText}>Loading dashboard…</Text>
             </View>
-          ) : null}
-          <Text style={styles.insightPanelTitle}>Graph View</Text>
-          <View style={styles.summaryBars}>
-            {summaryGraphData.map((item) => (
-              <View key={item.label} style={styles.summaryBarItem}>
-                <Text style={styles.summaryBarValue}>{item.value}</Text>
-                <View style={styles.summaryBarStage}>
-                  <View
-                    style={[
-                      styles.summaryBarFill,
-                      {
-                        height: `${Math.max(10, Math.round(((Number(item.value) || 0) / summaryGraphMax) * 100))}%`,
-                        backgroundColor: item.color,
-                      },
-                    ]}
-                  />
+          ) : recentActivity.length === 0 ? (
+            <Text style={styles.emptyMuted}>No recent activity yet.</Text>
+          ) : (
+            recentActivity.slice(0, 6).map((item, idx) => {
+              const visual = activityVisual(item.text);
+              const dayLabel = activityDayLabel(item.at);
+              const timeLabel = (() => {
+                const d = new Date(item.at);
+                return Number.isNaN(d.getTime())
+                  ? ''
+                  : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+              })();
+              return (
+                <View key={item.id} style={styles.updateRow}>
+                  <View style={[styles.updateIconWrap, { backgroundColor: visual.bg }]}>
+                    <Ionicons name={visual.icon} size={18} color={visual.color} />
+                  </View>
+                  <View style={styles.updateMain}>
+                    <Text style={styles.updateText} numberOfLines={2}>
+                      {item.text}
+                    </Text>
+                    <Text style={styles.updateMeta}>
+                      {dayLabel}
+                      {timeLabel ? `, ${timeLabel}` : ''}
+                    </Text>
+                  </View>
+                  {idx === 0 && dayLabel === 'Today' ? (
+                    <View style={styles.updateNewBadge}>
+                      <Text style={styles.updateNewBadgeText}>New</Text>
+                    </View>
+                  ) : (
+                    <Ionicons name="chevron-forward" size={16} color={BH.textFaint} />
+                  )}
                 </View>
-                <View style={styles.summaryBarLabelWrap}>
-                  <Text style={styles.summaryBarLabel} numberOfLines={2}>
-                    {item.label}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-          <Text style={styles.callout}>
-            Highest metric right now: <Text style={styles.calloutStrong}>{highestMetric.label}</Text>
-          </Text>
-          <Text style={[styles.insightPanelTitle, { marginTop: 16 }]}>Operational Insights</Text>
-          <View style={styles.kpiGrid}>
-            {metricInsights.map((item) => (
-              <View key={item.label} style={styles.kpiItem}>
-                <Text style={styles.kpiLabel}>{item.label}</Text>
-                <Text style={styles.kpiValue}>{item.value}</Text>
-                <View style={[styles.kpiBar, { backgroundColor: item.color }]} />
-                <Text style={styles.kpiNote}>{item.note}</Text>
-              </View>
-            ))}
-          </View>
+              );
+            })
+          )}
           {supabaseReadError ? (
             <Text style={styles.errorInline} numberOfLines={3}>
               {supabaseReadError}
@@ -732,103 +667,6 @@ export default function HomeScreen() {
               );
             })
           )}
-        </View>
-
-        <View style={[styles.panelCard, { marginTop: 14 }]}>
-          <View style={styles.tableHeadLeft}>
-            <Ionicons name="bar-chart" size={16} color="#F54E25" />
-            <Text style={styles.panelTitleInline}>Dashboard Highlights</Text>
-          </View>
-          <View style={styles.highlightsGrid}>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Active Residents</Text>
-              <Text style={styles.overviewValue}>{patients.length}</Text>
-              <Text style={styles.overviewSub}>Currently under care</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Pending Requests</Text>
-              <Text style={styles.overviewValue}>{totalPendingRequests}</Text>
-              <Text style={styles.overviewSub}>Admissions, discharges, and appointments</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Average Progress</Text>
-              <Text style={styles.overviewValue}>{averageProgress}%</Text>
-              <Text style={styles.overviewSub}>Across all assigned patients</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Reports Received</Text>
-              <Text style={styles.overviewValue}>{reportsReceivedCount}</Text>
-              <Text style={styles.overviewSub}>Weekly reports submitted by nurse</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.bottomTwoCol}>
-          <View style={[styles.panelCard, styles.bottomCard]}>
-            <View style={styles.tableHeadLeft}>
-              <Ionicons name="calendar" size={16} color="#F54E25" />
-              <Text style={styles.panelTitleInline}>Next Steps</Text>
-            </View>
-            <Text style={styles.nextSub}>Suggested actions to keep care coordination on track.</Text>
-            <View style={styles.cleanListItem}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cleanTitle}>Review request management queue</Text>
-                <Text style={styles.cleanDesc}>Check admission/discharge updates from staff</Text>
-              </View>
-              <View style={styles.miniPill}>
-                <Text style={styles.miniPillText}>{totalPendingRequests || 0} pending</Text>
-              </View>
-            </View>
-            <View style={styles.cleanListItem}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cleanTitle}>Open patient details</Text>
-                <Text style={styles.cleanDesc}>View status and progress of all patients</Text>
-              </View>
-              <TouchableOpacity style={styles.openBtnIndigo} onPress={() => router.navigate(TAB_ROUTES.patientDetails)}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cleanTitle}>Check appointment slots</Text>
-                <Text style={styles.cleanDesc}>Plan follow-ups and visit schedules</Text>
-              </View>
-              <TouchableOpacity style={styles.openBtnGreen} onPress={() => router.navigate(TAB_ROUTES.appointments)}>
-                <Text style={styles.openBtnText}>View</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={[styles.panelCard, styles.bottomCard]}>
-            <View style={styles.tableHeadLeft}>
-              <Ionicons name="document-text" size={16} color="#F54E25" />
-              <Text style={styles.panelTitleInline}>Care Resources</Text>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>View Weekly Reports</Text>
-              <TouchableOpacity style={styles.openBtnOrange} onPress={openWeeklyReportsModal}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>Go to Services</Text>
-              <TouchableOpacity style={styles.openBtnIndigo} onPress={() => router.navigate(TAB_ROUTES.services)}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>Messages</Text>
-              <TouchableOpacity style={styles.openBtnOrange} onPress={() => router.navigate(TAB_ROUTES.messages)}>
-                <Text style={[styles.openBtnText, { color: '#C2410C' }]}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>Manage Your Profile</Text>
-              <TouchableOpacity style={styles.openBtnGreen} onPress={() => router.navigate(TAB_ROUTES.profile)}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
         </View>
 
       </ScrollView>
@@ -1216,52 +1054,53 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.82)',
     maxWidth: '78%',
   },
-  statGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 18,
-  },
-  statCard: {
-    width: (width - (isCompactScreen ? 28 : 36) - 12) / 2,
+  summaryCard: {
     borderRadius: 22,
-    borderWidth: 1,
     backgroundColor: BH.surface,
-    padding: 16,
-    overflow: 'hidden',
+    padding: isCompactScreen ? 16 : 20,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: BH.border,
     shadowColor: BH.slate900,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.07,
     shadowRadius: 20,
     elevation: 3,
   },
-  statCardDeco: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 88,
-    height: 88,
-    borderBottomLeftRadius: 88,
-    opacity: 0.3,
+  summaryHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  statCardInner: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  statCardLabel: {
-    fontSize: 10,
-    color: '#94A3B8',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-  },
-  statCardValue: { marginTop: 8, fontSize: 30, fontWeight: '900', color: BH.slate900, letterSpacing: -0.6 },
-  statCardSub: { marginTop: 3, fontSize: 11, color: BH.slate400, fontWeight: '500' },
-  statCardIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  summaryTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
+  summaryViewAll: { fontSize: 13, fontWeight: '700', color: '#2563EB' },
+  summaryStatsRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  summaryStatCol: { flex: 1, minWidth: 0 },
+  summaryStatLabel: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+  summaryStatValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  summaryStatValue: { fontSize: 26, fontWeight: '900', color: BH.slate900, letterSpacing: -0.5 },
+  summaryStatIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
   },
+  summaryStatSub: { fontSize: 11, color: '#94A3B8', fontWeight: '500', marginTop: 3 },
+  summaryDividerV: { width: 1, alignSelf: 'stretch', backgroundColor: BH.border, marginHorizontal: 16 },
+  summaryDividerH: { height: 1, backgroundColor: BH.border, marginVertical: 16 },
+  summaryProgressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  summaryProgressLabel: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  summaryProgressPct: { fontSize: 13, fontWeight: '800', color: BH.brand },
+  summaryProgressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: BH.slate100,
+    overflow: 'hidden',
+  },
+  summaryProgressFill: { height: '100%', borderRadius: 4, backgroundColor: BH.brand },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitleText: { fontSize: 14, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
   sectionSub: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '500' },
@@ -1315,70 +1154,64 @@ const styles = StyleSheet.create({
   quickActionLabel: { fontSize: 11.5, fontWeight: '700', color: '#334155', textAlign: 'center' },
   chartTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   chartTitle: { color: '#1B2559', fontWeight: '800', fontSize: 16 },
-  chartSub: { color: '#64748B', fontSize: 12, marginTop: 4 },
-  chartMeta: { color: '#64748B', fontSize: 11, fontWeight: '700' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   loadingText: { color: '#64748B', fontWeight: '700', fontSize: 13 },
-  insightPanelTitle: { color: '#1B2559', fontWeight: '800', fontSize: 14, marginBottom: 8 },
-  summaryBars: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    minHeight: 138,
-    paddingHorizontal: 2,
-    marginBottom: 8,
-  },
-  summaryBarItem: {
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: 2,
-    minWidth: 0,
-    justifyContent: 'flex-end',
-    minHeight: 136,
-  },
-  summaryBarValue: { fontSize: 12, fontWeight: '800', color: '#1B2559', marginBottom: 4 },
-  summaryBarStage: {
-    width: '70%',
-    height: 100,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 8,
-    justifyContent: 'flex-end',
+  errorInline: { marginTop: 10, color: '#EF4444', fontSize: 11, fontWeight: '700' },
+  supportCard: {
+    borderRadius: 20,
+    backgroundColor: BH.brandSurface,
+    borderWidth: 1,
+    borderColor: 'rgba(254, 215, 170, 0.6)',
+    padding: 18,
+    marginTop: 14,
     overflow: 'hidden',
   },
-  summaryBarFill: { width: '100%', borderRadius: 8 },
-  summaryBarLabelWrap: {
-    marginTop: 6,
-    minHeight: 32,
-    width: '100%',
-    justifyContent: 'center',
+  supportHeartWatermark: {
+    position: 'absolute',
+    right: -16,
+    bottom: -16,
+  },
+  supportTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  supportTitle: { fontSize: 16, fontWeight: '800', color: BH.navy },
+  supportSub: { fontSize: 13, color: '#64748B', fontWeight: '500', marginTop: 4, maxWidth: '80%', lineHeight: 18 },
+  supportBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: BH.brand,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginTop: 14,
+    ...SHADOW.brand,
+  },
+  supportBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+  updateRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
-  summaryBarLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 12,
-    width: '100%',
+  updateIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  callout: { fontSize: 12, color: '#64748B', fontWeight: '600' },
-  calloutStrong: { color: '#1B2559', fontWeight: '800' },
-  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  kpiItem: {
-    width: (width - 36 - 32) / 2 - 5,
-    minWidth: 140,
-    flexGrow: 1,
-    borderRadius: 16,
+  updateMain: { flex: 1, minWidth: 0 },
+  updateText: { fontSize: 13, fontWeight: '600', color: '#1E293B', lineHeight: 18 },
+  updateMeta: { fontSize: 11, color: '#94A3B8', fontWeight: '500', marginTop: 2 },
+  updateNewBadge: {
+    backgroundColor: BH.brandSurface,
     borderWidth: 1,
-    borderColor: BH.border,
-    padding: 14,
-    backgroundColor: BH.surface2,
+    borderColor: 'rgba(254, 215, 170, 0.6)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  kpiLabel: { color: '#64748B', fontSize: 11, fontWeight: '700' },
-  kpiValue: { color: '#1B2559', fontWeight: '800', fontSize: 20, marginTop: 6 },
-  kpiBar: { marginTop: 8, width: 26, height: 6, borderRadius: 99 },
-  kpiNote: { marginTop: 8, fontSize: 11, color: '#64748B', fontWeight: '600', lineHeight: 15 },
-  errorInline: { marginTop: 10, color: '#EF4444', fontSize: 11, fontWeight: '700' },
+  updateNewBadgeText: { fontSize: 10, fontWeight: '800', color: BH.brand700 },
   tableHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   tableHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelTitleInline: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
@@ -1665,43 +1498,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   reportFieldCardVal: { fontSize: 14, color: '#1A2B4A', fontWeight: '600', lineHeight: 21 },
-  highlightsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
-  overviewItem: {
-    width: (width - 36 - 32) / 2 - 5,
-    minWidth: 140,
-    flexGrow: 1,
-    borderRadius: 16,
-    backgroundColor: BH.slate50,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: BH.border,
-  },
-  overviewLabel: { fontSize: 12, color: '#64748B', fontWeight: '700' },
-  overviewValue: { fontSize: 22, fontWeight: '900', color: '#1B2559', marginTop: 6 },
-  overviewSub: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
-  bottomTwoCol: { marginTop: 14, gap: 12 },
-  bottomCard: { marginBottom: 0 },
-  nextSub: { color: '#64748B', fontSize: 13, marginBottom: 10, fontWeight: '600' },
-  cleanListItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  cleanTitle: { color: '#1B2559', fontWeight: '700', fontSize: 13 },
-  cleanDesc: { color: '#64748B', fontSize: 12, marginTop: 2 },
-  miniPill: { backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  miniPillText: { color: '#92400E', fontSize: 11, fontWeight: '800' },
-  openBtnIndigo: {
-    backgroundColor: '#EEF2FF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  openBtnGreen: { backgroundColor: '#ECFDF3', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  openBtnOrange: { backgroundColor: '#FFF1EB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  openBtnText: { fontSize: 11, fontWeight: '800', color: '#3730A3' },
 });
