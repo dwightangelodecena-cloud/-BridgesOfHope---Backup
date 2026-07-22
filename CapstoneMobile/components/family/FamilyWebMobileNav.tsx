@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -6,11 +6,9 @@ type IonName = React.ComponentProps<typeof Ionicons>['name'];
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
-import { performFamilyLogoutMobile } from '../../lib/familyLogoutMobile';
-import { FamilyLogoutConfirmModal } from './FamilyLogoutConfirmModal';
 import { BH } from '../../theme/tokens';
 
-/** Matches web FamilySidebar primary + footer nav (Dashboard → Reports, Profile, Logout). */
+/** Matches web FamilySidebar primary nav (Dashboard → Reports, Profile). Logout lives in Profile. */
 export type FamilyNavTab =
   | 'home'
   | 'patientDetails'
@@ -69,63 +67,32 @@ const ACTIVE = BH.brand;
 export function FamilyWebMobileNav({ active }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [logoutLoading, setLogoutLoading] = useState(false);
 
   const go = (route: string) => {
     router.navigate(route as never);
   };
 
-  const confirmLogout = async () => {
-    setLogoutLoading(true);
-    try {
-      await performFamilyLogoutMobile(router);
-    } finally {
-      setLogoutLoading(false);
-      setShowLogoutModal(false);
-    }
-  };
-
   return (
-    <>
-      <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 6) }]}>
-        <View style={styles.row}>
-          {NAV_ITEMS.map((item) => {
-            const isActive = active !== 'none' && active === item.key;
-            return (
-              <TouchableOpacity
-                key={item.key}
-                style={styles.navItem}
-                onPress={() => go(item.route)}
-                accessibilityRole="button"
-                accessibilityLabel={item.a11y}
-                accessibilityState={{ selected: isActive }}
-              >
-                <Ionicons name={item.icon} size={21} color={isActive ? ACTIVE : INACTIVE} />
-                {isActive ? <Text style={styles.navLabelActive}>{item.label}</Text> : null}
-              </TouchableOpacity>
-            );
-          })}
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => setShowLogoutModal(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Log out"
-          >
-            <Ionicons name="log-out-outline" size={21} color={ACTIVE} />
-          </TouchableOpacity>
-        </View>
+    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+      <View style={styles.row}>
+        {NAV_ITEMS.map((item) => {
+          const isActive = active !== 'none' && active === item.key;
+          return (
+            <TouchableOpacity
+              key={item.key}
+              style={styles.navItem}
+              onPress={() => go(item.route)}
+              accessibilityRole="button"
+              accessibilityLabel={item.a11y}
+              accessibilityState={{ selected: isActive }}
+            >
+              <Ionicons name={item.icon} size={21} color={isActive ? ACTIVE : INACTIVE} />
+              {isActive ? <Text style={styles.navLabelActive}>{item.label}</Text> : null}
+            </TouchableOpacity>
+          );
+        })}
       </View>
-
-      <FamilyLogoutConfirmModal
-        visible={showLogoutModal}
-        loading={logoutLoading}
-        onCancel={() => {
-          if (!logoutLoading) setShowLogoutModal(false);
-        }}
-        onConfirm={() => void confirmLogout()}
-      />
-    </>
+    </View>
   );
 }
 

@@ -21,9 +21,6 @@ export function FamilyHeaderBrand() {
           style={styles.accentBar}
         />
         <View style={styles.textCol}>
-          <Text style={styles.kalinga} numberOfLines={1}>
-            Kalinga
-          </Text>
           <Text style={styles.title} numberOfLines={1}>
             <Text style={styles.titleLead}>Bridges of </Text>
             <Text style={styles.titleAccent}>Hope</Text>
@@ -89,20 +86,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
     justifyContent: 'center',
   },
-  kalinga: {
-    fontSize: 9.5,
-    fontWeight: '800',
-    color: BH.brand,
-    letterSpacing: 1.3,
-    lineHeight: 12,
-    textTransform: 'uppercase',
-  },
   title: {
-    marginTop: 1,
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: -0.4,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   titleLead: {
     color: BH.navy,
@@ -115,19 +103,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 4,
-    marginTop: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: BH.brandSurface,
-    borderWidth: 1,
-    borderColor: 'rgba(254, 215, 170, 0.55)',
+    marginTop: 3,
   },
   sub: {
-    fontSize: 9,
-    fontWeight: '800',
+    fontSize: 10.5,
+    fontWeight: '700',
     color: BH.brand700,
-    letterSpacing: 0.6,
+    letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
 });
