@@ -2,6 +2,7 @@ import React from 'react';
 import {
   View,
   Text,
+  ImageBackground,
   StyleSheet,
   TouchableOpacity,
   Modal,
@@ -92,60 +93,109 @@ export function FamilyMobilePageHeader({
         </View>
       </Modal>
 
-      <View style={styles.headerShell}>
-        <View style={[styles.bar, { paddingTop: Math.max(insets.top, 8) }]}>
-          <TouchableOpacity
-            style={styles.brandArea}
-            onPress={onBrandPress}
-            disabled={!onBrandPress}
-            activeOpacity={onBrandPress ? 0.82 : 1}
-            accessibilityRole={onBrandPress ? 'button' : undefined}
-            accessibilityLabel={onBrandPress ? 'Scroll to top' : undefined}
-          >
-            {isHomeBrand ? (
-              <FamilyHeaderBrand />
-            ) : title ? (
-              <FamilyPageTitleBrand title={title} />
-            ) : (
-              <KalingaLogoMark size={38} variant="boxed" />
-            )}
-          </TouchableOpacity>
-          <View style={styles.actions}>
+      {isHomeBrand ? (
+        <ImageBackground
+          source={require('../../assets/images/home-header.jpg')}
+          style={styles.headerShellHome}
+          imageStyle={styles.headerShellHomeImage}
+        >
+          <View style={[styles.bar, styles.barTransparent, { paddingTop: Math.max(insets.top, 8) }]}>
             <TouchableOpacity
-              style={[styles.notifyBtn, notif.unreadCount > 0 ? styles.notifyBtnActive : styles.notifyBtnIdle]}
-              onPress={notif.toggle}
-              accessibilityRole="button"
-              accessibilityLabel={
-                notif.unreadCount > 0
-                  ? `Notifications, ${notif.unreadCount} unread`
-                  : 'Notifications'
-              }
-              activeOpacity={0.85}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.brandArea}
+              onPress={onBrandPress}
+              disabled={!onBrandPress}
+              activeOpacity={onBrandPress ? 0.82 : 1}
+              accessibilityRole={onBrandPress ? 'button' : undefined}
+              accessibilityLabel={onBrandPress ? 'Scroll to top' : undefined}
             >
-              <Ionicons
-                name="notifications"
-                size={17}
-                color={notif.unreadCount > 0 ? BH.brandContrast : BH.slate500}
-              />
-              {notif.unreadCount > 0 ? (
-                <View style={styles.notifBadge}>
-                  <Text style={styles.notifBadgeText}>
-                    {notif.unreadCount > 9 ? '9+' : String(notif.unreadCount)}
-                  </Text>
-                </View>
-              ) : null}
+              <FamilyHeaderBrand />
             </TouchableOpacity>
-            <FamilyHeaderAvatarMobile
-              userId={userId}
-              initials={initials}
-              onPress={onProfile}
-              size={34}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            />
+            <View style={styles.actions}>
+              <TouchableOpacity
+                style={[styles.notifyBtn, notif.unreadCount > 0 ? styles.notifyBtnActive : styles.notifyBtnIdleDark]}
+                onPress={notif.toggle}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  notif.unreadCount > 0
+                    ? `Notifications, ${notif.unreadCount} unread`
+                    : 'Notifications'
+                }
+                activeOpacity={0.85}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons
+                  name="notifications"
+                  size={17}
+                  color={notif.unreadCount > 0 ? BH.brandContrast : '#FFFFFF'}
+                />
+                {notif.unreadCount > 0 ? (
+                  <View style={styles.notifBadge}>
+                    <Text style={styles.notifBadgeText}>
+                      {notif.unreadCount > 9 ? '9+' : String(notif.unreadCount)}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+              <FamilyHeaderAvatarMobile
+                userId={userId}
+                initials={initials}
+                onPress={onProfile}
+                size={34}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              />
+            </View>
+          </View>
+        </ImageBackground>
+      ) : (
+        <View style={styles.headerShell}>
+          <View style={[styles.bar, { paddingTop: Math.max(insets.top, 8) }]}>
+            <TouchableOpacity
+              style={styles.brandArea}
+              onPress={onBrandPress}
+              disabled={!onBrandPress}
+              activeOpacity={onBrandPress ? 0.82 : 1}
+              accessibilityRole={onBrandPress ? 'button' : undefined}
+              accessibilityLabel={onBrandPress ? 'Scroll to top' : undefined}
+            >
+              {title ? <FamilyPageTitleBrand title={title} /> : <KalingaLogoMark size={38} variant="boxed" />}
+            </TouchableOpacity>
+            <View style={styles.actions}>
+              <TouchableOpacity
+                style={[styles.notifyBtn, notif.unreadCount > 0 ? styles.notifyBtnActive : styles.notifyBtnIdle]}
+                onPress={notif.toggle}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  notif.unreadCount > 0
+                    ? `Notifications, ${notif.unreadCount} unread`
+                    : 'Notifications'
+                }
+                activeOpacity={0.85}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons
+                  name="notifications"
+                  size={17}
+                  color={notif.unreadCount > 0 ? BH.brandContrast : BH.slate500}
+                />
+                {notif.unreadCount > 0 ? (
+                  <View style={styles.notifBadge}>
+                    <Text style={styles.notifBadgeText}>
+                      {notif.unreadCount > 9 ? '9+' : String(notif.unreadCount)}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+              <FamilyHeaderAvatarMobile
+                userId={userId}
+                initials={initials}
+                onPress={onProfile}
+                size={34}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              />
+            </View>
           </View>
         </View>
-      </View>
+      )}
     </>
   );
 }
@@ -166,6 +216,15 @@ const styles = StyleSheet.create({
       default: {},
     }),
   },
+  // Home only: extends the hero's home-header.jpg art up through the header
+  // bar so it reads as one continuous background instead of a white bar
+  // sitting on top of the hero.
+  headerShellHome: {
+    overflow: 'hidden',
+  },
+  headerShellHomeImage: {
+    resizeMode: 'cover',
+  },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -174,6 +233,9 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     minHeight: 48,
     backgroundColor: BH.surface,
+  },
+  barTransparent: {
+    backgroundColor: 'transparent',
   },
   brandArea: {
     flex: 1,
@@ -209,6 +271,10 @@ const styles = StyleSheet.create({
   // Idle: quiet neutral tile — no glow, minimal visual weight.
   notifyBtnIdle: {
     backgroundColor: BH.slate100,
+  },
+  // Idle, Home only: translucent white reads correctly against the dark hero art.
+  notifyBtnIdleDark: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   notifRoot: { flex: 1 },
   notifBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' },

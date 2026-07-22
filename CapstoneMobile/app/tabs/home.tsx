@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
+  ImageBackground,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -26,6 +27,7 @@ import {
 import { fetchActivityFeedForCurrentUser } from '../../lib/activityFeed';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
+import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
@@ -37,7 +39,7 @@ import {
   normalizeVisitationStatus,
   type VisitationRequestRow,
 } from '../../lib/visitationAppointmentsMobile';
-import { BH } from '../../theme/tokens';
+import { BH, SHADOW } from '../../theme/tokens';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
@@ -152,6 +154,7 @@ export default function HomeScreen() {
   const { scrollRef, scrollToTop } = useFamilyPageScroll();
   const router = useRouter();
   const { displayName } = useFamilyUserMobile();
+  const { unreadCount: supportUnreadCount } = useSupportChatMobile();
   const [patients, setPatients] = useState<UIPatient[]>([]);
   const [pendingAdmissions, setPendingAdmissions] = useState<PendingAdmission[]>([]);
   const [pendingDischarges, setPendingDischarges] = useState<PendingDischarge[]>([]);
@@ -418,6 +421,148 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
+        <ImageBackground
+          source={require('../../assets/images/home-header.jpg')}
+          style={styles.heroBanner}
+          imageStyle={styles.heroBannerImage}
+        >
+          <View style={styles.heroInner}>
+            <View style={styles.heroTitleRow}>
+              <Text style={styles.heroTitle}>
+                {greeting}, {firstName}! <Text style={styles.heroWave}>👋</Text>
+              </Text>
+              <Ionicons name={greetingIcon} size={isCompactScreen ? 18 : 20} color="#FDBA74" style={styles.heroTitleIcon} />
+            </View>
+            <Text style={styles.heroSub}>Here&apos;s an overview of your loved one&apos;s care today.</Text>
+          </View>
+        </ImageBackground>
+
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryHeadRow}>
+            <Text style={styles.summaryTitle}>Today&apos;s Summary</Text>
+            <TouchableOpacity onPress={() => router.navigate(TAB_ROUTES.patientDetails)} hitSlop={8}>
+              <Text style={styles.summaryViewAll}>View all</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.summaryStatsRow}>
+            <View style={styles.summaryStatCol}>
+              <Text style={styles.summaryStatLabel}>Active Residents</Text>
+              <View style={styles.summaryStatValueRow}>
+                <Text style={styles.summaryStatValue}>{patients.length}</Text>
+                <View style={styles.summaryStatIconWrap}>
+                  <Ionicons name="people" size={14} color={BH.indigo} />
+                </View>
+              </View>
+              <Text style={styles.summaryStatSub}>Currently under care</Text>
+            </View>
+            <View style={styles.summaryDividerV} />
+            <View style={styles.summaryStatCol}>
+              <Text style={styles.summaryStatLabel}>Average Progress</Text>
+              <View style={styles.summaryStatValueRow}>
+                <Text style={styles.summaryStatValue}>{averageProgress}%</Text>
+                <Ionicons name="trending-up" size={16} color="#16A34A" />
+              </View>
+              <Text style={styles.summaryStatSub}>{averageProgress >= 70 ? 'Strong trend' : 'Steady recovery'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.summaryDividerH} />
+
+          <View style={styles.summaryProgressRow}>
+            <Text style={styles.summaryProgressLabel}>Overall Progress</Text>
+            <Text style={styles.summaryProgressPct}>{averageProgress}%</Text>
+          </View>
+          <View style={styles.summaryProgressTrack}>
+            <View style={[styles.summaryProgressFill, { width: `${averageProgress}%` }]} />
+          </View>
+        </View>
+
+        <View style={styles.panelCard}>
+          <View style={styles.quickActionsHeaderRow}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="sparkles" size={16} color="#F54E25" />
+                <Text style={styles.sectionTitleText}>Quick Actions</Text>
+              </View>
+              <Text style={styles.sectionSub}>Your most-used tools — one tap away</Text>
+            </View>
+          </View>
+          <View style={styles.quickActionsRow}>
+            {[
+              {
+                key: 'reports',
+                icon: 'document-text' as const,
+                label: 'Weekly Report',
+                color: BH.brand,
+                onPress: openWeeklyReportsModal,
+                badge: reportsReceivedCount,
+              },
+              {
+                key: 'admission',
+                icon: 'clipboard' as const,
+                label: 'Admission',
+                color: '#2563EB',
+                onPress: () => router.navigate(TAB_ROUTES.admission),
+                badge: pendingAdmissions.length,
+              },
+              {
+                key: 'services',
+                icon: 'briefcase' as const,
+                label: 'Services',
+                color: '#16A34A',
+                onPress: () => router.navigate(TAB_ROUTES.services),
+                badge: 0,
+              },
+              {
+                key: 'messages',
+                icon: 'chatbubble-ellipses' as const,
+                label: 'Messages',
+                color: '#7C3AED',
+                onPress: () => router.navigate(TAB_ROUTES.messages),
+                badge: supportUnreadCount,
+              },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={styles.quickActionItem}
+                onPress={item.onPress}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.quickActionCircle, { backgroundColor: item.color }]}>
+                  <Ionicons name={item.icon} size={24} color="#FFFFFF" />
+                  {item.badge > 0 ? (
+                    <View style={styles.quickActionBadge}>
+                      <Text style={styles.quickActionBadgeText}>{item.badge > 9 ? '9+' : item.badge}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={styles.quickActionLabel} numberOfLines={1}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.supportCard}>
+          <View style={styles.supportHeartWatermark}>
+            <Ionicons name="heart" size={96} color="rgba(245, 78, 37, 0.12)" />
+          </View>
+          <View style={styles.supportTitleRow}>
+            <Text style={styles.supportTitle}>You&apos;re not alone.</Text>
+            <Ionicons name="heart" size={16} color={BH.brand} />
+          </View>
+          <Text style={styles.supportSub}>We&apos;re here to support you every step of the way.</Text>
+          <TouchableOpacity
+            style={styles.supportBtn}
+            onPress={() => router.navigate(TAB_ROUTES.messages)}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.supportBtnText}>Contact Us</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.dashboardHero}>
           <View style={styles.heroBadge}>
             <Ionicons name={greetingIcon} size={20} color={BH.brand} />
@@ -930,9 +1075,98 @@ const styles = StyleSheet.create({
   notificationsDropdownText: { flex: 1, fontSize: 13, color: '#334155', lineHeight: 18 },
   notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scrollContent: { paddingHorizontal: isCompactScreen ? 14 : 18, paddingTop: 12 },
+  heroBanner: {
+    borderRadius: 22,
+    padding: isCompactScreen ? 18 : 24,
+    marginBottom: 14,
+    overflow: 'hidden',
+    backgroundColor: '#0f172a',
+    justifyContent: 'flex-end',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    elevation: 8,
+    minHeight: isCompactScreen ? 168 : 188,
+  },
+  heroBannerImage: {
+    borderRadius: 22,
+  },
+  heroInner: { gap: 6 },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  heroTitle: {
+    flexShrink: 1,
+    fontSize: isCompactScreen ? 21 : 24,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.4,
+  },
+  heroWave: {
+    fontSize: isCompactScreen ? 18 : 20,
+  },
+  heroTitleIcon: {
+    marginTop: 2,
+  },
+  heroSub: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.82)',
+    maxWidth: '78%',
+  },
+  summaryCard: {
+    borderRadius: 22,
+    backgroundColor: BH.surface,
+    padding: isCompactScreen ? 16 : 20,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: BH.border,
+    shadowColor: BH.slate900,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  summaryHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  summaryTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
+  summaryViewAll: { fontSize: 13, fontWeight: '700', color: '#2563EB' },
+  summaryStatsRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  summaryStatCol: { flex: 1, minWidth: 0 },
+  summaryStatLabel: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+  summaryStatValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  summaryStatValue: { fontSize: 26, fontWeight: '900', color: BH.slate900, letterSpacing: -0.5 },
+  summaryStatIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryStatSub: { fontSize: 11, color: '#94A3B8', fontWeight: '500', marginTop: 3 },
+  summaryDividerV: { width: 1, alignSelf: 'stretch', backgroundColor: BH.border, marginHorizontal: 16 },
+  summaryDividerH: { height: 1, backgroundColor: BH.border, marginVertical: 16 },
+  summaryProgressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  summaryProgressLabel: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  summaryProgressPct: { fontSize: 13, fontWeight: '800', color: BH.brand },
+  summaryProgressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: BH.slate100,
+    overflow: 'hidden',
+  },
+  summaryProgressFill: { height: '100%', borderRadius: 4, backgroundColor: BH.brand },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitleText: { fontSize: 14, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
+  sectionSub: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '500' },
   dashboardHero: {
     borderRadius: 22,
     padding: isCompactScreen ? 18 : 22,
+    marginTop: 14,
     marginBottom: 14,
     overflow: 'hidden',
     backgroundColor: '#0F172A',
@@ -1023,9 +1257,72 @@ const styles = StyleSheet.create({
     shadowRadius: 28,
     elevation: 4,
   },
+  quickActionsHeaderRow: {
+    marginBottom: 14,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  quickActionItem: {
+    alignItems: 'center',
+    gap: 8,
+    width: (width - (isCompactScreen ? 28 : 36) - 2 * 18) / 4,
+  },
+  quickActionCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOW.brand,
+  },
+  quickActionBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: BH.danger,
+    borderWidth: 2,
+    borderColor: BH.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionBadgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF' },
+  quickActionLabel: { fontSize: 11.5, fontWeight: '700', color: '#334155', textAlign: 'center' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   loadingText: { color: '#64748B', fontWeight: '700', fontSize: 13 },
   errorInline: { marginTop: 10, color: '#EF4444', fontSize: 11, fontWeight: '700' },
+  supportCard: {
+    borderRadius: 20,
+    backgroundColor: BH.brandSurface,
+    borderWidth: 1,
+    borderColor: 'rgba(254, 215, 170, 0.6)',
+    padding: 18,
+    marginTop: 14,
+    overflow: 'hidden',
+  },
+  supportHeartWatermark: {
+    position: 'absolute',
+    right: -16,
+    bottom: -16,
+  },
+  supportTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  supportTitle: { fontSize: 16, fontWeight: '800', color: BH.navy },
+  supportSub: { fontSize: 13, color: '#64748B', fontWeight: '500', marginTop: 4, maxWidth: '80%', lineHeight: 18 },
+  supportBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: BH.brand,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginTop: 14,
+    ...SHADOW.brand,
+  },
+  supportBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
   tableHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   tableHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelTitleInline: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
