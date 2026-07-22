@@ -25,7 +25,7 @@ import {
   uiAdmissionRequestFromRow,
   uiDischargeRequestFromRow,
 } from '../../lib/dbMappers';
-import { fetchActivityFeedForCurrentUser, activityDayLabel, type ActivityFeedItem } from '../../lib/activityFeed';
+import { fetchActivityFeedForCurrentUser } from '../../lib/activityFeed';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
@@ -34,7 +34,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
-import { getFamilyFirstName, getFamilyTimeGreeting } from '../../lib/familyGreeting';
+import { getFamilyFirstName, getFamilyGreetingIcon, getFamilyTimeGreeting } from '../../lib/familyGreeting';
 import {
   listVisitationRequestsByFamily,
   mergeRequestsFromSupabase,
@@ -104,23 +104,6 @@ function patientStatus(progress: number) {
   return { label: 'Needs Attention', color: '#991B1B', bg: '#FEE2E2' };
 }
 
-/** Picks an icon/color for an activity feed row from keywords in its text — the
- * feed itself only stores free-text descriptions, not a structured type. */
-function activityVisual(text: string): { icon: React.ComponentProps<typeof Ionicons>['name']; color: string; bg: string } {
-  const t = text.toLowerCase();
-  if (t.includes('report')) return { icon: 'document-text', color: BH.brand700, bg: BH.brandSurface };
-  if (t.includes('vital')) return { icon: 'pulse', color: '#16A34A', bg: '#DCFCE7' };
-  if (t.includes('medicat')) return { icon: 'medical', color: '#D97706', bg: '#FEF3C7' };
-  if (t.includes('meal') || t.includes('breakfast') || t.includes('lunch') || t.includes('dinner'))
-    return { icon: 'restaurant', color: '#7C3AED', bg: '#EDE9FE' };
-  if (t.includes('admission')) return { icon: 'clipboard', color: '#2563EB', bg: '#DBEAFE' };
-  if (t.includes('discharge')) return { icon: 'exit', color: '#DC2626', bg: '#FEE2E2' };
-  if (t.includes('appointment') || t.includes('visit')) return { icon: 'calendar', color: '#0369A1', bg: '#E0F2FE' };
-  if (t.includes('login') || t.includes('logged in')) return { icon: 'log-in', color: '#475569', bg: '#F1F5F9' };
-  if (t.includes('message') || t.includes('chat')) return { icon: 'chatbubble-ellipses', color: '#7C3AED', bg: '#EDE9FE' };
-  return { icon: 'notifications', color: BH.brand700, bg: BH.brandSurface };
-}
-
 function ReportFieldCard({
   label,
   value,
@@ -159,7 +142,6 @@ export default function HomeScreen() {
   const [weeklyReportDetail, setWeeklyReportDetail] = useState<WeeklyReportDetailState | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [supabaseReadError, setSupabaseReadError] = useState<string | null>(null);
-  const [recentActivity, setRecentActivity] = useState<ActivityFeedItem[]>([]);
 
   const firstName = getFamilyFirstName(displayName);
 
@@ -170,7 +152,6 @@ export default function HomeScreen() {
       setPendingDischarges([]);
       setNurseWeeklyByPatient({});
       setFamilyVisitationRequests([]);
-      setRecentActivity([]);
       setDashboardLoading(false);
       return;
     }
@@ -186,7 +167,6 @@ export default function HomeScreen() {
         setPendingDischarges([]);
         setNurseWeeklyByPatient({});
         setFamilyVisitationRequests([]);
-        setRecentActivity([]);
         setFamilyUserId('');
         return;
       }
@@ -277,15 +257,13 @@ export default function HomeScreen() {
         }
       }
       setNurseWeeklyByPatient(byPatient);
-      const activity = await fetchActivityFeedForCurrentUser();
-      setRecentActivity(activity);
+      void fetchActivityFeedForCurrentUser();
     } catch {
       setPatients([]);
       setPendingAdmissions([]);
       setPendingDischarges([]);
       setNurseWeeklyByPatient({});
       setFamilyVisitationRequests([]);
-      setRecentActivity([]);
     } finally {
       setDashboardLoading(false);
     }
@@ -375,6 +353,7 @@ export default function HomeScreen() {
   const patientTableRows = patients;
 
   const greeting = getFamilyTimeGreeting();
+  const greetingIcon = getFamilyGreetingIcon();
 
   return (
     <View style={[styles.container, { backgroundColor: BG }]}>
@@ -391,9 +370,12 @@ export default function HomeScreen() {
           imageStyle={styles.heroBannerImage}
         >
           <View style={styles.heroInner}>
-            <Text style={styles.heroTitle}>
-              {greeting}, {firstName}! <Text style={styles.heroWave}>👋</Text>
-            </Text>
+            <View style={styles.heroTitleRow}>
+              <Text style={styles.heroTitle}>
+                {greeting}, {firstName}! <Text style={styles.heroWave}>👋</Text>
+              </Text>
+              <Ionicons name={greetingIcon} size={isCompactScreen ? 18 : 20} color="#FDBA74" style={styles.heroTitleIcon} />
+            </View>
             <Text style={styles.heroSub}>Here&apos;s an overview of your loved one&apos;s care today.</Text>
           </View>
         </ImageBackground>
@@ -524,58 +506,17 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.panelCard, { marginTop: 14 }]}>
-          <View style={styles.chartTop}>
-            <Text style={styles.chartTitle}>Recent Updates</Text>
+        {dashboardLoading ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color="#F54E25" />
+            <Text style={styles.loadingText}>Loading dashboard…</Text>
           </View>
-          {dashboardLoading ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color="#F54E25" />
-              <Text style={styles.loadingText}>Loading dashboard…</Text>
-            </View>
-          ) : recentActivity.length === 0 ? (
-            <Text style={styles.emptyMuted}>No recent activity yet.</Text>
-          ) : (
-            recentActivity.slice(0, 6).map((item, idx) => {
-              const visual = activityVisual(item.text);
-              const dayLabel = activityDayLabel(item.at);
-              const timeLabel = (() => {
-                const d = new Date(item.at);
-                return Number.isNaN(d.getTime())
-                  ? ''
-                  : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-              })();
-              return (
-                <View key={item.id} style={styles.updateRow}>
-                  <View style={[styles.updateIconWrap, { backgroundColor: visual.bg }]}>
-                    <Ionicons name={visual.icon} size={18} color={visual.color} />
-                  </View>
-                  <View style={styles.updateMain}>
-                    <Text style={styles.updateText} numberOfLines={2}>
-                      {item.text}
-                    </Text>
-                    <Text style={styles.updateMeta}>
-                      {dayLabel}
-                      {timeLabel ? `, ${timeLabel}` : ''}
-                    </Text>
-                  </View>
-                  {idx === 0 && dayLabel === 'Today' ? (
-                    <View style={styles.updateNewBadge}>
-                      <Text style={styles.updateNewBadgeText}>New</Text>
-                    </View>
-                  ) : (
-                    <Ionicons name="chevron-forward" size={16} color={BH.textFaint} />
-                  )}
-                </View>
-              );
-            })
-          )}
-          {supabaseReadError ? (
-            <Text style={styles.errorInline} numberOfLines={3}>
-              {supabaseReadError}
-            </Text>
-          ) : null}
-        </View>
+        ) : null}
+        {supabaseReadError ? (
+          <Text style={styles.errorInline} numberOfLines={3}>
+            {supabaseReadError}
+          </Text>
+        ) : null}
 
         <View style={[styles.panelCard, { marginTop: 14 }]}>
           <View style={styles.tableHead}>
@@ -667,6 +608,103 @@ export default function HomeScreen() {
               );
             })
           )}
+        </View>
+
+        <View style={[styles.panelCard, { marginTop: 14 }]}>
+          <View style={styles.tableHeadLeft}>
+            <Ionicons name="bar-chart" size={16} color="#F54E25" />
+            <Text style={styles.panelTitleInline}>Dashboard Highlights</Text>
+          </View>
+          <View style={styles.highlightsGrid}>
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>Active Residents</Text>
+              <Text style={styles.overviewValue}>{patients.length}</Text>
+              <Text style={styles.overviewSub}>Currently under care</Text>
+            </View>
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>Pending Requests</Text>
+              <Text style={styles.overviewValue}>{totalPendingRequests}</Text>
+              <Text style={styles.overviewSub}>Admissions, discharges, and appointments</Text>
+            </View>
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>Average Progress</Text>
+              <Text style={styles.overviewValue}>{averageProgress}%</Text>
+              <Text style={styles.overviewSub}>Across all assigned patients</Text>
+            </View>
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>Reports Received</Text>
+              <Text style={styles.overviewValue}>{reportsReceivedCount}</Text>
+              <Text style={styles.overviewSub}>Weekly reports submitted by nurse</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.bottomTwoCol}>
+          <View style={[styles.panelCard, styles.bottomCard]}>
+            <View style={styles.tableHeadLeft}>
+              <Ionicons name="calendar" size={16} color="#F54E25" />
+              <Text style={styles.panelTitleInline}>Next Steps</Text>
+            </View>
+            <Text style={styles.nextSub}>Suggested actions to keep care coordination on track.</Text>
+            <View style={styles.cleanListItem}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cleanTitle}>Review request management queue</Text>
+                <Text style={styles.cleanDesc}>Check admission/discharge updates from staff</Text>
+              </View>
+              <View style={styles.miniPill}>
+                <Text style={styles.miniPillText}>{totalPendingRequests || 0} pending</Text>
+              </View>
+            </View>
+            <View style={styles.cleanListItem}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cleanTitle}>Open patient details</Text>
+                <Text style={styles.cleanDesc}>View status and progress of all patients</Text>
+              </View>
+              <TouchableOpacity style={styles.openBtnIndigo} onPress={() => router.navigate(TAB_ROUTES.patientDetails)}>
+                <Text style={styles.openBtnText}>Open</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.cleanListItem}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cleanTitle}>Check appointment slots</Text>
+                <Text style={styles.cleanDesc}>Plan follow-ups and visit schedules</Text>
+              </View>
+              <TouchableOpacity style={styles.openBtnGreen} onPress={() => router.navigate(TAB_ROUTES.appointments)}>
+                <Text style={styles.openBtnText}>View</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={[styles.panelCard, styles.bottomCard]}>
+            <View style={styles.tableHeadLeft}>
+              <Ionicons name="document-text" size={16} color="#F54E25" />
+              <Text style={styles.panelTitleInline}>Care Resources</Text>
+            </View>
+            <View style={styles.cleanListItem}>
+              <Text style={styles.cleanTitle}>View Weekly Reports</Text>
+              <TouchableOpacity style={styles.openBtnOrange} onPress={openWeeklyReportsModal}>
+                <Text style={styles.openBtnText}>Open</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.cleanListItem}>
+              <Text style={styles.cleanTitle}>Go to Services</Text>
+              <TouchableOpacity style={styles.openBtnIndigo} onPress={() => router.navigate(TAB_ROUTES.services)}>
+                <Text style={styles.openBtnText}>Open</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.cleanListItem}>
+              <Text style={styles.cleanTitle}>Messages</Text>
+              <TouchableOpacity style={styles.openBtnOrange} onPress={() => router.navigate(TAB_ROUTES.messages)}>
+                <Text style={[styles.openBtnText, { color: '#C2410C' }]}>Open</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.cleanListItem}>
+              <Text style={styles.cleanTitle}>Manage Your Profile</Text>
+              <TouchableOpacity style={styles.openBtnGreen} onPress={() => router.navigate(TAB_ROUTES.profile)}>
+                <Text style={styles.openBtnText}>Open</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
       </ScrollView>
@@ -1039,7 +1077,9 @@ const styles = StyleSheet.create({
     borderRadius: 22,
   },
   heroInner: { gap: 6 },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   heroTitle: {
+    flexShrink: 1,
     fontSize: isCompactScreen ? 21 : 24,
     fontWeight: '900',
     color: '#FFFFFF',
@@ -1047,6 +1087,9 @@ const styles = StyleSheet.create({
   },
   heroWave: {
     fontSize: isCompactScreen ? 18 : 20,
+  },
+  heroTitleIcon: {
+    marginTop: 2,
   },
   heroSub: {
     fontSize: 13,
@@ -1152,8 +1195,6 @@ const styles = StyleSheet.create({
   },
   quickActionBadgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF' },
   quickActionLabel: { fontSize: 11.5, fontWeight: '700', color: '#334155', textAlign: 'center' },
-  chartTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  chartTitle: { color: '#1B2559', fontWeight: '800', fontSize: 16 },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   loadingText: { color: '#64748B', fontWeight: '700', fontSize: 13 },
   errorInline: { marginTop: 10, color: '#EF4444', fontSize: 11, fontWeight: '700' },
@@ -1184,34 +1225,6 @@ const styles = StyleSheet.create({
     ...SHADOW.brand,
   },
   supportBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
-  updateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  updateIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  updateMain: { flex: 1, minWidth: 0 },
-  updateText: { fontSize: 13, fontWeight: '600', color: '#1E293B', lineHeight: 18 },
-  updateMeta: { fontSize: 11, color: '#94A3B8', fontWeight: '500', marginTop: 2 },
-  updateNewBadge: {
-    backgroundColor: BH.brandSurface,
-    borderWidth: 1,
-    borderColor: 'rgba(254, 215, 170, 0.6)',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  updateNewBadgeText: { fontSize: 10, fontWeight: '800', color: BH.brand700 },
   tableHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   tableHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelTitleInline: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
@@ -1498,4 +1511,43 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   reportFieldCardVal: { fontSize: 14, color: '#1A2B4A', fontWeight: '600', lineHeight: 21 },
+  highlightsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
+  overviewItem: {
+    width: (width - 36 - 32) / 2 - 5,
+    minWidth: 140,
+    flexGrow: 1,
+    borderRadius: 16,
+    backgroundColor: BH.slate50,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: BH.border,
+  },
+  overviewLabel: { fontSize: 12, color: '#64748B', fontWeight: '700' },
+  overviewValue: { fontSize: 22, fontWeight: '900', color: '#1B2559', marginTop: 6 },
+  overviewSub: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
+  bottomTwoCol: { marginTop: 14, gap: 12 },
+  bottomCard: { marginBottom: 0 },
+  nextSub: { color: '#64748B', fontSize: 13, marginBottom: 10, fontWeight: '600' },
+  cleanListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  cleanTitle: { color: '#1B2559', fontWeight: '700', fontSize: 13 },
+  cleanDesc: { color: '#64748B', fontSize: 12, marginTop: 2 },
+  miniPill: { backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  miniPillText: { color: '#92400E', fontSize: 11, fontWeight: '800' },
+  openBtnIndigo: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  openBtnGreen: { backgroundColor: '#ECFDF3', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  openBtnOrange: { backgroundColor: '#FFF1EB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  openBtnText: { fontSize: 11, fontWeight: '800', color: '#3730A3' },
 });

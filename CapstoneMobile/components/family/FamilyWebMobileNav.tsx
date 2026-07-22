@@ -1,12 +1,12 @@
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
-type IonName = React.ComponentProps<typeof Ionicons>['name'];
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { BH } from '../../theme/tokens';
+
+type IonName = React.ComponentProps<typeof Ionicons>['name'];
 
 /** Matches web FamilySidebar primary nav (Dashboard → Reports). Profile is reached via the header avatar. */
 export type FamilyNavTab =
@@ -60,7 +60,10 @@ const NAV_ITEMS: {
   },
 ];
 
-const INACTIVE = BH.textFaint;
+/** The center tab gets the raised, always-on circular treatment. */
+const POPPED_KEY: FamilyNavTab = 'progress';
+
+const INACTIVE = 'rgba(255,255,255,0.5)';
 const ACTIVE = BH.brand;
 
 export function FamilyWebMobileNav({ active }: Props) {
@@ -76,6 +79,24 @@ export function FamilyWebMobileNav({ active }: Props) {
       <View style={styles.row}>
         {NAV_ITEMS.map((item) => {
           const isActive = active !== 'none' && active === item.key;
+
+          if (item.key === POPPED_KEY) {
+            return (
+              <TouchableOpacity
+                key={item.key}
+                style={styles.poppedItem}
+                onPress={() => go(item.route)}
+                accessibilityRole="button"
+                accessibilityLabel={item.a11y}
+                accessibilityState={{ selected: isActive }}
+              >
+                <View style={styles.poppedCircle}>
+                  <Ionicons name={item.icon} size={24} color="#FFFFFF" />
+                </View>
+              </TouchableOpacity>
+            );
+          }
+
           return (
             <TouchableOpacity
               key={item.key}
@@ -86,7 +107,7 @@ export function FamilyWebMobileNav({ active }: Props) {
               accessibilityState={{ selected: isActive }}
             >
               <Ionicons name={item.icon} size={21} color={isActive ? ACTIVE : INACTIVE} />
-              {isActive ? <Text style={styles.navLabelActive}>{item.label}</Text> : null}
+              <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{item.label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -101,26 +122,24 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: BH.surface,
-    borderTopWidth: 1,
-    borderTopColor: BH.border,
-    paddingTop: 6,
-    minHeight: 64,
+    backgroundColor: BH.navy,
+    paddingTop: 10,
+    minHeight: 68,
     zIndex: 2000,
     ...Platform.select({
       ios: {
-        shadowColor: BH.slate900,
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.06,
+        shadowOpacity: 0.18,
         shadowRadius: 16,
       },
       android: { elevation: 12 },
-      web: { boxShadow: '0 -4px 16px rgba(15, 23, 42, 0.06)' },
+      web: { boxShadow: '0 -4px 16px rgba(0, 0, 0, 0.18)' },
     }),
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-around',
     paddingHorizontal: 2,
     minHeight: 52,
@@ -129,15 +148,46 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 4,
     minWidth: 0,
     paddingVertical: 4,
     minHeight: 48,
   },
-  navLabelActive: {
+  navLabel: {
     fontSize: 9,
+    fontWeight: '700',
+    color: INACTIVE,
+    letterSpacing: 0.1,
+  },
+  navLabelActive: {
     fontWeight: '800',
     color: ACTIVE,
-    letterSpacing: 0.1,
+  },
+  poppedItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    minWidth: 0,
+  },
+  poppedCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: BH.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -26,
+    borderWidth: 4,
+    borderColor: BH.navy,
+    ...Platform.select({
+      ios: {
+        shadowColor: BH.brand,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 10,
+      },
+      android: { elevation: 6 },
+      web: { boxShadow: '0 4px 14px rgba(245, 78, 37, 0.45)' },
+    }),
   },
 });
