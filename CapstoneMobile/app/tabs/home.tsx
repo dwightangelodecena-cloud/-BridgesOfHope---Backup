@@ -113,6 +113,34 @@ function formatRequestDateTime(iso: string): string {
   return `${datePart} • ${timePart}`;
 }
 
+const HERO_CHART_BARS = [34, 48, 42, 58, 52, 72, 66];
+
+const HERO_CHART_POINTS = [
+  { x: 5.7, y: 43.6 },
+  { x: 22.1, y: 34.3 },
+  { x: 38.6, y: 38.3 },
+  { x: 55.0, y: 27.7 },
+  { x: 71.4, y: 31.7 },
+  { x: 87.9, y: 18.5 },
+  { x: 104.3, y: 22.4 },
+];
+
+const HERO_CHART_LINE_HEIGHT = 2;
+
+const HERO_CHART_SEGMENTS = HERO_CHART_POINTS.slice(1).map((point, idx) => {
+  const prev = HERO_CHART_POINTS[idx];
+  const dx = point.x - prev.x;
+  const dy = point.y - prev.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+  return {
+    left: (prev.x + point.x) / 2 - length / 2,
+    top: (prev.y + point.y) / 2 - HERO_CHART_LINE_HEIGHT / 2,
+    width: length,
+    angle,
+  };
+});
+
 function capitalize(s: string): string {
   const trimmed = String(s || '').trim();
   return trimmed ? trimmed[0].toUpperCase() + trimmed.slice(1).toLowerCase() : '';
@@ -410,8 +438,6 @@ export default function HomeScreen() {
     { key: 'profile', icon: 'person-outline' as const, label: 'Profile', color: BH.brand, onPress: () => router.navigate(TAB_ROUTES.profile) },
   ];
 
-  const HERO_CHART_BARS = [34, 48, 42, 58, 52, 72, 66];
-
   return (
     <View style={[styles.container, { backgroundColor: BG }]}>
       <FamilyMobilePageHeader onBrandPress={scrollToTop} />
@@ -565,22 +591,31 @@ export default function HomeScreen() {
 
         <View style={styles.dashboardHero}>
           <View style={styles.heroBadge}>
-            <Ionicons name={greetingIcon} size={20} color={BH.brand} />
+            <Ionicons name="bar-chart-outline" size={20} color={BH.brand} />
           </View>
-          <Text style={styles.heroKicker}>
-            {greeting}, {firstName}
-          </Text>
           <Text style={styles.heroHeadline}>Dashboard Overview</Text>
           <Text style={styles.heroSubline}>Quick summary of patients, requests, and reports.</Text>
           <View style={styles.heroChartWrap} pointerEvents="none">
             {HERO_CHART_BARS.map((h, i) => (
               <View
-                key={i}
+                key={`bar-${i}`}
                 style={[
                   styles.heroChartBar,
-                  { height: `${h}%`, opacity: 0.35 + (i / HERO_CHART_BARS.length) * 0.65 },
+                  { height: `${h}%`, opacity: 0.3 + (i / HERO_CHART_BARS.length) * 0.4 },
                 ]}
               />
+            ))}
+            {HERO_CHART_SEGMENTS.map((seg, i) => (
+              <View
+                key={`seg-${i}`}
+                style={[
+                  styles.heroChartLine,
+                  { left: seg.left, top: seg.top, width: seg.width, transform: [{ rotate: `${seg.angle}deg` }] },
+                ]}
+              />
+            ))}
+            {HERO_CHART_POINTS.map((p, i) => (
+              <View key={`dot-${i}`} style={[styles.heroChartDot, { left: p.x - 3, top: p.y - 3 }]} />
             ))}
           </View>
         </View>
@@ -1188,13 +1223,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 14,
   },
-  heroKicker: { fontSize: 13, fontWeight: '700', color: '#FF8A65' },
   heroHeadline: {
     fontSize: isCompactScreen ? 22 : 25,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -0.4,
-    marginTop: 4,
   },
   heroSubline: {
     fontSize: 13,
@@ -1218,6 +1251,29 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 3,
     backgroundColor: '#6366F1',
+  },
+  heroChartLine: {
+    position: 'absolute',
+    height: HERO_CHART_LINE_HEIGHT,
+    borderRadius: 1,
+    backgroundColor: '#FF8A65',
+    ...Platform.select({
+      ios: { shadowColor: '#FF8A65', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 3 },
+      android: {},
+      web: { boxShadow: '0 0 5px rgba(255, 138, 101, 0.7)' },
+    }),
+  },
+  heroChartDot: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FF8A65',
+    ...Platform.select({
+      ios: { shadowColor: '#FF8A65', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 4 },
+      android: {},
+      web: { boxShadow: '0 0 6px rgba(255, 138, 101, 0.9)' },
+    }),
   },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
   statTile: {
