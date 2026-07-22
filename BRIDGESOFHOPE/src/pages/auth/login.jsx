@@ -756,7 +756,7 @@ const Login = () => {
             <div className="login-header">
               <h2 className="login-heading">Welcome Back</h2>
               <p className="login-subtitle">
-                Sign in to continue to your Kalinga Family Portal account.
+                Sign in to continue to your Kalinga account.
               </p>
             </div>
 

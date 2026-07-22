@@ -9,6 +9,7 @@ import Verify from '@/pages/auth/verify';
 import NewPass from '@/pages/auth/newpass';
 import AuthCallback from '@/pages/auth/auth-callback';
 import GetTheApp from '@/pages/public/GetTheApp';
+import { TermsOfService, PrivacyPolicy, CookiePolicy } from '@/pages/public/LegalPage';
 
 // Nurse & Admin Pages
 import NurseDashboard from '@/pages/nurse/nurse-dashboard';
@@ -36,6 +37,7 @@ import ProgramDischargeManagement from '@/pages/program/program-discharge';
 import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
+import CookieConsentBanner from '@/components/CookieConsentBanner';
 
 const ROUTE_TITLES = {
   '/': 'Home',
@@ -44,6 +46,9 @@ const ROUTE_TITLES = {
   '/verify': 'Verify',
   '/newpass': 'New password',
   '/get-the-app': 'Get the App',
+  '/terms': 'Terms of Service',
+  '/privacy': 'Privacy Policy',
+  '/cookies': 'Cookie Policy',
   '/nurse-dashboard': 'Nurse dashboard',
   '/nurse-calendar': 'Nurse calendar',
   '/nurse-medical-report': 'Medical report',
@@ -94,6 +99,14 @@ function RouteMeta() {
     favicon.setAttribute('type', 'image/png');
   }, [location.pathname]);
 
+  useEffect(() => {
+    // React Router doesn't reset scroll position on navigation — without
+    // this, following a link from partway down a long page (e.g. the
+    // landing page's footer) lands you at the same scrollY on the new,
+    // often much shorter page, which can put you right at its bottom.
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
   return null;
 }
 
@@ -111,6 +124,9 @@ function App() {
         <Route path="/newpass" element={<NewPass />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/get-the-app" element={<GetTheApp />} />
+        <Route path="/terms" element={<TermsOfService />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/cookies" element={<CookiePolicy />} />
 
         {/* Nurse Routes */}
         <Route
@@ -292,6 +308,7 @@ function App() {
           }
         />
         </Routes>
+        <CookieConsentBanner />
       </Router>
     </AppErrorBoundary>
   );

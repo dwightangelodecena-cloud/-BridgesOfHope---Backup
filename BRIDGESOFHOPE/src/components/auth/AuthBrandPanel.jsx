@@ -1,31 +1,19 @@
 import { Check } from 'lucide-react';
 import logo from '@/assets/kalingalogo.png';
 
+/** Web is staff-only now (Admin / Nurse / Program) — the Family Portal lives on the mobile app. */
 const LOGIN_FEATURES = [
   'Secure Access',
-  'Family Updates',
+  'Care Coordination',
   'Appointment Management',
-];
-
-const SIGNUP_FEATURES = [
-  'Quick & Easy Registration',
-  'Secure Family Access',
-  'Visit & Appointment Tools',
 ];
 
 const BRAND_VARIANTS = {
   login: {
-    title: 'Kalinga Family Portal',
+    title: 'Kalinga Staff Portal',
     description:
-      'Stay connected with your loved ones, manage visits, and receive important updates securely.',
+      'Manage resident care, appointments, and reports — securely, from one place.',
     features: LOGIN_FEATURES,
-  },
-  signup: {
-    eyebrow: 'Sign Up',
-    title: 'Join Kalinga Family Portal',
-    description:
-      'Create your family account to stay connected with loved ones, manage visits, and receive secure care updates.',
-    features: SIGNUP_FEATURES,
   },
   recovery: {
     eyebrow: 'Account Recovery',

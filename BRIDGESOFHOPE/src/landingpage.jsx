@@ -291,7 +291,12 @@ const LandingPage = () => {
   const [heroWordIndex, setHeroWordIndex] = useState(0);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
   const navigate = useNavigate();
-  const scrollSpyPauseRef = useRef(null);
+  /** Timestamp (ms) until which the scroll-spy should stand down during a
+      programmatic scroll — a plain time check evaluated fresh on every
+      scroll event, not a "did the un-pause timer fire" flag. Timers get
+      throttled in background/inactive tabs, so relying on a setTimeout to
+      reliably flip this back off could leave the spy stuck paused. */
+  const scrollSpyPauseUntilRef = useRef(0);
   const scrollSpyRafRef = useRef(null);
 
   const [siteContent, setSiteContent] = useState(() => loadSiteContent());
@@ -415,13 +420,8 @@ const LandingPage = () => {
     syncLpNavScrollOffsetVar();
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    const resumeSpy = (delayMs) => {
-      if (scrollSpyPauseRef.current) window.clearTimeout(scrollSpyPauseRef.current);
-      scrollSpyPauseRef.current = window.setTimeout(() => {
-        scrollSpyPauseRef.current = null;
-        syncLpNavScrollOffsetVar();
-        window.requestAnimationFrame(() => window.dispatchEvent(new Event('scroll')));
-      }, delayMs);
+    const pauseSpy = (delayMs) => {
+      scrollSpyPauseUntilRef.current = Date.now() + delayMs;
     };
 
     const applyScroll = (behavior) => {
@@ -455,11 +455,11 @@ const LandingPage = () => {
       applyScroll('auto');
       clearSnapOverride();
       snapExact();
-      resumeSpy(100);
+      pauseSpy(100);
       return;
     }
 
-    resumeSpy(950);
+    pauseSpy(950);
     applyScroll('smooth');
 
     let settled = false;
@@ -468,6 +468,9 @@ const LandingPage = () => {
       settled = true;
       clearSnapOverride();
       snapExact();
+      // Scroll has settled — resume the spy right away rather than waiting
+      // out the rest of the pause window.
+      scrollSpyPauseUntilRef.current = 0;
     };
     document.addEventListener('scrollend', finish, { passive: true, once: true });
     window.setTimeout(finish, 900);
@@ -477,11 +480,7 @@ const LandingPage = () => {
     const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     setActiveSection(null);
     if (smooth) {
-      if (scrollSpyPauseRef.current) window.clearTimeout(scrollSpyPauseRef.current);
-      scrollSpyPauseRef.current = window.setTimeout(() => {
-        scrollSpyPauseRef.current = null;
-        window.requestAnimationFrame(() => window.dispatchEvent(new Event('scroll')));
-      }, 820);
+      scrollSpyPauseUntilRef.current = Date.now() + 820;
     }
     window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
   }, []);
@@ -490,9 +489,19 @@ const LandingPage = () => {
     setOpenFaqIndex((prev) => (prev === index ? null : index));
   }, []);
 
+  /** Read via ref inside the scroll-spy effect below (not as a dependency) —
+      site content can re-sync (e.g. after the Supabase pull resolves) and
+      produce a new `navItems` array reference; if that were a dependency,
+      the scroll listener would tear down and re-attach at an unpredictable
+      moment, occasionally leaving the spy stuck. */
+  const navItemsRef = useRef(m.navItems);
+  useEffect(() => {
+    navItemsRef.current = m.navItems;
+  }, [m.navItems]);
+
   useEffect(() => {
     const updateActiveFromScroll = () => {
-      if (scrollSpyPauseRef.current !== null) return;
+      if (Date.now() < scrollSpyPauseUntilRef.current) return;
       syncLpNavScrollOffsetVar();
 
       const y = window.scrollY;
@@ -501,20 +510,28 @@ const LandingPage = () => {
       const docHeight = docEl.scrollHeight;
       const endSlack = 16;
 
-      /** Near document end: highlight Contact (footer) so nav does not stick on #cta-final. */
-      if (viewBottom >= docHeight - endSlack) {
-        setActiveSection((prev) => (prev === 'contact' ? prev : 'contact'));
-        return;
-      }
-
       /** Align spy with the same offset used for scroll targets (nav + gap). */
       const activationY = y + getNavScrollPaddingPx();
       let current = null;
-      for (const item of m.navItems) {
+      for (const item of navItemsRef.current) {
         const sec = document.getElementById(item.id);
         if (!sec) continue;
         if (sectionDocumentTop(sec) <= activationY) current = item.id;
       }
+
+      /** Fallback only: at max scroll, a short footer under a tall viewport
+          can make its own activation threshold unreachable, so the loop
+          above would never naturally select it. Force Contact in that case
+          — but only once the footer has actually scrolled into view, so
+          this never overrides a real section (e.g. FAQ) just because the
+          remaining page height happens to be short. */
+      if (current !== 'contact' && viewBottom >= docHeight - endSlack) {
+        const footerSec = document.getElementById('contact');
+        if (footerSec && footerSec.getBoundingClientRect().top < window.innerHeight) {
+          current = 'contact';
+        }
+      }
+
       setActiveSection((prev) => (prev === current ? prev : current));
     };
 
@@ -555,9 +572,10 @@ const LandingPage = () => {
       window.removeEventListener('orientationchange', onResizeSync);
       if (resizeObserver) resizeObserver.disconnect();
       if (scrollSpyRafRef.current !== null) cancelAnimationFrame(scrollSpyRafRef.current);
-      if (scrollSpyPauseRef.current) window.clearTimeout(scrollSpyPauseRef.current);
     };
-  }, [m.navItems]);
+    // Mount once — navItems is read from navItemsRef, so a content re-sync
+    // never tears down and re-attaches this listener mid-session.
+  }, []);
 
   useEffect(() => {
     const n = heroWords.length || 1;
@@ -773,6 +791,16 @@ const LandingPage = () => {
           padding-block: 0;
           padding-inline: 0;
           justify-content: flex-start;
+        }
+        /* This section's own content (headline + button + phone mockup) is
+           much shorter than the other snap sections — forcing it to a full
+           100svh like the rest just padded it out with dead space below the
+           content. Let it size to its own content instead, same as the CMS
+           and footer sections below already do. */
+        .footer-cta-section.snap-page {
+          min-height: auto;
+          padding-top: clamp(2.5rem, 6vw, 3.5rem);
+          padding-bottom: clamp(1.5rem, 4vw, 2.25rem);
         }
         /*
           Single-child .container snap sections: do not stretch to 100% width.
@@ -1001,18 +1029,18 @@ const LandingPage = () => {
           background: none;
           padding: 0;
           font: inherit;
-          transition: transform 0.35s var(--ease-out-expo), opacity 0.25s var(--ease-out-expo);
+          transition: transform 0.35s var(--ease-out-expo);
         }
-        .nav-logo:hover { transform: scale(1.02); opacity: 0.92; }
+        .nav-logo:hover { transform: scale(1.025); }
+        .nav-logo:active { transform: scale(0.98); transition-duration: 120ms; }
         .nav-logo:focus,
         .nav-logo:focus-visible {
           outline: none;
           box-shadow: none;
         }
-        .nav-logo img { height: 44px; width: auto; display: block; }
         /* Brand-accent underline — echoes the pill/hover language used by the
-           nav links elsewhere in this header, so the wordmark feels like part
-           of the same interactive system instead of static text. */
+           nav links elsewhere in this header, so the lockup feels like part
+           of the same interactive system instead of static branding. */
         .nav-logo::after {
           content: '';
           position: absolute;
@@ -1027,26 +1055,28 @@ const LandingPage = () => {
           transition: transform 0.4s var(--ease-out-expo);
         }
         .nav-logo:hover::after { transform: scaleX(1); }
-        /* Default wordmark (no admin-uploaded custom logo) — warm sunrise
-           gradient from ink to the terracotta accent, matching the landing
-           page's own editorial palette rather than the auth navy/orange. */
+        /* Text-only wordmark, standing on its own — no icon chip. A confident
+           logotype is a legitimate top-tier pattern on its own (Stripe,
+           Linear), so the weight/size/gradient below all pull double duty as
+           both "logo" and "nav label" at once. */
         .nav-wordmark {
           font-family: 'DM Sans', var(--font-sans);
           font-weight: 900;
-          font-size: 1.55rem;
-          letter-spacing: 0.01em;
+          font-size: 1.65rem;
+          letter-spacing: -0.02em;
           text-transform: uppercase;
           line-height: 1;
           white-space: nowrap;
-          background: linear-gradient(95deg, var(--ink-2) 0%, var(--accent) 42%, var(--accent-2) 100%);
+          background: linear-gradient(95deg, var(--accent-h) 0%, var(--accent) 58%, var(--accent-2) 100%);
           -webkit-background-clip: text;
           background-clip: text;
           -webkit-text-fill-color: transparent;
           color: var(--accent);
-          text-shadow: 0 2px 10px rgba(217, 79, 42, 0.12);
+          text-shadow: 0 2px 14px rgba(217, 79, 42, 0.16);
         }
-        /* First letter reads as a small anchor mark — a quiet nod to the old
-           "K" monogram — solid-colored rather than clipped by the gradient. */
+        /* First letter breaks from the gradient as a solid anchor — a quiet
+           monogram-in-wordmark touch that gives the text some structure
+           instead of reading as one flat block of color. */
         .nav-wordmark-k {
           color: var(--accent-h);
           -webkit-text-fill-color: var(--accent-h);
@@ -1149,6 +1179,9 @@ const LandingPage = () => {
 
         .nav-right { display: flex; align-items: center; gap: var(--s-1); }
         .nav-right .btn-primary {
+          position: relative;
+          overflow: hidden;
+          font-weight: 700;
           background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
           border-color: rgba(217,79,42,0.35);
           box-shadow: 0 8px 24px var(--accent-glow), 0 2px 8px rgba(12,10,8,0.08);
@@ -1157,6 +1190,23 @@ const LandingPage = () => {
           background: linear-gradient(135deg, var(--accent-h) 0%, var(--accent) 100%);
           box-shadow: 0 12px 32px rgba(217,79,42,0.35);
         }
+        .nav-right .btn-primary svg { position: relative; z-index: 1; transition: transform 0.3s var(--ease-out-expo); }
+        .nav-right .btn-primary:hover svg { transform: translateX(3px); }
+        .nav-right .btn-primary span { position: relative; z-index: 1; }
+        /* Diagonal shine sweep on hover — a quiet premium touch, restrained
+           enough not to feel gimmicky on a healthcare CTA. */
+        .nav-right .btn-primary::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -75%;
+          width: 45%;
+          height: 100%;
+          background: linear-gradient(115deg, transparent, rgba(255,255,255,0.4), transparent);
+          transform: skewX(-18deg);
+          transition: left 0.65s var(--ease-out-expo);
+        }
+        .nav-right .btn-primary:hover::before { left: 130%; }
 
         .btn-primary {
           display: inline-flex; align-items: center; gap: var(--s-2);
@@ -1242,12 +1292,8 @@ const LandingPage = () => {
           letter-spacing: 0.06em;
           color: var(--ink-3);
         }
-        .nav-drawer-brand img {
-          height: 28px;
-          width: auto;
-        }
         .nav-drawer-brand .nav-wordmark {
-          font-size: 1.15rem;
+          font-size: 1.2rem;
         }
         .nav-drawer-links {
           display: grid;
@@ -1558,7 +1604,7 @@ const LandingPage = () => {
           padding: clamp(1.15rem, 2.2vw, 1.42rem) clamp(1.05rem, 2.1vw, 1.28rem);
           background: linear-gradient(160deg, rgba(255,255,255,0.98) 0%, rgba(252,250,247,0.95) 100%);
           border: 1px solid rgba(224,218,208,0.9);
-          border-radius: 18px;
+          border-radius: var(--r-md);
           box-shadow:
             0 1px 0 rgba(255,255,255,0.95) inset,
             0 2px 8px rgba(42,36,32,0.045),
@@ -1711,7 +1757,7 @@ const LandingPage = () => {
           text-align: center;
           min-height: 100%;
           padding: clamp(1.35rem, 2.4vw, 1.75rem) clamp(1.1rem, 2vw, 1.35rem);
-          border-radius: 18px;
+          border-radius: var(--r-md);
           background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(253, 252, 250, 0.94) 100%);
           border: 1px solid rgba(224, 218, 208, 0.88);
           box-shadow:
@@ -2074,7 +2120,7 @@ const LandingPage = () => {
           padding: var(--s-2);
           background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(253, 252, 250, 0.88) 100%);
           border: 1px solid rgba(224, 218, 208, 0.92);
-          border-radius: 18px;
+          border-radius: var(--r-md);
           box-shadow:
             var(--shadow-s),
             0 1px 0 rgba(255, 255, 255, 0.9) inset;
@@ -2741,7 +2787,7 @@ const LandingPage = () => {
           flex-direction: column;
           min-height: 0;
           padding: clamp(1.35rem, 2.2vw, 1.65rem);
-          border-radius: 18px;
+          border-radius: var(--r-md);
           background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(253, 252, 250, 0.92) 55%, rgba(250, 248, 244, 0.98) 100%);
           border: 1px solid rgba(224, 218, 208, 0.92);
           box-shadow:
@@ -2950,7 +2996,7 @@ const LandingPage = () => {
         .faq-item {
           background: var(--white);
           border: 1px solid rgba(224,218,208,0.92);
-          border-radius: 18px;
+          border-radius: var(--r-md);
           box-shadow: var(--shadow-s);
           overflow: hidden;
           transition: border-color var(--transition-ui), box-shadow var(--transition-ui), transform var(--transition-ui);
@@ -3028,7 +3074,10 @@ const LandingPage = () => {
           background: var(--gradient-surface);
           border-top: 1px solid rgba(224,218,208,0.75);
           padding-top: var(--nav-section-inset-y);
-          padding-bottom: var(--nav-section-inset-y);
+          /* Smaller than the top padding on purpose — the footer right below
+             this section adds its own top padding, so a full section-inset
+             here would stack into a big dead gap right at the seam. */
+          padding-bottom: clamp(1.25rem, 3vw, 2rem);
           overflow: hidden; position: relative;
         }
         .footer-cta-section::before {
@@ -3043,7 +3092,11 @@ const LandingPage = () => {
           display: grid;
           grid-template-columns: minmax(0, 1.1fr) minmax(300px, 460px);
           gap: clamp(var(--s-5), 4vw, var(--s-10));
-          align-items: start;
+          /* Centered, not top-aligned — the copy column is much shorter than
+             the phone mockup, and align-items:start left a big dead gap
+             below the button (the row height matches the taller column,
+             and the shorter one just sat pinned to the top of it). */
+          align-items: center;
           text-align: left;
           position: relative; z-index: 1;
         }
@@ -3063,19 +3116,18 @@ const LandingPage = () => {
         }
         .cta-contact-grid {
           display: grid; grid-template-columns: 1fr;
-          gap: var(--s-4);
           max-width: none;
-          margin: var(--s-5) 0 0;
+          margin: 0;
         }
         .cta-phone-mockup-wrap {
           display: grid;
-          place-items: end center;
+          place-items: start center;
           width: 100%;
-          margin-top: var(--s-2);
         }
         .cta-phone-mockup {
           display: block;
           width: min(100%, 680px);
+          max-height: 480px;
           height: auto;
           object-fit: contain;
           background: transparent;
@@ -3085,29 +3137,6 @@ const LandingPage = () => {
           padding: 1rem 1.875rem;
           font-size: 0.9375rem;
         }
-        .cta-contact-box {
-          display: flex; align-items: center; gap: var(--s-3);
-          padding: var(--s-4) var(--s-4);
-          background: var(--white);
-          border: 1px solid rgba(224,218,208,0.92);
-          border-radius: 18px; cursor: pointer;
-          font-family: var(--font-sans);
-          font-size: 0.9rem; font-weight: 600; color: var(--ink);
-          box-shadow: var(--shadow-s);
-          transition: transform var(--transition-ui), box-shadow var(--transition-ui), border-color var(--transition-ui), background var(--transition-ui);
-        }
-        .cta-contact-box:hover {
-          transform: translateY(-3px); box-shadow: var(--shadow-m);
-          border-color: rgba(217,79,42,0.4);
-          background: var(--surface);
-        }
-        .cta-contact-box:active {
-          transform: translateY(-1px) scale(0.99);
-        }
-        .cta-contact-box svg { color: var(--accent); flex-shrink: 0; }
-        .cta-contact-box-text { text-align: left; flex: 1; min-width: 0; }
-        .cta-contact-box-label { font-size: 0.9rem; font-weight: 600; color: var(--ink); }
-        .cta-contact-box-detail { font-size: 0.875rem; color: var(--ink-3); font-weight: 400; margin-top: 6px; line-height: 1.55; }
 
         /* ══════════════════════════════════════════
            FOOTER INFO — reads as site footer, not a content section
@@ -3141,14 +3170,14 @@ const LandingPage = () => {
           font-size: 0.9375rem;
           line-height: 1.72;
           max-width: 22rem;
-          color: rgba(255,255,255,0.5);
+          color: rgba(255,255,255,0.64);
         }
         .footer-col-head {
           font-size: 0.6875rem;
           font-weight: 700;
           letter-spacing: 0.16em;
           text-transform: uppercase;
-          color: rgba(255,255,255,0.38);
+          color: rgba(255,255,255,0.52);
           margin-bottom: 1.15rem;
           padding-bottom: 0.65rem;
           border-bottom: 1px solid rgba(255,255,255,0.1);
@@ -3167,17 +3196,16 @@ const LandingPage = () => {
         .footer-legal-link {
           display: block;
           font-size: 0.875rem;
-          color: rgba(255,255,255,0.48);
+          color: rgba(255,255,255,0.62);
           text-decoration: none;
           padding: 0.32rem 0;
           margin-bottom: 0.15rem;
           border-radius: 4px;
-          transition: color 0.25s var(--ease-out-expo), transform 0.25s var(--ease-out-expo), padding-left 0.25s var(--ease-out-expo);
+          transition: color 0.25s var(--ease-out-expo), padding-left 0.25s var(--ease-out-expo);
         }
         .footer-legal-link:hover {
           color: #fff;
           padding-left: 6px;
-          transform: translateX(0);
         }
         .footer-bottom-strip {
           border-top: 1px solid rgba(255,255,255,0.08);
@@ -3258,11 +3286,9 @@ const LandingPage = () => {
           }
           .footer-cta-copy { max-width: none; margin-inline: auto; }
           .footer-cta-section .lead { margin-inline: auto; }
-          .cta-contact-grid { max-width: 420px; margin: var(--s-5) auto 0; }
-          .cta-contact-box-text { text-align: center; }
+          .cta-contact-grid { max-width: 420px; margin: 0 auto; }
           .cta-phone-mockup-wrap {
             place-items: center;
-            margin-top: var(--s-3);
           }
           .cta-phone-mockup {
             width: min(100%, 520px);
@@ -3352,7 +3378,7 @@ const LandingPage = () => {
             min-height: 76px;
             padding: 10px 22px 10px 24px;
           }
-          .nav-logo img { height: 48px; }
+          .nav-wordmark { font-size: 1.8rem; }
           .nav-links-desktop a {
             font-size: 0.8rem;
             padding: 11px 14px;
@@ -3362,8 +3388,7 @@ const LandingPage = () => {
             font-size: 0.83rem;
           }
           .problem-card p,
-          .value-photo-desc,
-          .cta-contact-box-detail { font-size: 0.93rem; }
+          .value-photo-desc { font-size: 0.93rem; }
           .testi-quote { font-size: 1.02rem; }
           .about-grid {
             gap: clamp(var(--s-8), 6vw, var(--s-12));
@@ -3414,7 +3439,7 @@ const LandingPage = () => {
             inset: -5px;
             border-radius: 22px;
           }
-          .nav-logo img { height: 36px; }
+          .nav-wordmark { font-size: 1.35rem; }
           .nav-right { gap: 6px; }
           .nav-right .btn-primary {
             padding: 8px 12px;
@@ -3431,7 +3456,7 @@ const LandingPage = () => {
           .hero-actions { width: 100%; }
           .btn-hero-primary, .btn-hero-ghost { width: 100%; justify-content: center; }
           .btn-hero-primary, .btn-hero-ghost { min-height: 46px; }
-          .problem-card, .cta-contact-box { padding: var(--s-4); }
+          .problem-card { padding: var(--s-4); }
           .problem-card {
             grid-template-columns: auto 1fr;
             gap: var(--s-3);
@@ -3603,7 +3628,7 @@ const LandingPage = () => {
           </LayoutGroup>
           <div className="nav-right">
             <button type="button" className="btn-primary" onClick={() => navigate('/login')}>
-              Login <ArrowRight size={15} />
+              <span>Login</span> <ArrowRight size={15} />
             </button>
             <button type="button" className={`hamburger-btn${isMenuOpen ? ' open' : ''}`} onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Open menu">
               <Menu size={24} />

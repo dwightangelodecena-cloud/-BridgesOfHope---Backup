@@ -1,4 +1,5 @@
 import React, { Fragment } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Phone,
   Mail,
@@ -655,15 +656,15 @@ export function LandingPageBodySections({
                     </div>
                     <div>
                       <h4 className="footer-col-head">{m.footer.legalTitle}</h4>
-                      <a href="#" className="footer-legal-link">
+                      <Link to="/terms" className="footer-legal-link">
                         Terms of Service
-                      </a>
-                      <a href="#" className="footer-legal-link">
+                      </Link>
+                      <Link to="/privacy" className="footer-legal-link">
                         Privacy Policy
-                      </a>
-                      <a href="#" className="footer-legal-link">
+                      </Link>
+                      <Link to="/cookies" className="footer-legal-link">
                         Cookie Policy
-                      </a>
+                      </Link>
                     </div>
                   </div>
                 </ScrollReveal>
