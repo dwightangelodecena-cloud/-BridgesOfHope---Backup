@@ -1118,7 +1118,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     overflow: 'hidden',
     backgroundColor: '#0f172a',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.22,
@@ -1139,7 +1139,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  heroInner: { gap: 1, marginBottom: 40, maxWidth: '58%' },
+  heroInner: { gap: 1, maxWidth: '58%' },
   heroKicker: {
     fontSize: isCompactScreen ? 15 : 17,
     fontWeight: '800',
