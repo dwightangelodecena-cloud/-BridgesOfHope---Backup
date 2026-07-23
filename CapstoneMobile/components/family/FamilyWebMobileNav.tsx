@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, Text, Image, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -97,7 +97,12 @@ export function FamilyWebMobileNav({ active }: Props) {
                   end={{ x: 1, y: 1 }}
                   style={styles.poppedCircle}
                 >
-                  <Ionicons name={item.icon} size={24} color="#FFFFFF" />
+                  <Image
+                    source={require('../../assets/images/request.png')}
+                    style={styles.poppedIcon}
+                    resizeMode="contain"
+                    tintColor="#FFFFFF"
+                  />
                 </LinearGradient>
               </TouchableOpacity>
             );
@@ -175,24 +180,28 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     minWidth: 0,
   },
+  poppedIcon: {
+    width: 32,
+    height: 32,
+  },
   poppedCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -26,
-    borderWidth: 5,
+    marginTop: -34,
+    borderWidth: 6,
     borderColor: BH.surface,
     ...Platform.select({
       ios: {
         shadowColor: BH.brand,
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.32,
-        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 18,
       },
-      android: { elevation: 6 },
-      web: { boxShadow: '0 6px 18px rgba(245, 78, 37, 0.35)' },
+      android: { elevation: 8 },
+      web: { boxShadow: '0 8px 22px rgba(245, 78, 37, 0.4)' },
     }),
   },
 });
