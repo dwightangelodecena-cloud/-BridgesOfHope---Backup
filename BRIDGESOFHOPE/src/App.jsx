@@ -26,6 +26,7 @@ import Analytics from './pages/admin/analytics';
 import UserManagement from '@/pages/admin/user-management';
 import AdmissionManagement from '@/pages/admin/admission-management';
 import DischargeManagement from '@/pages/admin/discharge-management';
+import NotificationTemplatesPage from '@/pages/admin/notification-templates';
 import StaffManagement from '@/pages/admin/staff-management';
 import ContentManagement from '@/pages/admin/content-management';
 import AdminProfile from '@/pages/admin/admin-profile';
@@ -65,6 +66,7 @@ const ROUTE_TITLES = {
   '/admin-content-management': 'Content management',
   '/admin-profile': 'Admin profile',
   '/admin-appointments': 'Admin appointments',
+  '/admin-notification-templates': 'Notification templates',
   '/admin-reports': 'Printable reports',
   '/admin-messages': 'Messages',
 };
@@ -272,6 +274,14 @@ function App() {
           element={
             <RoleGuard allowedRoles={['admin']}>
               <ContentManagement />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-notification-templates"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <NotificationTemplatesPage />
             </RoleGuard>
           }
         />

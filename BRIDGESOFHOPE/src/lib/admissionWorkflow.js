@@ -2,6 +2,8 @@
 
 export const ADMISSION_STATUSES = {
   PROCESSING: 'processing',
+  AWAITING_SCHEDULE_REVIEW: 'awaiting_schedule_review',
+  AWAITING_GUARDIAN_RESPONSE: 'awaiting_guardian_response',
   IN_REVIEW: 'in_review',
   ACCEPTED: 'approved',
   REJECTED: 'declined',
@@ -10,6 +12,8 @@ export const ADMISSION_STATUSES = {
 export const ADMISSION_STATUS_LABELS = {
   pending: 'Processing',
   processing: 'Processing',
+  awaiting_schedule_review: 'Awaiting Schedule Review',
+  awaiting_guardian_response: 'Awaiting Guardian Response',
   in_review: 'In Review',
   approved: 'Accepted',
   accepted: 'Accepted',
@@ -26,19 +30,34 @@ export function admissionStatusPillClass(status) {
   const key = String(status || '').toLowerCase();
   if (key === 'approved' || key === 'accepted') return 'am-pill--ok';
   if (key === 'processing' || key === 'pending') return 'am-pill--pending';
-  if (key === 'in_review') return 'am-pill--warn';
+  if (key === 'in_review' || key === 'awaiting_schedule_review' || key === 'awaiting_guardian_response') return 'am-pill--warn';
   if (key === 'declined' || key === 'rejected') return 'am-pill--bad';
   return 'am-pill--muted';
 }
 
+/** Admin can act on a meeting (confirm/counter a guardian proposal, or cold-start one) in these statuses. */
 export function canScheduleMeeting(row) {
   const st = String(row?.dbStatus || row?.status || '').toLowerCase();
-  return st === 'processing' || st === 'pending';
+  return st === 'processing' || st === 'pending' || st === 'awaiting_schedule_review';
+}
+
+/** True once the guardian has a proposed slot admin hasn't decided on yet. */
+export function hasPendingGuardianProposal(row) {
+  const st = String(row?.dbStatus || row?.status || '').toLowerCase();
+  return st === 'awaiting_schedule_review' && Boolean(row?.preferredMeetingDate || row?.preferred_meeting_date);
+}
+
+/** True while admin is waiting on the guardian to accept/counter a suggested time — nothing for admin to do but wait. */
+export function isAwaitingGuardianResponse(row) {
+  const st = String(row?.dbStatus || row?.status || '').toLowerCase();
+  return st === 'awaiting_guardian_response';
 }
 
 export function canMarkMeetingComplete(row) {
   const st = String(row?.dbStatus || row?.status || '').toLowerCase();
-  return (st === 'processing' || st === 'pending') && Boolean(row?.meetingDate || row?.meeting_date);
+  const hasMeeting = Boolean(row?.meetingDate || row?.meeting_date);
+  const confirmedByFamily = Boolean(row?.meetingConfirmedByFamily ?? row?.meeting_confirmed_by_family);
+  return (st === 'processing' || st === 'pending') && hasMeeting && confirmedByFamily;
 }
 
 export function canApproveAdmission(row) {

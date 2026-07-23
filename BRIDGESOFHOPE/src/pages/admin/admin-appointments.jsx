@@ -40,6 +40,11 @@ import {
 } from '@/lib/visitationAppointments';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import {
+  insertFamilyNotification,
+  fetchNotificationTemplates,
+  renderNotificationTemplate,
+} from '@/lib/notificationTemplates';
 
 export default function AdminAppointmentsPage() {
   const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -77,6 +82,18 @@ export default function AdminAppointmentsPage() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const [notifyTemplates, setNotifyTemplates] = useState([]);
+  /** Confirm-before-send modal for Approve/Decline (Reschedule already confirms via its own modal). */
+  const [notifyConfirmModal, setNotifyConfirmModal] = useState({ open: false, row: null, action: null });
+
+  useEffect(() => {
+    (async () => {
+      const res = await fetchNotificationTemplates();
+      if (res.ok) setNotifyTemplates(res.templates);
+    })();
+  }, []);
+
+  const templateBody = (templateKey) => notifyTemplates.find((t) => t.template_key === templateKey)?.body || '';
 
   useEffect(() => {
     const load = async () => {
@@ -249,14 +266,42 @@ export default function AdminAppointmentsPage() {
     window.dispatchEvent(new Event(APP_DATA_REFRESH));
   };
 
+  /** Runs after admin reviews the notification preview and clicks confirm in notifyConfirmModal. */
+  const confirmNotifyDecision = () => {
+    const { row, action } = notifyConfirmModal;
+    if (!row) return;
+    if (action === 'Approved') {
+      applyDecision(row, 'Approved', row.preferredDate || '', row.preferredTime || '');
+      if (row.familyId) {
+        void insertFamilyNotification({
+          familyId: row.familyId,
+          templateKey: 'visitation_approved',
+          vars: { patient_name: row.patientName, confirmed_date: row.preferredDate || '', confirmed_time: row.preferredTime || '' },
+          relatedType: 'visitation_request',
+          relatedId: row.id,
+        });
+      }
+    } else if (action === 'Declined') {
+      applyDecision(row, 'Declined', '', '');
+      if (row.familyId) {
+        void insertFamilyNotification({
+          familyId: row.familyId,
+          templateKey: 'visitation_declined',
+          vars: { patient_name: row.patientName },
+          relatedType: 'visitation_request',
+          relatedId: row.id,
+        });
+      }
+    }
+    setNotifyConfirmModal({ open: false, row: null, action: null });
+  };
+
   const decide = (row, action) => {
     if (!row?.id) return;
     const current = queue.find((q) => String(q.id) === String(row.id)) || row;
     if (normalizeVisitationStatus(current.status) !== 'Requested') return;
-    if (action === 'Approved') {
-      applyDecision(row, 'Approved', row.preferredDate || '', row.preferredTime || '');
-    } else if (action === 'Declined') {
-      applyDecision(row, 'Declined', '', '');
+    if (action === 'Approved' || action === 'Declined') {
+      setNotifyConfirmModal({ open: true, row, action });
     } else {
       const initialDate = row.preferredDate || row.confirmedDate || todayIso;
       const existingNote = String(row.adminNote || '').trim();
@@ -1183,11 +1228,16 @@ export default function AdminAppointmentsPage() {
                   />
                 </div>
               ) : null}
-              <div style={{ fontSize: 11, color: '#64748b' }}>
-                Family notification preview:{' '}
-                {rescheduleModal.reasonType === 'Other reason'
-                  ? (String(rescheduleModal.otherReason || '').trim() || '—')
-                  : (String(rescheduleModal.reasonType || '').trim() || '—')}
+              <div style={{ fontSize: 11, color: '#64748b', background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: 8, padding: '8px 10px' }}>
+                <strong>Guardian will be notified:</strong>{' '}
+                {renderNotificationTemplate(templateBody('visitation_rescheduled'), {
+                  patient_name: rescheduleModal.row?.patientName || '',
+                  confirmed_date: rescheduleModal.date,
+                  confirmed_time: rescheduleModal.time,
+                  reason: rescheduleModal.reasonType === 'Other reason'
+                    ? (String(rescheduleModal.otherReason || '').trim() || '—')
+                    : (String(rescheduleModal.reasonType || '').trim() || '—'),
+                })}
               </div>
             </div>
             <div className="ap-day-modal-foot">
@@ -1207,10 +1257,71 @@ export default function AdminAppointmentsPage() {
                     : String(rescheduleModal.reasonType || '').trim();
                   if (!date || !time || !reason) return;
                   applyDecision(rescheduleModal.row, 'Rescheduled', date, time, { allowNonPending: true, adminNote: reason });
+                  if (rescheduleModal.row?.familyId) {
+                    void insertFamilyNotification({
+                      familyId: rescheduleModal.row.familyId,
+                      templateKey: 'visitation_rescheduled',
+                      vars: { patient_name: rescheduleModal.row.patientName, confirmed_date: date, confirmed_time: time, reason },
+                      relatedType: 'visitation_request',
+                      relatedId: rescheduleModal.row.id,
+                    });
+                  }
                   setRescheduleModal({ open: false, row: null, date: '', time: '13:00', reasonType: '', otherReason: '' });
                 }}
               >
                 Save reschedule
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {notifyConfirmModal.open ? (
+        <div
+          className="ap-day-modal-backdrop"
+          role="presentation"
+          onClick={() => setNotifyConfirmModal({ open: false, row: null, action: null })}
+        >
+          <div className="ap-day-modal" style={{ maxWidth: 420 }} role="dialog" aria-modal="true" onClick={(ev) => ev.stopPropagation()}>
+            <div className="ap-day-modal-head">
+              <div>
+                <div className="ap-day-modal-title">
+                  {notifyConfirmModal.action === 'Approved' ? 'Approve visitation' : 'Decline visitation'}
+                </div>
+              </div>
+              <button type="button" className="ap-day-modal-close" onClick={() => setNotifyConfirmModal({ open: false, row: null, action: null })}>
+                <ModalCloseGlyph />
+              </button>
+            </div>
+            <div style={{ padding: '4px 20px 20px' }}>
+              <p style={{ fontSize: 13, color: '#334155', margin: '0 0 10px' }}>
+                {notifyConfirmModal.action === 'Approved' ? 'Approve' : 'Decline'} the visitation request for{' '}
+                <strong>{notifyConfirmModal.row?.patientName}</strong>?
+              </p>
+              <div style={{ fontSize: 11, color: '#64748b', background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: 8, padding: '8px 10px', marginBottom: 16 }}>
+                <strong>Guardian will be notified:</strong>{' '}
+                {notifyConfirmModal.row
+                  ? renderNotificationTemplate(
+                      templateBody(notifyConfirmModal.action === 'Approved' ? 'visitation_approved' : 'visitation_declined'),
+                      {
+                        patient_name: notifyConfirmModal.row.patientName,
+                        confirmed_date: notifyConfirmModal.row.preferredDate || '',
+                        confirmed_time: notifyConfirmModal.row.preferredTime || '',
+                      }
+                    )
+                  : ''}
+              </div>
+            </div>
+            <div className="ap-day-modal-foot">
+              <button
+                type="button"
+                onClick={() => setNotifyConfirmModal({ open: false, row: null, action: null })}
+                style={{ border: '1px solid #E2E8F0', background: 'white', color: '#334155', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, marginRight: 8 }}
+              >
+                Cancel
+              </button>
+              <button type="button" className="ap-day-modal-btn-primary" onClick={confirmNotifyDecision}>
+                {notifyConfirmModal.action === 'Approved' ? 'Approve & Notify' : 'Decline & Notify'}
               </button>
             </div>
           </div>

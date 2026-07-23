@@ -879,6 +879,46 @@ export default function AdmissionForm() {
         />
       ) : null}
 
+      {/* @react-native-community/datetimepicker has no web implementation, so the
+          Android/iOS branches below never render anything on web — fall back to the
+          browser's native <input type="date">, which gives a real calendar/picker UI. */}
+      <Modal visible={Platform.OS === 'web' && birthDateModal} transparent animationType="fade" onRequestClose={() => setBirthDateModal(false)}>
+        <View style={styles.dateIosModalRoot}>
+          <Pressable style={styles.dateIosBackdrop} onPress={() => setBirthDateModal(false)} />
+          <View style={[styles.dateIosSheet, { paddingBottom: insets.bottom + 12 }]}>
+            <View style={styles.dateIosHeader}>
+              <View style={styles.dateIosHeaderSide} />
+              <Text style={styles.dateIosTitle}>Date of birth</Text>
+              <View style={[styles.dateIosHeaderSide, styles.dateIosHeaderSideEnd]}>
+                <TouchableOpacity onPress={() => setBirthDateModal(false)}>
+                  <Text style={styles.dateIosHeaderBtnPrimary}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.dateIosPickerWrap}>
+              {React.createElement('input', {
+                type: 'date',
+                autoFocus: true,
+                value: formData.patientBirthDate || '',
+                max: formatIsoDate(new Date()),
+                onChange: (e: { target: { value: string } }) => {
+                  if (e.target.value) setField('patientBirthDate', e.target.value);
+                },
+                style: {
+                  width: '100%',
+                  fontSize: 16,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #E2E8F0',
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                },
+              } as React.ComponentProps<'input'>)}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={Platform.OS === 'ios' && birthDateModal} transparent animationType="slide">
         <View style={styles.dateIosModalRoot}>
           <Pressable style={styles.dateIosBackdrop} onPress={() => setBirthDateModal(false)} />

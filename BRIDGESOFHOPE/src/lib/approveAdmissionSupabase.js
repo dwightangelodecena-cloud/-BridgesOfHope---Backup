@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { normalizedRoomSegmentFromGender, persistResidentPlacement } from '@/lib/residentPlacement';
+import { insertFamilyNotification } from '@/lib/notificationTemplates';
 
 /**
  * Approve a pending admission_request and create the patients row.
@@ -150,6 +151,16 @@ export async function approveAdmissionInDatabase(req) {
       .from('admission_requests')
       .update({ patient_gender: genderNorm })
       .eq('id', admissionId);
+  }
+
+  if (family_id) {
+    void insertFamilyNotification({
+      familyId: family_id,
+      templateKey: 'admission_approved',
+      vars: { patient_name: patient_name },
+      relatedType: 'admission_request',
+      relatedId: admissionId,
+    });
   }
 
   return { ok: true };

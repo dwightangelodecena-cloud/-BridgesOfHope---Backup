@@ -12,6 +12,7 @@ import {
   FileText,
   User,
   LogOut,
+  MessageSquare,
 } from 'lucide-react';
 import logo from '@/assets/kalingalogo.png';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { path: '/admin-staff-management', label: 'Staff Management', icon: Stethoscope },
   { path: '/admin-content-management', label: 'Content management', icon: LayoutTemplate },
   { path: '/admin-appointments', label: 'Appointments', icon: Calendar },
+  { path: '/admin-notification-templates', label: 'Notification Templates', icon: MessageSquare },
   { path: '/admin-reports', label: 'Printable reports', icon: FileText },
 ];
 
