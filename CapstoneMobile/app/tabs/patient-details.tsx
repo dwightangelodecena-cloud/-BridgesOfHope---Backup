@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   Dimensions,
   Alert,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -50,11 +52,14 @@ import {
 } from '../../components/family/TemporaryDischargeNoticeMobile';
 
 const WINDOW_H = Dimensions.get('window').height;
+const SCREEN_W = Dimensions.get('window').width;
+const HEADER_OVERLAY_HEIGHT_BASE = 56;
 // Native pixel size of assets/images/residents-header.png — sets the hero's
 // aspect ratio so the full illustration (including the right-edge plant)
 // renders with no crop.
 const HERO_IMG_NATURAL_W = 1298;
 const HERO_IMG_NATURAL_H = 563;
+const HERO_HEIGHT = SCREEN_W * (HERO_IMG_NATURAL_H / HERO_IMG_NATURAL_W);
 
 type ReportRow = Record<string, unknown>;
 
@@ -296,6 +301,7 @@ export default function PatientDetailsScreen() {
   const [patientDetailsById, setPatientDetailsById] = useState<Record<string, Record<string, unknown>>>({});
   const [weeklyReportsByPatient, setWeeklyReportsByPatient] = useState<Record<string, ReportRow[]>>({});
   const [loading, setLoading] = useState(true);
+  const [headerSolid, setHeaderSolid] = useState(false);
   const [selected, setSelected] = useState<PatientListEntry | null>(null);
   const [temporaryLeaveFromRequest, setTemporaryLeaveFromRequest] = useState<TemporaryLeaveFields | null>(
     null
@@ -785,15 +791,26 @@ export default function PatientDetailsScreen() {
     ? tempLeaveStatusLabel || 'Temporarily discharged'
     : detailSummaryForModal?.status || patientStatusTone(Number(selected?.progress) || 0).label;
 
+  const headerOverlayHeight = insets.top + HEADER_OVERLAY_HEIGHT_BASE;
+  const showHeroBlend = !loading && patients.length > 0;
+
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    setHeaderSolid(y > HERO_HEIGHT - headerOverlayHeight);
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
-      <FamilyMobilePageHeader title="Resident Details" onBrandPress={scrollToTop} />
-
       <ScrollView
         ref={scrollRef}
         style={styles.heroOverlapScroll}
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + 100, paddingTop: showHeroBlend ? 0 : headerOverlayHeight },
+        ]}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       >
         {loading ? (
           <View style={styles.loading}>
@@ -949,6 +966,14 @@ export default function PatientDetailsScreen() {
           </>
         )}
       </ScrollView>
+
+      <View style={styles.headerOverlay} pointerEvents="box-none">
+        <FamilyMobilePageHeader
+          title="Resident Details"
+          onBrandPress={scrollToTop}
+          transparent={showHeroBlend && !headerSolid}
+        />
+      </View>
 
       <Modal visible={!!selected} animationType="slide" onRequestClose={() => setSelected(null)}>
         <View style={[styles.detailFullScreen, { paddingTop: insets.top, backgroundColor: '#F8FAFF' }]}>
@@ -1320,6 +1345,13 @@ const styles = StyleSheet.create({
   notifText: { flex: 1, fontSize: 13, color: '#334155' },
   notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 18, paddingTop: 14 },
+  headerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
   heroHeaderWrap: {
     marginHorizontal: -18,
     aspectRatio: HERO_IMG_NATURAL_W / HERO_IMG_NATURAL_H,
