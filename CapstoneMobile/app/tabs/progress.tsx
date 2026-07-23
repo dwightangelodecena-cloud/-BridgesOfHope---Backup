@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
@@ -140,7 +141,14 @@ export default function ProgressScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: '#F8F9FD' }]}>
-      <FamilyMobilePageHeader title="Request Management" onBrandPress={scrollToTop} />
+      <LinearGradient
+        colors={['#FFEEE0', '#FDF9F5', '#F8F9FD']}
+        locations={[0, 0.4, 1]}
+        style={styles.topGlow}
+        pointerEvents="none"
+      />
+
+      <FamilyMobilePageHeader title="Request Management" onBrandPress={scrollToTop} transparent />
 
       <ScrollView
         ref={scrollRef}
@@ -281,6 +289,13 @@ export default function ProgressScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  topGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 280,
+  },
   mobileTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
