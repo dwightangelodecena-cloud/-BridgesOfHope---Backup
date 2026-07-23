@@ -4,9 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
-  Pressable,
-  ScrollView,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +13,7 @@ import { KalingaLogoMark } from './KalingaLogoMark';
 import { FamilyHeaderBrand, FamilyPageTitleBrand } from './FamilyHeaderBrand';
 import { FamilyHeaderAvatarMobile } from './FamilyHeaderAvatarMobile';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
-import { useFamilyNotificationsMobile } from '../../lib/useFamilyNotificationsMobileHook';
+import { useFamilyNotificationsInbox } from '../../lib/useFamilyNotificationsInbox';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { BH } from '../../theme/tokens';
 
@@ -42,56 +39,14 @@ export function FamilyMobilePageHeader({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { userId, initials } = useFamilyUserMobile();
-  const notif = useFamilyNotificationsMobile(userId);
+  const notif = useFamilyNotificationsInbox(userId);
 
   const onProfile = () => router.navigate(TAB_ROUTES.profile as never);
+  const openNotifications = () => router.navigate(TAB_ROUTES.notifications as never);
   const isHomeBrand = showLogo && !title;
 
   return (
     <>
-      <Modal
-        visible={notif.open}
-        transparent
-        animationType="fade"
-        onRequestClose={notif.close}
-      >
-        <View style={styles.notifRoot}>
-          <Pressable style={styles.notifBackdrop} onPress={notif.close} />
-          <View style={[styles.notifPanel, { top: insets.top + 46, right: 16 }]}>
-            <View style={styles.notifHead}>
-              <View style={styles.notifTitleRow}>
-                <Ionicons name="notifications" size={16} color={BH.brand} />
-                <Text style={styles.notifTitle}>Notifications</Text>
-              </View>
-              {notif.items.length > 0 ? (
-                <TouchableOpacity onPress={() => void notif.clearAll()} accessibilityRole="button">
-                  <Text style={styles.clearAll}>Clear all</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-            {notif.items.length === 0 ? (
-              <Text style={styles.notifEmpty}>No notifications.</Text>
-            ) : (
-              <ScrollView style={styles.notifScroll} keyboardShouldPersistTaps="handled">
-                {notif.items.map((item, idx) => (
-                  <View key={item.id || `n-${idx}`} style={styles.notifRow}>
-                    <Ionicons name="checkmark-circle" size={15} color={BH.indigo500} style={{ marginTop: 2 }} />
-                    <Text style={styles.notifText}>{notif.notificationDisplayText(item)}</Text>
-                    <TouchableOpacity
-                      onPress={() => notif.removeItem(item, idx)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Remove notification"
-                    >
-                      <Text style={styles.notifDismiss}>×</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
-
       <View style={styles.headerShell}>
         <View style={[styles.bar, { paddingTop: Math.max(insets.top, 8) }]}>
           <TouchableOpacity
@@ -113,7 +68,7 @@ export function FamilyMobilePageHeader({
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.notifyBtn, notif.unreadCount > 0 ? styles.notifyBtnActive : styles.notifyBtnIdle]}
-              onPress={notif.toggle}
+              onPress={openNotifications}
               accessibilityRole="button"
               accessibilityLabel={
                 notif.unreadCount > 0
@@ -210,37 +165,6 @@ const styles = StyleSheet.create({
   notifyBtnIdle: {
     backgroundColor: BH.slate100,
   },
-  notifRoot: { flex: 1 },
-  notifBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' },
-  notifPanel: {
-    position: 'absolute',
-    width: Math.min(360, 340),
-    maxHeight: 360,
-    backgroundColor: BH.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: BH.border,
-    padding: 18,
-    shadowColor: BH.slate900,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 24,
-    elevation: 12,
-  },
-  notifHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  notifTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  notifTitle: { fontSize: 15, fontWeight: '800', color: BH.slate900 },
-  clearAll: { fontSize: 12, fontWeight: '700', color: BH.slate400 },
-  notifScroll: { maxHeight: 280 },
-  notifEmpty: { fontSize: 12, fontWeight: '600', color: BH.slate400 },
-  notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
-  notifText: { flex: 1, fontSize: 13, color: BH.slate700, lineHeight: 18 },
-  notifDismiss: { fontSize: 16, color: BH.slate400, paddingHorizontal: 4 },
   notifBadge: {
     position: 'absolute',
     top: -2,

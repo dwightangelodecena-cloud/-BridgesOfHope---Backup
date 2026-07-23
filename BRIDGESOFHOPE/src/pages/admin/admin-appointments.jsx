@@ -230,6 +230,9 @@ export default function AdminAppointmentsPage() {
     if (!allowNonPending && currentStatus !== 'Requested') return;
     if (allowNonPending && currentStatus === 'Declined') return;
     const normalizedStatus = normalizeVisitationStatus(nextStatus);
+    // Approve confirms the family's own proposed slot verbatim (no re-confirmation needed).
+    // Reschedule proposes admin's own choice, so the guardian must accept it or counter-propose.
+    const confirmedByFamily = normalizedStatus === 'Approved';
     updateVisitationRequest(row.id, {
       status: normalizedStatus,
       confirmedDate: nextConfirmedDate,
@@ -244,6 +247,7 @@ export default function AdminAppointmentsPage() {
           confirmed_date: nextConfirmedDate || null,
           confirmed_time: nextConfirmedTime || null,
           admin_note: adminNote || null,
+          confirmed_by_family: confirmedByFamily,
           updated_at: new Date().toISOString(),
         })
         .eq('id', row.id)

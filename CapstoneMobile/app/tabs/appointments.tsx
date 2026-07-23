@@ -10,6 +10,7 @@ import {
   Alert,
   useWindowDimensions,
   Platform,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,8 +29,12 @@ import {
   formatVisitationWeekdayLong,
   visitationStatusSubtext,
   upsertVisitationRequestAfterRemoteInsert,
+  isAwaitingFamilyRescheduleResponse,
+  acceptVisitationReschedule,
+  counterProposeVisitationReschedule,
   type VisitationRequestRow,
 } from '../../lib/visitationAppointmentsMobile';
+import { PlatformDateTimeField } from '../../components/family/PlatformDateTimeField';
 import { isPastIsoDate } from '../../lib/bookingDates';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
@@ -111,6 +116,12 @@ export default function AppointmentsScreen() {
   const [requests, setRequests] = useState<VisitationRequestRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [counterModal, setCounterModal] = useState<{ row: VisitationRequestRow | null; date: string; time: string }>({
+    row: null,
+    date: '',
+    time: '13:00',
+  });
   const [form, setForm] = useState({
     patientId: '',
     patientName: '',
@@ -325,6 +336,40 @@ export default function AppointmentsScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const acceptReschedule = async (row: VisitationRequestRow) => {
+    setRespondingId(row.id);
+    const res = await acceptVisitationReschedule(row.id);
+    setRespondingId(null);
+    if (!res.ok) {
+      Alert.alert('Could not accept', res.errorMessage);
+      return;
+    }
+    await loadAll();
+    Alert.alert('Schedule accepted', `You've confirmed the visit for ${row.patientName}.`);
+  };
+
+  const openCounterModal = (row: VisitationRequestRow) => {
+    setCounterModal({ row, date: row.preferredDate || row.confirmedDate || '', time: row.preferredTime || row.confirmedTime || '13:00' });
+  };
+
+  const submitCounterProposal = async () => {
+    if (!counterModal.row || !counterModal.date || !counterModal.time) return;
+    setRespondingId(counterModal.row.id);
+    const res = await counterProposeVisitationReschedule(counterModal.row.id, {
+      preferredDate: counterModal.date,
+      preferredTime: counterModal.time,
+      note: counterModal.row.note,
+    });
+    setRespondingId(null);
+    if (!res.ok) {
+      Alert.alert('Could not send', res.errorMessage);
+      return;
+    }
+    setCounterModal({ row: null, date: '', time: '13:00' });
+    await loadAll();
+    Alert.alert('Sent', 'Your preferred time has been sent to the facility.');
   };
 
   return (
@@ -601,13 +646,88 @@ export default function AppointmentsScreen() {
                       <Text style={styles.adminNoteTxt}>Admin: {r.adminNote}</Text>
                     </View>
                   ) : null}
+                  {st === 'Rescheduled' && r.confirmedByFamily ? (
+                    <View style={styles.confirmedBadge}>
+                      <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+                      <Text style={styles.confirmedBadgeTxt}>You confirmed this time</Text>
+                    </View>
+                  ) : null}
                   {r.note ? <Text style={styles.reqNote}>{r.note}</Text> : null}
+                  {isAwaitingFamilyRescheduleResponse(r) ? (
+                    <View style={styles.rescheduleActions}>
+                      <Pressable
+                        style={({ pressed }) => [styles.rescheduleBtnAccept, pressed && styles.primaryBtnPressed]}
+                        onPress={() => void acceptReschedule(r)}
+                        disabled={respondingId === r.id}
+                      >
+                        {respondingId === r.id ? (
+                          <ActivityIndicator color="#FFFFFF" size="small" />
+                        ) : (
+                          <Text style={styles.rescheduleBtnAcceptTxt}>Accept this time</Text>
+                        )}
+                      </Pressable>
+                      <Pressable
+                        style={({ pressed }) => [styles.rescheduleBtnCounter, pressed && styles.primaryBtnPressed]}
+                        onPress={() => openCounterModal(r)}
+                        disabled={respondingId === r.id}
+                      >
+                        <Text style={styles.rescheduleBtnCounterTxt}>Propose a different time</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </View>
               );
             })
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={Boolean(counterModal.row)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCounterModal({ row: null, date: '', time: '13:00' })}
+      >
+        <View style={styles.counterModalRoot}>
+          <Pressable style={styles.counterBackdrop} onPress={() => setCounterModal({ row: null, date: '', time: '13:00' })} />
+          <View style={[styles.counterCard, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.counterHandle} />
+            <Text style={styles.counterTitle}>Propose a different time</Text>
+            <Text style={styles.counterSub}>
+              For {counterModal.row?.patientName}. This will be sent to the facility for review.
+            </Text>
+            <PlatformDateTimeField
+              label="Preferred date"
+              mode="date"
+              value={counterModal.date}
+              minimumDate={new Date()}
+              onChange={(v) => setCounterModal((prev) => ({ ...prev, date: v }))}
+            />
+            <PlatformDateTimeField
+              label="Preferred time"
+              mode="time"
+              value={counterModal.time}
+              onChange={(v) => setCounterModal((prev) => ({ ...prev, time: v }))}
+            />
+            <View style={styles.counterFoot}>
+              <Pressable onPress={() => setCounterModal({ row: null, date: '', time: '13:00' })} style={styles.counterCancelBtn}>
+                <Text style={styles.counterCancelTxt}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void submitCounterProposal()}
+                style={[styles.primaryBtn, { flex: 1, marginTop: 0 }, respondingId === counterModal.row?.id && styles.primaryBtnDisabled]}
+                disabled={respondingId === counterModal.row?.id}
+              >
+                {respondingId === counterModal.row?.id ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.primaryBtnTxt}>Send</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <FamilyWebMobileNav active="appointments" />
       <FamilyFloatingChat />
@@ -927,5 +1047,60 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   adminNoteTxt: { fontSize: 12, fontWeight: '700', color: '#3730A3', lineHeight: 17 },
+  confirmedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    backgroundColor: '#ECFDF5',
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  confirmedBadgeTxt: { fontSize: 12, fontWeight: '700', color: '#16A34A' },
   reqNote: { fontSize: 13, color: '#475569', marginTop: 8, lineHeight: 19 },
+  rescheduleActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  rescheduleBtnAccept: {
+    flex: 1,
+    backgroundColor: '#16A34A',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rescheduleBtnAcceptTxt: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+  rescheduleBtnCounter: {
+    flex: 1,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rescheduleBtnCounterTxt: { color: '#3730A3', fontWeight: '800', fontSize: 13 },
+  counterModalRoot: { flex: 1, justifyContent: 'flex-end' },
+  counterBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.4)' },
+  counterCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 20,
+  },
+  counterHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E2E8F0',
+    marginBottom: 14,
+  },
+  counterTitle: { fontSize: 16, fontWeight: '800', color: '#1A2B4A', marginBottom: 4 },
+  counterSub: { fontSize: 12, color: '#64748B', marginBottom: 16, lineHeight: 17 },
+  counterFoot: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  counterCancelBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  counterCancelTxt: { color: '#475569', fontWeight: '700', fontSize: 14 },
 });

@@ -11,6 +11,28 @@ type FamilyUserState = {
 let cached: Omit<FamilyUserState, 'loading'> | null = null;
 let loadPromise: Promise<Omit<FamilyUserState, 'loading'>> | null = null;
 
+// Safety net alongside the explicit invalidateFamilyUserCacheMobile() calls on logout:
+// if the Supabase session's user ever changes without that call running first (e.g. a
+// dev/test account switch), this clears the stale cache so the next read re-fetches the
+// *current* signed-in user instead of leaking a previous account's name into the UI.
+// Registered lazily (not at module scope) — Expo's web build server-renders this module in
+// Node during `expo start`, and supabase-js's auth listener touches `window`, which doesn't
+// exist there; calling onAuthStateChange at import time crashed every screen's SSR pass.
+let lastKnownAuthUserId: string | null | undefined;
+let authListenerRegistered = false;
+function ensureAuthChangeListener() {
+  if (authListenerRegistered) return;
+  authListenerRegistered = true;
+  supabase.auth.onAuthStateChange((_event, session) => {
+    const uid = session?.user?.id || null;
+    if (lastKnownAuthUserId !== undefined && uid !== lastKnownAuthUserId) {
+      cached = null;
+      loadPromise = null;
+    }
+    lastKnownAuthUserId = uid;
+  });
+}
+
 export function deriveFamilyInitials(name: string): string {
   return (
     String(name || '')
@@ -56,6 +78,8 @@ export function useFamilyUserMobile(): FamilyUserState {
   );
 
   useEffect(() => {
+    ensureAuthChangeListener();
+
     if (cached) {
       setState({ ...cached, loading: false });
       return undefined;

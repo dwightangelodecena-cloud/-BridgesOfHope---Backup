@@ -29,7 +29,7 @@ import {
   patchAdmissionRequestGender,
 } from '../../lib/admissionRequestInsert';
 import * as DocumentPicker from 'expo-document-picker';
-import { appendFamilyNotificationsIfNewMobile, notificationTextMobile } from '../../lib/familyNotificationsMobile';
+import { notificationTextMobile } from '../../lib/familyNotificationsMobile';
 import { useFamilyNotificationsState } from '../../lib/useFamilyNotificationsMobile';
 import {
   ADMISSION_FORM_SUBTITLE,
@@ -95,6 +95,7 @@ export default function AdmissionForm() {
   const [saveBanner, setSaveBanner] = useState('');
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [submittedRequestId, setSubmittedRequestId] = useState('');
   const [showRelationshipModal, setShowRelationshipModal] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [showGenderModal, setShowGenderModal] = useState(false);
@@ -403,12 +404,6 @@ export default function AdmissionForm() {
       await appendActivityFeed(`Admission request submitted for ${patientFull}. Pending admin review.`, {
         familyId: user.id,
       });
-      if (familyUserId) {
-        await appendFamilyNotificationsIfNewMobile(
-          [{ id: `adm-processing-${insertResult.id}`, text: `Admission request for ${patientFull} is being processed.` }],
-          familyUserId
-        );
-      }
       setValidIdFile(null);
       setBirthCertFile(null);
       setHospitalReferralFile(null);
@@ -417,6 +412,7 @@ export default function AdmissionForm() {
       } catch {
         /* ignore */
       }
+      setSubmittedRequestId(String(insertResult.id));
       setShowSuccessModal(true);
     } finally {
       setSubmitting(false);
@@ -1041,12 +1037,15 @@ export default function AdmissionForm() {
             </LinearGradient>
             <Text style={styles.successTitle}>Application submitted!</Text>
             <Text style={styles.successBody}>
-              Your admission request was sent successfully. Our team will review it and update you soon.
+              Your admission request was sent successfully. Next, let us know when you&apos;d like to meet with Bridges of Hope.
             </Text>
             <ScalePressable
               onPress={() => {
                 setShowSuccessModal(false);
-                router.navigate(TAB_ROUTES.home);
+                router.push({
+                  pathname: TAB_ROUTES.admissionMeetingRequest,
+                  params: submittedRequestId ? { requestId: submittedRequestId } : {},
+                } as never);
               }}
               style={styles.ctaWrap}
             >
@@ -1056,9 +1055,18 @@ export default function AdmissionForm() {
                 end={{ x: 1, y: 0 }}
                 style={styles.cta}
               >
-                <Text style={styles.ctaText}>Continue to home</Text>
+                <Text style={styles.ctaText}>Request a meeting time</Text>
               </LinearGradient>
             </ScalePressable>
+            <TouchableOpacity
+              onPress={() => {
+                setShowSuccessModal(false);
+                router.navigate(TAB_ROUTES.home as never);
+              }}
+              style={styles.successSkipBtn}
+            >
+              <Text style={styles.successSkipTxt}>I&apos;ll do this later</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1949,4 +1957,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 20,
   },
+  successSkipBtn: { marginTop: 14, alignItems: 'center', paddingVertical: 6 },
+  successSkipTxt: { fontSize: 13, fontWeight: '700', color: C.muted },
 });

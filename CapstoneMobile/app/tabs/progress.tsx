@@ -225,7 +225,27 @@ export default function ProgressScreen() {
                     <Text style={styles.requestMeta}>
                       Meeting with BOH: {String(row.meeting_date)}
                       {row.meeting_time ? ` at ${String(row.meeting_time)}` : ''}
+                      {statusKey === 'processing' && !row.meeting_confirmed_by_family ? ' (awaiting your confirmation)' : ''}
                     </Text>
+                  ) : null}
+                  {statusKey === 'processing' || statusKey === 'awaiting_schedule_review' || statusKey === 'awaiting_guardian_response' ? (
+                    <TouchableOpacity
+                      style={styles.uploadBtn}
+                      onPress={() =>
+                        router.push({
+                          pathname: TAB_ROUTES.admissionMeetingRequest,
+                          params: { requestId: String(row.id) },
+                        } as never)
+                      }
+                    >
+                      <Text style={styles.uploadBtnText}>
+                        {statusKey === 'awaiting_guardian_response'
+                          ? 'Respond to suggested meeting time'
+                          : row.preferred_meeting_date
+                            ? 'View / update your meeting request'
+                            : 'Request a meeting time'}
+                      </Text>
+                    </TouchableOpacity>
                   ) : null}
                   {row.required_document_notes && inReview ? (
                     <Text style={[styles.requestMeta, { color: '#B45309' }]}>
