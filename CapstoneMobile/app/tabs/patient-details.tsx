@@ -22,7 +22,6 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
 import { computeAdmissionDisplayId } from '../../lib/admissionDisplayId';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
-import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import {
@@ -53,6 +52,11 @@ import {
 const WINDOW_H = Dimensions.get('window').height;
 const SCREEN_W = Dimensions.get('window').width;
 const HEADER_BAR_HEIGHT = 56;
+// Native pixel size of assets/images/residents-header.png — used to keep the
+// hero crop anchored to its right edge (where the plant illustration is)
+// instead of a symmetric center-crop that clips it off.
+const HERO_IMG_NATURAL_W = 1298;
+const HERO_IMG_NATURAL_H = 563;
 
 type ReportRow = Record<string, unknown>;
 
@@ -783,12 +787,16 @@ export default function PatientDetailsScreen() {
     ? tempLeaveStatusLabel || 'Temporarily discharged'
     : detailSummaryForModal?.status || patientStatusTone(Number(selected?.progress) || 0).label;
 
+  const heroWrapHeight = insets.top + HEADER_BAR_HEIGHT + SCREEN_W / 2;
+  const heroImageScale = heroWrapHeight / HERO_IMG_NATURAL_H;
+  const heroImageWidth = HERO_IMG_NATURAL_W * heroImageScale;
+
   return (
     <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
-      <View style={[styles.heroHeaderWrap, { height: insets.top + HEADER_BAR_HEIGHT + SCREEN_W / 2 }]}>
+      <View style={[styles.heroHeaderWrap, { height: heroWrapHeight }]}>
         <Image
           source={require('../../assets/images/residents-header.png')}
-          style={styles.heroHeaderImage}
+          style={[styles.heroHeaderImage, { width: heroImageWidth, height: heroWrapHeight, right: 0 }]}
           resizeMode="cover"
         />
         <FamilyMobilePageHeader title="Resident Details" onBrandPress={scrollToTop} transparent />
@@ -1271,7 +1279,6 @@ export default function PatientDetailsScreen() {
       />
 
       <FamilyWebMobileNav active="patientDetails" />
-      <FamilyFloatingChat />
     </View>
   );
 }
@@ -1325,11 +1332,6 @@ const styles = StyleSheet.create({
   heroHeaderImage: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
   },
   heroOverlapScroll: { marginTop: -44 },
   overviewCard: {
