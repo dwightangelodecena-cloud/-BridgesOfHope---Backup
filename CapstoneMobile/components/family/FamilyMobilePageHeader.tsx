@@ -100,6 +100,9 @@ export function FamilyMobilePageHeader({
           imageStyle={styles.headerShellHomeImage}
         >
           <View style={[styles.bar, styles.barTransparent, { paddingTop: Math.max(insets.top, 8) }]}>
+            <View style={styles.menuIconWrap}>
+              <Ionicons name="menu-outline" size={24} color="#FFFFFF" />
+            </View>
             <TouchableOpacity
               style={styles.brandArea}
               onPress={onBrandPress}
@@ -136,13 +139,16 @@ export function FamilyMobilePageHeader({
                   </View>
                 ) : null}
               </TouchableOpacity>
-              <FamilyHeaderAvatarMobile
-                userId={userId}
-                initials={initials}
-                onPress={onProfile}
-                size={34}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              />
+              <View style={styles.avatarWrap}>
+                <FamilyHeaderAvatarMobile
+                  userId={userId}
+                  initials={initials}
+                  onPress={onProfile}
+                  size={34}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                />
+                <View style={styles.avatarStatusDot} />
+              </View>
             </View>
           </View>
         </ImageBackground>
@@ -237,6 +243,13 @@ const styles = StyleSheet.create({
   barTransparent: {
     backgroundColor: 'transparent',
   },
+  menuIconWrap: {
+    width: 30,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
   brandArea: {
     flex: 1,
     minWidth: 0,
@@ -244,6 +257,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  avatarWrap: { position: 'relative' },
+  avatarStatusDot: {
+    position: 'absolute',
+    right: -1,
+    bottom: -1,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#22C55E',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
   notifyBtn: {
     width: 34,
     height: 34,

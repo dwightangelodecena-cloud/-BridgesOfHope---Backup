@@ -453,9 +453,10 @@ export default function HomeScreen() {
           imageStyle={styles.heroBannerImage}
         >
           <View style={styles.heroInner}>
+            <Text style={styles.heroKicker}>{greeting},</Text>
             <View style={styles.heroTitleRow}>
               <Text style={styles.heroTitle}>
-                {greeting}, {firstName}! <Text style={styles.heroWave}>👋</Text>
+                {firstName}! <Text style={styles.heroWave}>👋</Text>
               </Text>
               <Ionicons name={greetingIcon} size={isCompactScreen ? 18 : 20} color="#FDBA74" style={styles.heroTitleIcon} />
             </View>
@@ -1127,11 +1128,17 @@ const styles = StyleSheet.create({
   heroBannerImage: {
     borderRadius: 22,
   },
-  heroInner: { gap: 6 },
-  heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  heroInner: { gap: 4 },
+  heroKicker: {
+    fontSize: isCompactScreen ? 15 : 17,
+    fontWeight: '800',
+    color: '#FDBA74',
+    letterSpacing: -0.2,
+  },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 2 },
   heroTitle: {
     flexShrink: 1,
-    fontSize: isCompactScreen ? 21 : 24,
+    fontSize: isCompactScreen ? 23 : 27,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -0.4,
