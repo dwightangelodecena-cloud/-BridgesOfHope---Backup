@@ -375,18 +375,18 @@ export default function AppointmentsScreen() {
 
           <View style={styles.statsSquareRow}>
             {[
-              { label: 'Confirmed', val: approvedCount, color: '#15803D', bg: '#ECFDF5', iconBg: '#D1FAE5', icon: 'checkmark-circle' as const, caption: 'This month' },
-              { label: 'Pending', val: pendingCount, color: '#EA580C', bg: '#FFF7ED', iconBg: '#FFEDD5', icon: 'time' as const, caption: 'This month' },
+              { label: 'Confirmed', val: approvedCount, color: '#15803D', bg: '#ECFDF5', iconBg: '#D1FAE5', icon: 'checkmark-circle-outline' as const, caption: 'This month' },
+              { label: 'Pending', val: pendingCount, color: '#EA580C', bg: '#FFF7ED', iconBg: '#FFEDD5', icon: 'time-outline' as const, caption: 'This month' },
             ].map((s) => (
               <Pressable
                 key={s.label}
                 style={({ pressed }) => [styles.statCardSquare, { backgroundColor: s.bg }, pressed && styles.statCardPressed]}
               >
-                <View style={[styles.statIconWrap, { backgroundColor: s.iconBg }]}>
-                  <Ionicons name={s.icon} size={17} color={s.color} />
+                <View style={[styles.statIconWrapLg, { backgroundColor: s.iconBg }]}>
+                  <Ionicons name={s.icon} size={26} color={s.color} />
                 </View>
                 <View style={styles.statTextCol}>
-                  <Text style={styles.statLabel}>{s.label.toUpperCase()}</Text>
+                  <Text style={[styles.statLabel, { color: s.color }]}>{s.label.toUpperCase()}</Text>
                   <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
                   <Text style={styles.statCaption}>{s.caption}</Text>
                 </View>
@@ -731,6 +731,14 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  statIconWrapLg: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
