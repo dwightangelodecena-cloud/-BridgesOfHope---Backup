@@ -787,7 +787,7 @@ export default function PatientDetailsScreen() {
     ? tempLeaveStatusLabel || 'Temporarily discharged'
     : detailSummaryForModal?.status || patientStatusTone(Number(selected?.progress) || 0).label;
 
-  const heroWrapHeight = insets.top + HEADER_BAR_HEIGHT + SCREEN_W / 2;
+  const heroWrapHeight = insets.top + HEADER_BAR_HEIGHT + SCREEN_W * 0.32;
   const heroImageScale = heroWrapHeight / HERO_IMG_NATURAL_H;
   const heroImageWidth = HERO_IMG_NATURAL_W * heroImageScale;
 
@@ -806,6 +806,7 @@ export default function PatientDetailsScreen() {
         ref={scrollRef}
         style={styles.heroOverlapScroll}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
       >
         {loading ? (
           <View style={styles.loading}>
@@ -1333,7 +1334,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
   },
-  heroOverlapScroll: { marginTop: -44 },
+  heroOverlapScroll: { marginTop: -32 },
   overviewCard: {
     marginBottom: 16,
     backgroundColor: '#FFFFFF',
