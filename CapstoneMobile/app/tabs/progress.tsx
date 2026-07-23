@@ -162,28 +162,31 @@ export default function ProgressScreen() {
           </View>
         ) : null}
 
-        <TouchableOpacity
-          style={[styles.hubCard, styles.hubCardFirst]}
-          onPress={() => router.navigate(TAB_ROUTES.admission)}
-          activeOpacity={0.9}
-        >
-          <View style={[styles.hubIcon, { backgroundColor: '#F54E25' }]}>
-            <Image
-              source={require('../../assets/images/admission.png')}
-              style={styles.hubIconImage}
-              resizeMode="contain"
-              tintColor="#FFFFFF"
-            />
-          </View>
-          <View style={styles.hubTextCol}>
-            <Text style={styles.hubTitle}>Admission request</Text>
-            <Text style={styles.hubDesc}>Full intake form with address and patient details.</Text>
-            <View style={styles.hubBadge}>
-              <Text style={styles.hubBadgeText}>{pendingAdmissions} pending</Text>
+        <View style={styles.admissionCardWrap}>
+          <View style={styles.admissionCardGlow} />
+          <TouchableOpacity
+            style={[styles.hubCard, styles.hubCardFirst]}
+            onPress={() => router.navigate(TAB_ROUTES.admission)}
+            activeOpacity={0.9}
+          >
+            <View style={[styles.hubIcon, { backgroundColor: '#F54E25' }]}>
+              <Image
+                source={require('../../assets/images/admission.png')}
+                style={styles.hubIconImage}
+                resizeMode="contain"
+                tintColor="#FFFFFF"
+              />
             </View>
-          </View>
-          <Ionicons name="chevron-forward" size={22} color="#A3AED0" />
-        </TouchableOpacity>
+            <View style={styles.hubTextCol}>
+              <Text style={styles.hubTitle}>Admission request</Text>
+              <Text style={styles.hubDesc}>Full intake form with address and patient details.</Text>
+              <View style={styles.hubBadge}>
+                <Text style={styles.hubBadgeText}>{pendingAdmissions} pending</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="#A3AED0" />
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity
           style={styles.hubCard}
@@ -209,9 +212,11 @@ export default function ProgressScreen() {
         </TouchableOpacity>
 
         <View style={styles.noteCard}>
-          <Ionicons name="information-circle-outline" size={20} color="#3758D5" />
+          <Ionicons name="information-circle-outline" size={20} color="#F54E25" />
           <Text style={styles.noteText}>
-            Patient lists and weekly report details live under Patient Details and Reports in the menu bar.
+            Patient lists and weekly report details live under{' '}
+            <Text style={styles.noteTextStrong}>Patient Details</Text> and{' '}
+            <Text style={styles.noteTextStrong}>Reports</Text> in the menu bar.
           </Text>
         </View>
 
@@ -369,6 +374,16 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   hubCardFirst: { marginTop: 0 },
+  admissionCardWrap: { position: 'relative', marginTop: 6 },
+  admissionCardGlow: {
+    position: 'absolute',
+    top: -6,
+    bottom: -2,
+    left: -12,
+    right: -6,
+    backgroundColor: '#F54E25',
+    borderRadius: 20,
+  },
   hubIcon: {
     width: 56,
     height: 56,
@@ -388,11 +403,12 @@ const styles = StyleSheet.create({
     marginTop: 20,
     padding: 14,
     borderRadius: 12,
-    backgroundColor: '#EEF4FF',
+    backgroundColor: '#FFF1E8',
     borderWidth: 1,
-    borderColor: '#DCE7FF',
+    borderColor: '#FED7AA',
   },
-  noteText: { flex: 1, fontSize: 13, color: '#3758D5', fontWeight: '600', lineHeight: 18 },
+  noteText: { flex: 1, fontSize: 13, color: '#7C4A26', fontWeight: '600', lineHeight: 18 },
+  noteTextStrong: { color: '#F54E25', fontWeight: '800' },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#1B2559', marginBottom: 10 },
   requestCard: {
     borderWidth: 1,
