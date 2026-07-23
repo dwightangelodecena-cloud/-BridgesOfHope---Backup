@@ -1,13 +1,14 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import MaskedView from '@react-native-masked-view/masked-view';
 import { KalingaLogoMark } from './KalingaLogoMark';
 import { BH } from '../../theme/tokens';
 
-// Matches new-logo.png's own gradient (deep orange base → gold highlight).
-const LOGO_GRADIENT = ['#F2541C', '#FFC93C'] as const;
+// Sampled from new-logo.png's own mark so the wordmark reads as one color
+// with the logo beside it. Plain solid color (not a gradient) — MaskedView
+// gradient-text isn't reliable across every target this app renders on
+// (notably React Native Web), so a flat match is the robust choice here.
+const LOGO_COLOR = '#F0851F';
 
 /** Home header brand — matches family portal orange / navy theme. */
 export function FamilyHeaderBrand() {
@@ -23,13 +24,9 @@ export function FamilyHeaderBrand() {
       </View>
 
       <View style={styles.textCol}>
-        <MaskedView maskElement={<Text style={styles.title} numberOfLines={1}>Bridges of Hope</Text>}>
-          <LinearGradient colors={LOGO_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-            <Text style={[styles.title, styles.titleHidden]} numberOfLines={1}>
-              Bridges of Hope
-            </Text>
-          </LinearGradient>
-        </MaskedView>
+        <Text style={styles.title} numberOfLines={1}>
+          Bridges of Hope
+        </Text>
         <View style={styles.subRow}>
           <Ionicons name="heart" size={9} color={BH.brand} />
           <Text style={styles.sub} numberOfLines={1}>
@@ -75,10 +72,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.4,
     lineHeight: 22,
-    color: '#000000',
-  },
-  titleHidden: {
-    opacity: 0,
+    color: LOGO_COLOR,
   },
   subRow: {
     flexDirection: 'row',
