@@ -27,7 +27,6 @@ import {
 } from '../../lib/dbMappers';
 import { fetchActivityFeedForCurrentUser } from '../../lib/activityFeed';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
-import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
@@ -467,13 +466,6 @@ export default function HomeScreen() {
     { key: 'reports', icon: 'document-text' as const, label: 'Reports Received', value: String(periodReportsReceivedCount), bg: BH.brandSurface, color: BH.brand700 },
   ];
 
-  const shortcutTiles = [
-    { key: 'reports', icon: 'document-text-outline' as const, label: 'View Reports', color: '#2563EB', onPress: openWeeklyReportsModal },
-    { key: 'services', icon: 'heart-outline' as const, label: 'Go to Services', color: '#16A34A', onPress: () => router.navigate(TAB_ROUTES.services) },
-    { key: 'messages', icon: 'chatbubble-ellipses-outline' as const, label: 'Messages', color: '#7C3AED', onPress: () => router.navigate(TAB_ROUTES.messages) },
-    { key: 'profile', icon: 'person-outline' as const, label: 'Profile', color: BH.brand, onPress: () => router.navigate(TAB_ROUTES.profile) },
-  ];
-
   return (
     <View style={[styles.container, { backgroundColor: BG }]}>
       <FamilyMobilePageHeader onBrandPress={scrollToTop} />
@@ -555,6 +547,7 @@ export default function HomeScreen() {
               {
                 key: 'reports',
                 icon: 'document-text' as const,
+                image: undefined,
                 label: 'Weekly Report',
                 color: BH.brand,
                 onPress: openWeeklyReportsModal,
@@ -563,24 +556,27 @@ export default function HomeScreen() {
               {
                 key: 'admission',
                 icon: 'clipboard' as const,
+                image: require('../../assets/images/admission.png'),
                 label: 'Admission',
-                color: '#2563EB',
+                color: BH.brand700,
                 onPress: () => router.navigate(TAB_ROUTES.admission),
                 badge: pendingAdmissions.length,
               },
               {
                 key: 'services',
                 icon: 'briefcase' as const,
+                image: undefined,
                 label: 'Services',
-                color: '#16A34A',
+                color: BH.brandLight,
                 onPress: () => router.navigate(TAB_ROUTES.services),
                 badge: 0,
               },
               {
                 key: 'messages',
                 icon: 'chatbubble-ellipses' as const,
+                image: undefined,
                 label: 'Messages',
-                color: '#7C3AED',
+                color: BH.navy,
                 onPress: () => router.navigate(TAB_ROUTES.messages),
                 badge: supportUnreadCount,
               },
@@ -592,7 +588,16 @@ export default function HomeScreen() {
                 activeOpacity={0.85}
               >
                 <View style={[styles.quickActionCircle, { backgroundColor: item.color }]}>
-                  <Ionicons name={item.icon} size={24} color="#FFFFFF" />
+                  {item.image ? (
+                    <Image
+                      source={item.image}
+                      style={styles.quickActionImage}
+                      resizeMode="contain"
+                      tintColor="#FFFFFF"
+                    />
+                  ) : (
+                    <Ionicons name={item.icon} size={24} color="#FFFFFF" />
+                  )}
                   {item.badge > 0 ? (
                     <View style={styles.quickActionBadge}>
                       <Text style={styles.quickActionBadgeText}>{item.badge > 9 ? '9+' : item.badge}</Text>
@@ -775,28 +780,6 @@ export default function HomeScreen() {
                 <Text style={styles.overviewLabel}>{item.label}</Text>
                 <Text style={[styles.overviewValue, { color: item.color }]}>{item.value}</Text>
               </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={[styles.panelCard, { marginTop: 14, marginBottom: 4 }]}>
-          <View style={styles.tableHeadLeft}>
-            <Ionicons name="grid" size={16} color="#F54E25" />
-            <Text style={styles.panelTitleInline}>Shortcuts</Text>
-          </View>
-          <View style={styles.shortcutsGrid}>
-            {shortcutTiles.map((item) => (
-              <TouchableOpacity
-                key={item.key}
-                style={styles.shortcutTile}
-                onPress={item.onPress}
-                activeOpacity={0.85}
-              >
-                <Ionicons name={item.icon} size={22} color={item.color} />
-                <Text style={styles.shortcutLabel} numberOfLines={2}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
             ))}
           </View>
         </View>
@@ -1123,7 +1106,6 @@ export default function HomeScreen() {
       </Modal>
 
       <FamilyWebMobileNav active="home" />
-      <FamilyFloatingChat />
     </View>
   );
 }
@@ -1436,6 +1418,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOW.brand,
+  },
+  quickActionImage: {
+    width: 24,
+    height: 24,
   },
   quickActionBadge: {
     position: 'absolute',
@@ -1834,19 +1820,4 @@ const styles = StyleSheet.create({
   },
   overviewLabel: { fontSize: 10.5, color: '#64748B', fontWeight: '700' },
   overviewValue: { fontSize: 18, fontWeight: '900', color: '#1B2559', marginTop: 4 },
-  shortcutsGrid: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8, marginTop: 4 },
-  shortcutTile: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: 14,
-    backgroundColor: BH.surface,
-    borderWidth: 1,
-    borderColor: BH.border,
-    paddingVertical: 14,
-    paddingHorizontal: 6,
-  },
-  shortcutLabel: { fontSize: 11, fontWeight: '700', color: '#1B2559', textAlign: 'center' },
 });
