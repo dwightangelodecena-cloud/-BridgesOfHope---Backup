@@ -60,6 +60,11 @@ const CAL_GAP = 6;
 /** Horizontal padding: scroll 32 + panel 40 */
 const CAL_HORIZONTAL_PAD = 72;
 
+// Native pixel size of assets/images/appointments-header.png — sets the
+// hero's aspect ratio so the full illustration renders with no crop.
+const HERO_IMG_NATURAL_W = 1672;
+const HERO_IMG_NATURAL_H = 836;
+
 function useCalendarGridLayout() {
   const { width: screenWidth } = useWindowDimensions();
   return useMemo(() => {
@@ -329,10 +334,7 @@ export default function AppointmentsScreen() {
     }
   };
 
-  // Displayed noticeably taller than the image's native 2:1 ratio (cover mode
-  // zooms in to fill it) — a bigger on-screen size means less downscaling of
-  // the illustration's fine linework, so it renders sharper.
-  const heroHeight = screenWidth * 0.62;
+  const heroHeight = screenWidth * (HERO_IMG_NATURAL_H / HERO_IMG_NATURAL_W);
 
   return (
     <View style={styles.screen}>

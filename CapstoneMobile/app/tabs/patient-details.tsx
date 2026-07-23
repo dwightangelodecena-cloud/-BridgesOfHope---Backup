@@ -55,10 +55,12 @@ import {
 const WINDOW_H = Dimensions.get('window').height;
 const SCREEN_W = Dimensions.get('window').width;
 const HEADER_OVERLAY_HEIGHT_BASE = 56;
-// Hero aspect ratio — matches heroHeaderWrap's style below (kept in sync
-// manually since the scroll-collapse threshold needs the same value).
-const HERO_ASPECT_RATIO = 1.8;
-const HERO_HEIGHT = SCREEN_W / HERO_ASPECT_RATIO;
+// Native pixel size of assets/images/residents-header.png — sets the hero's
+// aspect ratio so the full illustration (including the right-edge plant)
+// renders with no crop.
+const HERO_IMG_NATURAL_W = 1298;
+const HERO_IMG_NATURAL_H = 563;
+const HERO_HEIGHT = SCREEN_W * (HERO_IMG_NATURAL_H / HERO_IMG_NATURAL_W);
 
 type ReportRow = Record<string, unknown>;
 
@@ -1362,11 +1364,7 @@ const styles = StyleSheet.create({
   },
   heroHeaderWrap: {
     marginHorizontal: -18,
-    // Taller than the image's native ratio on purpose: cover mode zooms in
-    // to fill the extra height, so the illustration displays bigger with
-    // less downscaling of its fine detail — sharper at the cost of some
-    // left/right crop. Kept in sync with HERO_ASPECT_RATIO above.
-    aspectRatio: HERO_ASPECT_RATIO,
+    aspectRatio: HERO_IMG_NATURAL_W / HERO_IMG_NATURAL_H,
     overflow: 'hidden',
     backgroundColor: '#0F172A',
     borderBottomLeftRadius: 26,
