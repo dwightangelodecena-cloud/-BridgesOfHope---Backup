@@ -1126,7 +1126,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.22,
     shadowRadius: 28,
     elevation: 8,
-    minHeight: isCompactScreen ? 190 : 212,
+    // Matches home-header.png's exact 1672x836 (2:1) aspect ratio, so the
+    // container's height always derives from its actual rendered width
+    // instead of a fixed minHeight — guarantees the image is shown in full
+    // (bridge included) with zero cropping on any screen size.
+    aspectRatio: 2,
   },
   heroBannerImage: {
     position: 'absolute',
