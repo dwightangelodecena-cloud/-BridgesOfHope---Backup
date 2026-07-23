@@ -664,7 +664,7 @@ const styles = StyleSheet.create({
   },
   heroTextWrap: { paddingHorizontal: 22, maxWidth: '60%' },
   heroText: { fontSize: 19, fontWeight: '800', lineHeight: 25, color: '#FFFFFF' },
-  heroTextAccent: { color: '#FDBA74' },
+  heroTextAccent: { color: '#F0851F' },
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20, zIndex: 1 },
   statCard: {
     flex: 1,
