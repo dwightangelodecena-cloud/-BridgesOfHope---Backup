@@ -382,12 +382,14 @@ export default function AppointmentsScreen() {
                 key={s.label}
                 style={({ pressed }) => [styles.statCardSquare, { backgroundColor: s.bg }, pressed && styles.statCardPressed]}
               >
-                <View style={[styles.statIconWrap, { backgroundColor: s.iconBg, marginBottom: 8 }]}>
+                <View style={[styles.statIconWrap, { backgroundColor: s.iconBg }]}>
                   <Ionicons name={s.icon} size={17} color={s.color} />
                 </View>
-                <Text style={[styles.statLabel, styles.statTextCenter]}>{s.label.toUpperCase()}</Text>
-                <Text style={[styles.statVal, styles.statTextCenter, { color: s.color }]}>{s.val}</Text>
-                <Text style={[styles.statCaption, styles.statTextCenter]}>{s.caption}</Text>
+                <View style={styles.statTextCol}>
+                  <Text style={styles.statLabel}>{s.label.toUpperCase()}</Text>
+                  <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
+                  <Text style={styles.statCaption}>{s.caption}</Text>
+                </View>
               </Pressable>
             ))}
           </View>
@@ -707,9 +709,10 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(233, 237, 247, 0.85)',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 10,
+    gap: 8,
+    padding: 12,
     ...Platform.select({
       ios: {
         shadowColor: '#0F172A',
@@ -733,7 +736,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   statTextCol: { flex: 1, minWidth: 0 },
-  statTextCenter: { textAlign: 'center' },
   statLabel: {
     fontSize: 9,
     fontWeight: '700',
