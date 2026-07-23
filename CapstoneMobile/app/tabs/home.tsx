@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
-  ImageBackground,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -447,11 +447,12 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        <ImageBackground
-          source={require('../../assets/images/home-header.png')}
-          style={styles.heroBanner}
-          imageStyle={styles.heroBannerImage}
-        >
+        <View style={styles.heroBanner}>
+          <Image
+            source={require('../../assets/images/home-header.png')}
+            style={styles.heroBannerImage}
+            resizeMode="cover"
+          />
           <View style={styles.heroInner}>
             <Text style={styles.heroKicker}>{greeting},</Text>
             <View style={styles.heroTitleRow}>
@@ -462,7 +463,7 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.heroSub}>Here&apos;s an overview of your loved one&apos;s care today.</Text>
           </View>
-        </ImageBackground>
+        </View>
 
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeadRow}>
@@ -1128,8 +1129,13 @@ const styles = StyleSheet.create({
     minHeight: isCompactScreen ? 190 : 212,
   },
   heroBannerImage: {
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 26,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
   },
   heroInner: { gap: 4 },
   heroKicker: {
