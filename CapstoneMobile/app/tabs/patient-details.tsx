@@ -50,11 +50,9 @@ import {
 } from '../../components/family/TemporaryDischargeNoticeMobile';
 
 const WINDOW_H = Dimensions.get('window').height;
-const SCREEN_W = Dimensions.get('window').width;
-const HEADER_BAR_HEIGHT = 56;
-// Native pixel size of assets/images/residents-header.png — used to keep the
-// hero crop anchored to its right edge (where the plant illustration is)
-// instead of a symmetric center-crop that clips it off.
+// Native pixel size of assets/images/residents-header.png — sets the hero's
+// aspect ratio so the full illustration (including the right-edge plant)
+// renders with no crop.
 const HERO_IMG_NATURAL_W = 1298;
 const HERO_IMG_NATURAL_H = 563;
 
@@ -787,20 +785,9 @@ export default function PatientDetailsScreen() {
     ? tempLeaveStatusLabel || 'Temporarily discharged'
     : detailSummaryForModal?.status || patientStatusTone(Number(selected?.progress) || 0).label;
 
-  const heroWrapHeight = insets.top + HEADER_BAR_HEIGHT + SCREEN_W * 0.32;
-  const heroImageScale = heroWrapHeight / HERO_IMG_NATURAL_H;
-  const heroImageWidth = HERO_IMG_NATURAL_W * heroImageScale;
-
   return (
     <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
-      <View style={[styles.heroHeaderWrap, { height: heroWrapHeight }]}>
-        <Image
-          source={require('../../assets/images/residents-header.png')}
-          style={[styles.heroHeaderImage, { width: heroImageWidth, height: heroWrapHeight, right: 0 }]}
-          resizeMode="cover"
-        />
-        <FamilyMobilePageHeader title="Resident Details" onBrandPress={scrollToTop} transparent />
-      </View>
+      <FamilyMobilePageHeader title="Resident Details" onBrandPress={scrollToTop} />
 
       <ScrollView
         ref={scrollRef}
@@ -826,6 +813,14 @@ export default function PatientDetailsScreen() {
           </View>
         ) : (
           <>
+            <View style={styles.heroHeaderWrap}>
+              <Image
+                source={require('../../assets/images/residents-header.png')}
+                style={styles.heroHeaderImage}
+                resizeMode="cover"
+              />
+            </View>
+
             <View style={styles.overviewCard}>
               <Text style={styles.overviewCardLabel}>Care Overview</Text>
               <View style={styles.statGrid}>
@@ -1326,16 +1321,25 @@ const styles = StyleSheet.create({
   notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 18, paddingTop: 14 },
   heroHeaderWrap: {
-    width: '100%',
+    marginHorizontal: -18,
+    aspectRatio: HERO_IMG_NATURAL_W / HERO_IMG_NATURAL_H,
     overflow: 'hidden',
     backgroundColor: '#0F172A',
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
   },
   heroHeaderImage: {
     position: 'absolute',
     top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
   },
-  heroOverlapScroll: { flex: 1, marginTop: -60 },
+  heroOverlapScroll: { flex: 1 },
   overviewCard: {
+    marginTop: -44,
     marginBottom: 16,
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
