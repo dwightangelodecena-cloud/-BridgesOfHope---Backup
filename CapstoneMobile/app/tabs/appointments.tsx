@@ -11,8 +11,6 @@ import {
   Alert,
   useWindowDimensions,
   Platform,
-  type NativeSyntheticEvent,
-  type NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -62,7 +60,6 @@ const CAL_GAP = 6;
 /** Horizontal padding: scroll 32 + panel 40 */
 const CAL_HORIZONTAL_PAD = 72;
 
-const HEADER_OVERLAY_HEIGHT_BASE = 56;
 // Native pixel size of assets/images/appointments-header.png — sets the
 // hero's aspect ratio so the full illustration renders with no crop.
 const HERO_IMG_NATURAL_W = 1672;
@@ -114,7 +111,6 @@ export default function AppointmentsScreen() {
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
   const { cell: CELL, gridWidth: CAL_GRID_WIDTH, gap: CELL_GAP } = useCalendarGridLayout();
-  const [headerSolid, setHeaderSolid] = useState(false);
   const [familyUserId, setFamilyUserId] = useState('');
     const [familyName, setFamilyName] = useState('Family User');
   const [patients, setPatients] = useState<PatientOpt[]>([]);
@@ -338,23 +334,17 @@ export default function AppointmentsScreen() {
     }
   };
 
-  const headerOverlayHeight = insets.top + HEADER_OVERLAY_HEIGHT_BASE;
   const heroHeight = screenWidth * (HERO_IMG_NATURAL_H / HERO_IMG_NATURAL_W);
-
-  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
-    setHeaderSolid(y > heroHeight - headerOverlayHeight);
-  };
 
   return (
     <View style={styles.screen}>
+      <FamilyMobilePageHeader title="Appointments" onBrandPress={scrollToTop} />
+
       <ScrollView
         ref={scrollRef}
         style={styles.heroOverlapScroll}
         contentContainerStyle={[styles.scroll, { paddingTop: 0, paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
       >
         <View style={[styles.heroWrap, { height: heroHeight }]}>
           <Image
@@ -362,7 +352,7 @@ export default function AppointmentsScreen() {
             style={styles.heroImage}
             resizeMode="cover"
           />
-          <View style={[styles.heroTextWrap, { paddingTop: headerOverlayHeight + 14 }]}>
+          <View style={styles.heroTextWrap}>
             <Text style={styles.heroText}>
               Manage your <Text style={styles.heroTextAccent}>appointments</Text> and stay on track with care.
             </Text>
@@ -646,10 +636,6 @@ export default function AppointmentsScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.headerOverlay} pointerEvents="box-none">
-        <FamilyMobilePageHeader title="Appointments" onBrandPress={scrollToTop} transparent={!headerSolid} />
-      </View>
-
       <FamilyWebMobileNav active="appointments" />
       <FamilyFloatingChat />
     </View>
@@ -660,13 +646,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F8FAFF' },
   scroll: { paddingHorizontal: 16, paddingTop: 16 },
   heroOverlapScroll: { flex: 1 },
-  headerOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
   heroWrap: {
     marginHorizontal: -16,
     marginBottom: -20,
@@ -684,7 +663,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  heroTextWrap: { paddingHorizontal: 22, maxWidth: '64%' },
+  heroTextWrap: { paddingHorizontal: 22, paddingTop: 20, maxWidth: '64%' },
   heroText: { fontSize: 19, fontWeight: '800', lineHeight: 25, color: '#FFFFFF' },
   heroTextAccent: { color: '#FDBA74' },
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20, zIndex: 1 },
