@@ -242,14 +242,12 @@ function ProgressRing({ pct, size = 56, color }: { pct: number; size?: number; c
 function StatMiniCard({
   label,
   value,
-  caption,
   icon,
   iconBg,
   iconColor,
 }: {
   label: string;
   value: string | number;
-  caption: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   iconBg: string;
   iconColor: string;
@@ -261,7 +259,6 @@ function StatMiniCard({
       </View>
       <Text style={styles.statCardValue}>{value}</Text>
       <Text style={styles.statCardLabel}>{label}</Text>
-      <Text style={styles.statCardCaption}>{caption}</Text>
     </View>
   );
 }
@@ -854,7 +851,6 @@ export default function PatientDetailsScreen() {
                 <StatMiniCard
                   label="Active Residents"
                   value={patients.length}
-                  caption="Currently under care"
                   icon="people"
                   iconBg="#EEF2FF"
                   iconColor="#6366F1"
@@ -862,7 +858,6 @@ export default function PatientDetailsScreen() {
                 <StatMiniCard
                   label="Avg Progress"
                   value={`${averageProgress}%`}
-                  caption="Steady recovery"
                   icon="trending-up"
                   iconBg="#ECFDF5"
                   iconColor="#10B981"
@@ -870,7 +865,6 @@ export default function PatientDetailsScreen() {
                 <StatMiniCard
                   label="Total Reports"
                   value={totalReportsSubmitted}
-                  caption="This week"
                   icon="document-text"
                   iconBg="#F54E25"
                   iconColor="#FFFFFF"
@@ -878,7 +872,6 @@ export default function PatientDetailsScreen() {
                 <StatMiniCard
                   label="Pending Review"
                   value={pendingReviewCount}
-                  caption="Needs attention"
                   icon="warning"
                   iconBg="#FEF3C7"
                   iconColor="#F59E0B"
@@ -1430,13 +1423,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   statCardValue: { fontSize: 20, fontWeight: '900', color: '#1B2559', textAlign: 'center' },
-  statCardCaption: {
-    fontSize: 9,
-    color: '#94A3B8',
-    fontWeight: '600',
-    marginTop: 2,
-    textAlign: 'center',
-  },
   recentSection: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,

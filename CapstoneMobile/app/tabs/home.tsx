@@ -44,6 +44,11 @@ import { BH, SHADOW } from '../../theme/tokens';
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
 const BG = BH.surface2;
+// Native pixel size of assets/images/home-header.png — the hero container's
+// aspectRatio is derived from this so the image always renders in full with
+// zero cropping, regardless of screen width. Update if the asset changes.
+const HERO_IMG_NATURAL_W = 1672;
+const HERO_IMG_NATURAL_H = 941;
 
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -1184,11 +1189,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.22,
     shadowRadius: 28,
     elevation: 8,
-    // Matches home-header.png's exact 1672x836 (2:1) aspect ratio, so the
-    // container's height always derives from its actual rendered width
-    // instead of a fixed minHeight — guarantees the image is shown in full
-    // (bridge included) with zero cropping on any screen size.
-    aspectRatio: 2,
+    // Matches home-header.png's actual aspect ratio (see HERO_IMG_NATURAL_W/H
+    // above), so the container's height always derives from its actual
+    // rendered width instead of a fixed minHeight — guarantees the image is
+    // shown in full (bridge included) with zero cropping on any screen size.
+    aspectRatio: HERO_IMG_NATURAL_W / HERO_IMG_NATURAL_H,
   },
   heroBannerImage: {
     position: 'absolute',
