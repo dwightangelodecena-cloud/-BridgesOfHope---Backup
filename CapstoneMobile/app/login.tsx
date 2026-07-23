@@ -191,66 +191,77 @@ export default function LoginScreen() {
 
     setSubmitting(true);
 
-    if (!emailRegex.test(trimmedId)) {
-      const digits = trimmedId.replace(/\D/g, "");
-      const { data: rows, error: rpcError } = await supabase.rpc("resolve_login_email", {
-        login_input: digits,
+    try {
+      if (!emailRegex.test(trimmedId)) {
+        const digits = trimmedId.replace(/\D/g, "");
+        const { data: rows, error: rpcError } = await supabase.rpc("resolve_login_email", {
+          login_input: digits,
+        });
+        if (rpcError) {
+          showError(formatAuthError(rpcError));
+          return;
+        }
+        const resolved = Array.isArray(rows) && rows.length > 0 ? rows[0]?.email : null;
+        if (!resolved || typeof resolved !== "string") {
+          showError("No account found with that email or contact number.");
+          return;
+        }
+        signInEmail = resolved;
+      }
+
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: signInEmail.trim(),
+        password,
       });
-      if (rpcError) {
-        setSubmitting(false);
-        showError(formatAuthError(rpcError));
+
+      if (authError) {
+        showError(formatAuthError(authError));
         return;
       }
-      const resolved = Array.isArray(rows) && rows.length > 0 ? rows[0]?.email : null;
-      if (!resolved || typeof resolved !== "string") {
-        setSubmitting(false);
-        showError("No account found with that email or contact number.");
+
+      const role = (data.user?.user_metadata?.account_type ?? "family") as string;
+      if (role !== "family") {
+        await supabase.auth.signOut();
+        showError("Use the web app to sign in as staff.");
         return;
       }
-      signInEmail = resolved;
-    }
 
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email: signInEmail.trim(),
-      password,
-    });
-    setSubmitting(false);
+      hapticSuccess();
+      await touchPresence(data.user?.id);
+      await appendActivityFeed("Logged in from mobile app.", {
+        familyId: data.user?.id ?? null,
+        title: "Account Login",
+        iconName: "login",
+      });
 
-    if (authError) {
-      showError(formatAuthError(authError));
-      return;
-    }
-
-    const role = (data.user?.user_metadata?.account_type ?? "family") as string;
-    if (role !== "family") {
-      await supabase.auth.signOut();
-      showError("Use the web app to sign in as staff.");
-      return;
-    }
-
-    hapticSuccess();
-    await touchPresence(data.user?.id);
-    await appendActivityFeed("Logged in from mobile app.", {
-      familyId: data.user?.id ?? null,
-      title: "Account Login",
-      iconName: "login",
-    });
-
-    if (rememberMe) {
-      try {
-        await AsyncStorage.setItem(REMEMBER_LOGIN_KEY, trimmedId);
-      } catch {
-        /* ignore */
+      if (rememberMe) {
+        try {
+          await AsyncStorage.setItem(REMEMBER_LOGIN_KEY, trimmedId);
+        } catch {
+          /* ignore */
+        }
+      } else {
+        try {
+          await AsyncStorage.removeItem(REMEMBER_LOGIN_KEY);
+        } catch {
+          /* ignore */
+        }
       }
-    } else {
-      try {
-        await AsyncStorage.removeItem(REMEMBER_LOGIN_KEY);
-      } catch {
-        /* ignore */
-      }
-    }
 
-    router.replace(TAB_ROUTES.home);
+      router.replace(TAB_ROUTES.home);
+    } catch (e) {
+      // A thrown network failure (e.g. "Failed to fetch") would otherwise
+      // skip every showError()/setSubmitting(false) call above, leaving the
+      // sign-in button stuck spinning forever with no feedback.
+      hapticError();
+      showError(
+        e instanceof Error && /failed to fetch|network/i.test(e.message)
+          ? "Couldn't reach the server. Check your connection and try again."
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleGoToSignup = () => {
