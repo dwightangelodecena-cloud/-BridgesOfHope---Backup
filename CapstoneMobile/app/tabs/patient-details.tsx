@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -315,6 +315,7 @@ export default function PatientDetailsScreen() {
   );
   const [residentReturnBusy, setResidentReturnBusy] = useState(false);
   const [showResidentReturnConfirm, setShowResidentReturnConfirm] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured()) {
@@ -325,7 +326,12 @@ export default function PatientDetailsScreen() {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    // Re-focusing this tab re-runs load() every time — only show the
+    // full loading state the first time, so already-loaded data stays
+    // on screen while subsequent visits refresh quietly in the background.
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true);
+    }
     try {
       const {
         data: { user },
@@ -594,6 +600,7 @@ export default function PatientDetailsScreen() {
       setWeeklyReportsByPatient({});
     } finally {
       setLoading(false);
+      hasLoadedOnceRef.current = true;
     }
   }, []);
 
