@@ -24,6 +24,12 @@ if (__DEV__) {
       void ensureAuthSessionHealthy();
       return;
     }
+    // Transient network hiccups (e.g. a cold-starting Supabase project) are
+    // already surfaced to the user via the normal error-message UI in each
+    // screen's try/catch — no need for the intrusive dev LogBox popup too.
+    if (/failed to fetch|network request failed/i.test(text)) {
+      return;
+    }
     originalConsoleError(...args);
   };
 }
