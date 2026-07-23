@@ -975,12 +975,12 @@ const LandingPage = () => {
           margin: 0 auto;
           display: flex; align-items: center; justify-content: space-between;
           padding: 12px 20px 12px var(--s-3);
-          background: rgba(253,252,250,0.82);
+          background: rgba(18,12,9,0.74);
           backdrop-filter: blur(20px) saturate(1.5);
           -webkit-backdrop-filter: blur(20px) saturate(1.5);
-          border: 1px solid rgba(224,218,208,0.72);
+          border: 1.5px solid rgba(232,107,74,0.45);
           border-radius: 20px;
-          box-shadow: var(--shadow-s);
+          box-shadow: 0 0 26px rgba(217,79,42,0.22), var(--shadow-s);
           transition: background var(--transition-ui), box-shadow var(--transition-ui), border-color var(--transition-ui), transform var(--transition-ui);
         }
         .nav::before {
@@ -989,25 +989,25 @@ const LandingPage = () => {
           inset: -7px;
           border-radius: 30px;
           background:
-            radial-gradient(120% 120% at 0% 0%, rgba(217,79,42,0.12) 0%, transparent 52%),
-            radial-gradient(120% 120% at 100% 100%, rgba(74,103,65,0.09) 0%, transparent 55%);
-          border: 1px solid rgba(255,255,255,0.55);
-          box-shadow: 0 8px 22px rgba(12,10,8,0.08), 0 0 0 1px rgba(224,218,208,0.7);
-          opacity: 0.78;
+            radial-gradient(120% 120% at 0% 0%, rgba(217,79,42,0.22) 0%, transparent 52%),
+            radial-gradient(120% 120% at 100% 100%, rgba(232,107,74,0.14) 0%, transparent 55%);
+          border: 1px solid rgba(232,107,74,0.22);
+          box-shadow: 0 8px 22px rgba(0,0,0,0.35), 0 0 0 1px rgba(232,107,74,0.14);
+          opacity: 0.85;
           pointer-events: none;
           z-index: -1;
           transition: opacity 0.35s var(--ease-out-expo), transform 0.35s var(--ease-out-expo), box-shadow 0.35s var(--ease-out-expo);
         }
         .nav-shell.elevated .nav {
-          background: rgba(253,252,250,0.92);
-          border-color: rgba(224,218,208,0.9);
-          box-shadow: var(--shadow-m);
+          background: rgba(14,9,7,0.9);
+          border-color: rgba(232,107,74,0.6);
+          box-shadow: 0 0 32px rgba(217,79,42,0.3), var(--shadow-m);
           transform: translateY(-1px);
         }
         .nav-shell.elevated .nav::before {
           opacity: 0.95;
           transform: scale(1.003);
-          box-shadow: 0 14px 34px rgba(12,10,8,0.12), 0 0 0 1px rgba(224,218,208,0.9);
+          box-shadow: 0 14px 34px rgba(0,0,0,0.4), 0 0 0 1px rgba(232,107,74,0.25);
         }
         .nav::after {
           content: '';
@@ -1016,7 +1016,7 @@ const LandingPage = () => {
           right: 14px;
           bottom: -1px;
           height: 1px;
-          background: linear-gradient(90deg, transparent, rgba(217,79,42,0.25), transparent);
+          background: linear-gradient(90deg, transparent, rgba(217,79,42,0.4), transparent);
           opacity: 0;
           transition: opacity 0.35s var(--ease-out-expo);
         }
@@ -1073,7 +1073,7 @@ const LandingPage = () => {
           font-family: var(--font-nav);
           font-size: 0.78rem;
           font-weight: 600;
-          color: var(--ink-3);
+          color: var(--accent-2);
           text-decoration: none;
           letter-spacing: 0.035em;
           line-height: 1;
@@ -1106,7 +1106,7 @@ const LandingPage = () => {
           position: absolute;
           inset: 0;
           border-radius: inherit;
-          background: linear-gradient(135deg, rgba(217,79,42,0.14), rgba(232,107,74,0.08));
+          background: linear-gradient(135deg, rgba(217,79,42,0.28), rgba(232,107,74,0.16));
           opacity: 0;
           transform: scale(0.92);
           transition:
@@ -1119,10 +1119,10 @@ const LandingPage = () => {
         }
         .nav-links-desktop a::after { display: none; }
         .nav-links-desktop a:hover:not(.is-active) {
-          color: var(--ink);
+          color: #FFE4D2;
           letter-spacing: 0.045em;
           transform: translateY(-1px);
-          box-shadow: 0 8px 16px rgba(12,10,8,0.08);
+          box-shadow: 0 8px 16px rgba(0,0,0,0.25);
         }
         .nav-links-desktop a:hover:not(.is-active)::before {
           opacity: 1;
@@ -1166,13 +1166,15 @@ const LandingPage = () => {
           position: relative;
           overflow: hidden;
           font-weight: 700;
-          background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
-          border-color: rgba(217,79,42,0.35);
-          box-shadow: 0 8px 24px var(--accent-glow), 0 2px 8px rgba(12,10,8,0.08);
+          background: transparent;
+          color: var(--accent-2);
+          border: 1.5px solid rgba(232,107,74,0.65);
+          box-shadow: 0 0 18px rgba(217,79,42,0.16);
         }
         .nav-right .btn-primary:hover {
-          background: linear-gradient(135deg, var(--accent-h) 0%, var(--accent) 100%);
-          box-shadow: 0 12px 32px rgba(217,79,42,0.35);
+          background: rgba(217,79,42,0.14);
+          border-color: rgba(232,107,74,0.9);
+          box-shadow: 0 0 24px rgba(217,79,42,0.3);
         }
         .nav-right .btn-primary svg { position: relative; z-index: 1; transition: transform 0.3s var(--ease-out-expo); }
         .nav-right .btn-primary:hover svg { transform: translateX(3px); }
@@ -1229,19 +1231,19 @@ const LandingPage = () => {
 
         .hamburger-btn {
           display: none; background: none; border: none; cursor: pointer;
-          color: var(--ink); padding: 10px; border-radius: var(--r-sm);
-          border: 1px solid rgba(224,218,208,0.9);
-          background: rgba(255,255,255,0.65);
+          color: var(--accent-2); padding: 10px; border-radius: var(--r-sm);
+          border: 1px solid rgba(232,107,74,0.4);
+          background: rgba(217,79,42,0.14);
           transition: background 0.2s var(--ease-out-expo), transform 0.2s var(--ease-out-expo), border-color 0.2s var(--ease-out-expo);
         }
         .hamburger-btn:hover {
-          background: rgba(255,255,255,0.95);
-          border-color: rgba(217,79,42,0.3);
+          background: rgba(217,79,42,0.24);
+          border-color: rgba(232,107,74,0.65);
           transform: translateY(-1px);
         }
         .hamburger-btn.open {
-          background: rgba(217,79,42,0.12);
-          border-color: rgba(217,79,42,0.3);
+          background: rgba(217,79,42,0.3);
+          border-color: rgba(232,107,74,0.7);
         }
 
         /* Mobile nav drawer */
