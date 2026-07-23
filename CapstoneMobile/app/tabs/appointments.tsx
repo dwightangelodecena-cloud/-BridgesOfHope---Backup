@@ -653,8 +653,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     overflow: 'hidden',
     backgroundColor: '#0F172A',
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 26,
   },
   heroImage: {
     position: 'absolute',
