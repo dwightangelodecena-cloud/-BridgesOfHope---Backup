@@ -1397,7 +1397,7 @@ const styles = StyleSheet.create({
   overviewCardLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#94A3B8',
+    color: '#64748B',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: 14,
