@@ -456,9 +456,7 @@ export default function HomeScreen() {
           <View style={styles.heroInner}>
             <Text style={styles.heroKicker}>{greeting},</Text>
             <View style={styles.heroTitleRow}>
-              <Text style={styles.heroTitle}>
-                {firstName}! <Text style={styles.heroWave}>👋</Text>
-              </Text>
+              <Text style={styles.heroTitle}>{firstName}!</Text>
               <Ionicons name={greetingIcon} size={isCompactScreen ? 18 : 20} color="#FDBA74" style={styles.heroTitleIcon} />
             </View>
             <Text style={styles.heroSub}>Here&apos;s an overview of your loved one&apos;s care today.</Text>
@@ -1141,32 +1139,39 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  heroInner: { gap: 4 },
+  heroInner: { gap: 4, marginBottom: 18, maxWidth: '58%' },
   heroKicker: {
     fontSize: isCompactScreen ? 15 : 17,
     fontWeight: '800',
-    color: '#FDBA74',
-    letterSpacing: -0.2,
+    color: '#FFFFFF',
+    letterSpacing: -0.1,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
   },
-  heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 2 },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 3 },
   heroTitle: {
     flexShrink: 1,
-    fontSize: isCompactScreen ? 23 : 27,
+    fontSize: isCompactScreen ? 25 : 29,
     fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: -0.4,
-  },
-  heroWave: {
-    fontSize: isCompactScreen ? 18 : 20,
+    letterSpacing: -0.5,
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 8,
   },
   heroTitleIcon: {
     marginTop: 2,
   },
   heroSub: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.82)',
-    maxWidth: '78%',
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.86)',
+    marginTop: 5,
+    lineHeight: 19,
+    textShadowColor: 'rgba(0,0,0,0.25)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   summaryCard: {
     borderRadius: 22,
