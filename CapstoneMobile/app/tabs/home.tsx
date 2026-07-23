@@ -448,26 +448,16 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroBanner}>
-          <LinearGradient
-            colors={['#0B2B5A', '#123C75']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFillObject}
+          <Image
+            source={require('../../assets/images/home-header.png')}
+            style={styles.heroBannerImage}
+            resizeMode="cover"
           />
-          <View style={styles.heroBannerImageWrap}>
-            <Image
-              source={require('../../assets/images/home-header.png')}
-              style={styles.heroBannerImage}
-              resizeMode="cover"
-            />
-          </View>
           <View style={styles.heroInner}>
             <Text style={styles.heroKicker}>{greeting},</Text>
             <View style={styles.heroTitleRow}>
               <Text style={styles.heroTitle}>{firstName}!</Text>
-              <View style={styles.heroWeatherBadge}>
-                <Ionicons name={greetingIcon} size={isCompactScreen ? 15 : 16} color="#FDBA74" />
-              </View>
+              <Ionicons name={greetingIcon} size={isCompactScreen ? 18 : 20} color="#FDBA74" style={styles.heroTitleIcon} />
             </View>
             <Text style={styles.heroSub}>Here&apos;s an overview of your loved one&apos;s care today.</Text>
           </View>
@@ -476,13 +466,8 @@ export default function HomeScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeadRow}>
             <Text style={styles.summaryTitle}>Today&apos;s Summary</Text>
-            <TouchableOpacity
-              style={styles.viewAllChip}
-              onPress={() => router.navigate(TAB_ROUTES.patientDetails)}
-              hitSlop={8}
-            >
+            <TouchableOpacity onPress={() => router.navigate(TAB_ROUTES.patientDetails)} hitSlop={8}>
               <Text style={styles.summaryViewAll}>View all</Text>
-              <Ionicons name="arrow-forward" size={13} color="#2563EB" />
             </TouchableOpacity>
           </View>
 
@@ -1127,86 +1112,71 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: isCompactScreen ? 14 : 18, paddingTop: 0 },
   heroBanner: {
     marginHorizontal: isCompactScreen ? -14 : -18,
-    borderBottomLeftRadius: 38,
-    borderBottomRightRadius: 38,
-    paddingHorizontal: isCompactScreen ? 20 : 26,
-    paddingTop: isCompactScreen ? 24 : 30,
-    paddingBottom: isCompactScreen ? 20 : 24,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+    padding: isCompactScreen ? 18 : 24,
     marginBottom: 0,
     overflow: 'hidden',
-    backgroundColor: '#0B2B5A',
-    justifyContent: 'flex-start',
+    backgroundColor: '#0f172a',
+    justifyContent: 'flex-end',
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.22,
     shadowRadius: 28,
     elevation: 8,
-    // Taller than the image's own 2:1 footprint, so there's breathing room
-    // above the illustration instead of it filling the whole banner.
-    minHeight: isCompactScreen ? 240 : 268,
+    // Matches home-header.png's exact 1672x836 (2:1) aspect ratio, so the
+    // container's height always derives from its actual rendered width
+    // instead of a fixed minHeight — guarantees the image is shown in full
+    // (bridge included) with zero cropping on any screen size.
+    aspectRatio: 2,
   },
-  // Establishes a definite, correctly-proportioned box (full width, exact
-  // 2:1 aspect) — the Image inside just fills it at 100%/100%. Anchored to
-  // the top edge because the artwork's white swoosh is designed to align
-  // flush with the header above it; the container is taller than this box
-  // so the extra breathing room shows as gradient below the image instead.
-  heroBannerImageWrap: {
+  heroBannerImage: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    aspectRatio: 2,
-    overflow: 'hidden',
-  },
-  heroBannerImage: {
+    bottom: 0,
     width: '100%',
     height: '100%',
   },
-  heroInner: { gap: 6, maxWidth: '62%' },
+  heroInner: { gap: 1, marginBottom: 18, maxWidth: '58%' },
   heroKicker: {
-    fontSize: isCompactScreen ? 18 : 19,
-    fontWeight: '600',
+    fontSize: isCompactScreen ? 15 : 17,
+    fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: -0.1,
     textShadowColor: 'rgba(0,0,0,0.3)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 6,
   },
-  heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 4 },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: -1 },
   heroTitle: {
     flexShrink: 1,
-    fontSize: isCompactScreen ? 30 : 34,
+    fontSize: isCompactScreen ? 25 : 29,
     fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: -0.6,
+    letterSpacing: -0.5,
     textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 3 },
     textShadowRadius: 8,
   },
-  heroWeatherBadge: {
-    width: isCompactScreen ? 26 : 28,
-    height: isCompactScreen ? 26 : 28,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  heroTitleIcon: {
+    marginTop: 2,
   },
   heroSub: {
-    fontSize: isCompactScreen ? 15 : 16,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 8,
-    lineHeight: 21,
-    textShadowColor: 'rgba(0,0,0,0.2)',
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.86)',
+    marginTop: 5,
+    lineHeight: 19,
+    textShadowColor: 'rgba(0,0,0,0.25)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
   summaryCard: {
-    borderRadius: 28,
+    borderRadius: 22,
     backgroundColor: BH.surface,
-    padding: isCompactScreen ? 20 : 24,
+    padding: isCompactScreen ? 16 : 20,
     marginTop: -28,
     marginBottom: 18,
     borderWidth: 1,
@@ -1223,8 +1193,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-  summaryTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
-  viewAllChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  summaryTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
   summaryViewAll: { fontSize: 13, fontWeight: '700', color: '#2563EB' },
   summaryStatsRow: { flexDirection: 'row', alignItems: 'flex-start' },
   summaryStatCol: { flex: 1, minWidth: 0 },
@@ -1253,10 +1222,10 @@ const styles = StyleSheet.create({
   },
   summaryProgressFill: { height: '100%', borderRadius: 4, backgroundColor: BH.brand },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitleText: { fontSize: 19, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
+  sectionTitleText: { fontSize: 14, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
   sectionSub: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '500' },
   dashboardHero: {
-    borderRadius: 28,
+    borderRadius: 22,
     padding: isCompactScreen ? 18 : 22,
     marginTop: 14,
     marginBottom: 14,
@@ -1360,13 +1329,13 @@ const styles = StyleSheet.create({
   },
   panelCard: {
     backgroundColor: BH.surface,
-    borderRadius: 28,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: BH.border,
-    padding: 22,
+    padding: 18,
     shadowColor: BH.slate900,
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.07,
     shadowRadius: 28,
     elevation: 4,
   },
@@ -1424,7 +1393,7 @@ const styles = StyleSheet.create({
     bottom: -16,
   },
   supportTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  supportTitle: { fontSize: 19, fontWeight: '800', color: BH.navy },
+  supportTitle: { fontSize: 16, fontWeight: '800', color: BH.navy },
   supportSub: { fontSize: 13, color: '#64748B', fontWeight: '500', marginTop: 4, maxWidth: '80%', lineHeight: 18 },
   supportBtn: {
     alignSelf: 'flex-start',
@@ -1438,7 +1407,7 @@ const styles = StyleSheet.create({
   supportBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
   tableHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   tableHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  panelTitleInline: { fontSize: 19, fontWeight: '800', color: '#1B2559' },
+  panelTitleInline: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
   tableMeta: { fontSize: 11, fontWeight: '700', color: '#64748B' },
   weekPill: {
     flexDirection: 'row',
