@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, Platform } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KalingaLogoMark } from './KalingaLogoMark';
@@ -12,7 +12,7 @@ export function FamilyHeaderBrand() {
       <View style={styles.logoPlate}>
         <Image
           source={require('../../assets/images/new-logo.png')}
-          style={styles.logoImage}
+          style={[styles.logoImage, { tintColor: BH.brand }]}
           resizeMode="contain"
           accessibilityLabel="Kalinga logo"
         />
@@ -52,13 +52,8 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   logoPlate: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
-    backgroundColor: BH.brandSurface,
-    borderWidth: 1,
-    // Softened from the solid brandSurfaceBorder token — a lighter, quieter edge.
-    borderColor: 'rgba(254, 215, 170, 0.55)',
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -66,20 +61,10 @@ const styles = StyleSheet.create({
     // and small — clip the plate and oversize the image below to zoom past
     // the whitespace instead of rendering a tiny glyph via plain "contain".
     overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: BH.brand,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-      },
-      android: { elevation: 2 },
-      default: {},
-    }),
   },
   logoImage: {
-    width: 75,
-    height: 112,
+    width: 62,
+    height: 93,
   },
   textWrap: {
     flex: 1,
