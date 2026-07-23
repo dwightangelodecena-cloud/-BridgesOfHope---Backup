@@ -29,6 +29,8 @@ type Props = {
   showLogo?: boolean;
   /** Scroll main page content to top (tap brand / title area). */
   onBrandPress?: () => void;
+  /** Renders with a transparent background — for screens placing the header over a hero image. */
+  transparent?: boolean;
 };
 
 /**
@@ -38,6 +40,7 @@ export function FamilyMobilePageHeader({
   title,
   showLogo = true,
   onBrandPress,
+  transparent = false,
 }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -92,8 +95,8 @@ export function FamilyMobilePageHeader({
         </View>
       </Modal>
 
-      <View style={styles.headerShell}>
-        <View style={[styles.bar, { paddingTop: Math.max(insets.top, 8) }]}>
+      <View style={[styles.headerShell, transparent && styles.headerShellTransparent]}>
+        <View style={[styles.bar, transparent && styles.barTransparent, { paddingTop: Math.max(insets.top, 8) }]}>
           <TouchableOpacity
             style={styles.brandArea}
             onPress={onBrandPress}
@@ -169,6 +172,14 @@ const styles = StyleSheet.create({
       default: {},
     }),
   },
+  headerShellTransparent: {
+    backgroundColor: 'transparent',
+    ...Platform.select({
+      ios: { shadowOpacity: 0 },
+      android: { elevation: 0 },
+      default: {},
+    }),
+  },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -178,6 +189,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     backgroundColor: BH.surface,
   },
+  barTransparent: { backgroundColor: 'transparent' },
   brandArea: {
     flex: 1,
     minWidth: 0,

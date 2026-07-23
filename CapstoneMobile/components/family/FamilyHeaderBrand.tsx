@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { KalingaLogoMark } from './KalingaLogoMark';
 import { BH } from '../../theme/tokens';
 
 // Sampled from new-logo.png's own mark so the wordmark reads as one color
@@ -94,29 +95,43 @@ const pageTitleStyles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     minWidth: 0,
-    paddingRight: 8,
+    paddingRight: 4,
   },
   logoPlate: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: BH.brandSurface,
+    borderWidth: 1,
+    borderColor: 'rgba(254, 215, 170, 0.55)',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    overflow: 'hidden',
   },
-  logoImage: {
-    width: 62,
-    height: 93,
+  textWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+  },
+  accentBar: {
+    width: 3,
+    height: 26,
+    borderRadius: 999,
+    backgroundColor: BH.brand,
+    flexShrink: 0,
+    opacity: 0.9,
   },
   pageTitle: {
     flex: 1,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
     color: BH.navy,
     letterSpacing: -0.3,
-    lineHeight: 21,
+    lineHeight: 20,
   },
 });
 
@@ -125,16 +140,14 @@ export function FamilyPageTitleBrand({ title }: { title: string }) {
   return (
     <View style={pageTitleStyles.row}>
       <View style={pageTitleStyles.logoPlate}>
-        <Image
-          source={require('../../assets/images/new-logo.png')}
-          style={pageTitleStyles.logoImage}
-          resizeMode="contain"
-          accessibilityLabel="Kalinga logo"
-        />
+        <KalingaLogoMark size={28} variant="plain" />
       </View>
-      <Text style={pageTitleStyles.pageTitle} numberOfLines={1}>
-        {title}
-      </Text>
+      <View style={pageTitleStyles.textWrap}>
+        <View style={pageTitleStyles.accentBar} />
+        <Text style={pageTitleStyles.pageTitle} numberOfLines={1}>
+          {title}
+        </Text>
+      </View>
     </View>
   );
 }

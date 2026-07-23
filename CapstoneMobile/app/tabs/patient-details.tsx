@@ -51,6 +51,8 @@ import {
 } from '../../components/family/TemporaryDischargeNoticeMobile';
 
 const WINDOW_H = Dimensions.get('window').height;
+const SCREEN_W = Dimensions.get('window').width;
+const HEADER_BAR_HEIGHT = 56;
 
 type ReportRow = Record<string, unknown>;
 
@@ -783,9 +785,20 @@ export default function PatientDetailsScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
-      <FamilyMobilePageHeader title="Resident Details" onBrandPress={scrollToTop} />
+      <View style={[styles.heroHeaderWrap, { height: insets.top + HEADER_BAR_HEIGHT + SCREEN_W / 2 }]}>
+        <Image
+          source={require('../../assets/images/residents-header.png')}
+          style={styles.heroHeaderImage}
+          resizeMode="cover"
+        />
+        <FamilyMobilePageHeader title="Resident Details" onBrandPress={scrollToTop} transparent />
+      </View>
 
-      <ScrollView ref={scrollRef} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.heroOverlapScroll}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+      >
         {loading ? (
           <View style={styles.loading}>
             <ActivityIndicator color="#F54E25" />
@@ -804,14 +817,6 @@ export default function PatientDetailsScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.heroBanner}>
-              <Image
-                source={require('../../assets/images/residents-header.png')}
-                style={styles.heroBannerImage}
-                resizeMode="cover"
-              />
-            </View>
-
             <View style={styles.overviewCard}>
               <Text style={styles.overviewCardLabel}>Care Overview</Text>
               <View style={styles.statGrid}>
@@ -1312,15 +1317,12 @@ const styles = StyleSheet.create({
   notifText: { flex: 1, fontSize: 13, color: '#334155' },
   notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 18, paddingTop: 14 },
-  heroBanner: {
-    marginHorizontal: -18,
-    aspectRatio: 2,
+  heroHeaderWrap: {
+    width: '100%',
     overflow: 'hidden',
     backgroundColor: '#0F172A',
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 26,
   },
-  heroBannerImage: {
+  heroHeaderImage: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -1329,8 +1331,8 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  heroOverlapScroll: { marginTop: -44 },
   overviewCard: {
-    marginTop: -44,
     marginBottom: 16,
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
@@ -1369,7 +1371,9 @@ const styles = StyleSheet.create({
   },
   statCardLabel: {
     fontSize: 8.5,
-    color: '#64748B',
+    lineHeight: 11,
+    minHeight: 22,
+    color: '#334155',
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.3,
@@ -1534,7 +1538,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 4,
   },
-  dirTitle: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
+  dirTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1B2559',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   dirMeta: { fontSize: 12, fontWeight: '800', color: '#F54E25' },
   card: {
     backgroundColor: '#FFFFFF',
