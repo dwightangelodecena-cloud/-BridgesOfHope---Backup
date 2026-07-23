@@ -1199,7 +1199,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  heroInner: { gap: 1, maxWidth: '58%' },
+  heroInner: { gap: 1, maxWidth: '58%', marginTop: -8 },
   heroKicker: {
     fontSize: isCompactScreen ? 15 : 17,
     fontWeight: '800',
@@ -1237,7 +1237,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: BH.surface,
     padding: isCompactScreen ? 16 : 20,
-    marginTop: -44,
+    marginTop: -38,
     marginBottom: 18,
     borderWidth: 1,
     borderColor: BH.border,
