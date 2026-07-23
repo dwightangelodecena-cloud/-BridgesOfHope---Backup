@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -159,7 +160,12 @@ export default function ProgressScreen() {
           activeOpacity={0.9}
         >
           <View style={[styles.hubIcon, { backgroundColor: '#F54E25' }]}>
-            <Ionicons name="clipboard" size={28} color="#FFFFFF" />
+            <Image
+              source={require('../../assets/images/admission.png')}
+              style={styles.hubIconImage}
+              resizeMode="contain"
+              tintColor="#FFFFFF"
+            />
           </View>
           <View style={styles.hubTextCol}>
             <Text style={styles.hubTitle}>Admission request</Text>
@@ -177,7 +183,12 @@ export default function ProgressScreen() {
           activeOpacity={0.9}
         >
           <View style={[styles.hubIcon, { backgroundColor: '#2B31ED' }]}>
-            <Ionicons name="log-out-outline" size={28} color="#FFFFFF" />
+            <Image
+              source={require('../../assets/images/dismiss.png')}
+              style={styles.hubIconImage}
+              resizeMode="contain"
+              tintColor="#FFFFFF"
+            />
           </View>
           <View style={styles.hubTextCol}>
             <Text style={styles.hubTitle}>Discharge request</Text>
@@ -350,11 +361,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  hubIconImage: { width: 26, height: 26 },
   hubTextCol: { flex: 1, minWidth: 0 },
   hubTitle: { fontSize: 17, fontWeight: '800', color: '#1B2559' },
   hubDesc: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 4, lineHeight: 18 },
   hubBadge: { alignSelf: 'flex-start', marginTop: 10, backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  hubBadgeText: { fontSize: 11, fontWeight: '800', color: '#92400E' },
+  hubBadgeText: { fontSize: 11, fontWeight: '800', color: '#92400E', textTransform: 'uppercase', letterSpacing: 0.3 },
   noteCard: {
     flexDirection: 'row',
     gap: 10,
