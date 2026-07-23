@@ -20,14 +20,24 @@ if (__DEV__) {
     const text = args
       .map((arg) => (typeof arg === "string" ? arg : (arg as Error)?.message || String(arg)))
       .join(" ");
+    // Error/message text alone misses cases where the logged value is an
+    // Error subclass with a non-enumerable message (renders as "{}" in the
+    // LogBox UI) — checking .name directly still works since dot-access
+    // ignores enumerability.
+    const names = args.map((arg) => (arg as { name?: string })?.name || "").join(" ");
     if (/invalid refresh token|refresh token not found/i.test(text)) {
       void ensureAuthSessionHealthy();
       return;
     }
-    // Transient network hiccups (e.g. a cold-starting Supabase project) are
-    // already surfaced to the user via the normal error-message UI in each
-    // screen's try/catch — no need for the intrusive dev LogBox popup too.
-    if (/failed to fetch|network request failed/i.test(text)) {
+    // Transient network hiccups (e.g. a cold-starting Supabase project, or
+    // GoTrueClient's own session-refresh retries hitting the same flaky
+    // connection) are already surfaced to the user via the normal
+    // error-message UI in each screen's try/catch — no need for the
+    // intrusive dev LogBox popup on top of that too.
+    if (
+      /failed to fetch|network request failed/i.test(text) ||
+      /AuthRetryableFetchError|AuthUnknownError/i.test(names)
+    ) {
       return;
     }
     originalConsoleError(...args);
