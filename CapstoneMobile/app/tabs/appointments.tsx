@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TextInput,
@@ -10,6 +11,8 @@ import {
   Alert,
   useWindowDimensions,
   Platform,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -59,6 +62,12 @@ const CAL_GAP = 6;
 /** Horizontal padding: scroll 32 + panel 40 */
 const CAL_HORIZONTAL_PAD = 72;
 
+const HEADER_OVERLAY_HEIGHT_BASE = 56;
+// Native pixel size of assets/images/appointments-header.png — sets the
+// hero's aspect ratio so the full illustration renders with no crop.
+const HERO_IMG_NATURAL_W = 1672;
+const HERO_IMG_NATURAL_H = 836;
+
 function useCalendarGridLayout() {
   const { width: screenWidth } = useWindowDimensions();
   return useMemo(() => {
@@ -103,7 +112,9 @@ export default function AppointmentsScreen() {
   const insets = useSafeAreaInsets();
   const { scrollRef, scrollToTop } = useFamilyPageScroll();
   const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
   const { cell: CELL, gridWidth: CAL_GRID_WIDTH, gap: CELL_GAP } = useCalendarGridLayout();
+  const [headerSolid, setHeaderSolid] = useState(false);
   const [familyUserId, setFamilyUserId] = useState('');
     const [familyName, setFamilyName] = useState('Family User');
   const [patients, setPatients] = useState<PatientOpt[]>([]);
@@ -327,27 +338,53 @@ export default function AppointmentsScreen() {
     }
   };
 
+  const headerOverlayHeight = insets.top + HEADER_OVERLAY_HEIGHT_BASE;
+  const heroHeight = screenWidth * (HERO_IMG_NATURAL_H / HERO_IMG_NATURAL_W);
+
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    setHeaderSolid(y > heroHeight - headerOverlayHeight);
+  };
+
   return (
     <View style={styles.screen}>
-      <FamilyMobilePageHeader title="Appointments" onBrandPress={scrollToTop} />
-
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        style={styles.heroOverlapScroll}
+        contentContainerStyle={[styles.scroll, { paddingTop: 0, paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       >
+        <View style={[styles.heroWrap, { height: heroHeight }]}>
+          <Image
+            source={require('../../assets/images/appointments-header.png')}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+          <View style={[styles.heroTextWrap, { paddingTop: headerOverlayHeight + 14 }]}>
+            <Text style={styles.heroText}>
+              Manage your <Text style={styles.heroTextAccent}>appointments</Text> and stay on track with care.
+            </Text>
+          </View>
+        </View>
+
         <View style={styles.statsRow}>
           {[
-            { label: 'Total', val: requests.length, color: '#4F46E5', bg: '#EEF2FF' },
-            { label: 'Approved', val: approvedCount, color: '#15803D', bg: '#ECFDF5' },
-            { label: 'Pending', val: pendingCount, color: '#EA580C', bg: '#FFF7ED' },
+            { label: 'Total', val: requests.length, color: '#4F46E5', bg: '#EEF2FF', iconBg: '#E0E7FF', icon: 'people' as const, caption: 'All time' },
+            { label: 'Confirmed', val: approvedCount, color: '#15803D', bg: '#ECFDF5', iconBg: '#D1FAE5', icon: 'checkmark-circle' as const, caption: 'This month' },
+            { label: 'Pending', val: pendingCount, color: '#EA580C', bg: '#FFF7ED', iconBg: '#FFEDD5', icon: 'time' as const, caption: 'This month' },
           ].map((s) => (
             <Pressable
               key={s.label}
               style={({ pressed }) => [styles.statCard, { backgroundColor: s.bg }, pressed && styles.statCardPressed]}
             >
-              <Text style={styles.statLabel}>{s.label}</Text>
+              <View style={[styles.statIconWrap, { backgroundColor: s.iconBg }]}>
+                <Ionicons name={s.icon} size={18} color={s.color} />
+              </View>
+              <Text style={styles.statLabel}>{s.label.toUpperCase()}</Text>
               <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
+              <Text style={styles.statCaption}>{s.caption}</Text>
             </Pressable>
           ))}
         </View>
@@ -609,6 +646,10 @@ export default function AppointmentsScreen() {
         </View>
       </ScrollView>
 
+      <View style={styles.headerOverlay} pointerEvents="box-none">
+        <FamilyMobilePageHeader title="Appointments" onBrandPress={scrollToTop} transparent={!headerSolid} />
+      </View>
+
       <FamilyWebMobileNav active="appointments" />
       <FamilyFloatingChat />
     </View>
@@ -618,7 +659,35 @@ export default function AppointmentsScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F8FAFF' },
   scroll: { paddingHorizontal: 16, paddingTop: 16 },
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  heroOverlapScroll: { flex: 1 },
+  headerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  heroWrap: {
+    marginHorizontal: -16,
+    marginBottom: -20,
+    overflow: 'hidden',
+    backgroundColor: '#0F172A',
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+  },
+  heroImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
+  heroTextWrap: { paddingHorizontal: 22, maxWidth: '64%' },
+  heroText: { fontSize: 19, fontWeight: '800', lineHeight: 25, color: '#FFFFFF' },
+  heroTextAccent: { color: '#FDBA74' },
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20, zIndex: 1 },
   statCard: {
     flex: 1,
     minHeight: 88,
@@ -643,14 +712,23 @@ const styles = StyleSheet.create({
     opacity: 0.92,
     transform: [{ scale: 0.98 }],
   },
+  statIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: '#94A3B8',
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
-  statVal: { fontSize: 28, fontWeight: '900', marginTop: 8, letterSpacing: -0.5 },
+  statVal: { fontSize: 24, fontWeight: '900', marginTop: 4, letterSpacing: -0.5 },
+  statCaption: { fontSize: 10, fontWeight: '600', color: '#94A3B8', marginTop: 2 },
   panel: {
     backgroundColor: '#FFFFFF',
     borderRadius: 22,
