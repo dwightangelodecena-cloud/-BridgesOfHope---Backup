@@ -1115,7 +1115,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 26,
     borderBottomRightRadius: 26,
     paddingHorizontal: isCompactScreen ? 18 : 24,
-    paddingTop: isCompactScreen ? 34 : 42,
+    paddingTop: isCompactScreen ? 26 : 32,
     paddingBottom: isCompactScreen ? 18 : 24,
     marginBottom: 0,
     overflow: 'hidden',
