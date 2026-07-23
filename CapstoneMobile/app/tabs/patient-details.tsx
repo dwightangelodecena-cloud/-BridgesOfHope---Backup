@@ -1334,7 +1334,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
   },
-  heroOverlapScroll: { marginTop: -32 },
+  heroOverlapScroll: { marginTop: -60 },
   overviewCard: {
     marginBottom: 16,
     backgroundColor: '#FFFFFF',
