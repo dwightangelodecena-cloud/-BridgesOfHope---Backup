@@ -209,12 +209,23 @@ export default function LoginScreen() {
         signInEmail = resolved;
       }
 
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: signInEmail.trim(),
-        password,
-      });
+      let data: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"] | null = null;
+      let authError: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["error"] | null = null;
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const result = await supabase.auth.signInWithPassword({
+          email: signInEmail.trim(),
+          password,
+        });
+        data = result.data;
+        authError = result.error;
+        const status = (authError as { status?: number } | null)?.status;
+        const isRetryable = status === 502 || status === 503 || status === 504;
+        if (!isRetryable || attempt === maxAttempts) break;
+        await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+      }
 
-      if (authError) {
+      if (authError || !data) {
         showError(formatAuthError(authError));
         return;
       }

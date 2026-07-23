@@ -3,8 +3,18 @@ export function isInvalidRefreshTokenError(error: { message?: string } | null | 
   return msg.includes("invalid refresh token") || msg.includes("refresh token not found");
 }
 
-export function formatAuthError(error: { message?: string } | null): string {
+export function formatAuthError(error: { message?: string; name?: string } | null): string {
   if (!error?.message) return "Something went wrong. Please try again.";
+  // supabase-js's AuthRetryableFetchError/AuthUnknownError build their
+  // .message via JSON.stringify() on a fetch Response-like object, which has
+  // no enumerable own properties — the message ends up as the literal
+  // string "{}", which is meaningless to show a user.
+  if (
+    error.message.trim() === "{}" ||
+    /^AuthRetryableFetchError$|^AuthUnknownError$/.test(error.name || "")
+  ) {
+    return "Couldn't reach the server. Please check your connection and try again.";
+  }
   const msg = error.message.toLowerCase();
   if (msg.includes("invalid login credentials")) {
     return "Invalid email or password.";
