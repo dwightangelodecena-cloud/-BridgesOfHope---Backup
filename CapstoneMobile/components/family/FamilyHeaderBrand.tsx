@@ -2,8 +2,12 @@ import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 import { KalingaLogoMark } from './KalingaLogoMark';
 import { BH } from '../../theme/tokens';
+
+// Matches new-logo.png's own gradient (deep orange base → gold highlight).
+const LOGO_GRADIENT = ['#F2541C', '#FFC93C'] as const;
 
 /** Home header brand — matches family portal orange / navy theme. */
 export function FamilyHeaderBrand() {
@@ -18,24 +22,19 @@ export function FamilyHeaderBrand() {
         />
       </View>
 
-      <View style={styles.textWrap}>
-        <LinearGradient
-          colors={[BH.brandLight, BH.brand]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={styles.accentBar}
-        />
-        <View style={styles.textCol}>
-          <Text style={styles.title} numberOfLines={1}>
-            <Text style={styles.titleLead}>Bridges of </Text>
-            <Text style={styles.titleAccent}>Hope</Text>
-          </Text>
-          <View style={styles.subRow}>
-            <Ionicons name="heart" size={9} color={BH.brand} />
-            <Text style={styles.sub} numberOfLines={1}>
-              Family Portal
+      <View style={styles.textCol}>
+        <MaskedView maskElement={<Text style={styles.title} numberOfLines={1}>Bridges of Hope</Text>}>
+          <LinearGradient colors={LOGO_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+            <Text style={[styles.title, styles.titleHidden]} numberOfLines={1}>
+              Bridges of Hope
             </Text>
-          </View>
+          </LinearGradient>
+        </MaskedView>
+        <View style={styles.subRow}>
+          <Ionicons name="heart" size={9} color={BH.brand} />
+          <Text style={styles.sub} numberOfLines={1}>
+            Family Portal
+          </Text>
         </View>
       </View>
     </View>
@@ -66,19 +65,6 @@ const styles = StyleSheet.create({
     width: 62,
     height: 93,
   },
-  textWrap: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    minWidth: 0,
-  },
-  accentBar: {
-    width: 3,
-    height: 36,
-    borderRadius: 999,
-    flexShrink: 0,
-  },
   textCol: {
     flex: 1,
     minWidth: 0,
@@ -89,12 +75,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.4,
     lineHeight: 22,
+    color: '#000000',
   },
-  titleLead: {
-    color: BH.brand,
-  },
-  titleAccent: {
-    color: BH.brand,
+  titleHidden: {
+    opacity: 0,
   },
   subRow: {
     flexDirection: 'row',
