@@ -648,7 +648,7 @@ const styles = StyleSheet.create({
   heroOverlapScroll: { flex: 1 },
   heroWrap: {
     marginHorizontal: -16,
-    marginBottom: -20,
+    marginBottom: 16,
     overflow: 'hidden',
     backgroundColor: '#0F172A',
     borderBottomLeftRadius: 26,
