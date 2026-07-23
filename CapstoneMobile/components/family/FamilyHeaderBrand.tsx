@@ -5,10 +5,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { KalingaLogoMark } from './KalingaLogoMark';
 import { BH } from '../../theme/tokens';
 
-// Sampled from new-logo.png's own gradient (deep orange base → gold highlight)
-// so "Bridges of Hope" reads as the same color family as the mark beside it.
-const LOGO_COLOR = '#F6821F';
-
 /** Home header brand — matches family portal orange / navy theme. */
 export function FamilyHeaderBrand() {
   return (
@@ -95,10 +91,10 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   titleLead: {
-    color: LOGO_COLOR,
+    color: BH.brand,
   },
   titleAccent: {
-    color: LOGO_COLOR,
+    color: BH.brand,
   },
   subRow: {
     flexDirection: 'row',
@@ -110,7 +106,7 @@ const styles = StyleSheet.create({
   sub: {
     fontSize: 10.5,
     fontWeight: '700',
-    color: BH.brand,
+    color: BH.slate700,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
