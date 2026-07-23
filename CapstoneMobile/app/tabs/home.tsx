@@ -448,7 +448,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <ImageBackground
-          source={require('../../assets/images/home-header.jpg')}
+          source={require('../../assets/images/home-header.png')}
           style={styles.heroBanner}
           imageStyle={styles.heroBannerImage}
         >
@@ -1110,9 +1110,11 @@ const styles = StyleSheet.create({
   notificationsDropdownRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   notificationsDropdownText: { flex: 1, fontSize: 13, color: '#334155', lineHeight: 18 },
   notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
-  scrollContent: { paddingHorizontal: isCompactScreen ? 14 : 18, paddingTop: 12 },
+  scrollContent: { paddingHorizontal: isCompactScreen ? 14 : 18, paddingTop: 0 },
   heroBanner: {
-    borderRadius: 22,
+    marginHorizontal: isCompactScreen ? -14 : -18,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
     padding: isCompactScreen ? 18 : 24,
     marginBottom: 0,
     overflow: 'hidden',
@@ -1126,7 +1128,8 @@ const styles = StyleSheet.create({
     minHeight: isCompactScreen ? 190 : 212,
   },
   heroBannerImage: {
-    borderRadius: 22,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
   },
   heroInner: { gap: 4 },
   heroKicker: {
