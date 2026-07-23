@@ -1237,7 +1237,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: BH.surface,
     padding: isCompactScreen ? 16 : 20,
-    marginTop: -28,
+    marginTop: -52,
     marginBottom: 18,
     borderWidth: 1,
     borderColor: BH.border,
