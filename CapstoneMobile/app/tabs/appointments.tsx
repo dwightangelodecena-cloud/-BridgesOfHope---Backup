@@ -359,26 +359,38 @@ export default function AppointmentsScreen() {
           </View>
         </View>
 
-        <View style={styles.statsRow}>
-          {[
-            { label: 'Total', val: requests.length, color: '#4F46E5', bg: '#EEF2FF', iconBg: '#E0E7FF', icon: 'people' as const, caption: 'All time' },
-            { label: 'Confirmed', val: approvedCount, color: '#15803D', bg: '#ECFDF5', iconBg: '#D1FAE5', icon: 'checkmark-circle' as const, caption: 'This month' },
-            { label: 'Pending', val: pendingCount, color: '#EA580C', bg: '#FFF7ED', iconBg: '#FFEDD5', icon: 'time' as const, caption: 'This month' },
-          ].map((s) => (
-            <Pressable
-              key={s.label}
-              style={({ pressed }) => [styles.statCard, { backgroundColor: s.bg }, pressed && styles.statCardPressed]}
-            >
-              <View style={[styles.statIconWrap, { backgroundColor: s.iconBg }]}>
-                <Ionicons name={s.icon} size={17} color={s.color} />
-              </View>
-              <View style={styles.statTextCol}>
-                <Text style={styles.statLabel}>{s.label.toUpperCase()}</Text>
-                <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
-                <Text style={styles.statCaption}>{s.caption}</Text>
-              </View>
-            </Pressable>
-          ))}
+        <View style={styles.statsWrap}>
+          <Pressable
+            style={({ pressed }) => [styles.statCardWide, { backgroundColor: '#EEF2FF' }, pressed && styles.statCardPressed]}
+          >
+            <View style={[styles.statIconWrap, { backgroundColor: '#E0E7FF' }]}>
+              <Ionicons name="people" size={17} color="#4F46E5" />
+            </View>
+            <View style={styles.statTextCol}>
+              <Text style={styles.statLabel}>TOTAL</Text>
+              <Text style={[styles.statVal, { color: '#4F46E5' }]}>{requests.length}</Text>
+              <Text style={styles.statCaption}>All time</Text>
+            </View>
+          </Pressable>
+
+          <View style={styles.statsSquareRow}>
+            {[
+              { label: 'Confirmed', val: approvedCount, color: '#15803D', bg: '#ECFDF5', iconBg: '#D1FAE5', icon: 'checkmark-circle' as const, caption: 'This month' },
+              { label: 'Pending', val: pendingCount, color: '#EA580C', bg: '#FFF7ED', iconBg: '#FFEDD5', icon: 'time' as const, caption: 'This month' },
+            ].map((s) => (
+              <Pressable
+                key={s.label}
+                style={({ pressed }) => [styles.statCardSquare, { backgroundColor: s.bg }, pressed && styles.statCardPressed]}
+              >
+                <View style={[styles.statIconWrap, { backgroundColor: s.iconBg, marginBottom: 8 }]}>
+                  <Ionicons name={s.icon} size={17} color={s.color} />
+                </View>
+                <Text style={[styles.statLabel, styles.statTextCenter]}>{s.label.toUpperCase()}</Text>
+                <Text style={[styles.statVal, styles.statTextCenter, { color: s.color }]}>{s.val}</Text>
+                <Text style={[styles.statCaption, styles.statTextCenter]}>{s.caption}</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
         <View style={styles.panel}>
@@ -667,18 +679,37 @@ const styles = StyleSheet.create({
   heroTextWrap: { paddingHorizontal: 22, maxWidth: '60%' },
   heroText: { fontSize: 19, fontWeight: '800', lineHeight: 25, color: '#FFFFFF' },
   heroTextAccent: { color: '#F0851F' },
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20, zIndex: 1 },
-  statCard: {
-    flex: 1,
-    minHeight: 96,
+  statsWrap: { marginBottom: 20, zIndex: 1 },
+  statCardWide: {
+    minHeight: 88,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(233, 237, 247, 0.85)',
     paddingVertical: 14,
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 12,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  statsSquareRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
+  statCardSquare: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(233, 237, 247, 0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
     ...Platform.select({
       ios: {
         shadowColor: '#0F172A',
@@ -702,6 +733,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   statTextCol: { flex: 1, minWidth: 0 },
+  statTextCenter: { textAlign: 'center' },
   statLabel: {
     fontSize: 9,
     fontWeight: '700',
