@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Dimensions,
   Modal,
+  Pressable,
   ActivityIndicator,
   Platform,
 } from 'react-native';
@@ -104,6 +105,23 @@ function daysBetween(startIso: string | null, endIso?: string | null): number | 
   return Math.max(0, Math.round((end - start) / 86400000));
 }
 
+type StatsPeriod = 'week' | 'month' | 'all';
+
+const STATS_PERIOD_OPTIONS: { key: StatsPeriod; label: string }[] = [
+  { key: 'week', label: 'This week' },
+  { key: 'month', label: 'This month' },
+  { key: 'all', label: 'All time' },
+];
+
+function isWithinStatsPeriod(dateStr: string | null | undefined, period: StatsPeriod): boolean {
+  if (period === 'all') return true;
+  if (!dateStr) return false;
+  const t = new Date(dateStr).getTime();
+  if (Number.isNaN(t)) return false;
+  const days = period === 'week' ? 7 : 30;
+  return t <= Date.now() && Date.now() - t <= days * 86400000;
+}
+
 function formatRequestDateTime(iso: string): string {
   if (!iso) return '';
   const d = new Date(iso);
@@ -195,6 +213,8 @@ export default function HomeScreen() {
   const [weeklyReportDetail, setWeeklyReportDetail] = useState<WeeklyReportDetailState | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [supabaseReadError, setSupabaseReadError] = useState<string | null>(null);
+  const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('week');
+  const [statsPeriodMenuOpen, setStatsPeriodMenuOpen] = useState(false);
 
   const firstName = getFamilyFirstName(displayName);
 
@@ -343,6 +363,22 @@ export default function HomeScreen() {
   const patientsWithReportsCount = patients.filter(
     (p) => Object.keys(nurseWeeklyByPatient[String(p.id)] || {}).length > 0
   ).length;
+  // "Active Residents" and "Avg Progress" reflect current state (not
+  // meaningfully time-sliceable without historical snapshots), but pending
+  // requests and reports genuinely have creation/submission dates to filter.
+  const periodPendingRequestsCount =
+    pendingAdmissions.filter((row) => isWithinStatsPeriod(row?.createdAt || row?.created_at, statsPeriod)).length +
+    pendingDischarges.filter((row) => isWithinStatsPeriod(row?.requestTime || row?.created_at, statsPeriod)).length +
+    pendingAppointmentRequests.filter((row) => isWithinStatsPeriod(row?.createdAt || row?.preferredDate, statsPeriod))
+      .length;
+  const periodReportsReceivedCount = Object.values(nurseWeeklyByPatient || {}).reduce(
+    (count, patientWeeks) =>
+      count +
+      Object.values(patientWeeks || {}).filter((rec) => isWithinStatsPeriod(rec.submittedAt || rec.reportDate, statsPeriod))
+        .length,
+    0
+  );
+  const statsPeriodLabel = STATS_PERIOD_OPTIONS.find((o) => o.key === statsPeriod)?.label ?? 'This week';
   const stayDaysList = patients
     .map((p) => daysBetween(p.admitted_at, p.discharged_at))
     .filter((d): d is number => d != null);
@@ -426,9 +462,9 @@ export default function HomeScreen() {
 
   const highlightTiles = [
     { key: 'active', icon: 'people' as const, label: 'Active Residents', value: String(patients.length), bg: '#EEF2FF', color: '#4338CA' },
-    { key: 'pending', icon: 'hourglass' as const, label: 'Pending Requests', value: String(totalPendingRequests), bg: '#FFFBEB', color: '#B45309' },
+    { key: 'pending', icon: 'hourglass' as const, label: 'Pending Requests', value: String(periodPendingRequestsCount), bg: '#FFFBEB', color: '#B45309' },
     { key: 'progress', icon: 'trending-up' as const, label: 'Avg Progress', value: `${averageProgress}%`, bg: '#ECFDF5', color: '#047857' },
-    { key: 'reports', icon: 'document-text' as const, label: 'Reports Received', value: String(reportsReceivedCount), bg: BH.brandSurface, color: BH.brand700 },
+    { key: 'reports', icon: 'document-text' as const, label: 'Reports Received', value: String(periodReportsReceivedCount), bg: BH.brandSurface, color: BH.brand700 },
   ];
 
   const shortcutTiles = [
@@ -719,10 +755,16 @@ export default function HomeScreen() {
               <Ionicons name="bar-chart" size={16} color="#F54E25" />
               <Text style={styles.panelTitleInline}>Dashboard Highlights</Text>
             </View>
-            <View style={styles.weekPill}>
-              <Text style={styles.weekPillText}>This week</Text>
+            <TouchableOpacity
+              style={styles.weekPill}
+              onPress={() => setStatsPeriodMenuOpen(true)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Stats period: ${statsPeriodLabel}. Tap to change.`}
+            >
+              <Text style={styles.weekPillText}>{statsPeriodLabel}</Text>
               <Ionicons name="chevron-down" size={12} color="#64748B" />
-            </View>
+            </TouchableOpacity>
           </View>
           <View style={styles.highlightsGrid}>
             {highlightTiles.map((item) => (
@@ -1044,6 +1086,40 @@ export default function HomeScreen() {
             </ScrollView>
           )}
         </View>
+      </Modal>
+
+      <Modal
+        visible={statsPeriodMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStatsPeriodMenuOpen(false)}
+      >
+        <Pressable style={styles.periodMenuBackdrop} onPress={() => setStatsPeriodMenuOpen(false)}>
+          <Pressable style={styles.periodMenuPanel} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.periodMenuTitle}>Show highlights for</Text>
+            {STATS_PERIOD_OPTIONS.map((opt) => {
+              const active = opt.key === statsPeriod;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.periodMenuItem, active && styles.periodMenuItemActive]}
+                  onPress={() => {
+                    setStatsPeriod(opt.key);
+                    setStatsPeriodMenuOpen(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={opt.label}
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.periodMenuItemText, active && styles.periodMenuItemTextActive]}>
+                    {opt.label}
+                  </Text>
+                  {active ? <Ionicons name="checkmark" size={16} color={BH.brand} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <FamilyWebMobileNav active="home" />
@@ -1421,6 +1497,47 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   weekPillText: { fontSize: 11, fontWeight: '700', color: '#475569' },
+  periodMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  periodMenuPanel: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: BH.surface,
+    borderRadius: 20,
+    padding: 10,
+    shadowColor: BH.slate900,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    elevation: 12,
+  },
+  periodMenuTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 10,
+    paddingTop: 6,
+    paddingBottom: 10,
+  },
+  periodMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 13,
+    borderRadius: 12,
+    minHeight: 44,
+  },
+  periodMenuItemActive: { backgroundColor: BH.brandSurface },
+  periodMenuItemText: { fontSize: 15, fontWeight: '600', color: '#1B2559' },
+  periodMenuItemTextActive: { fontWeight: '800', color: BH.brand700 },
   emptyMuted: { color: '#94A3B8', fontSize: 13, fontWeight: '700', textAlign: 'center', paddingVertical: 12 },
   reqHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   reqPendingText: { fontSize: 12, fontWeight: '800', color: BH.brand },
