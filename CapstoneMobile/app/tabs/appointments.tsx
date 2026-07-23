@@ -368,7 +368,7 @@ export default function AppointmentsScreen() {
               style={({ pressed }) => [styles.statCard, { backgroundColor: s.bg }, pressed && styles.statCardPressed]}
             >
               <View style={[styles.statIconWrap, { backgroundColor: s.iconBg }]}>
-                <Ionicons name={s.icon} size={15} color={s.color} />
+                <Ionicons name={s.icon} size={17} color={s.color} />
               </View>
               <View style={styles.statTextCol}>
                 <Text style={styles.statLabel}>{s.label.toUpperCase()}</Text>
@@ -668,15 +668,15 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20, zIndex: 1 },
   statCard: {
     flex: 1,
-    minHeight: 88,
+    minHeight: 96,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(233, 237, 247, 0.85)',
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     ...Platform.select({
       ios: {
         shadowColor: '#0F172A',
@@ -692,23 +692,23 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   statIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   statTextCol: { flex: 1, minWidth: 0 },
   statLabel: {
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: '700',
     color: '#94A3B8',
     textTransform: 'uppercase',
     letterSpacing: 0.1,
   },
-  statVal: { fontSize: 18, fontWeight: '900', marginTop: 2, letterSpacing: -0.5 },
-  statCaption: { fontSize: 8.5, fontWeight: '600', color: '#94A3B8', marginTop: 1 },
+  statVal: { fontSize: 24, fontWeight: '900', marginTop: 3, letterSpacing: -0.5 },
+  statCaption: { fontSize: 9.5, fontWeight: '600', color: '#94A3B8', marginTop: 2 },
   panel: {
     backgroundColor: '#FFFFFF',
     borderRadius: 22,
