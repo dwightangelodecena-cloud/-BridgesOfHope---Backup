@@ -10,7 +10,7 @@ import { BH } from '../../theme/tokens';
 const LOGO_COLOR = '#F0851F';
 
 /** Home header brand — matches family portal orange / navy theme. */
-export function FamilyHeaderBrand() {
+export function FamilyHeaderBrand({ title = 'Bridges of Hope' }: { title?: string }) {
   return (
     <View style={styles.row}>
       <View style={styles.logoPlate}>
@@ -24,7 +24,7 @@ export function FamilyHeaderBrand() {
 
       <View style={styles.textCol}>
         <Text style={styles.title} numberOfLines={1}>
-          Bridges of Hope
+          {title}
         </Text>
         <View style={styles.subRow}>
           <Ionicons name="heart" size={9} color={BH.brand} />
@@ -89,52 +89,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const pageTitleStyles = StyleSheet.create({
-  row: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    minWidth: 0,
-    paddingRight: 8,
-  },
-  logoPlate: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    overflow: 'hidden',
-  },
-  logoImage: {
-    width: 62,
-    height: 93,
-  },
-  pageTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '800',
-    color: BH.navy,
-    letterSpacing: -0.4,
-    lineHeight: 22,
-  },
-});
-
-/** Inner-page mobile header — same brand mark as home, page title instead of the wordmark/tagline. */
+/** Inner-page mobile header — identical to the Home brand, just with the page title in place of "Bridges of Hope". */
 export function FamilyPageTitleBrand({ title }: { title: string }) {
-  return (
-    <View style={pageTitleStyles.row}>
-      <View style={pageTitleStyles.logoPlate}>
-        <Image
-          source={require('../../assets/images/new-logo.png')}
-          style={pageTitleStyles.logoImage}
-          resizeMode="contain"
-          accessibilityLabel="Kalinga logo"
-        />
-      </View>
-      <Text style={pageTitleStyles.pageTitle} numberOfLines={1}>
-        {title}
-      </Text>
-    </View>
-  );
+  return <FamilyHeaderBrand title={title} />;
 }

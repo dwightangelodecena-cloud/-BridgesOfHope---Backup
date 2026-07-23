@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
@@ -211,19 +212,28 @@ function normalizeResidentList(list: PatientListEntry[]): PatientListEntry[] {
 
 function ProgressRing({ pct, size = 56, color }: { pct: number; size?: number; color: string }) {
   const p = Math.min(100, Math.max(0, Math.round(pct)));
+  const strokeWidth = Math.max(3, Math.round(size * 0.07));
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dashoffset = circumference * (1 - p / 100);
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: '#EEF2FF',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 3,
-        borderColor: color,
-      }}
-    >
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
+        <Circle cx={size / 2} cy={size / 2} r={radius} stroke="#EEF2FF" strokeWidth={strokeWidth} fill="none" />
+        {p > 0 ? (
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={color}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeDasharray={`${circumference} ${circumference}`}
+            strokeDashoffset={dashoffset}
+            strokeLinecap="round"
+          />
+        ) : null}
+      </Svg>
       <Text style={{ fontSize: 12, fontWeight: '900', color }}>{p}%</Text>
     </View>
   );
