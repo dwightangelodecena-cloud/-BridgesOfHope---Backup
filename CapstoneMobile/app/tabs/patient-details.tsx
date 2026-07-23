@@ -238,7 +238,7 @@ function StatMiniCard({
   return (
     <View style={styles.statCard}>
       <View style={[styles.statIconWrap, { backgroundColor: iconBg }]}>
-        <Ionicons name={icon} size={18} color={iconColor} />
+        <Ionicons name={icon} size={19} color={iconColor} />
       </View>
       <Text style={styles.statCardValue}>{value}</Text>
       <Text style={styles.statCardLabel}>{label}</Text>
@@ -836,16 +836,16 @@ export default function PatientDetailsScreen() {
                   value={totalReportsSubmitted}
                   caption="This week"
                   icon="document-text"
-                  iconBg="#FFF7ED"
-                  iconColor="#F59E0B"
+                  iconBg="#F54E25"
+                  iconColor="#FFFFFF"
                 />
                 <StatMiniCard
                   label="Pending Review"
                   value={pendingReviewCount}
                   caption="Needs attention"
-                  icon="alert-circle"
-                  iconBg="#FEF2F2"
-                  iconColor="#EF4444"
+                  icon="warning"
+                  iconBg="#FEF3C7"
+                  iconColor="#F59E0B"
                 />
               </View>
             </View>
@@ -1353,29 +1353,37 @@ const styles = StyleSheet.create({
   },
   statGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
+    gap: 6,
   },
   statCard: {
-    width: '42%',
-    flexGrow: 1,
+    flex: 1,
+    alignItems: 'center',
   },
   statIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   statCardLabel: {
-    fontSize: 11,
+    fontSize: 8.5,
     color: '#64748B',
-    fontWeight: '700',
-    marginTop: 3,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginTop: 6,
+    textAlign: 'center',
   },
-  statCardValue: { fontSize: 22, fontWeight: '900', color: '#0F172A' },
-  statCardCaption: { fontSize: 10, color: '#94A3B8', fontWeight: '600', marginTop: 2 },
+  statCardValue: { fontSize: 20, fontWeight: '900', color: '#1B2559', textAlign: 'center' },
+  statCardCaption: {
+    fontSize: 9,
+    color: '#94A3B8',
+    fontWeight: '600',
+    marginTop: 2,
+    textAlign: 'center',
+  },
   recentSection: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
