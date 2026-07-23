@@ -370,11 +370,13 @@ export default function AppointmentsScreen() {
               style={({ pressed }) => [styles.statCard, { backgroundColor: s.bg }, pressed && styles.statCardPressed]}
             >
               <View style={[styles.statIconWrap, { backgroundColor: s.iconBg }]}>
-                <Ionicons name={s.icon} size={18} color={s.color} />
+                <Ionicons name={s.icon} size={15} color={s.color} />
               </View>
-              <Text style={styles.statLabel}>{s.label.toUpperCase()}</Text>
-              <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
-              <Text style={styles.statCaption}>{s.caption}</Text>
+              <View style={styles.statTextCol}>
+                <Text style={styles.statLabel}>{s.label.toUpperCase()}</Text>
+                <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
+                <Text style={styles.statCaption}>{s.caption}</Text>
+              </View>
             </Pressable>
           ))}
         </View>
@@ -673,10 +675,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(233, 237, 247, 0.85)',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
     ...Platform.select({
       ios: {
         shadowColor: '#0F172A',
@@ -692,22 +695,23 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   statIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    flexShrink: 0,
   },
+  statTextCol: { flex: 1, minWidth: 0 },
   statLabel: {
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: '700',
     color: '#94A3B8',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.1,
   },
-  statVal: { fontSize: 24, fontWeight: '900', marginTop: 4, letterSpacing: -0.5 },
-  statCaption: { fontSize: 10, fontWeight: '600', color: '#94A3B8', marginTop: 2 },
+  statVal: { fontSize: 18, fontWeight: '900', marginTop: 2, letterSpacing: -0.5 },
+  statCaption: { fontSize: 8.5, fontWeight: '600', color: '#94A3B8', marginTop: 1 },
   panel: {
     backgroundColor: '#FFFFFF',
     borderRadius: 22,
