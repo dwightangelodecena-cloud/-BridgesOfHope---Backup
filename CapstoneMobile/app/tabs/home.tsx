@@ -1139,7 +1139,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  heroInner: { gap: 1, marginBottom: 18, maxWidth: '58%' },
+  heroInner: { gap: 1, marginBottom: 40, maxWidth: '58%' },
   heroKicker: {
     fontSize: isCompactScreen ? 15 : 17,
     fontWeight: '800',
