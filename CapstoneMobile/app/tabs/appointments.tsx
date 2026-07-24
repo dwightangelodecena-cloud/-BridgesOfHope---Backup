@@ -35,7 +35,6 @@ import { isPastIsoDate } from '../../lib/bookingDates';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
-import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 
 const WEEKDAY_TO_INDEX: Record<string, number> = {
   sunday: 0,
@@ -75,12 +74,26 @@ function useCalendarGridLayout() {
   }, [screenWidth]);
 }
 
-const STATUS_CFG: Record<string, { bg: string; color: string; border: string }> = {
-  Approved: { bg: '#DCFCE7', color: '#166534', border: '#BBF7D0' },
-  Declined: { bg: '#FEE2E2', color: '#991B1B', border: '#FECACA' },
-  Rescheduled: { bg: '#E0E7FF', color: '#3730A3', border: '#C7D2FE' },
-  Requested: { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' },
+const STATUS_CFG: Record<string, { bg: string; color: string; border: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  Approved: { bg: '#DCFCE7', color: '#166534', border: '#BBF7D0', icon: 'checkmark-circle-outline' },
+  Declined: { bg: '#FEE2E2', color: '#991B1B', border: '#FECACA', icon: 'close-circle-outline' },
+  Rescheduled: { bg: '#E0E7FF', color: '#3730A3', border: '#C7D2FE', icon: 'swap-horizontal-outline' },
+  Requested: { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', icon: 'time-outline' },
 };
+
+const AVATAR_PALETTE = [
+  { bg: '#E0E7FF', color: '#4338CA' },
+  { bg: '#F3E8FF', color: '#7E22CE' },
+  { bg: '#DBEAFE', color: '#1D4ED8' },
+  { bg: '#FCE7F3', color: '#BE185D' },
+] as const;
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
@@ -103,6 +116,19 @@ function pad2(n: number) {
 
 function isoLocalDate(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function formatReqDateTime(dateIso: string, time: string): string {
+  if (!dateIso) return '';
+  const d = new Date(`${dateIso}T12:00:00`);
+  const dateStr = Number.isNaN(d.getTime())
+    ? dateIso
+    : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const [hh, mm] = (time || '').split(':').map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return dateStr;
+  const period = hh >= 12 ? 'PM' : 'AM';
+  const hour12 = hh % 12 === 0 ? 12 : hh % 12;
+  return `${dateStr} · ${hour12}:${pad2(mm)} ${period}`;
 }
 
 export default function AppointmentsScreen() {
@@ -163,12 +189,17 @@ export default function AppointmentsScreen() {
     const n = new Date();
     setCalendarMonth(new Date(n.getFullYear(), n.getMonth(), 1));
   }, []);
-  const isViewingCurrentMonth =
-    calendarMonth.getFullYear() === today.getFullYear()
-    && calendarMonth.getMonth() === today.getMonth();
   const approvedCount = requests.filter((r) => normalizeVisitationStatus(r.status) === 'Approved').length;
   const pendingCount = requests.filter((r) => normalizeVisitationStatus(r.status) === 'Requested').length;
   const selectedDayLabel = form.preferredDate ? formatVisitationWeekdayLong(form.preferredDate) : '';
+  const selectedDateLong = form.preferredDate
+    ? new Date(`${form.preferredDate}T12:00:00`).toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : '';
 
   const monthLabel = calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const monthStartDow = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay();
@@ -360,22 +391,10 @@ export default function AppointmentsScreen() {
         </View>
 
         <View style={styles.statsWrap}>
-          <Pressable
-            style={({ pressed }) => [styles.statCardWide, { backgroundColor: '#EEF2FF' }, pressed && styles.statCardPressed]}
-          >
-            <View style={[styles.statIconWrap, { backgroundColor: '#E0E7FF' }]}>
-              <Ionicons name="people" size={17} color="#4F46E5" />
-            </View>
-            <View style={styles.statTextCol}>
-              <Text style={styles.statLabel}>TOTAL</Text>
-              <Text style={[styles.statVal, { color: '#4F46E5' }]}>{requests.length}</Text>
-              <Text style={styles.statCaption}>All time</Text>
-            </View>
-          </Pressable>
-
           <View style={styles.statsSquareRow}>
             {[
               { label: 'Confirmed', val: approvedCount, color: '#15803D', bg: '#ECFDF5', iconBg: '#D1FAE5', icon: 'checkmark-circle-outline' as const, caption: 'This month' },
+              { label: 'Total', val: requests.length, color: '#4F46E5', bg: '#EEF2FF', iconBg: '#E0E7FF', icon: 'people' as const, caption: 'All time' },
               { label: 'Pending', val: pendingCount, color: '#EA580C', bg: '#FFF7ED', iconBg: '#FFEDD5', icon: 'time-outline' as const, caption: 'This month' },
             ].map((s) => (
               <Pressable
@@ -395,37 +414,84 @@ export default function AppointmentsScreen() {
           </View>
         </View>
 
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Visitation hours</Text>
-          <Text style={styles.muted}>
-            {(visitationSettings.days || []).join(', ')} · {visitationSettings.startTime}–{visitationSettings.endTime}
-          </Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionCardHeader}>
+            <View style={[styles.sectionIconWrap, { backgroundColor: '#E0E7FF' }]}>
+              <Ionicons name="time-outline" size={20} color="#4F46E5" />
+            </View>
+            <Text style={styles.sectionCardTitle}>Visitation Hours</Text>
+          </View>
+          <View style={styles.visitInfoRow}>
+            <View style={[styles.visitInfoItem, styles.visitInfoItemShrink]}>
+              <Ionicons name="calendar-outline" size={16} color="#4F46E5" />
+              <Text style={styles.visitInfoTxt} numberOfLines={1} ellipsizeMode="tail">
+                {(visitationSettings.days || []).join(', ')}
+              </Text>
+            </View>
+            <View style={styles.visitInfoDivider} />
+            <View style={[styles.visitInfoItem, styles.visitInfoItemFixed]}>
+              <Ionicons name="time-outline" size={16} color="#4F46E5" />
+              <Text style={styles.visitInfoTxt} numberOfLines={1}>
+                {visitationSettings.startTime}–{visitationSettings.endTime}
+              </Text>
+            </View>
+          </View>
+        </View>
 
-          <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>Request a visit</Text>
-          <Text style={styles.label}>Resident</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionCardHeader}>
+            <View style={[styles.sectionIconWrap, { backgroundColor: '#FFE4D6' }]}>
+              <Ionicons name="people" size={19} color="#F0851F" />
+            </View>
+            <View>
+              <Text style={styles.sectionCardTitle}>Request a Visit</Text>
+              <Text style={styles.sectionCardSubtitleTight}>Select resident</Text>
+            </View>
+          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsRow}>
-            {patients.map((p) => (
-              <Pressable
-                key={p.id}
-                style={({ pressed }) => [
-                  styles.chip,
-                  form.patientId === p.id && styles.chipOn,
-                  pressed && styles.chipPressed,
-                ]}
-                onPress={() => setForm((f) => ({ ...f, patientId: p.id, patientName: p.name }))}
-              >
-                <Text style={[styles.chipTxt, form.patientId === p.id && styles.chipTxtOn]} numberOfLines={1}>
-                  {p.name}
-                </Text>
-              </Pressable>
-            ))}
+            {patients.map((p, idx) => {
+              const on = form.patientId === p.id;
+              const avatar = AVATAR_PALETTE[idx % AVATAR_PALETTE.length];
+              return (
+                <Pressable
+                  key={p.id}
+                  style={({ pressed }) => [styles.chip, on && styles.chipOn, pressed && styles.chipPressed]}
+                  onPress={() => setForm((f) => ({ ...f, patientId: p.id, patientName: p.name }))}
+                >
+                  <View style={[styles.chipAvatar, { backgroundColor: avatar.bg }]}>
+                    <Text style={[styles.chipAvatarTxt, { color: avatar.color }]}>{getInitials(p.name)}</Text>
+                  </View>
+                  <Text style={styles.chipTxt} numberOfLines={2}>
+                    {p.name}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color={on ? '#F54E25' : '#475569'} />
+                </Pressable>
+              );
+            })}
           </ScrollView>
           {!patients.length ? (
             <Text style={styles.hint}>No active patients on file. Complete an admission first.</Text>
           ) : null}
+        </View>
 
-          <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>Calendar</Text>
-          <Text style={styles.muted}>Tap an open day to request. Green dates show your confirmed visit day.</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionCardHeader}>
+            <View style={[styles.sectionIconWrap, { backgroundColor: '#E0E7FF' }]}>
+              <Ionicons name="calendar" size={19} color="#4F46E5" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionCardTitle}>Schedule a Visit</Text>
+              <Text style={styles.sectionCardSubtitleTight}>Choose a date and time that works best.</Text>
+            </View>
+            <Pressable
+              onPress={goToCurrentMonth}
+              style={({ pressed }) => [styles.calTodayBtn, pressed && styles.calTodayBtnPressed]}
+              accessibilityRole="button"
+            >
+              <Ionicons name="calendar-outline" size={13} color="#4F46E5" />
+              <Text style={styles.calTodayBtnTxt}>Today</Text>
+            </Pressable>
+          </View>
 
           <View style={styles.calHero}>
           <View style={styles.calHeader}>
@@ -440,15 +506,6 @@ export default function AppointmentsScreen() {
             </Pressable>
             <View style={styles.calMonthCenter}>
               <Text style={styles.calMonthLabel}>{monthLabel}</Text>
-              {!isViewingCurrentMonth ? (
-                <Pressable
-                  onPress={goToCurrentMonth}
-                  style={({ pressed }) => [styles.calTodayBtn, pressed && styles.calTodayBtnPressed]}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.calTodayBtnTxt}>Today</Text>
-                </Pressable>
-              ) : null}
             </View>
             <Pressable
               onPress={() =>
@@ -539,32 +596,50 @@ export default function AppointmentsScreen() {
               );
             })}
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.legendRow}>
-            {[
-              { label: 'Your visit', bg: '#DCFCE7', border: '#22C55E', dot: '#16A34A' },
-              { label: 'Pending', bg: '#FEF3C7', border: '#F59E0B', dot: '#D97706' },
-              { label: 'Available', bg: '#FFF7ED', border: '#FDBA74', dot: '#EA580C' },
-              { label: 'Holiday', bg: '#FFF1F2', border: '#FDA4AF', dot: '#E11D48' },
-              { label: 'Unavailable', bg: '#F8FAFC', border: '#E2E8F0', dot: '#94A3B8' },
-            ].map((l) => (
-              <View key={l.label} style={styles.legendItem}>
-                <View style={[styles.legendSwatch, { backgroundColor: l.bg, borderColor: l.border }]}>
-                  <View style={[styles.legendDot, { backgroundColor: l.dot }]} />
+          <View style={styles.legendCard}>
+            <View style={styles.legendRow}>
+              {[
+                { label: 'Your visit', ring: '#22C55E', dot: '#16A34A' },
+                { label: 'Pending', ring: '#F59E0B', dot: '#D97706' },
+                { label: 'Available', ring: '#FDBA74', dot: '#EA580C' },
+                { label: 'Holiday', ring: '#FDA4AF', dot: '#E11D48' },
+              ].map((l) => (
+                <View key={l.label} style={styles.legendItem}>
+                  <View style={[styles.legendRing, { borderColor: l.ring }]}>
+                    <View style={[styles.legendDot, { backgroundColor: l.dot }]} />
+                  </View>
+                  <Text style={styles.legendTxt}>{l.label}</Text>
                 </View>
-                <Text style={styles.legendTxt}>{l.label}</Text>
-              </View>
-            ))}
-          </ScrollView>
+              ))}
+            </View>
           </View>
-          <Text style={styles.selectedDateLine}>
-            Selected date:{' '}
-            <Text style={styles.selectedDateValue}>{form.preferredDate || '—'}</Text>
-          </Text>
+          </View>
+          <View style={styles.selectedDateCard}>
+            <View style={styles.selectedDateLeft}>
+              <View style={styles.selectedDateIconWrap}>
+                <Ionicons name="calendar" size={16} color="#4F46E5" />
+              </View>
+              <View>
+                <Text style={styles.selectedDateLabel}>Selected Date</Text>
+                <Text style={styles.selectedDateValue}>{selectedDateLong || '—'}</Text>
+              </View>
+            </View>
+            {form.preferredDate ? (
+              <Pressable
+                onPress={() => setForm((f) => ({ ...f, preferredDate: '' }))}
+                style={({ pressed }) => [styles.editDateBtn, pressed && styles.calTodayBtnPressed]}
+                accessibilityRole="button"
+              >
+                <Ionicons name="calendar-outline" size={13} color="#4F46E5" />
+                <Text style={styles.editDateBtnTxt}>Edit Date</Text>
+              </Pressable>
+            ) : null}
+          </View>
           {selectedDayLabel ? (
-            <Text style={styles.visitDayLine}>Visit day: {selectedDayLabel}</Text>
+            <Text style={styles.visitDayLine}>Visit Day: {selectedDayLabel}</Text>
           ) : null}
 
-          <Text style={styles.label}>Preferred time</Text>
+          <Text style={styles.label}>Preferred Time</Text>
           <View style={styles.slotWrap}>
             {timeSlots.map((slot) => (
               <Pressable
@@ -582,23 +657,28 @@ export default function AppointmentsScreen() {
           </View>
 
           <Text style={styles.label}>Reason for appointment</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Why are you scheduling this visit?"
-            placeholderTextColor="#94A3B8"
-            value={form.appointmentReason}
-            onChangeText={(v) => setForm((f) => ({ ...f, appointmentReason: v }))}
-          />
+          <View style={styles.inputRow}>
+            <Ionicons name="chatbubble-outline" size={16} color="#94A3B8" />
+            <TextInput
+              style={styles.inputRowField}
+              placeholder="Why are you scheduling this visit?"
+              placeholderTextColor="#94A3B8"
+              value={form.appointmentReason}
+              onChangeText={(v) => setForm((f) => ({ ...f, appointmentReason: v }))}
+            />
+          </View>
 
           <Text style={styles.label}>Note (optional)</Text>
-          <TextInput
-            style={[styles.input, { minHeight: 72 }]}
-            multiline
-            placeholder="Anything the care team should know"
-            placeholderTextColor="#94A3B8"
-            value={form.note}
-            onChangeText={(v) => setForm((f) => ({ ...f, note: v }))}
-          />
+          <View style={styles.inputRow}>
+            <Ionicons name="create-outline" size={16} color="#94A3B8" />
+            <TextInput
+              style={styles.inputRowField}
+              placeholder="Anything the care team should know"
+              placeholderTextColor="#94A3B8"
+              value={form.note}
+              onChangeText={(v) => setForm((f) => ({ ...f, note: v }))}
+            />
+          </View>
 
           {formError ? <Text style={styles.err}>{formError}</Text> : null}
 
@@ -607,44 +687,70 @@ export default function AppointmentsScreen() {
             onPress={() => void submitRequest()}
             disabled={saving}
           >
-            {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryBtnTxt}>Submit request</Text>}
+            {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryBtnTxt}>Submit Request</Text>}
           </Pressable>
         </View>
 
         <View style={[styles.panel, styles.statusPanel]}>
           <View style={styles.reqHeaderRow}>
-            <Text style={styles.sectionTitle}>Appointment status</Text>
+            <View style={styles.reqHeaderLeft}>
+              <View style={styles.reqHeaderIconWrap}>
+                <Ionicons name="clipboard-outline" size={16} color="#4F46E5" />
+              </View>
+              <Text style={styles.reqHeaderTitle}>Appointment Status</Text>
+            </View>
             <Text style={styles.reqTotal}>{requests.length} total</Text>
           </View>
           {requests.length === 0 ? (
             <Text style={styles.muted}>No visitation requests yet. Use the calendar to book your first slot.</Text>
           ) : (
-            requests.map((r) => {
+            requests.map((r, idx) => {
               const st = normalizeVisitationStatus(r.status);
               const stCfg = STATUS_CFG[st] || STATUS_CFG.Requested;
+              const adminReason = String(r.adminNote || '').trim();
+              const compactSubtext =
+                st === 'Declined'
+                  ? 'Declined by the facility'
+                  : st === 'Requested'
+                    ? 'Waiting for admin decision'
+                    : st === 'Approved'
+                      ? 'Confirmed for this visit'
+                      : st === 'Rescheduled'
+                        ? adminReason || 'Rescheduled by the facility'
+                        : visitationStatusSubtext(r);
+              const note = String(r.note || '').trim();
+              const showNote = note && note.toUpperCase() !== 'N/A';
               return (
-                <View key={r.id} style={styles.reqCard}>
-                  <View style={styles.reqCardTop}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.reqName}>{r.patientName}</Text>
-                      <Text style={styles.reqMeta}>
-                        {r.confirmedDate
-                          ? `${formatVisitationWeekdayLong(r.confirmedDate)}, ${r.confirmedDate}`
-                          : r.preferredDate}{' '}
-                        · {r.confirmedTime || r.preferredTime}
+                <View
+                  key={r.id}
+                  style={[styles.reqRow, idx < requests.length - 1 && styles.reqRowDivider]}
+                >
+                  <View style={styles.reqAvatar}>
+                    <Text style={styles.reqAvatarTxt}>{getInitials(r.patientName)}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.reqName}>{r.patientName}</Text>
+                    <Text style={styles.reqMeta} numberOfLines={1}>
+                      {formatReqDateTime(r.confirmedDate || r.preferredDate, r.confirmedTime || r.preferredTime)}
+                    </Text>
+                    <View style={styles.reqSubtextRow}>
+                      <Ionicons name={stCfg.icon} size={12} color="#94A3B8" />
+                      <Text style={styles.reqSubtext} numberOfLines={1}>
+                        {compactSubtext}
                       </Text>
                     </View>
+                    {showNote ? (
+                      <Text style={styles.reqNote} numberOfLines={1}>
+                        {note}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.reqRight}>
                     <View style={[styles.statusPill, { backgroundColor: stCfg.bg, borderColor: stCfg.border }]}>
                       <Text style={[styles.statusPillTxt, { color: stCfg.color }]}>{st}</Text>
                     </View>
+                    <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
                   </View>
-                  <Text style={styles.reqSubtext}>{visitationStatusSubtext(r)}</Text>
-                  {st === 'Rescheduled' && String(r.adminNote || '').trim() ? (
-                    <View style={styles.adminNoteBox}>
-                      <Text style={styles.adminNoteTxt}>Admin: {r.adminNote}</Text>
-                    </View>
-                  ) : null}
-                  {r.note ? <Text style={styles.reqNote}>{r.note}</Text> : null}
                 </View>
               );
             })
@@ -653,7 +759,6 @@ export default function AppointmentsScreen() {
       </ScrollView>
 
       <FamilyWebMobileNav active="appointments" />
-      <FamilyFloatingChat />
     </View>
   );
 }
@@ -682,37 +787,18 @@ const styles = StyleSheet.create({
   heroText: { fontSize: 19, fontWeight: '800', lineHeight: 25, color: '#FFFFFF' },
   heroTextAccent: { color: '#F0851F' },
   statsWrap: { marginBottom: 20, zIndex: 1 },
-  statCardWide: {
+  statsSquareRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  statCardSquare: {
+    flex: 1,
     minHeight: 88,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(233, 237, 247, 0.85)',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 10,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 12,
-      },
-      android: { elevation: 2 },
-    }),
-  },
-  statsSquareRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
-  statCardSquare: {
-    flex: 1,
-    aspectRatio: 1,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(233, 237, 247, 0.85)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
+    justifyContent: 'center',
+    gap: 6,
+    padding: 10,
     ...Platform.select({
       ios: {
         shadowColor: '#0F172A',
@@ -727,32 +813,25 @@ const styles = StyleSheet.create({
     opacity: 0.92,
     transform: [{ scale: 0.98 }],
   },
-  statIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
   statIconWrapLg: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  statTextCol: { flex: 1, minWidth: 0 },
+  statTextCol: { alignItems: 'center', minWidth: 0 },
   statLabel: {
     fontSize: 9,
     fontWeight: '700',
     color: '#94A3B8',
     textTransform: 'uppercase',
     letterSpacing: 0.1,
+    textAlign: 'center',
   },
-  statVal: { fontSize: 24, fontWeight: '900', marginTop: 3, letterSpacing: -0.5 },
-  statCaption: { fontSize: 9.5, fontWeight: '600', color: '#94A3B8', marginTop: 2 },
+  statVal: { fontSize: 20, fontWeight: '900', marginTop: 3, letterSpacing: -0.5, textAlign: 'center' },
+  statCaption: { fontSize: 9, fontWeight: '600', color: '#94A3B8', marginTop: 2, textAlign: 'center' },
   panel: {
     backgroundColor: '#FFFFFF',
     borderRadius: 22,
@@ -770,9 +849,63 @@ const styles = StyleSheet.create({
     }),
   },
   statusPanel: { marginTop: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#1B2559', letterSpacing: -0.2 },
-  sectionTitleSpaced: { marginTop: 20 },
   muted: { fontSize: 14, color: '#64748B', fontWeight: '500', marginTop: 8, lineHeight: 20 },
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(233, 237, 247, 0.9)',
+    padding: 16,
+    marginBottom: 14,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 14,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  sectionCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sectionIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  sectionCardTitle: { fontSize: 16, fontWeight: '800', color: '#1B2559', letterSpacing: -0.2 },
+  sectionCardSubtitle: { fontSize: 12.5, fontWeight: '600', color: '#94A3B8', marginTop: 10 },
+  sectionCardSubtitleTight: { fontSize: 12.5, fontWeight: '600', color: '#94A3B8', marginTop: 2 },
+  visitInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'nowrap',
+    gap: 8,
+    marginTop: 14,
+    backgroundColor: '#F7F8FF',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E9EAFB',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#4F46E5',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 12,
+      },
+      android: { elevation: 1 },
+    }),
+  },
+  visitInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  visitInfoItemShrink: { flexShrink: 1, minWidth: 0 },
+  visitInfoItemFixed: { flexShrink: 0 },
+  visitInfoTxt: { fontSize: 13, fontWeight: '700', color: '#312E81', flexShrink: 1 },
+  visitInfoDivider: { width: 1, height: 18, backgroundColor: '#C7D2FE' },
   calHero: {
     marginTop: 16,
     padding: 16,
@@ -810,9 +943,12 @@ const styles = StyleSheet.create({
   calMonthCenter: { alignItems: 'center', gap: 6, flex: 1, paddingHorizontal: 8 },
   calMonthLabel: { fontSize: 18, fontWeight: '800', color: '#1B2559', letterSpacing: -0.2 },
   calTodayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     borderWidth: 1,
-    borderColor: '#FED7AA',
-    backgroundColor: '#FFF7ED',
+    borderColor: '#C7D2FE',
+    backgroundColor: '#EEF2FF',
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 999,
@@ -820,7 +956,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   calTodayBtnPressed: { opacity: 0.88, transform: [{ scale: 0.97 }] },
-  calTodayBtnTxt: { fontSize: 12, fontWeight: '800', color: '#EA580C' },
+  calTodayBtnTxt: { fontSize: 12, fontWeight: '800', color: '#4F46E5' },
   weekdayRow: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
@@ -870,58 +1006,103 @@ const styles = StyleSheet.create({
   calCellNumSelected: { color: '#F54E25' },
   calCellNumVisit: { color: '#166534' },
   calCellNumPending: { color: '#92400E' },
+  legendCard: {
+    marginTop: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(233, 237, 247, 0.9)',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
   legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    marginTop: 16,
-    paddingVertical: 4,
+    flexWrap: 'wrap',
+    gap: 14,
   },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  legendSwatch: {
-    width: 20,
-    height: 20,
-    borderRadius: 8,
-    borderWidth: 1,
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendRing: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendTxt: { fontSize: 12, fontWeight: '700', color: '#475569' },
-  selectedDateLine: { marginTop: 16, fontSize: 14, color: '#64748B', fontWeight: '500' },
-  selectedDateValue: { fontWeight: '800', color: '#1B2559' },
-  visitDayLine: { marginTop: 6, fontSize: 13, fontWeight: '700', color: '#166534' },
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#475569',
+  selectedDateCard: {
     marginTop: 16,
-    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  selectedDateLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  selectedDateIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#E0E7FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  selectedDateLabel: { fontSize: 12, fontWeight: '600', color: '#94A3B8' },
+  selectedDateValue: { fontSize: 14, fontWeight: '800', color: '#166534', marginTop: 2 },
+  editDateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  editDateBtnTxt: { fontSize: 12.5, fontWeight: '800', color: '#4F46E5' },
+  visitDayLine: { marginTop: 10, fontSize: 13, fontWeight: '700', color: '#166534' },
+  label: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1B2559',
+    marginTop: 18,
+    marginBottom: 10,
     letterSpacing: 0.2,
   },
-  input: {
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     borderWidth: 1,
     borderColor: '#E9EDF7',
     borderRadius: 14,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: '#1B2559',
     backgroundColor: '#FAFBFF',
     minHeight: 48,
   },
-  chipsRow: { flexDirection: 'row', marginBottom: 8, paddingVertical: 4 },
-  chip: {
-    paddingHorizontal: 16,
+  inputRowField: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1B2559',
     paddingVertical: 12,
-    borderRadius: 999,
+  },
+  chipsRow: { flexDirection: 'row', marginTop: 10, paddingVertical: 4 },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E9EDF7',
     marginRight: 10,
-    maxWidth: 200,
+    width: 190,
     backgroundColor: '#FFFFFF',
-    minHeight: 44,
-    justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#0F172A',
@@ -946,8 +1127,16 @@ const styles = StyleSheet.create({
     }),
   },
   chipPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
-  chipTxt: { fontSize: 14, fontWeight: '700', color: '#334155' },
-  chipTxtOn: { color: '#F54E25' },
+  chipAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  chipAvatarTxt: { fontSize: 12.5, fontWeight: '800' },
+  chipTxt: { flex: 1, fontSize: 13.5, fontWeight: '700', color: '#1B2559' },
   hint: { fontSize: 12, color: '#94A3B8', fontStyle: 'italic', marginTop: 8, lineHeight: 18 },
   slotWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   slot: {
@@ -969,9 +1158,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
     backgroundColor: '#F54E25',
     paddingVertical: 16,
-    borderRadius: 16,
+    borderRadius: 999,
     alignItems: 'center',
-    minHeight: 52,
+    minHeight: 56,
     justifyContent: 'center',
     ...Platform.select({
       ios: {
@@ -992,42 +1181,45 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  reqTotal: { fontSize: 12, fontWeight: '700', color: '#94A3B8' },
-  reqCard: {
-    borderWidth: 1,
-    borderColor: '#E9EDF7',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    backgroundColor: '#FAFBFF',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 8,
-      },
-      android: { elevation: 1 },
-    }),
+  reqHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  reqHeaderIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#E0E7FF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  reqCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  reqName: { fontSize: 16, fontWeight: '800', color: '#1B2559' },
-  reqMeta: { fontSize: 13, color: '#64748B', fontWeight: '500', marginTop: 4, lineHeight: 18 },
-  reqSubtext: { fontSize: 12, color: '#94A3B8', fontWeight: '600', marginTop: 10, lineHeight: 17 },
+  reqHeaderTitle: { fontSize: 16, fontWeight: '800', color: '#1B2559', letterSpacing: -0.2 },
+  reqTotal: { fontSize: 13, fontWeight: '800', color: '#4F46E5' },
+  reqRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 11,
+  },
+  reqRowDivider: { borderBottomWidth: 1, borderBottomColor: '#F1F3FA' },
+  reqAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#E0E7FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  reqAvatarTxt: { fontSize: 11.5, fontWeight: '800', color: '#4F46E5' },
+  reqName: { fontSize: 14, fontWeight: '800', color: '#1B2559' },
+  reqMeta: { fontSize: 12, color: '#64748B', fontWeight: '500', marginTop: 2, lineHeight: 16 },
+  reqSubtextRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
+  reqSubtext: { flex: 1, fontSize: 11.5, color: '#94A3B8', fontWeight: '600', lineHeight: 15 },
+  reqRight: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
   statusPill: {
     borderRadius: 999,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
-  statusPillTxt: { fontSize: 11, fontWeight: '800' },
-  adminNoteBox: {
-    marginTop: 10,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  adminNoteTxt: { fontSize: 12, fontWeight: '700', color: '#3730A3', lineHeight: 17 },
-  reqNote: { fontSize: 13, color: '#475569', marginTop: 8, lineHeight: 19 },
+  statusPillTxt: { fontSize: 10.5, fontWeight: '800' },
+  reqNote: { fontSize: 12, color: '#475569', marginTop: 3, lineHeight: 16, fontStyle: 'italic' },
 });

@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -9,6 +10,8 @@ import {
   Pressable,
   ActivityIndicator,
   Dimensions,
+  useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +21,6 @@ import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { uiPatientFromRow, type PatientRow } from '../../lib/patientMappers';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
-import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
@@ -34,6 +36,18 @@ type PatientCard = {
 type ReportRow = Record<string, unknown>;
 
 const REPORT_MODAL_MAX_H = Dimensions.get('window').height * 0.92;
+
+// Native pixel size of assets/images/reports-header.png — sets the hero's
+// aspect ratio so the full illustration renders with no crop.
+const HERO_IMG_NATURAL_W = 1774;
+const HERO_IMG_NATURAL_H = 887;
+
+const PATIENT_AVATAR_PALETTE = [
+  { bg: '#E0E7FF', color: '#4338CA' },
+  { bg: '#E0E7FF', color: '#4338CA' },
+  { bg: '#FFE4D6', color: '#C2410C' },
+  { bg: '#F3E8FF', color: '#7E22CE' },
+] as const;
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return 'N/A';
@@ -97,25 +111,32 @@ function ReportFieldCard({
 function ReportStatCard({
   label,
   value,
+  caption,
   icon,
-  borderColor,
   iconBg,
   iconColor,
 }: {
   label: string;
   value: string | number;
+  caption: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
-  borderColor: string;
   iconBg: string;
   iconColor: string;
 }) {
   return (
-    <View style={[styles.rptStatCard, { borderColor }]}>
-      <View style={[styles.rptStatIcon, { backgroundColor: iconBg, borderColor }]}>
-        <Ionicons name={icon} size={20} color={iconColor} />
+    <View style={styles.rptStatCard}>
+      <View style={[styles.rptStatIcon, { backgroundColor: iconBg }]}>
+        <Ionicons name={icon} size={16} color={iconColor} />
       </View>
-      <Text style={styles.rptStatLbl}>{label}</Text>
-      <Text style={styles.rptStatVal}>{value}</Text>
+      <Text style={styles.rptStatLbl} numberOfLines={2}>
+        {label}
+      </Text>
+      <Text style={styles.rptStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        {value}
+      </Text>
+      <Text style={styles.rptStatCaption} numberOfLines={2}>
+        {caption}
+      </Text>
     </View>
   );
 }
@@ -124,6 +145,8 @@ export default function ReportsScreen() {
   const insets = useSafeAreaInsets();
   const { scrollRef, scrollToTop } = useFamilyPageScroll();
   const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
+  const heroHeight = screenWidth * (HERO_IMG_NATURAL_H / HERO_IMG_NATURAL_W);
   const [showNotifications, setShowNotifications] = useState(false);
   const [familyUserId, setFamilyUserId] = useState('');
     const [userInitials, setUserInitials] = useState('FU');
@@ -134,6 +157,9 @@ export default function ReportsScreen() {
   const [loadError, setLoadError] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<PatientCard | null>(null);
   const [selectedReportId, setSelectedReportId] = useState('');
+  const [weekMenuOpen, setWeekMenuOpen] = useState(false);
+  const [weekMenuPos, setWeekMenuPos] = useState({ top: 0, right: 16 });
+  const weekBtnRef = useRef<View>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -315,60 +341,81 @@ export default function ReportsScreen() {
     [patients, weeklyReportsByPatient]
   );
 
+  const openWeekMenu = () => {
+    weekBtnRef.current?.measureInWindow((x, y, width, height) => {
+      setWeekMenuPos({ top: y + height + 6, right: Math.max(16, screenWidth - (x + width)) });
+      setWeekMenuOpen(true);
+    });
+  };
+
+  const weekLabel = selectedWeek === 'all' ? 'All weeks' : `Week ${selectedWeek}`;
+
   return (
     <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
       <FamilyMobilePageHeader title="Weekly Reports" onBrandPress={scrollToTop} />
 
-      <ScrollView ref={scrollRef} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
-        <LinearGradient
-          colors={['#0F172A', '#1E2D4F', '#2D1B69']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroBanner}
-        >
-          <View style={styles.heroKickerRow}>
-            <View style={styles.heroIconBox}>
-              <Ionicons name="bar-chart" size={16} color="#FFFFFF" />
-            </View>
-            <Text style={styles.heroKicker}>Family Portal · Weekly Reports</Text>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={[styles.scroll, { paddingTop: 0, paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.heroWrap, { height: heroHeight }]}>
+          <Image
+            source={require('../../assets/images/reports-header.png')}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+          <View style={styles.heroTextWrap}>
+            <Text style={styles.heroTitle}>Patient Weekly Reports</Text>
+            <Text style={styles.heroSub}>Select a resident to view their full report history and care updates.</Text>
           </View>
-          <Text style={styles.heroTitle}>Patient Weekly Reports</Text>
-          <Text style={styles.heroSub}>Select a resident to view their full report history and care updates</Text>
-        </LinearGradient>
+        </View>
 
         <View style={styles.statGrid}>
           <ReportStatCard
             label="Residents"
             value={patients.length}
+            caption="Total Residents"
             icon="people"
-            borderColor="#C7D2FE"
             iconBg="#EEF2FF"
             iconColor="#6366F1"
           />
           <ReportStatCard
             label="Total Reports"
             value={totalReportsCount}
+            caption="This Week"
             icon="document-text"
-            borderColor="#A7F3D0"
             iconBg="#ECFDF5"
             iconColor="#10B981"
           />
           <ReportStatCard
             label="With Reports"
             value={patientsWithReportsCount}
+            caption="Residents"
             icon="checkmark-circle"
-            borderColor="#DDD6FE"
-            iconBg="#F5F3FF"
-            iconColor="#8B5CF6"
+            iconBg="#FFF7ED"
+            iconColor="#EA580C"
           />
           <ReportStatCard
             label="Avg Progress"
             value={`${avgProgress}%`}
+            caption="Average Progress"
             icon="trending-up"
-            borderColor="#FDE68A"
-            iconBg="#FFFBEB"
-            iconColor="#F59E0B"
+            iconBg="#EEF2FF"
+            iconColor="#4F46E5"
           />
+        </View>
+
+        <View style={styles.noteCard}>
+          <View style={styles.noteIconWrap}>
+            <Ionicons name="information-circle-outline" size={20} color="#F54E25" />
+          </View>
+          <Text style={styles.noteText}>
+            Patient lists and weekly report details live under{' '}
+            <Text style={styles.noteTextStrong}>Patient Details</Text> and{' '}
+            <Text style={styles.noteTextStrong}>Reports</Text> in the menu bar.
+          </Text>
+          <Ionicons name="stats-chart" size={22} color="#F54E25" style={styles.noteDecoIcon} />
         </View>
 
         <View style={styles.panel}>
@@ -382,26 +429,11 @@ export default function ReportsScreen() {
                 Tap a card to open that resident&apos;s full report history.
               </Text>
             </View>
-          </View>
-
-          <View style={styles.toolbar}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weekScroll}>
-              <TouchableOpacity
-                style={[styles.weekChip, selectedWeek === 'all' && styles.weekChipOn]}
-                onPress={() => setSelectedWeek('all')}
-              >
-                <Text style={[styles.weekChipTxt, selectedWeek === 'all' && styles.weekChipTxtOn]}>All weeks</Text>
-              </TouchableOpacity>
-              {availableWeeks.map((w) => (
-                <TouchableOpacity
-                  key={w}
-                  style={[styles.weekChip, selectedWeek === String(w) && styles.weekChipOn]}
-                  onPress={() => setSelectedWeek(String(w))}
-                >
-                  <Text style={[styles.weekChipTxt, selectedWeek === String(w) && styles.weekChipTxtOn]}>Week {w}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <Pressable ref={weekBtnRef} style={styles.weekMenuBtn} onPress={openWeekMenu}>
+              <Ionicons name="calendar-outline" size={14} color="#1B2559" />
+              <Text style={styles.weekMenuBtnTxt}>{weekLabel}</Text>
+              <Ionicons name="chevron-down" size={14} color="#64748B" />
+            </Pressable>
           </View>
 
           {loading ? (
@@ -417,30 +449,27 @@ export default function ReportsScreen() {
           ) : (
             patients.map((patient, pidx) => {
               const reportCount = (weeklyReportsByPatient[String(patient.id)] || []).length;
-              const active = selectedPatient && String(selectedPatient.id) === String(patient.id);
               const progress = Number(patient.progress) || 0;
               const statusCfg =
                 progress >= 70
                   ? { label: 'Stable', bg: '#DCFCE7', color: '#166534' }
                   : progress >= 40
-                    ? { label: 'Recovering', bg: '#FEF3C7', color: '#92400E' }
+                    ? { label: 'Monitoring', bg: '#FEF3C7', color: '#92400E' }
                     : { label: 'Needs Attention', bg: '#FEE2E2', color: '#991B1B' };
+              const avatar = PATIENT_AVATAR_PALETTE[pidx % PATIENT_AVATAR_PALETTE.length];
               return (
                 <TouchableOpacity
                   key={`rp-${pidx}`}
-                  style={[styles.patientCardV2, active && styles.patientCardV2On]}
+                  style={styles.patientCardV2}
                   onPress={() => setSelectedPatient(patient)}
                   activeOpacity={0.9}
                 >
                   <View style={styles.patientCardV2Top}>
-                    <LinearGradient
-                      colors={active ? ['#F54E25', '#EA580C'] : ['#EEF2FF', '#C7D2FE']}
-                      style={styles.patientCardV2Avatar}
-                    >
-                      <Text style={[styles.patientCardV2Initials, active && { color: '#FFFFFF' }]}>
+                    <View style={[styles.patientAvatarCircle, { backgroundColor: avatar.bg }]}>
+                      <Text style={[styles.patientCardV2Initials, { color: avatar.color }]}>
                         {deriveInitials(patient.name)}
                       </Text>
-                    </LinearGradient>
+                    </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={styles.patientName} numberOfLines={1}>
                         {patient.name}
@@ -449,11 +478,12 @@ export default function ReportsScreen() {
                         Age {patient.age} · Admitted {patient.date || 'N/A'}
                       </Text>
                     </View>
+                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
                   </View>
                   <View style={styles.patientCardV2ProgRow}>
                     <View style={styles.patientCardV2Track}>
                       <LinearGradient
-                        colors={active ? ['#F54E25', '#EA580C'] : ['#6366F1', '#818CF8']}
+                        colors={['#6366F1', '#818CF8']}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
                         style={[styles.patientCardV2Fill, { width: `${progress}%` }]}
@@ -465,8 +495,8 @@ export default function ReportsScreen() {
                     <View style={[styles.patientStatusPill, { backgroundColor: statusCfg.bg }]}>
                       <Text style={[styles.patientStatusPillTxt, { color: statusCfg.color }]}>{statusCfg.label}</Text>
                     </View>
-                    <View style={[styles.kpi, active && { backgroundColor: '#FFF7ED' }]}>
-                      <Text style={[styles.kpiTxt, active && { color: '#C2410C' }]}>
+                    <View style={styles.kpi}>
+                      <Text style={styles.kpiTxt}>
                         {reportCount} report{reportCount === 1 ? '' : 's'}
                       </Text>
                     </View>
@@ -477,6 +507,38 @@ export default function ReportsScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal visible={weekMenuOpen} transparent animationType="fade" onRequestClose={() => setWeekMenuOpen(false)}>
+        <Pressable style={styles.weekMenuBackdrop} onPress={() => setWeekMenuOpen(false)}>
+          <View style={[styles.weekMenuCard, { top: weekMenuPos.top, right: weekMenuPos.right }]}>
+            <Pressable
+              style={[styles.weekMenuItem, selectedWeek === 'all' && styles.weekMenuItemOn]}
+              onPress={() => {
+                setSelectedWeek('all');
+                setWeekMenuOpen(false);
+              }}
+            >
+              <Text style={[styles.weekMenuItemTxt, selectedWeek === 'all' && styles.weekMenuItemTxtOn]}>All weeks</Text>
+              {selectedWeek === 'all' ? <Ionicons name="checkmark" size={15} color="#F54E25" /> : null}
+            </Pressable>
+            {availableWeeks.map((w) => (
+              <Pressable
+                key={w}
+                style={[styles.weekMenuItem, selectedWeek === String(w) && styles.weekMenuItemOn]}
+                onPress={() => {
+                  setSelectedWeek(String(w));
+                  setWeekMenuOpen(false);
+                }}
+              >
+                <Text style={[styles.weekMenuItemTxt, selectedWeek === String(w) && styles.weekMenuItemTxtOn]}>
+                  Week {w}
+                </Text>
+                {selectedWeek === String(w) ? <Ionicons name="checkmark" size={15} color="#F54E25" /> : null}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal visible={!!selectedPatient} transparent animationType="fade" onRequestClose={() => setSelectedPatient(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setSelectedPatient(null)}>
@@ -527,6 +589,7 @@ export default function ReportsScreen() {
               contentContainerStyle={styles.modalBodyContent}
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
               <Text style={styles.historyTitle}>Report history</Text>
               {!visibleReports.length ? (
@@ -648,7 +711,6 @@ export default function ReportsScreen() {
       </Modal>
 
       <FamilyWebMobileNav active="reports" />
-      <FamilyFloatingChat />
     </View>
   );
 }
@@ -694,59 +756,99 @@ const styles = StyleSheet.create({
   notifText: { flex: 1, fontSize: 13, color: '#334155' },
   notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 16, paddingTop: 12 },
-  heroBanner: { borderRadius: 24, padding: 22, marginBottom: 12, overflow: 'hidden' },
-  heroKickerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  heroIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
+  heroWrap: {
+    marginHorizontal: -16,
+    marginBottom: 0,
+    overflow: 'hidden',
+    backgroundColor: '#0F172A',
     justifyContent: 'center',
   },
-  heroKicker: {
-    flex: 1,
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.4)',
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+  heroImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
   },
-  heroTitle: { fontSize: 22, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.5 },
-  heroSub: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 6, lineHeight: 18 },
+  heroTextWrap: { paddingHorizontal: 22, maxWidth: '68%', marginBottom: 28 },
+  heroTitle: { fontSize: 21, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.5 },
+  heroSub: {
+    fontSize: 12.5,
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: 6,
+    lineHeight: 18,
+  },
   statGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 12,
+    flexWrap: 'nowrap',
+    gap: 8,
+    marginTop: -18,
+    marginBottom: 16,
+    zIndex: 1,
   },
   rptStatCard: {
-    width: '48%',
+    flex: 1,
+    minWidth: 0,
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 16,
-    marginBottom: 4,
+    borderColor: 'rgba(233, 237, 247, 0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.1,
+        shadowRadius: 14,
+      },
+      android: { elevation: 4 },
+    }),
   },
   rptStatIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   rptStatLbl: {
-    fontSize: 10,
+    fontSize: 8.5,
     color: '#94A3B8',
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.7,
+    letterSpacing: 0.2,
   },
-  rptStatVal: { fontSize: 26, fontWeight: '900', color: '#0F172A', marginTop: 5 },
-  panelHeadRow: { flexDirection: 'row', gap: 10, marginBottom: 14, alignItems: 'flex-start' },
+  rptStatVal: { fontSize: 19, fontWeight: '900', color: '#0F172A', marginTop: 4, letterSpacing: -0.4 },
+  rptStatCaption: { fontSize: 8.5, fontWeight: '600', color: '#94A3B8', marginTop: 3 },
+  noteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#FFF1E8',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  noteIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1.5,
+    borderColor: '#F54E25',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  noteText: { flex: 1, fontSize: 13, color: '#7C4A26', fontWeight: '600', lineHeight: 18 },
+  noteTextStrong: { color: '#F54E25', fontWeight: '800' },
+  noteDecoIcon: { flexShrink: 0 },
+  panelHeadRow: { flexDirection: 'row', gap: 10, marginBottom: 16, alignItems: 'center' },
   panelHeadIcon: {
     width: 28,
     height: 28,
@@ -755,17 +857,55 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  patientCardV2: {
-    borderWidth: 2,
+  weekMenuBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    backgroundColor: '#FFFFFF',
+    flexShrink: 0,
+  },
+  weekMenuBtnTxt: { fontSize: 12.5, fontWeight: '700', color: '#1B2559' },
+  weekMenuBackdrop: { flex: 1 },
+  weekMenuCard: {
+    position: 'absolute',
+    minWidth: 150,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
     borderColor: '#E9EDF7',
+    paddingVertical: 6,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  weekMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  weekMenuItemOn: { backgroundColor: '#FFF7F4' },
+  weekMenuItemTxt: { fontSize: 13, fontWeight: '600', color: '#334155' },
+  weekMenuItemTxtOn: { color: '#F54E25', fontWeight: '800' },
+  patientCardV2: {
+    borderWidth: 1,
+    borderColor: 'rgba(233, 237, 247, 0.9)',
     borderRadius: 20,
     backgroundColor: '#FFFFFF',
     padding: 18,
     marginBottom: 12,
   },
-  patientCardV2On: { borderColor: '#F54E25', backgroundColor: '#FFFBFA' },
   patientCardV2Top: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  patientCardV2Avatar: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  patientAvatarCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   patientCardV2Initials: { fontSize: 16, fontWeight: '900', color: '#4338CA' },
   patientCardV2ProgRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   patientCardV2Track: {
@@ -867,21 +1007,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   panelTitle: { fontSize: 18, fontWeight: '800', color: '#1B2559' },
-  panelSub: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 6, marginBottom: 12 },
-  toolbar: { marginBottom: 8 },
-  weekScroll: { maxHeight: 40 },
-  weekChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginRight: 8,
-    backgroundColor: '#FFFFFF',
-  },
-  weekChipOn: { borderColor: '#F54E25', backgroundColor: '#FFF7F4' },
-  weekChipTxt: { fontSize: 12, fontWeight: '700', color: '#1B2559' },
-  weekChipTxtOn: { color: '#F54E25' },
+  panelSub: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 6 },
   muted: { color: '#64748B', fontSize: 13, fontWeight: '700', marginBottom: 8 },
   err: {
     color: '#b91c1c',

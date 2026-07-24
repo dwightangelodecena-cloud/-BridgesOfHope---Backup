@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { isInvalidRefreshTokenError } from "../lib/authErrors";
 import { TAB_ROUTES } from "../lib/navigationConfig";
@@ -51,15 +50,9 @@ export default function Index() {
           }
         }
 
-        const hasOpened = await AsyncStorage.getItem("hasOpened");
-
-        if (hasOpened === "true") {
-          router.replace("/login");
-        } else {
-          router.replace("/onboarding");
-        }
+        router.replace("/signup");
       } catch {
-        router.replace("/onboarding");
+        router.replace("/signup");
       } finally {
         setLoading(false);
       }

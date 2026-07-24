@@ -191,88 +191,66 @@ export default function LoginScreen() {
 
     setSubmitting(true);
 
-    try {
-      if (!emailRegex.test(trimmedId)) {
-        const digits = trimmedId.replace(/\D/g, "");
-        const { data: rows, error: rpcError } = await supabase.rpc("resolve_login_email", {
-          login_input: digits,
-        });
-        if (rpcError) {
-          showError(formatAuthError(rpcError));
-          return;
-        }
-        const resolved = Array.isArray(rows) && rows.length > 0 ? rows[0]?.email : null;
-        if (!resolved || typeof resolved !== "string") {
-          showError("No account found with that email or contact number.");
-          return;
-        }
-        signInEmail = resolved;
-      }
-
-      let data: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"] | null = null;
-      let authError: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["error"] | null = null;
-      const maxAttempts = 3;
-      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        const result = await supabase.auth.signInWithPassword({
-          email: signInEmail.trim(),
-          password,
-        });
-        data = result.data;
-        authError = result.error;
-        const status = (authError as { status?: number } | null)?.status;
-        const isRetryable = status === 502 || status === 503 || status === 504;
-        if (!isRetryable || attempt === maxAttempts) break;
-        await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
-      }
-
-      if (authError || !data) {
-        showError(formatAuthError(authError));
-        return;
-      }
-
-      const role = (data.user?.user_metadata?.account_type ?? "family") as string;
-      if (role !== "family") {
-        await supabase.auth.signOut();
-        showError("Use the web app to sign in as staff.");
-        return;
-      }
-
-      hapticSuccess();
-      await touchPresence(data.user?.id);
-      await appendActivityFeed("Logged in from mobile app.", {
-        familyId: data.user?.id ?? null,
-        title: "Account Login",
-        iconName: "login",
+    if (!emailRegex.test(trimmedId)) {
+      const digits = trimmedId.replace(/\D/g, "");
+      const { data: rows, error: rpcError } = await supabase.rpc("resolve_login_email", {
+        login_input: digits,
       });
-
-      if (rememberMe) {
-        try {
-          await AsyncStorage.setItem(REMEMBER_LOGIN_KEY, trimmedId);
-        } catch {
-          /* ignore */
-        }
-      } else {
-        try {
-          await AsyncStorage.removeItem(REMEMBER_LOGIN_KEY);
-        } catch {
-          /* ignore */
-        }
+      if (rpcError) {
+        setSubmitting(false);
+        showError(formatAuthError(rpcError));
+        return;
       }
-
-      router.replace(TAB_ROUTES.home);
-    } catch (e) {
-      // A thrown network failure (e.g. "Failed to fetch") would otherwise
-      // skip every showError()/setSubmitting(false) call above, leaving the
-      // sign-in button stuck spinning forever with no feedback.
-      hapticError();
-      showError(
-        e instanceof Error && /failed to fetch|network/i.test(e.message)
-          ? "Couldn't reach the server. Check your connection and try again."
-          : "Something went wrong. Please try again."
-      );
-    } finally {
-      setSubmitting(false);
+      const resolved = Array.isArray(rows) && rows.length > 0 ? rows[0]?.email : null;
+      if (!resolved || typeof resolved !== "string") {
+        setSubmitting(false);
+        showError("No account found with that email or contact number.");
+        return;
+      }
+      signInEmail = resolved;
     }
+
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: signInEmail.trim(),
+      password,
+    });
+    setSubmitting(false);
+
+    if (authError) {
+      showError(formatAuthError(authError));
+      return;
+    }
+
+    const role = (data.user?.user_metadata?.account_type ?? "family") as string;
+    if (role !== "family") {
+      await supabase.auth.signOut();
+      showError("Use the web app to sign in as staff.");
+      return;
+    }
+
+    hapticSuccess();
+    await touchPresence(data.user?.id);
+    await appendActivityFeed("Logged in from mobile app.", {
+      familyId: data.user?.id ?? null,
+      title: "Account Login",
+      iconName: "login",
+    });
+
+    if (rememberMe) {
+      try {
+        await AsyncStorage.setItem(REMEMBER_LOGIN_KEY, trimmedId);
+      } catch {
+        /* ignore */
+      }
+    } else {
+      try {
+        await AsyncStorage.removeItem(REMEMBER_LOGIN_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    router.replace(TAB_ROUTES.home);
   };
 
   const handleGoToSignup = () => {

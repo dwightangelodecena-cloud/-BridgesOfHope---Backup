@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Platform, type Insets } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, type Insets } from 'react-native';
 import { DeviceEventEmitter } from 'react-native';
 import {
   FAMILY_PROFILE_AVATAR_CHANGED,
@@ -45,42 +45,21 @@ export function FamilyHeaderAvatarMobile({ userId, initials, onPress, size = 36,
       accessibilityRole="button"
       accessibilityLabel="Profile"
       hitSlop={hitSlop}
-      style={[styles.shadowWrap, { width: size, height: size, borderRadius: size / 2 }]}
+      style={[styles.wrap, { width: size, height: size, borderRadius: size / 2 }]}
     >
-      <View style={[styles.wrap, { width: size, height: size, borderRadius: size / 2 }]}>
-        {src ? (
-          <Image source={{ uri: src }} style={styles.img} />
-        ) : (
-          <View style={[styles.fallback, { borderRadius: size / 2 }]}>
-            <Text style={[styles.initials, { fontSize: size * 0.34 }]}>{initials}</Text>
-          </View>
-        )}
-      </View>
+      {src ? (
+        <Image source={{ uri: src }} style={styles.img} />
+      ) : (
+        <View style={[styles.fallback, { borderRadius: size / 2 }]}>
+          <Text style={[styles.initials, { fontSize: size * 0.34 }]}>{initials}</Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  // Shadow lives on the outer, non-clipping wrapper — a View with both
-  // overflow:hidden (for the rounded image clip) and a shadow would clip
-  // its own shadow away.
-  shadowWrap: {
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.18,
-        shadowRadius: 6,
-      },
-      android: { elevation: 4 },
-      web: { boxShadow: '0 3px 8px rgba(15, 23, 42, 0.18)' },
-    }),
-  },
-  wrap: {
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
+  wrap: { overflow: 'hidden' },
   img: { width: '100%', height: '100%' },
   fallback: {
     width: '100%',

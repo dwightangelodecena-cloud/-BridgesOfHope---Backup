@@ -22,7 +22,6 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
-import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { FamilyBottomSheet } from '../../components/family/FamilyBottomSheet';
 import { ProfileChangePasswordPanel } from '../../components/family/ProfileChangePasswordPanel';
 import { ProfileNotificationSettingsPanel } from '../../components/family/ProfileNotificationSettingsPanel';
@@ -649,7 +648,6 @@ export default function ProfileScreen() {
       </FamilyBottomSheet>
 
       <FamilyWebMobileNav active="profile" />
-      <FamilyFloatingChat />
     </View>
   );
 }
