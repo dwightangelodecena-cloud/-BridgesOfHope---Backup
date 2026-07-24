@@ -8,6 +8,8 @@ const ACTIVITY_KEY = 'bh_admission_mgmt_activity_v1';
 
 export const ADMISSION_WORKFLOW_STATUSES = [
   'Processing',
+  'Awaiting Schedule Review',
+  'Awaiting Guardian Response',
   'In Review',
   'Accepted',
   'Rejected',
@@ -382,6 +384,10 @@ export function buildAdmissionRow(admissionRow, patientRow, override) {
     meetingTime: admissionRow.meeting_time || null,
     meetingScheduledAt: admissionRow.meeting_scheduled_at || null,
     meetingCompleted: Boolean(admissionRow.meeting_completed),
+    meetingConfirmedByFamily: Boolean(admissionRow.meeting_confirmed_by_family),
+    preferredMeetingDate: admissionRow.preferred_meeting_date || null,
+    preferredMeetingTime: admissionRow.preferred_meeting_time || null,
+    preferredMeetingNote: admissionRow.preferred_meeting_note || '',
     documentsComplete: Boolean(admissionRow.documents_complete),
     requiredDocumentNotes: admissionRow.required_document_notes || '',
     archived: Boolean(o.archived),

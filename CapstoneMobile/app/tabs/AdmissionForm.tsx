@@ -29,7 +29,7 @@ import {
   patchAdmissionRequestGender,
 } from '../../lib/admissionRequestInsert';
 import * as DocumentPicker from 'expo-document-picker';
-import { appendFamilyNotificationsIfNewMobile, notificationTextMobile } from '../../lib/familyNotificationsMobile';
+import { notificationTextMobile } from '../../lib/familyNotificationsMobile';
 import { useFamilyNotificationsState } from '../../lib/useFamilyNotificationsMobile';
 import {
   ADMISSION_FORM_SUBTITLE,
@@ -95,6 +95,7 @@ export default function AdmissionForm() {
   const [saveBanner, setSaveBanner] = useState('');
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [submittedRequestId, setSubmittedRequestId] = useState('');
   const [showRelationshipModal, setShowRelationshipModal] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [showGenderModal, setShowGenderModal] = useState(false);
@@ -403,12 +404,6 @@ export default function AdmissionForm() {
       await appendActivityFeed(`Admission request submitted for ${patientFull}. Pending admin review.`, {
         familyId: user.id,
       });
-      if (familyUserId) {
-        await appendFamilyNotificationsIfNewMobile(
-          [{ id: `adm-processing-${insertResult.id}`, text: `Admission request for ${patientFull} is being processed.` }],
-          familyUserId
-        );
-      }
       setValidIdFile(null);
       setBirthCertFile(null);
       setHospitalReferralFile(null);
@@ -417,6 +412,7 @@ export default function AdmissionForm() {
       } catch {
         /* ignore */
       }
+      setSubmittedRequestId(String(insertResult.id));
       setShowSuccessModal(true);
     } finally {
       setSubmitting(false);
@@ -879,6 +875,46 @@ export default function AdmissionForm() {
         />
       ) : null}
 
+      {/* @react-native-community/datetimepicker has no web implementation, so the
+          Android/iOS branches below never render anything on web — fall back to the
+          browser's native <input type="date">, which gives a real calendar/picker UI. */}
+      <Modal visible={Platform.OS === 'web' && birthDateModal} transparent animationType="fade" onRequestClose={() => setBirthDateModal(false)}>
+        <View style={styles.dateIosModalRoot}>
+          <Pressable style={styles.dateIosBackdrop} onPress={() => setBirthDateModal(false)} />
+          <View style={[styles.dateIosSheet, { paddingBottom: insets.bottom + 12 }]}>
+            <View style={styles.dateIosHeader}>
+              <View style={styles.dateIosHeaderSide} />
+              <Text style={styles.dateIosTitle}>Date of birth</Text>
+              <View style={[styles.dateIosHeaderSide, styles.dateIosHeaderSideEnd]}>
+                <TouchableOpacity onPress={() => setBirthDateModal(false)}>
+                  <Text style={styles.dateIosHeaderBtnPrimary}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.dateIosPickerWrap}>
+              {React.createElement('input', {
+                type: 'date',
+                autoFocus: true,
+                value: formData.patientBirthDate || '',
+                max: formatIsoDate(new Date()),
+                onChange: (e: { target: { value: string } }) => {
+                  if (e.target.value) setField('patientBirthDate', e.target.value);
+                },
+                style: {
+                  width: '100%',
+                  fontSize: 16,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #E2E8F0',
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                },
+              } as React.ComponentProps<'input'>)}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={Platform.OS === 'ios' && birthDateModal} transparent animationType="slide">
         <View style={styles.dateIosModalRoot}>
           <Pressable style={styles.dateIosBackdrop} onPress={() => setBirthDateModal(false)} />
@@ -1001,12 +1037,15 @@ export default function AdmissionForm() {
             </LinearGradient>
             <Text style={styles.successTitle}>Application submitted!</Text>
             <Text style={styles.successBody}>
-              Your admission request was sent successfully. Our team will review it and update you soon.
+              Your admission request was sent successfully. Next, let us know when you&apos;d like to meet with Bridges of Hope.
             </Text>
             <ScalePressable
               onPress={() => {
                 setShowSuccessModal(false);
-                router.navigate(TAB_ROUTES.home);
+                router.push({
+                  pathname: TAB_ROUTES.admissionMeetingRequest,
+                  params: submittedRequestId ? { requestId: submittedRequestId } : {},
+                } as never);
               }}
               style={styles.ctaWrap}
             >
@@ -1016,9 +1055,18 @@ export default function AdmissionForm() {
                 end={{ x: 1, y: 0 }}
                 style={styles.cta}
               >
-                <Text style={styles.ctaText}>Continue to home</Text>
+                <Text style={styles.ctaText}>Request a meeting time</Text>
               </LinearGradient>
             </ScalePressable>
+            <TouchableOpacity
+              onPress={() => {
+                setShowSuccessModal(false);
+                router.navigate(TAB_ROUTES.home as never);
+              }}
+              style={styles.successSkipBtn}
+            >
+              <Text style={styles.successSkipTxt}>I&apos;ll do this later</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1909,4 +1957,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 20,
   },
+  successSkipBtn: { marginTop: 14, alignItems: 'center', paddingVertical: 6 },
+  successSkipTxt: { fontSize: 13, fontWeight: '700', color: C.muted },
 });

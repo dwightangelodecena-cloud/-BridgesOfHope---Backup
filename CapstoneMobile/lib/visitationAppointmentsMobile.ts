@@ -152,6 +152,8 @@ export type VisitationRequestRow = {
   confirmedDate?: string;
   confirmedTime?: string;
   adminNote?: string;
+  /** True once the guardian has agreed to confirmedDate/confirmedTime (always true for a direct Approve). */
+  confirmedByFamily?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -265,9 +267,70 @@ function mapRemoteVisitationRow(r: Record<string, unknown>): VisitationRequestRo
     confirmedDate: String(r.confirmed_date || ''),
     confirmedTime: String(r.confirmed_time || ''),
     adminNote: String(r.admin_note || ''),
+    confirmedByFamily: Boolean(r.confirmed_by_family),
     createdAt: String(r.created_at || ''),
     updatedAt: String(r.updated_at || ''),
   };
+}
+
+/** True while admin has proposed a reschedule the guardian hasn't accepted or countered yet. */
+export function isAwaitingFamilyRescheduleResponse(row: VisitationRequestRow): boolean {
+  return normalizeVisitationStatus(row.status) === 'Rescheduled' && !row.confirmedByFamily;
+}
+
+/** Guardian accepts admin's suggested reschedule as-is. */
+export async function acceptVisitationReschedule(requestId: string): Promise<{ ok: true } | { ok: false; errorMessage: string }> {
+  if (!isSupabaseConfigured()) return { ok: false, errorMessage: 'Not connected.' };
+  const { error } = await supabase
+    .from('visitation_requests')
+    .update({ confirmed_by_family: true, updated_at: new Date().toISOString() })
+    .eq('id', requestId);
+  if (error) return { ok: false, errorMessage: error.message || 'Could not accept the proposed time.' };
+  const rows = await loadVisitationRequests();
+  const idx = rows.findIndex((r) => String(r.id) === String(requestId));
+  if (idx >= 0) {
+    rows[idx] = { ...rows[idx], confirmedByFamily: true };
+    await saveVisitationRequests(rows);
+  }
+  return { ok: true };
+}
+
+/** Guardian declines admin's suggested reschedule and proposes a different date/time instead — reopens the request. */
+export async function counterProposeVisitationReschedule(
+  requestId: string,
+  { preferredDate, preferredTime, note }: { preferredDate: string; preferredTime: string; note?: string }
+): Promise<{ ok: true } | { ok: false; errorMessage: string }> {
+  if (!isSupabaseConfigured()) return { ok: false, errorMessage: 'Not connected.' };
+  const { error } = await supabase
+    .from('visitation_requests')
+    .update({
+      status: 'Requested',
+      preferred_date: preferredDate,
+      preferred_time: preferredTime,
+      note: note || null,
+      confirmed_date: null,
+      confirmed_time: null,
+      confirmed_by_family: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', requestId);
+  if (error) return { ok: false, errorMessage: error.message || 'Could not propose a different time.' };
+  const rows = await loadVisitationRequests();
+  const idx = rows.findIndex((r) => String(r.id) === String(requestId));
+  if (idx >= 0) {
+    rows[idx] = {
+      ...rows[idx],
+      status: 'Requested',
+      preferredDate,
+      preferredTime,
+      note: note || '',
+      confirmedDate: '',
+      confirmedTime: '',
+      confirmedByFamily: false,
+    };
+    await saveVisitationRequests(rows);
+  }
+  return { ok: true };
 }
 
 /** Replace temporary `visit_*` row with the server id after insert; keeps a single row per request. */

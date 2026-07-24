@@ -46,7 +46,10 @@ export const TAB_ROUTES = {
   reports: "/tabs/reports",
   /** Admission / upload documents / admit a patient */
   admission: "/tabs/AdmissionForm",
+  /** Propose / respond to the admission meeting date & time */
+  admissionMeetingRequest: "/tabs/AdmissionMeetingRequest",
   services: "/tabs/services",
   weeklyReport: "/tabs/ViewDetailPage",
   discharge: "/tabs/DischargeForm",
+  notifications: "/tabs/Notifications",
 } as const;

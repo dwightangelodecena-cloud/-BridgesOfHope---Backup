@@ -66,9 +66,14 @@ import {
   canApproveAdmission,
   canScheduleMeeting,
   canMarkMeetingComplete,
+  hasPendingGuardianProposal,
   parseAttachedFiles,
 } from '@/lib/admissionWorkflow';
-import { appendFamilyNotificationsIfNew } from '@/lib/familyNotifications';
+import {
+  insertFamilyNotification,
+  fetchNotificationTemplates,
+  renderNotificationTemplate,
+} from '@/lib/notificationTemplates';
 import { AdmissionAttachedFilesList } from '@/components/admin/AdmissionAttachedFilesList';
 import { resolveAdmissionDocumentsForView } from '@/lib/admissionDocumentAccess';
 import {
@@ -162,6 +167,16 @@ const AdmissionManagement = () => {
   const [meetingRow, setMeetingRow] = useState(null);
   const [meetingDate, setMeetingDate] = useState('');
   const [meetingTime, setMeetingTime] = useState('09:00');
+  const [notifyTemplates, setNotifyTemplates] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      const res = await fetchNotificationTemplates();
+      if (res.ok) setNotifyTemplates(res.templates);
+    })();
+  }, []);
+
+  const templateBody = (templateKey) => notifyTemplates.find((t) => t.template_key === templateKey)?.body || '';
   const [docNotesRow, setDocNotesRow] = useState(null);
   const [docNotesText, setDocNotesText] = useState('');
   const referralFileInputRef = useRef(null);
@@ -564,19 +579,22 @@ const AdmissionManagement = () => {
     }
   };
 
-  const scheduleMeeting = async () => {
+  /** decision: 'confirmed' (available, lock this time in) or 'unavailable' (admin suggests this time instead, guardian must accept/counter). */
+  const scheduleMeeting = async (decision = 'confirmed') => {
     if (!meetingRow?.requestId || !meetingDate) {
       setFormError('Choose a meeting date.');
       return;
     }
     setFormError('');
+    const confirmedByFamily = decision === 'confirmed';
     const { error } = await supabase
       .from('admission_requests')
       .update({
         meeting_date: meetingDate,
         meeting_time: meetingTime || null,
         meeting_scheduled_at: new Date().toISOString(),
-        status: 'processing',
+        meeting_confirmed_by_family: confirmedByFamily,
+        status: confirmedByFamily ? 'processing' : 'awaiting_guardian_response',
       })
       .eq('id', meetingRow.requestId);
     if (error) {
@@ -584,15 +602,15 @@ const AdmissionManagement = () => {
       return;
     }
     if (meetingRow.familyId) {
-      appendFamilyNotificationsIfNew(
-        [{
-          id: `adm-meeting-${meetingRow.requestId}`,
-          text: `Meeting requested: please meet with Bridges of Hope on ${meetingDate}${meetingTime ? ` at ${meetingTime}` : ''} regarding ${meetingRow.patientName}'s admission.`,
-        }],
-        meetingRow.familyId
-      );
+      void insertFamilyNotification({
+        familyId: meetingRow.familyId,
+        templateKey: confirmedByFamily ? 'admission_meeting_confirmed' : 'admission_meeting_unavailable',
+        vars: { patient_name: meetingRow.patientName, meeting_date: meetingDate, meeting_time: meetingTime || '' },
+        relatedType: 'admission_request',
+        relatedId: meetingRow.requestId,
+      });
     }
-    pushActivity(`Admission ${meetingRow.admissionDisplayId}: meeting scheduled`);
+    pushActivity(`Admission ${meetingRow.admissionDisplayId}: ${confirmedByFamily ? 'meeting confirmed' : 'alternate meeting time suggested'}`);
     setMeetingRow(null);
     refreshAppData();
     await loadData();
@@ -610,13 +628,13 @@ const AdmissionManagement = () => {
       return;
     }
     if (r.familyId && moveToReview) {
-      appendFamilyNotificationsIfNew(
-        [{
-          id: `adm-review-${r.requestId}`,
-          text: `After your meeting, please complete required documents for ${r.patientName}'s admission request.`,
-        }],
-        r.familyId
-      );
+      void insertFamilyNotification({
+        familyId: r.familyId,
+        templateKey: 'admission_meeting_followup_docs',
+        vars: { patient_name: r.patientName },
+        relatedType: 'admission_request',
+        relatedId: r.requestId,
+      });
     }
     pushActivity(`Admission ${r.admissionDisplayId}: meeting completed`);
     refreshAppData();
@@ -639,13 +657,13 @@ const AdmissionManagement = () => {
       return;
     }
     if (docNotesRow.familyId && !complete && docNotesText.trim()) {
-      appendFamilyNotificationsIfNew(
-        [{
-          id: `adm-docs-needed-${docNotesRow.requestId}`,
-          text: `Please upload required documents for ${docNotesRow.patientName}: ${docNotesText.trim()}`,
-        }],
-        docNotesRow.familyId
-      );
+      void insertFamilyNotification({
+        familyId: docNotesRow.familyId,
+        templateKey: 'admission_docs_needed',
+        vars: { patient_name: docNotesRow.patientName, notes: docNotesText.trim() },
+        relatedType: 'admission_request',
+        relatedId: docNotesRow.requestId,
+      });
     }
     setDocNotesRow(null);
     setDocNotesText('');
@@ -664,10 +682,13 @@ const AdmissionManagement = () => {
       return;
     }
     if (r.familyId) {
-      appendFamilyNotificationsIfNew(
-        [{ id: `adm-reject-${r.requestId}`, text: `Admission request for ${r.patientName} was rejected.` }],
-        r.familyId
-      );
+      void insertFamilyNotification({
+        familyId: r.familyId,
+        templateKey: 'admission_rejected',
+        vars: { patient_name: r.patientName },
+        relatedType: 'admission_request',
+        relatedId: r.requestId,
+      });
     }
     pushActivity(`Admission ${r.admissionDisplayId}: rejected`);
     refreshAppData();
@@ -1018,14 +1039,14 @@ const AdmissionManagement = () => {
                               <button
                                 type="button"
                                 className="db-action-btn"
-                                title="Schedule family meeting before approval"
+                                title={hasPendingGuardianProposal(r) ? 'Review the date/time the family proposed' : 'Schedule family meeting before approval'}
                                 onClick={() => {
                                   setMeetingRow(r);
-                                  setMeetingDate('');
-                                  setMeetingTime('09:00');
+                                  setMeetingDate(r.preferredMeetingDate || '');
+                                  setMeetingTime(r.preferredMeetingTime || '09:00');
                                 }}
                               >
-                                Call for Meeting
+                                {hasPendingGuardianProposal(r) ? 'Review Proposed Time' : 'Call for Meeting'}
                               </button>
                             )}
                             {isSupabaseConfigured() && canMarkMeetingComplete(r) && (
@@ -1438,13 +1459,24 @@ const AdmissionManagement = () => {
         <div className="am-modal-backdrop" onClick={() => setMeetingRow(null)}>
           <div className="am-modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div className="am-modal-head">
-              <div style={{ fontSize: 18, fontWeight: 800 }}>Schedule family meeting</div>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>
+                {hasPendingGuardianProposal(meetingRow) ? 'Review proposed meeting time' : 'Schedule family meeting'}
+              </div>
               <button type="button" className="db-action-btn" onClick={() => setMeetingRow(null)}><X size={16} /></button>
             </div>
             <div className="am-modal-body" style={{ gridTemplateColumns: '1fr' }}>
-              <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
-                Set when the family member should visit BOH regarding <strong>{meetingRow.patientName}</strong>.
-              </p>
+              {hasPendingGuardianProposal(meetingRow) ? (
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 12px', fontSize: 13, color: '#334155' }}>
+                  <strong>{meetingRow.patientName}</strong>'s family requested{' '}
+                  <strong>{meetingRow.preferredMeetingDate}</strong>
+                  {meetingRow.preferredMeetingTime ? <> at <strong>{meetingRow.preferredMeetingTime}</strong></> : null}.
+                  {meetingRow.preferredMeetingNote ? <div style={{ marginTop: 4 }}>Note: {meetingRow.preferredMeetingNote}</div> : null}
+                </div>
+              ) : (
+                <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+                  Set when the family member should visit BOH regarding <strong>{meetingRow.patientName}</strong>.
+                </p>
+              )}
               <label className="am-modal-field">
                 <span className="am-modal-label">Meeting date</span>
                 <input className="am-input" type="date" value={meetingDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setMeetingDate(e.target.value)} />
@@ -1453,10 +1485,34 @@ const AdmissionManagement = () => {
                 <span className="am-modal-label">Meeting time</span>
                 <input className="am-input" type="time" value={meetingTime} onChange={(e) => setMeetingTime(e.target.value)} />
               </label>
+              <div style={{ fontSize: 11, color: '#64748b', background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: 8, padding: '8px 10px' }}>
+                <strong>Guardian will be notified:</strong>{' '}
+                {renderNotificationTemplate(
+                  templateBody(hasPendingGuardianProposal(meetingRow) ? 'admission_meeting_unavailable' : 'admission_meeting_confirmed'),
+                  { patient_name: meetingRow.patientName, meeting_date: meetingDate, meeting_time: meetingTime }
+                )}
+                {hasPendingGuardianProposal(meetingRow) ? (
+                  <div style={{ marginTop: 6 }}>
+                    <strong>...or if confirming their time as-is:</strong>{' '}
+                    {renderNotificationTemplate(templateBody('admission_meeting_confirmed'), {
+                      patient_name: meetingRow.patientName,
+                      meeting_date: meetingRow.preferredMeetingDate,
+                      meeting_time: meetingRow.preferredMeetingTime,
+                    })}
+                  </div>
+                ) : null}
+              </div>
             </div>
-            <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" className="db-action-btn" onClick={() => setMeetingRow(null)}>Cancel</button>
-              <button type="button" className="db-edit-btn" onClick={() => void scheduleMeeting()}>Send meeting request</button>
+              {hasPendingGuardianProposal(meetingRow) ? (
+                <>
+                  <button type="button" className="db-action-btn" onClick={() => void scheduleMeeting('unavailable')}>Not available — suggest this time instead</button>
+                  <button type="button" className="db-edit-btn" onClick={() => void scheduleMeeting('confirmed')}>Available — confirm this time</button>
+                </>
+              ) : (
+                <button type="button" className="db-edit-btn" onClick={() => void scheduleMeeting('confirmed')}>Send meeting request</button>
+              )}
             </div>
           </div>
         </div>
