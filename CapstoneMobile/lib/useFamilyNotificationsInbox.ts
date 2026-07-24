@@ -16,6 +16,7 @@ export type InboxItem = {
   isRead: boolean;
   source: 'db' | 'legacy';
   relatedType?: string;
+  relatedId?: string;
 };
 
 /**
@@ -69,6 +70,7 @@ export function useFamilyNotificationsInbox(userId: string) {
       isRead: n.readAt != null,
       source: 'db' as const,
       relatedType: n.relatedType,
+      relatedId: n.relatedId,
     }));
     const fromLegacy: InboxItem[] = legacyItems.map((n) => ({
       id: `legacy-${n.id}`,

@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -26,10 +27,7 @@ import {
 } from '../../lib/dbMappers';
 import { fetchActivityFeedForCurrentUser } from '../../lib/activityFeed';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
-import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
-import { FamilyMessageIcon } from '../../components/family/FamilyMessageIcon';
 import { useSupportChatMobile } from '../../lib/useSupportChatMobile';
-import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
@@ -45,7 +43,6 @@ import { BH, SHADOW } from '../../theme/tokens';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
-const heroDecoScale = isCompactScreen ? 0.78 : 0.9;
 const BG = BH.surface2;
 
 function deriveInitials(name: string): string {
@@ -85,25 +82,6 @@ type RequestTableRow = {
 
 const HIDDEN_REQUEST_KEYS_PREFIX = 'bh_mobile_hidden_request_keys_v1:';
 
-function computeStayDays(admittedAt?: string | null, dischargedAt?: string | null): number {
-  const a = new Date(admittedAt || 0).getTime();
-  if (!a || Number.isNaN(a)) return 0;
-  const d = dischargedAt ? new Date(dischargedAt).getTime() : Date.now();
-  if (!d || Number.isNaN(d)) return 0;
-  if (d < a) return 1;
-  return Math.max(1, Math.ceil((d - a) / (24 * 60 * 60 * 1000)));
-}
-
-function computeAverageStayDays(
-  list: { admitted_at?: string | null; discharged_at?: string | null }[] | null | undefined
-): number {
-  const stays = (list || [])
-    .map((p) => computeStayDays(p.admitted_at, p.discharged_at))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  if (!stays.length) return 0;
-  return Math.round(stays.reduce((sum, n) => sum + n, 0) / stays.length);
-}
-
 function formatNurseReportDate(iso: string | null | undefined): string {
   if (!iso) return '';
   try {
@@ -117,11 +95,83 @@ function formatNurseReportDate(iso: string | null | undefined): string {
   }
 }
 
-function patientStatus(progress: number) {
-  const p = Number(progress) || 0;
-  if (p >= 70) return { label: 'Stable', color: '#166534', bg: '#DCFCE7' };
-  if (p >= 40) return { label: 'Recovering', color: '#92400E', bg: '#FEF3C7' };
-  return { label: 'Needs Attention', color: '#991B1B', bg: '#FEE2E2' };
+function daysBetween(startIso: string | null, endIso?: string | null): number | null {
+  if (!startIso) return null;
+  const start = new Date(startIso).getTime();
+  if (Number.isNaN(start)) return null;
+  const end = endIso ? new Date(endIso).getTime() : Date.now();
+  if (Number.isNaN(end)) return null;
+  return Math.max(0, Math.round((end - start) / 86400000));
+}
+
+type StatsPeriod = 'week' | 'month' | 'all';
+
+const STATS_PERIOD_OPTIONS: { key: StatsPeriod; label: string }[] = [
+  { key: 'week', label: 'This week' },
+  { key: 'month', label: 'This month' },
+  { key: 'all', label: 'All time' },
+];
+
+function isWithinStatsPeriod(dateStr: string | null | undefined, period: StatsPeriod): boolean {
+  if (period === 'all') return true;
+  if (!dateStr) return false;
+  const t = new Date(dateStr).getTime();
+  if (Number.isNaN(t)) return false;
+  const days = period === 'week' ? 7 : 30;
+  return t <= Date.now() && Date.now() - t <= days * 86400000;
+}
+
+function formatRequestDateTime(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const datePart = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const timePart = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return `${datePart} • ${timePart}`;
+}
+
+const HERO_CHART_BARS = [34, 48, 42, 58, 52, 72, 66];
+
+const HERO_CHART_POINTS = [
+  { x: 5.7, y: 43.6 },
+  { x: 22.1, y: 34.3 },
+  { x: 38.6, y: 38.3 },
+  { x: 55.0, y: 27.7 },
+  { x: 71.4, y: 31.7 },
+  { x: 87.9, y: 18.5 },
+  { x: 104.3, y: 22.4 },
+];
+
+const HERO_CHART_LINE_HEIGHT = 2;
+
+const HERO_CHART_SEGMENTS = HERO_CHART_POINTS.slice(1).map((point, idx) => {
+  const prev = HERO_CHART_POINTS[idx];
+  const dx = point.x - prev.x;
+  const dy = point.y - prev.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+  return {
+    left: (prev.x + point.x) / 2 - length / 2,
+    top: (prev.y + point.y) / 2 - HERO_CHART_LINE_HEIGHT / 2,
+    width: length,
+    angle,
+  };
+});
+
+function capitalize(s: string): string {
+  const trimmed = String(s || '').trim();
+  return trimmed ? trimmed[0].toUpperCase() + trimmed.slice(1).toLowerCase() : '';
+}
+
+function requestStatusStyle(status: string) {
+  const s = String(status || '').toLowerCase();
+  if (s.includes('approve') || s.includes('accept') || s.includes('confirm') || s.includes('complete')) {
+    return { bg: '#DCFCE7', color: '#166534' };
+  }
+  if (s.includes('declin') || s.includes('reject') || s.includes('deni') || s.includes('cancel')) {
+    return { bg: '#FEE2E2', color: '#991B1B' };
+  }
+  return { bg: '#FEF3C7', color: '#92400E' };
 }
 
 function ReportFieldCard({
@@ -155,7 +205,6 @@ export default function HomeScreen() {
   const [pendingDischarges, setPendingDischarges] = useState<PendingDischarge[]>([]);
   const [nurseWeeklyByPatient, setNurseWeeklyByPatient] = useState<Record<string, Record<string, NurseWeekRecord>>>({});
   const [familyVisitationRequests, setFamilyVisitationRequests] = useState<VisitationRequestRow[]>([]);
-  const [averageStayDays, setAverageStayDays] = useState(0);
   const [hiddenRequestKeys, setHiddenRequestKeys] = useState<string[]>([]);
   const [familyUserId, setFamilyUserId] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
@@ -163,6 +212,8 @@ export default function HomeScreen() {
   const [weeklyReportDetail, setWeeklyReportDetail] = useState<WeeklyReportDetailState | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [supabaseReadError, setSupabaseReadError] = useState<string | null>(null);
+  const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('week');
+  const [statsPeriodMenuOpen, setStatsPeriodMenuOpen] = useState(false);
 
   const firstName = getFamilyFirstName(displayName);
 
@@ -173,7 +224,6 @@ export default function HomeScreen() {
       setPendingDischarges([]);
       setNurseWeeklyByPatient({});
       setFamilyVisitationRequests([]);
-      setAverageStayDays(0);
       setDashboardLoading(false);
       return;
     }
@@ -189,7 +239,6 @@ export default function HomeScreen() {
         setPendingDischarges([]);
         setNurseWeeklyByPatient({});
         setFamilyVisitationRequests([]);
-        setAverageStayDays(0);
         setFamilyUserId('');
         return;
       }
@@ -213,11 +262,6 @@ export default function HomeScreen() {
         .eq('family_id', user.id)
         .order('admitted_at', { ascending: false });
 
-      const { data: allFamilyRows } = await supabase
-        .from('patients')
-        .select('admitted_at, discharged_at')
-        .eq('family_id', user.id);
-
       if (pErr) {
         console.warn('[home patients]', pErr.message);
         setPatients([]);
@@ -228,7 +272,6 @@ export default function HomeScreen() {
             .filter((x): x is UIPatient => x != null)
         );
       }
-      setAverageStayDays(computeAverageStayDays(allFamilyRows || []));
 
       const localVisit = await listVisitationRequestsByFamily(user.id);
       const mergedVisit = await mergeRequestsFromSupabase(user.id, localVisit);
@@ -293,7 +336,6 @@ export default function HomeScreen() {
       setPendingDischarges([]);
       setNurseWeeklyByPatient({});
       setFamilyVisitationRequests([]);
-      setAverageStayDays(0);
     } finally {
       setDashboardLoading(false);
     }
@@ -314,65 +356,34 @@ export default function HomeScreen() {
   );
   const totalPendingRequests =
     pendingAdmissions.length + pendingDischarges.length + pendingAppointmentRequests.length;
-  const summaryGraphData = [
-    { label: 'Residents', value: patients.length, color: '#F54E25' },
-    { label: 'Admissions', value: pendingAdmissions.length, color: '#EA580C' },
-    { label: 'Discharges', value: pendingDischarges.length, color: '#6366F1' },
-    {
-      label: 'Avg Progress',
-      value: patients.length
-        ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
-        : 0,
-      color: '#16A34A',
-    },
-    { label: 'Reports', value: reportsReceivedCount, color: '#7C3AED' },
-    { label: 'Avg Stay', value: averageStayDays, color: '#0369A1' },
-  ];
-  const summaryGraphMax = Math.max(5, ...summaryGraphData.map((d) => Number(d.value) || 0));
   const averageProgress = patients.length
     ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
     : 0;
-  const reportCoverageRate = patients.length
-    ? Math.min(100, Math.round((reportsReceivedCount / Math.max(1, patients.length * 7)) * 100))
-    : 0;
-  const metricInsights = [
-    {
-      label: 'Care Load',
-      value: String(totalPendingRequests),
-      note:
-        totalPendingRequests > 5 ? 'High queue' : totalPendingRequests > 0 ? 'Manageable queue' : 'No pending requests',
-      color: '#F59E0B',
-    },
-    {
-      label: 'Avg Recovery',
-      value: `${averageProgress}%`,
-      note:
-        averageProgress >= 70 ? 'Strong recovery trend' : averageProgress >= 40 ? 'Steady recovery' : 'Needs support focus',
-      color: '#16A34A',
-    },
-    {
-      label: 'Report Coverage',
-      value: `${reportCoverageRate}%`,
-      note: 'Nurse reports vs expected weekly slots',
-      color: '#7C3AED',
-    },
-    {
-      label: 'Admission Pressure',
-      value: String(pendingAdmissions.length),
-      note: pendingAdmissions.length ? 'Follow up with admin' : 'No pending admissions',
-      color: '#EA580C',
-    },
-    {
-      label: 'Avg Stay Days',
-      value: String(averageStayDays),
-      note: 'Includes active and discharged',
-      color: '#0369A1',
-    },
-  ];
-  const highestMetric = summaryGraphData.reduce(
-    (max, item) => ((Number(item.value) || 0) > (Number(max.value) || 0) ? item : max),
-    summaryGraphData[0] || { label: 'Residents', value: 0, color: '#F54E25' }
+  const patientsWithReportsCount = patients.filter(
+    (p) => Object.keys(nurseWeeklyByPatient[String(p.id)] || {}).length > 0
+  ).length;
+  // "Active Residents" and "Avg Progress" reflect current state (not
+  // meaningfully time-sliceable without historical snapshots), but pending
+  // requests and reports genuinely have creation/submission dates to filter.
+  const periodPendingRequestsCount =
+    pendingAdmissions.filter((row) => isWithinStatsPeriod(row?.createdAt || row?.created_at, statsPeriod)).length +
+    pendingDischarges.filter((row) => isWithinStatsPeriod(row?.requestTime || row?.created_at, statsPeriod)).length +
+    pendingAppointmentRequests.filter((row) => isWithinStatsPeriod(row?.createdAt || row?.preferredDate, statsPeriod))
+      .length;
+  const periodReportsReceivedCount = Object.values(nurseWeeklyByPatient || {}).reduce(
+    (count, patientWeeks) =>
+      count +
+      Object.values(patientWeeks || {}).filter((rec) => isWithinStatsPeriod(rec.submittedAt || rec.reportDate, statsPeriod))
+        .length,
+    0
   );
+  const statsPeriodLabel = STATS_PERIOD_OPTIONS.find((o) => o.key === statsPeriod)?.label ?? 'This week';
+  const stayDaysList = patients
+    .map((p) => daysBetween(p.admitted_at, p.discharged_at))
+    .filter((d): d is number => d != null);
+  const averageStayDays = stayDaysList.length
+    ? Math.round(stayDaysList.reduce((sum, d) => sum + d, 0) / stayDaysList.length)
+    : 0;
 
   const resolveRequestPatientName = (row: PendingAdmission | PendingDischarge | VisitationRequestRow) => {
     const asRecord = row as Record<string, unknown>;
@@ -436,16 +447,24 @@ export default function HomeScreen() {
   const patientReportCount = (patientId: string) =>
     Object.keys(nurseWeeklyByPatient[String(patientId)] || {}).length;
 
-  const patientTableRows = patients;
-
   const greeting = getFamilyTimeGreeting();
   const greetingIcon = getFamilyGreetingIcon();
-  const dateStr = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+
+  const statTiles = [
+    { key: 'residents', label: 'Residents', value: String(patients.length), icon: 'people' as const, bg: '#EEF2FF', color: '#4F46E5' },
+    { key: 'totalReports', label: 'Total Reports', value: String(reportsReceivedCount), icon: 'document-text' as const, bg: '#ECFDF5', color: '#16A34A' },
+    { key: 'withReports', label: 'With Reports', value: String(patientsWithReportsCount), icon: 'checkmark-circle' as const, bg: '#FFFBEB', color: '#D97706' },
+    { key: 'pendingRequests', label: 'Pending Requests', value: String(totalPendingRequests), icon: 'clipboard' as const, bg: BH.brandSurface, color: BH.brand700 },
+    { key: 'avgProgress', label: 'Avg Progress', value: `${averageProgress}%`, icon: 'trending-up' as const, bg: '#EFF6FF', color: '#2563EB' },
+    { key: 'avgStay', label: 'Avg Stay Days', value: String(averageStayDays), icon: 'bed' as const, bg: '#F3E8FF', color: '#7C3AED' },
+  ];
+
+  const highlightTiles = [
+    { key: 'active', icon: 'people' as const, label: 'Active Residents', value: String(patients.length), bg: '#EEF2FF', color: '#4338CA' },
+    { key: 'pending', icon: 'hourglass' as const, label: 'Pending Requests', value: String(periodPendingRequestsCount), bg: '#FFFBEB', color: '#B45309' },
+    { key: 'progress', icon: 'trending-up' as const, label: 'Avg Progress', value: `${averageProgress}%`, bg: '#ECFDF5', color: '#047857' },
+    { key: 'reports', icon: 'document-text' as const, label: 'Reports Received', value: String(periodReportsReceivedCount), bg: BH.brandSurface, color: BH.brand700 },
+  ];
 
   return (
     <View style={[styles.container, { backgroundColor: BG }]}>
@@ -456,99 +475,61 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        <LinearGradient
-          colors={['#0f172a', '#1e293b', '#312e81']}
-          locations={[0, 0.42, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroBanner}
-        >
-          <View style={styles.heroDecoLayer} pointerEvents="none">
-            <View style={styles.heroRadialOrange} />
-            <View style={styles.heroRadialIndigo} />
-            <View style={styles.heroDeco1} />
-            <View style={styles.heroDeco2} />
-            <View style={styles.heroDeco3} />
-          </View>
+        <View style={styles.heroBanner}>
+          <Image
+            source={require('../../assets/images/home-header.png')}
+            style={styles.heroBannerImage}
+            resizeMode="cover"
+          />
           <View style={styles.heroInner}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <View style={styles.heroEyebrowRow}>
-                <View style={styles.heroHeartWrap}>
-                  <Ionicons name="heart" size={16} color="#FFFFFF" />
+            <Text style={styles.heroKicker}>{greeting},</Text>
+            <View style={styles.heroTitleRow}>
+              <Text style={styles.heroTitle}>{firstName}!</Text>
+              <Ionicons name={greetingIcon} size={isCompactScreen ? 18 : 20} color="#FDBA74" style={styles.heroTitleIcon} />
+            </View>
+            <Text style={styles.heroSub}>Here&apos;s an overview of your loved one&apos;s care today.</Text>
+          </View>
+        </View>
+
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryHeadRow}>
+            <Text style={styles.summaryTitle}>Today&apos;s Summary</Text>
+            <TouchableOpacity onPress={() => router.navigate(TAB_ROUTES.patientDetails)} hitSlop={8}>
+              <Text style={styles.summaryViewAll}>View all</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.summaryStatsRow}>
+            <View style={styles.summaryStatCol}>
+              <Text style={styles.summaryStatLabel}>Active Residents</Text>
+              <View style={styles.summaryStatValueRow}>
+                <Text style={styles.summaryStatValue}>{patients.length}</Text>
+                <View style={styles.summaryStatIconWrap}>
+                  <Ionicons name="people" size={14} color={BH.indigo} />
                 </View>
-                <Text style={styles.heroEyebrow} numberOfLines={1}>
-                  Bridges of Hope — Family Portal
-                </Text>
               </View>
-              <View style={styles.heroTitleRow}>
-                <Text style={styles.heroTitle}>
-                  {greeting}, {firstName}
-                </Text>
-                <Ionicons
-                  name={greetingIcon}
-                  size={isCompactScreen ? 20 : 24}
-                  color={BH.brand}
-                  style={styles.heroTitleIcon}
-                />
+              <Text style={styles.summaryStatSub}>Currently under care</Text>
+            </View>
+            <View style={styles.summaryDividerV} />
+            <View style={styles.summaryStatCol}>
+              <Text style={styles.summaryStatLabel}>Average Progress</Text>
+              <View style={styles.summaryStatValueRow}>
+                <Text style={styles.summaryStatValue}>{averageProgress}%</Text>
+                <Ionicons name="trending-up" size={16} color="#16A34A" />
               </View>
-              <Text style={styles.heroSub}>{dateStr} · Your care overview at a glance</Text>
+              <Text style={styles.summaryStatSub}>{averageProgress >= 70 ? 'Strong trend' : 'Steady recovery'}</Text>
             </View>
           </View>
-        </LinearGradient>
 
-        <View style={styles.statGrid}>
-          {[
-            {
-              label: 'Active Residents',
-              value: String(patients.length),
-              sub: 'Currently under care',
-              icon: 'pulse' as const,
-              accent: '#6366F1',
-              bg: '#EEF2FF',
-              border: '#C7D2FE',
-            },
-            {
-              label: 'Avg Progress',
-              value: `${averageProgress}%`,
-              sub: averageProgress >= 70 ? 'Strong trend' : 'Steady recovery',
-              icon: 'trending-up' as const,
-              accent: '#10B981',
-              bg: '#ECFDF5',
-              border: '#A7F3D0',
-            },
-            {
-              label: 'Pending Requests',
-              value: String(totalPendingRequests),
-              sub: 'Admissions, discharges, appointments',
-              icon: 'alert-circle' as const,
-              accent: '#F59E0B',
-              bg: '#FFFBEB',
-              border: '#FDE68A',
-            },
-            {
-              label: 'Reports Received',
-              value: String(reportsReceivedCount),
-              sub: 'From nursing staff',
-              icon: 'document-text' as const,
-              accent: '#8B5CF6',
-              bg: '#F5F3FF',
-              border: '#DDD6FE',
-            },
-          ].map((card) => (
-            <View key={card.label} style={[styles.statCard, { borderColor: card.border }]}>
-              <View style={[styles.statCardDeco, { backgroundColor: card.bg }]} />
-              <View style={styles.statCardInner}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.statCardLabel}>{card.label}</Text>
-                  <Text style={styles.statCardValue}>{card.value}</Text>
-                  <Text style={styles.statCardSub}>{card.sub}</Text>
-                </View>
-                <View style={[styles.statCardIconWrap, { backgroundColor: card.bg, borderColor: card.border }]}>
-                  <Ionicons name={card.icon} size={20} color={card.accent} />
-                </View>
-              </View>
-            </View>
-          ))}
+          <View style={styles.summaryDividerH} />
+
+          <View style={styles.summaryProgressRow}>
+            <Text style={styles.summaryProgressLabel}>Overall Progress</Text>
+            <Text style={styles.summaryProgressPct}>{averageProgress}%</Text>
+          </View>
+          <View style={styles.summaryProgressTrack}>
+            <View style={[styles.summaryProgressFill, { width: `${averageProgress}%` }]} />
+          </View>
         </View>
 
         <View style={styles.panelCard}>
@@ -561,180 +542,154 @@ export default function HomeScreen() {
               <Text style={styles.sectionSub}>Your most-used tools — one tap away</Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={openWeeklyReportsModal}
-            activeOpacity={0.9}
-          >
-            <View style={styles.iconSquare}>
-              <Ionicons name="document-text" size={22} color="#FFFFFF" />
-            </View>
-            <View style={styles.actionMain}>
-              <Text style={styles.actionTitle}>Weekly Report</Text>
-              <Text style={styles.actionSubtitle}>Review submitted weekly care updates from nursing staff</Text>
-              <View style={[styles.actionBadge, { backgroundColor: '#FFF1EB' }]}>
-                <Text style={[styles.actionBadgeText, { color: '#C2410C' }]}>{reportsReceivedCount} received</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.navigate(TAB_ROUTES.admission)}
-            activeOpacity={0.9}
-          >
-            <View style={styles.iconSquare}>
-              <Ionicons name="clipboard" size={22} color="#FFFFFF" />
-            </View>
-            <View style={styles.actionMain}>
-              <Text style={styles.actionTitle}>Admission</Text>
-              <Text style={styles.actionSubtitle}>Submit and track new admission request forms</Text>
-              <View style={[styles.actionBadge, { backgroundColor: '#FEF3C7' }]}>
-                <Text style={[styles.actionBadgeText, { color: '#92400E' }]}>
-                  {pendingAdmissions.length} pending
+          <View style={styles.quickActionsRow}>
+            {[
+              {
+                key: 'reports',
+                icon: 'document-text' as const,
+                image: undefined,
+                label: 'Weekly Report',
+                color: BH.brand,
+                onPress: openWeeklyReportsModal,
+                badge: reportsReceivedCount,
+              },
+              {
+                key: 'admission',
+                icon: 'clipboard' as const,
+                image: require('../../assets/images/admission.png'),
+                label: 'Admission',
+                color: BH.brand700,
+                onPress: () => router.navigate(TAB_ROUTES.admission),
+                badge: pendingAdmissions.length,
+              },
+              {
+                key: 'services',
+                icon: 'briefcase' as const,
+                image: undefined,
+                label: 'Services',
+                color: BH.brandLight,
+                onPress: () => router.navigate(TAB_ROUTES.services),
+                badge: 0,
+              },
+              {
+                key: 'messages',
+                icon: 'chatbubble-ellipses' as const,
+                image: undefined,
+                label: 'Messages',
+                color: BH.navy,
+                onPress: () => router.navigate(TAB_ROUTES.messages),
+                badge: supportUnreadCount,
+              },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={styles.quickActionItem}
+                onPress={item.onPress}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.quickActionCircle, { backgroundColor: item.color }]}>
+                  {item.image ? (
+                    <Image
+                      source={item.image}
+                      style={styles.quickActionImage}
+                      resizeMode="contain"
+                      tintColor="#FFFFFF"
+                    />
+                  ) : (
+                    <Ionicons name={item.icon} size={24} color="#FFFFFF" />
+                  )}
+                  {item.badge > 0 ? (
+                    <View style={styles.quickActionBadge}>
+                      <Text style={styles.quickActionBadgeText}>{item.badge > 9 ? '9+' : item.badge}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={styles.quickActionLabel} numberOfLines={1}>
+                  {item.label}
                 </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.supportCard}>
+          <View style={styles.supportHeartWatermark}>
+            <Ionicons name="heart" size={96} color="rgba(245, 78, 37, 0.12)" />
+          </View>
+          <View style={styles.supportTitleRow}>
+            <Text style={styles.supportTitle}>You&apos;re not alone.</Text>
+            <Ionicons name="heart" size={16} color={BH.brand} />
+          </View>
+          <Text style={styles.supportSub}>We&apos;re here to support you every step of the way.</Text>
           <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.navigate(TAB_ROUTES.services)}
-            activeOpacity={0.9}
-          >
-            <View style={styles.iconSquare}>
-              <Ionicons name="briefcase" size={22} color="#FFFFFF" />
-            </View>
-            <View style={styles.actionMain}>
-              <Text style={styles.actionTitle}>Services</Text>
-              <Text style={styles.actionSubtitle}>Open billing, inclusions, and care support details</Text>
-              <View style={[styles.actionBadge, { backgroundColor: '#EEF2FF' }]}>
-                <Text style={[styles.actionBadgeText, { color: '#3730A3' }]}>Care resources</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
+            style={styles.supportBtn}
             onPress={() => router.navigate(TAB_ROUTES.messages)}
             activeOpacity={0.9}
           >
-            <FamilyMessageIcon size="md" badge={supportUnreadCount} />
-            <View style={styles.actionMain}>
-              <Text style={styles.actionTitle}>Messages</Text>
-              <Text style={styles.actionSubtitle}>Chat with the Bridges of Hope care team</Text>
-              {supportUnreadCount > 0 ? (
-                <View style={[styles.actionBadge, { backgroundColor: '#FEE2E2' }]}>
-                  <Text style={[styles.actionBadgeText, { color: '#DC2626' }]}>
-                    {supportUnreadCount} new {supportUnreadCount === 1 ? 'reply' : 'replies'}
-                  </Text>
-                </View>
-              ) : (
-                <View style={[styles.actionBadge, { backgroundColor: '#FFF1EB' }]}>
-                  <Text style={[styles.actionBadgeText, { color: '#C2410C' }]}>Support chat</Text>
-                </View>
-              )}
-            </View>
+            <Text style={styles.supportBtnText}>Contact Us</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.panelCard, { marginTop: 14 }]}>
-          <View style={styles.chartTop}>
-            <View>
-              <Text style={styles.chartTitle}>Dashboard Summary</Text>
-              <Text style={styles.chartSub}>Clear overview of patient, request, and report data</Text>
-            </View>
-            <Text style={styles.chartMeta}>Live data</Text>
+        <View style={styles.dashboardHero}>
+          <View style={styles.heroBadge}>
+            <Ionicons name="bar-chart-outline" size={20} color={BH.brand} />
           </View>
-          {dashboardLoading ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color="#F54E25" />
-              <Text style={styles.loadingText}>Loading dashboard…</Text>
-            </View>
-          ) : null}
-          <Text style={styles.insightPanelTitle}>Graph View</Text>
-          <View style={styles.summaryBars}>
-            {summaryGraphData.map((item) => (
-              <View key={item.label} style={styles.summaryBarItem}>
-                <Text style={styles.summaryBarValue}>{item.value}</Text>
-                <View style={styles.summaryBarStage}>
-                  <View
-                    style={[
-                      styles.summaryBarFill,
-                      {
-                        height: `${Math.max(10, Math.round(((Number(item.value) || 0) / summaryGraphMax) * 100))}%`,
-                        backgroundColor: item.color,
-                      },
-                    ]}
-                  />
-                </View>
-                <View style={styles.summaryBarLabelWrap}>
-                  <Text style={styles.summaryBarLabel} numberOfLines={2}>
-                    {item.label}
-                  </Text>
-                </View>
-              </View>
+          <Text style={styles.heroHeadline}>Dashboard Overview</Text>
+          <Text style={styles.heroSubline}>Quick summary of patients, requests, and reports.</Text>
+          <View style={styles.heroChartWrap} pointerEvents="none">
+            {HERO_CHART_BARS.map((h, i) => (
+              <View
+                key={`bar-${i}`}
+                style={[
+                  styles.heroChartBar,
+                  { height: `${h}%`, opacity: 0.3 + (i / HERO_CHART_BARS.length) * 0.4 },
+                ]}
+              />
+            ))}
+            {HERO_CHART_SEGMENTS.map((seg, i) => (
+              <View
+                key={`seg-${i}`}
+                style={[
+                  styles.heroChartLine,
+                  { left: seg.left, top: seg.top, width: seg.width, transform: [{ rotate: `${seg.angle}deg` }] },
+                ]}
+              />
+            ))}
+            {HERO_CHART_POINTS.map((p, i) => (
+              <View key={`dot-${i}`} style={[styles.heroChartDot, { left: p.x - 3, top: p.y - 3 }]} />
             ))}
           </View>
-          <Text style={styles.callout}>
-            Highest metric right now: <Text style={styles.calloutStrong}>{highestMetric.label}</Text>
-          </Text>
-          <Text style={[styles.insightPanelTitle, { marginTop: 16 }]}>Operational Insights</Text>
-          <View style={styles.kpiGrid}>
-            {metricInsights.map((item) => (
-              <View key={item.label} style={styles.kpiItem}>
-                <Text style={styles.kpiLabel}>{item.label}</Text>
-                <Text style={styles.kpiValue}>{item.value}</Text>
-                <View style={[styles.kpiBar, { backgroundColor: item.color }]} />
-                <Text style={styles.kpiNote}>{item.note}</Text>
-              </View>
-            ))}
-          </View>
-          {supabaseReadError ? (
-            <Text style={styles.errorInline} numberOfLines={3}>
-              {supabaseReadError}
-            </Text>
-          ) : null}
         </View>
 
-        <View style={[styles.panelCard, { marginTop: 14 }]}>
-          <View style={styles.tableHead}>
-            <View style={styles.tableHeadLeft}>
-              <Ionicons name="person" size={16} color="#F54E25" />
-              <Text style={styles.panelTitleInline}>Resident Snapshot</Text>
+        <View style={styles.statsGrid}>
+          {statTiles.map((tile) => (
+            <View key={tile.key} style={[styles.statTile, { backgroundColor: tile.bg }]}>
+              <View style={styles.statIconWrap}>
+                <Ionicons name={tile.icon} size={15} color={tile.color} />
+              </View>
+              <Text style={styles.statLabel}>{tile.label.toUpperCase()}</Text>
+              <Text style={[styles.statValue, { color: '#1B2559' }]}>{tile.value}</Text>
+              <Ionicons
+                name={tile.icon}
+                size={60}
+                color={tile.color}
+                style={styles.statGhostIcon}
+              />
             </View>
-            <Text style={styles.tableMeta}>{patients.length} total</Text>
-          </View>
-          {patientTableRows.length === 0 ? (
-            <Text style={styles.emptyMuted}>No patient records yet.</Text>
-          ) : (
-            patientTableRows.map((p) => {
-              const st = patientStatus(p.progress);
-              return (
-                <TouchableOpacity
-                  key={p.id}
-                  style={styles.tableRow}
-                  onPress={() => router.navigate(TAB_ROUTES.patientDetails)}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.tableRowTop}>
-                    <Text style={styles.tablePatientName} numberOfLines={1}>
-                      {p.name}
-                    </Text>
-                    <View style={[styles.statusPill, { backgroundColor: st.bg }]}>
-                      <Text style={[styles.statusPillText, { color: st.color }]}>{st.label}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.tableMini}>Admitted: {p.date || 'N/A'}</Text>
-                  <View style={styles.tableProgressRow}>
-                    <Text style={styles.tableProgressPct}>{p.progress}%</Text>
-                    <View style={styles.tableProgressTrack}>
-                      <View style={[styles.tableProgressFill, { width: `${p.progress}%` }]} />
-                    </View>
-                  </View>
-                  <Text style={styles.tableMini}>Reports: {patientReportCount(p.id)}/7</Text>
-                </TouchableOpacity>
-              );
-            })
-          )}
+          ))}
         </View>
+
+        {dashboardLoading ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color="#F54E25" />
+            <Text style={styles.loadingText}>Loading dashboard…</Text>
+          </View>
+        ) : null}
+        {supabaseReadError ? (
+          <Text style={styles.errorInline} numberOfLines={3}>
+            {supabaseReadError}
+          </Text>
+        ) : null}
 
         <View style={[styles.panelCard, { marginTop: 14 }]}>
           <View style={styles.tableHead}>
@@ -742,7 +697,18 @@ export default function HomeScreen() {
               <Ionicons name="clipboard" size={16} color="#F54E25" />
               <Text style={styles.panelTitleInline}>Request Tracker</Text>
             </View>
-            <Text style={styles.tableMeta}>{totalPendingRequests} pending</Text>
+            <View style={styles.reqHeadRight}>
+              <Text style={styles.reqPendingText}>{totalPendingRequests} pending</Text>
+              <TouchableOpacity
+                style={styles.reqViewAllBtn}
+                onPress={() => router.navigate(TAB_ROUTES.progress)}
+                accessibilityRole="button"
+                accessibilityLabel="View all requests"
+                hitSlop={8}
+              >
+                <Ionicons name="chevron-forward" size={14} color={BH.brand} />
+              </TouchableOpacity>
+            </View>
           </View>
           {requestTableRows.length === 0 ? (
             <Text style={styles.emptyMuted}>No pending requests.</Text>
@@ -754,22 +720,24 @@ export default function HomeScreen() {
                 r.type === 'Admission' ? '#3730A3' : r.type === 'Discharge' ? '#9F1239' : '#065F46';
               return (
                 <View key={r.key} style={styles.reqRow}>
-                  <View style={[styles.reqTypePill, { backgroundColor: typeBg }]}>
-                    <Text style={[styles.reqTypePillText, { color: typeColor }]}>{r.type}</Text>
-                  </View>
-                  <View style={styles.reqMid}>
+                  <View style={styles.reqLeft}>
+                    <View style={[styles.reqTypePill, { backgroundColor: typeBg }]}>
+                      <Text style={[styles.reqTypePillText, { color: typeColor }]}>{r.type}</Text>
+                    </View>
                     <Text style={styles.reqName} numberOfLines={1}>
                       {r.name}
                     </Text>
                     {r.date ? (
                       <Text style={styles.reqDate} numberOfLines={1}>
-                        {r.date}
+                        {formatRequestDateTime(r.date)}
                       </Text>
                     ) : null}
                   </View>
-                  <View style={styles.reqStatusCell}>
-                    <View style={styles.reqPill}>
-                      <Text style={styles.reqPillText}>{String(r.status || 'pending').toLowerCase()}</Text>
+                  <View style={styles.reqRight}>
+                    <View style={[styles.reqPill, { backgroundColor: requestStatusStyle(r.status).bg }]}>
+                      <Text style={[styles.reqPillText, { color: requestStatusStyle(r.status).color }]}>
+                        {capitalize(r.status || 'Pending')}
+                      </Text>
                     </View>
                     <TouchableOpacity
                       onPress={() => dismissRequestRow(r.key)}
@@ -787,102 +755,34 @@ export default function HomeScreen() {
         </View>
 
         <View style={[styles.panelCard, { marginTop: 14 }]}>
-          <View style={styles.tableHeadLeft}>
-            <Ionicons name="bar-chart" size={16} color="#F54E25" />
-            <Text style={styles.panelTitleInline}>Dashboard Highlights</Text>
+          <View style={styles.tableHead}>
+            <View style={styles.tableHeadLeft}>
+              <Ionicons name="bar-chart" size={16} color="#F54E25" />
+              <Text style={styles.panelTitleInline}>Dashboard Highlights</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.weekPill}
+              onPress={() => setStatsPeriodMenuOpen(true)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Stats period: ${statsPeriodLabel}. Tap to change.`}
+            >
+              <Text style={styles.weekPillText}>{statsPeriodLabel}</Text>
+              <Ionicons name="chevron-down" size={12} color="#64748B" />
+            </TouchableOpacity>
           </View>
           <View style={styles.highlightsGrid}>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Active Residents</Text>
-              <Text style={styles.overviewValue}>{patients.length}</Text>
-              <Text style={styles.overviewSub}>Currently under care</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Pending Requests</Text>
-              <Text style={styles.overviewValue}>{totalPendingRequests}</Text>
-              <Text style={styles.overviewSub}>Admissions, discharges, and appointments</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Average Progress</Text>
-              <Text style={styles.overviewValue}>{averageProgress}%</Text>
-              <Text style={styles.overviewSub}>Across all assigned patients</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>Reports Received</Text>
-              <Text style={styles.overviewValue}>{reportsReceivedCount}</Text>
-              <Text style={styles.overviewSub}>Weekly reports submitted by nurse</Text>
-            </View>
+            {highlightTiles.map((item) => (
+              <View key={item.key} style={[styles.overviewItem, { backgroundColor: item.bg }]}>
+                <View style={styles.overviewIconWrap}>
+                  <Ionicons name={item.icon} size={13} color={item.color} />
+                </View>
+                <Text style={styles.overviewLabel}>{item.label}</Text>
+                <Text style={[styles.overviewValue, { color: item.color }]}>{item.value}</Text>
+              </View>
+            ))}
           </View>
         </View>
-
-        <View style={styles.bottomTwoCol}>
-          <View style={[styles.panelCard, styles.bottomCard]}>
-            <View style={styles.tableHeadLeft}>
-              <Ionicons name="calendar" size={16} color="#F54E25" />
-              <Text style={styles.panelTitleInline}>Next Steps</Text>
-            </View>
-            <Text style={styles.nextSub}>Suggested actions to keep care coordination on track.</Text>
-            <View style={styles.cleanListItem}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cleanTitle}>Review request management queue</Text>
-                <Text style={styles.cleanDesc}>Check admission/discharge updates from staff</Text>
-              </View>
-              <View style={styles.miniPill}>
-                <Text style={styles.miniPillText}>{totalPendingRequests || 0} pending</Text>
-              </View>
-            </View>
-            <View style={styles.cleanListItem}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cleanTitle}>Open patient details</Text>
-                <Text style={styles.cleanDesc}>View status and progress of all patients</Text>
-              </View>
-              <TouchableOpacity style={styles.openBtnIndigo} onPress={() => router.navigate(TAB_ROUTES.patientDetails)}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cleanTitle}>Check appointment slots</Text>
-                <Text style={styles.cleanDesc}>Plan follow-ups and visit schedules</Text>
-              </View>
-              <TouchableOpacity style={styles.openBtnGreen} onPress={() => router.navigate(TAB_ROUTES.appointments)}>
-                <Text style={styles.openBtnText}>View</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={[styles.panelCard, styles.bottomCard]}>
-            <View style={styles.tableHeadLeft}>
-              <Ionicons name="document-text" size={16} color="#F54E25" />
-              <Text style={styles.panelTitleInline}>Care Resources</Text>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>View Weekly Reports</Text>
-              <TouchableOpacity style={styles.openBtnOrange} onPress={openWeeklyReportsModal}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>Go to Services</Text>
-              <TouchableOpacity style={styles.openBtnIndigo} onPress={() => router.navigate(TAB_ROUTES.services)}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>Messages</Text>
-              <TouchableOpacity style={styles.openBtnOrange} onPress={() => router.navigate(TAB_ROUTES.messages)}>
-                <Text style={[styles.openBtnText, { color: '#C2410C' }]}>Open</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cleanListItem}>
-              <Text style={styles.cleanTitle}>Manage Your Profile</Text>
-              <TouchableOpacity style={styles.openBtnGreen} onPress={() => router.navigate(TAB_ROUTES.profile)}>
-                <Text style={styles.openBtnText}>Open</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
       </ScrollView>
 
       <Modal
@@ -1171,8 +1071,41 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
+      <Modal
+        visible={statsPeriodMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStatsPeriodMenuOpen(false)}
+      >
+        <Pressable style={styles.periodMenuBackdrop} onPress={() => setStatsPeriodMenuOpen(false)}>
+          <Pressable style={styles.periodMenuPanel} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.periodMenuTitle}>Show highlights for</Text>
+            {STATS_PERIOD_OPTIONS.map((opt) => {
+              const active = opt.key === statsPeriod;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.periodMenuItem, active && styles.periodMenuItemActive]}
+                  onPress={() => {
+                    setStatsPeriod(opt.key);
+                    setStatsPeriodMenuOpen(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={opt.label}
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.periodMenuItemText, active && styles.periodMenuItemTextActive]}>
+                    {opt.label}
+                  </Text>
+                  {active ? <Ionicons name="checkmark" size={16} color={BH.brand} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <FamilyWebMobileNav active="home" />
-      <FamilyFloatingChat />
     </View>
   );
 }
@@ -1234,159 +1167,226 @@ const styles = StyleSheet.create({
   notificationsDropdownRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   notificationsDropdownText: { flex: 1, fontSize: 13, color: '#334155', lineHeight: 18 },
   notificationDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
-  scrollContent: { paddingHorizontal: isCompactScreen ? 14 : 18, paddingTop: 12 },
+  scrollContent: { paddingHorizontal: isCompactScreen ? 14 : 18, paddingTop: 0 },
   heroBanner: {
-    borderRadius: 22,
-    padding: isCompactScreen ? 16 : 22,
-    marginBottom: 14,
+    marginHorizontal: isCompactScreen ? -14 : -18,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+    paddingHorizontal: isCompactScreen ? 18 : 24,
+    paddingTop: isCompactScreen ? 20 : 25,
+    paddingBottom: isCompactScreen ? 18 : 24,
+    marginBottom: 0,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.07)',
+    backgroundColor: '#0f172a',
+    justifyContent: 'center',
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.22,
     shadowRadius: 28,
     elevation: 8,
-    minHeight: isCompactScreen ? 128 : 136,
+    // Matches home-header.png's exact 1672x836 (2:1) aspect ratio, so the
+    // container's height always derives from its actual rendered width
+    // instead of a fixed minHeight — guarantees the image is shown in full
+    // (bridge included) with zero cropping on any screen size.
+    aspectRatio: 2,
   },
-  heroDecoLayer: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-    zIndex: 0,
-  },
-  heroRadialOrange: {
+  heroBannerImage: {
     position: 'absolute',
-    top: -36,
-    right: -18,
-    width: 150 * heroDecoScale,
-    height: 130 * heroDecoScale,
-    borderRadius: 999,
-    backgroundColor: 'rgba(245, 78, 37, 0.14)',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
   },
-  heroRadialIndigo: {
-    position: 'absolute',
-    bottom: -48,
-    right: -28,
-    width: 170 * heroDecoScale,
-    height: 120 * heroDecoScale,
-    borderRadius: 999,
-    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+  heroInner: { gap: 1, maxWidth: '58%', marginTop: -8 },
+  heroKicker: {
+    fontSize: isCompactScreen ? 15 : 17,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.1,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
   },
-  heroDeco1: {
-    position: 'absolute',
-    top: -52 * heroDecoScale,
-    right: -34 * heroDecoScale,
-    width: 168 * heroDecoScale,
-    height: 168 * heroDecoScale,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-  },
-  heroDeco2: {
-    position: 'absolute',
-    bottom: -28 * heroDecoScale,
-    right: 18 * heroDecoScale,
-    width: 96 * heroDecoScale,
-    height: 96 * heroDecoScale,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  heroDeco3: {
-    position: 'absolute',
-    top: 10 * heroDecoScale,
-    right: 10 * heroDecoScale,
-    width: 58 * heroDecoScale,
-    height: 58 * heroDecoScale,
-    borderRadius: 999,
-    backgroundColor: 'rgba(245, 78, 37, 0.16)',
-    shadowColor: '#F54E25',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 2,
-  },
-  heroInner: { gap: 14, position: 'relative', zIndex: 2 },
-  heroEyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  heroHeartWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroEyebrow: {
-    flex: 1,
-    fontSize: 10,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.45)',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: -1 },
   heroTitle: {
-    fontSize: isCompactScreen ? 22 : 26,
+    flexShrink: 1,
+    fontSize: isCompactScreen ? 25 : 29,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -0.5,
-  },
-  heroTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 8,
   },
   heroTitleIcon: {
     marginTop: 2,
   },
-  heroSub: { marginTop: 4, fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.45)' },
-  statGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 18,
+  heroSub: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.86)',
+    marginTop: 5,
+    lineHeight: 19,
+    textShadowColor: 'rgba(0,0,0,0.25)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
-  statCard: {
-    width: (width - (isCompactScreen ? 28 : 36) - 12) / 2,
+  summaryCard: {
     borderRadius: 22,
-    borderWidth: 1,
     backgroundColor: BH.surface,
-    padding: 16,
-    overflow: 'hidden',
+    padding: isCompactScreen ? 16 : 20,
+    marginTop: -38,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: BH.border,
     shadowColor: BH.slate900,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.07,
-    shadowRadius: 20,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 6,
   },
-  statCardDeco: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 88,
-    height: 88,
-    borderBottomLeftRadius: 88,
-    opacity: 0.3,
+  summaryHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  statCardInner: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  statCardLabel: {
-    fontSize: 10,
-    color: '#94A3B8',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-  },
-  statCardValue: { marginTop: 8, fontSize: 30, fontWeight: '900', color: BH.slate900, letterSpacing: -0.6 },
-  statCardSub: { marginTop: 3, fontSize: 11, color: BH.slate400, fontWeight: '500' },
-  statCardIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  summaryTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
+  summaryViewAll: { fontSize: 13, fontWeight: '700', color: '#2563EB' },
+  summaryStatsRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  summaryStatCol: { flex: 1, minWidth: 0 },
+  summaryStatLabel: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+  summaryStatValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  summaryStatValue: { fontSize: 26, fontWeight: '900', color: BH.slate900, letterSpacing: -0.5 },
+  summaryStatIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
   },
+  summaryStatSub: { fontSize: 11, color: '#94A3B8', fontWeight: '500', marginTop: 3 },
+  summaryDividerV: { width: 1, alignSelf: 'stretch', backgroundColor: BH.border, marginHorizontal: 16 },
+  summaryDividerH: { height: 1, backgroundColor: BH.border, marginVertical: 16 },
+  summaryProgressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  summaryProgressLabel: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  summaryProgressPct: { fontSize: 13, fontWeight: '800', color: BH.brand },
+  summaryProgressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: BH.slate100,
+    overflow: 'hidden',
+  },
+  summaryProgressFill: { height: '100%', borderRadius: 4, backgroundColor: BH.brand },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitleText: { fontSize: 14, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
   sectionSub: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '500' },
+  dashboardHero: {
+    borderRadius: 22,
+    padding: isCompactScreen ? 18 : 22,
+    marginTop: 14,
+    marginBottom: 14,
+    overflow: 'hidden',
+    backgroundColor: '#0F172A',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    elevation: 8,
+    minHeight: isCompactScreen ? 150 : 168,
+  },
+  heroBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 78, 37, 0.4)',
+    backgroundColor: 'rgba(245, 78, 37, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  heroHeadline: {
+    fontSize: isCompactScreen ? 22 : 25,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.4,
+  },
+  heroSubline: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.68)',
+    marginTop: 6,
+    maxWidth: '62%',
+    lineHeight: 18,
+  },
+  heroChartWrap: {
+    position: 'absolute',
+    right: 20,
+    bottom: 18,
+    width: 110,
+    height: 66,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 5,
+  },
+  heroChartBar: {
+    flex: 1,
+    borderRadius: 3,
+    backgroundColor: '#6366F1',
+  },
+  heroChartLine: {
+    position: 'absolute',
+    height: HERO_CHART_LINE_HEIGHT,
+    borderRadius: 1,
+    backgroundColor: '#FF8A65',
+    ...Platform.select({
+      ios: { shadowColor: '#FF8A65', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 3 },
+      android: {},
+      web: { boxShadow: '0 0 5px rgba(255, 138, 101, 0.7)' },
+    }),
+  },
+  heroChartDot: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FF8A65',
+    ...Platform.select({
+      ios: { shadowColor: '#FF8A65', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 4 },
+      android: {},
+      web: { boxShadow: '0 0 6px rgba(255, 138, 101, 0.9)' },
+    }),
+  },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  statTile: {
+    width: (width - (isCompactScreen ? 28 : 36) - 20) / 3,
+    minWidth: 100,
+    flexGrow: 1,
+    borderRadius: 16,
+    padding: 12,
+    overflow: 'hidden',
+  },
+  statIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  statLabel: { fontSize: 9.5, color: '#64748B', fontWeight: '800', letterSpacing: 0.4 },
+  statValue: { fontSize: 22, fontWeight: '900', marginTop: 4, letterSpacing: -0.5 },
+  statGhostIcon: {
+    position: 'absolute',
+    right: -12,
+    bottom: -12,
+    opacity: 0.12,
+  },
   panelCard: {
     backgroundColor: BH.surface,
     borderRadius: 22,
@@ -1402,147 +1402,168 @@ const styles = StyleSheet.create({
   quickActionsHeaderRow: {
     marginBottom: 14,
   },
-  actionCard: {
+  quickActionsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BH.border,
-    marginBottom: 12,
-    backgroundColor: BH.surface2,
+    justifyContent: 'space-between',
   },
-  iconSquare: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: BH.brand,
+  quickActionItem: {
+    alignItems: 'center',
+    gap: 8,
+    width: (width - (isCompactScreen ? 28 : 36) - 2 * 18) / 4,
+  },
+  quickActionCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOW.brand,
   },
-  actionMain: { flex: 1, minWidth: 0 },
-  actionTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  actionSubtitle: { fontSize: 12, color: '#64748B', fontWeight: '600', marginTop: 4 },
-  actionBadge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  actionBadgeText: { fontSize: 10, fontWeight: '800' },
-  chartTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  chartTitle: { color: '#1B2559', fontWeight: '800', fontSize: 16 },
-  chartSub: { color: '#64748B', fontSize: 12, marginTop: 4 },
-  chartMeta: { color: '#64748B', fontSize: 11, fontWeight: '700' },
+  quickActionImage: {
+    width: 24,
+    height: 24,
+  },
+  quickActionBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: BH.danger,
+    borderWidth: 2,
+    borderColor: BH.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionBadgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF' },
+  quickActionLabel: { fontSize: 11.5, fontWeight: '700', color: '#334155', textAlign: 'center' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   loadingText: { color: '#64748B', fontWeight: '700', fontSize: 13 },
-  insightPanelTitle: { color: '#1B2559', fontWeight: '800', fontSize: 14, marginBottom: 8 },
-  summaryBars: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    minHeight: 138,
-    paddingHorizontal: 2,
-    marginBottom: 8,
-  },
-  summaryBarItem: {
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: 2,
-    minWidth: 0,
-    justifyContent: 'flex-end',
-    minHeight: 136,
-  },
-  summaryBarValue: { fontSize: 12, fontWeight: '800', color: '#1B2559', marginBottom: 4 },
-  summaryBarStage: {
-    width: '70%',
-    height: 100,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 8,
-    justifyContent: 'flex-end',
+  errorInline: { marginTop: 10, color: '#EF4444', fontSize: 11, fontWeight: '700' },
+  supportCard: {
+    borderRadius: 20,
+    backgroundColor: BH.brandSurface,
+    borderWidth: 1,
+    borderColor: 'rgba(254, 215, 170, 0.6)',
+    padding: 18,
+    marginTop: 14,
     overflow: 'hidden',
   },
-  summaryBarFill: { width: '100%', borderRadius: 8 },
-  summaryBarLabelWrap: {
-    marginTop: 6,
-    minHeight: 32,
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
+  supportHeartWatermark: {
+    position: 'absolute',
+    right: -16,
+    bottom: -16,
   },
-  summaryBarLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 12,
-    width: '100%',
+  supportTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  supportTitle: { fontSize: 16, fontWeight: '800', color: BH.navy },
+  supportSub: { fontSize: 13, color: '#64748B', fontWeight: '500', marginTop: 4, maxWidth: '80%', lineHeight: 18 },
+  supportBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: BH.brand,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginTop: 14,
+    ...SHADOW.brand,
   },
-  callout: { fontSize: 12, color: '#64748B', fontWeight: '600' },
-  calloutStrong: { color: '#1B2559', fontWeight: '800' },
-  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  kpiItem: {
-    width: (width - 36 - 32) / 2 - 5,
-    minWidth: 140,
-    flexGrow: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BH.border,
-    padding: 14,
-    backgroundColor: BH.surface2,
-  },
-  kpiLabel: { color: '#64748B', fontSize: 11, fontWeight: '700' },
-  kpiValue: { color: '#1B2559', fontWeight: '800', fontSize: 20, marginTop: 6 },
-  kpiBar: { marginTop: 8, width: 26, height: 6, borderRadius: 99 },
-  kpiNote: { marginTop: 8, fontSize: 11, color: '#64748B', fontWeight: '600', lineHeight: 15 },
-  errorInline: { marginTop: 10, color: '#EF4444', fontSize: 11, fontWeight: '700' },
+  supportBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
   tableHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   tableHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelTitleInline: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
   tableMeta: { fontSize: 11, fontWeight: '700', color: '#64748B' },
-  emptyMuted: { color: '#94A3B8', fontSize: 13, fontWeight: '700', textAlign: 'center', paddingVertical: 12 },
-  tableRow: {
-    borderWidth: 1,
-    borderColor: BH.border,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-    backgroundColor: BH.surface2,
+  weekPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: BH.slate100,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
-  tableRowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  tablePatientName: { flex: 1, fontSize: 15, fontWeight: '800', color: '#1B2559' },
-  statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  statusPillText: { fontSize: 11, fontWeight: '800' },
-  tableMini: { fontSize: 12, color: '#64748B', fontWeight: '600', marginTop: 6 },
-  tableProgressRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
-  tableProgressPct: { fontSize: 11, fontWeight: '800', color: '#1B2559', width: 36 },
-  tableProgressTrack: { flex: 1, height: 6, backgroundColor: '#F1F5F9', borderRadius: 8, overflow: 'hidden' },
-  tableProgressFill: { height: '100%', backgroundColor: '#F54E25', borderRadius: 8 },
+  weekPillText: { fontSize: 11, fontWeight: '700', color: '#475569' },
+  periodMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  periodMenuPanel: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: BH.surface,
+    borderRadius: 20,
+    padding: 10,
+    shadowColor: BH.slate900,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    elevation: 12,
+  },
+  periodMenuTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 10,
+    paddingTop: 6,
+    paddingBottom: 10,
+  },
+  periodMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 13,
+    borderRadius: 12,
+    minHeight: 44,
+  },
+  periodMenuItemActive: { backgroundColor: BH.brandSurface },
+  periodMenuItemText: { fontSize: 15, fontWeight: '600', color: '#1B2559' },
+  periodMenuItemTextActive: { fontWeight: '800', color: BH.brand700 },
+  emptyMuted: { color: '#94A3B8', fontSize: 13, fontWeight: '700', textAlign: 'center', paddingVertical: 12 },
+  reqHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reqPendingText: { fontSize: 12, fontWeight: '800', color: BH.brand },
+  reqViewAllBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: BH.brandSurfaceBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   reqRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
+  reqLeft: { flex: 1, minWidth: 0 },
   reqTypePill: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
     alignSelf: 'flex-start',
+    marginBottom: 6,
   },
   reqTypePillText: { fontSize: 10, fontWeight: '800' },
-  reqMid: { flex: 1, minWidth: 0 },
-  reqName: { fontSize: 13, fontWeight: '700', color: '#1B2559' },
+  reqName: { fontSize: 14, fontWeight: '800', color: '#1B2559' },
   reqDate: { fontSize: 11, color: '#94A3B8', fontWeight: '600', marginTop: 2 },
-  reqStatusCell: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  reqRight: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
   reqPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
-  reqPillText: { fontSize: 10, fontWeight: '800', color: '#475569', textTransform: 'lowercase' },
-  reqDismiss: { fontSize: 20, lineHeight: 22, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 4 },
+  reqPillText: { fontSize: 11, fontWeight: '800' },
+  reqDismiss: { fontSize: 20, lineHeight: 22, color: '#CBD5E1', fontWeight: '700', paddingHorizontal: 2 },
   reportModalRoot: { flex: 1, backgroundColor: '#F8FAFC' },
   reportModalHero: {
     paddingHorizontal: 20,
@@ -1780,43 +1801,23 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   reportFieldCardVal: { fontSize: 14, color: '#1A2B4A', fontWeight: '600', lineHeight: 21 },
-  highlightsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
+  highlightsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
   overviewItem: {
-    width: (width - 36 - 32) / 2 - 5,
-    minWidth: 140,
+    width: (width - 36 - 36 - 30) / 4,
+    minWidth: 76,
     flexGrow: 1,
-    borderRadius: 16,
-    backgroundColor: BH.slate50,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: BH.border,
+    borderRadius: 14,
+    padding: 10,
   },
-  overviewLabel: { fontSize: 12, color: '#64748B', fontWeight: '700' },
-  overviewValue: { fontSize: 22, fontWeight: '900', color: '#1B2559', marginTop: 6 },
-  overviewSub: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
-  bottomTwoCol: { marginTop: 14, gap: 12 },
-  bottomCard: { marginBottom: 0 },
-  nextSub: { color: '#64748B', fontSize: 13, marginBottom: 10, fontWeight: '600' },
-  cleanListItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  cleanTitle: { color: '#1B2559', fontWeight: '700', fontSize: 13 },
-  cleanDesc: { color: '#64748B', fontSize: 12, marginTop: 2 },
-  miniPill: { backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  miniPillText: { color: '#92400E', fontSize: 11, fontWeight: '800' },
-  openBtnIndigo: {
-    backgroundColor: '#EEF2FF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  overviewIconWrap: {
+    width: 22,
+    height: 22,
     borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
-  openBtnGreen: { backgroundColor: '#ECFDF3', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  openBtnOrange: { backgroundColor: '#FFF1EB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  openBtnText: { fontSize: 11, fontWeight: '800', color: '#3730A3' },
+  overviewLabel: { fontSize: 10.5, color: '#64748B', fontWeight: '700' },
+  overviewValue: { fontSize: 18, fontWeight: '900', color: '#1B2559', marginTop: 4 },
 });

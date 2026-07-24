@@ -1,13 +1,26 @@
 import { Stack } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { LogBox } from "react-native";
+import {
+  useFonts,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  Inter_900Black,
+} from "@expo-google-fonts/inter";
 import { TermsProvider } from "../contexts/TermsContext";
 import { AppErrorBoundary } from "../components/AppErrorBoundary";
 import { rootStackScreenOptions } from "../lib/navigationConfig";
 import { ensureAuthSessionHealthy } from "../lib/supabase";
+import { applyInterFontDefault } from "../lib/interFont";
 
 WebBrowser.maybeCompleteAuthSession();
+SplashScreen.preventAutoHideAsync().catch(() => {});
+applyInterFontDefault();
 
 LogBox.ignoreLogs([
   /Invalid Refresh Token/i,
@@ -41,13 +54,31 @@ function AuthSessionRecovery() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_900Black,
+  });
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
     <AppErrorBoundary>
       <AuthSessionRecovery />
       <TermsProvider>
         <Stack screenOptions={rootStackScreenOptions}>
         <Stack.Screen name="index" options={fadeScreen} />
-        <Stack.Screen name="onboarding" options={fadeScreen} />
         <Stack.Screen name="login" options={fadeScreen} />
         <Stack.Screen name="consent" options={fadeScreen} />
         <Stack.Screen name="informed-consent" options={fadeScreen} />

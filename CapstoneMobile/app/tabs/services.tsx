@@ -14,7 +14,6 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
-import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import { ScalePressable } from '../../components/auth/ScalePressable';
@@ -268,7 +267,6 @@ export default function ServicesScreen() {
       </ScrollView>
 
       <FamilyWebMobileNav active="none" />
-      <FamilyFloatingChat />
     </View>
   );
 }

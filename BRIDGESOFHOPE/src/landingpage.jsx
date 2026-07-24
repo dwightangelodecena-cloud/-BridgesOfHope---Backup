@@ -33,6 +33,7 @@ import { LandingPageBodySections } from '@/components/landing/LandingPageBodySec
 
 // ─── Asset imports (unchanged) ──────────────────────────────────────────────
 import logo from '@/assets/kalingalogo.png';
+import kalingaHeaderLogo from '@/assets/KALINGA-HEADER-LOGO.png';
 import gma from '@/assets/gmanewstv.png';
 import tv5 from '@/assets/tv5.png';
 import wsj from '@/assets/wsj.png';
@@ -1055,31 +1056,14 @@ const LandingPage = () => {
           transition: transform 0.4s var(--ease-out-expo);
         }
         .nav-logo:hover::after { transform: scaleX(1); }
-        /* Text-only wordmark, standing on its own — no icon chip. A confident
-           logotype is a legitimate top-tier pattern on its own (Stripe,
-           Linear), so the weight/size/gradient below all pull double duty as
-           both "logo" and "nav label" at once. */
-        .nav-wordmark {
-          font-family: 'DM Sans', var(--font-sans);
-          font-weight: 900;
-          font-size: 1.65rem;
-          letter-spacing: -0.02em;
-          text-transform: uppercase;
-          line-height: 1;
-          white-space: nowrap;
-          background: linear-gradient(95deg, var(--accent-h) 0%, var(--accent) 58%, var(--accent-2) 100%);
-          -webkit-background-clip: text;
-          background-clip: text;
-          -webkit-text-fill-color: transparent;
-          color: var(--accent);
-          text-shadow: 0 2px 14px rgba(217, 79, 42, 0.16);
-        }
-        /* First letter breaks from the gradient as a solid anchor — a quiet
-           monogram-in-wordmark touch that gives the text some structure
-           instead of reading as one flat block of color. */
-        .nav-wordmark-k {
-          color: var(--accent-h);
-          -webkit-text-fill-color: var(--accent-h);
+        /* Image wordmark — the KALINGA logotype asset, standing on its own
+           with no icon chip, same spirit as the previous CSS-gradient text
+           it replaces. */
+        .nav-wordmark-img {
+          display: block;
+          height: 34px;
+          width: auto;
+          filter: drop-shadow(0 2px 10px rgba(217, 79, 42, 0.18));
         }
         .nav-links-desktop {
           display: flex; align-items: center; gap: var(--s-1);
@@ -1292,8 +1276,9 @@ const LandingPage = () => {
           letter-spacing: 0.06em;
           color: var(--ink-3);
         }
-        .nav-drawer-brand .nav-wordmark {
-          font-size: 1.2rem;
+        .nav-drawer-brand .nav-drawer-wordmark-img {
+          height: 24px;
+          width: auto;
         }
         .nav-drawer-links {
           display: grid;
@@ -3378,7 +3363,7 @@ const LandingPage = () => {
             min-height: 76px;
             padding: 10px 22px 10px 24px;
           }
-          .nav-wordmark { font-size: 1.8rem; }
+          .nav-wordmark-img { height: 38px; }
           .nav-links-desktop a {
             font-size: 0.8rem;
             padding: 11px 14px;
@@ -3439,7 +3424,7 @@ const LandingPage = () => {
             inset: -5px;
             border-radius: 22px;
           }
-          .nav-wordmark { font-size: 1.35rem; }
+          .nav-wordmark-img { height: 28px; }
           .nav-right { gap: 6px; }
           .nav-right .btn-primary {
             padding: 8px 12px;
@@ -3560,9 +3545,7 @@ const LandingPage = () => {
       <nav className={`nav-drawer${isMenuOpen ? ' open' : ''}`}>
         <div className="nav-drawer-head">
           <div className="nav-drawer-brand">
-            <span className="nav-wordmark">
-              <span className="nav-wordmark-k">K</span>alinga
-            </span>
+            <img src={kalingaHeaderLogo} alt="Kalinga" className="nav-drawer-wordmark-img" />
             Menu
           </div>
           <button
@@ -3600,9 +3583,7 @@ const LandingPage = () => {
       <header className={`nav-shell${navElevated ? ' elevated' : ''}`}>
         <div className="nav">
           <button type="button" className="nav-logo" onClick={scrollToTop} aria-label="Bridges of Hope — Home">
-            <span className="nav-wordmark">
-              <span className="nav-wordmark-k">K</span>alinga
-            </span>
+            <img src={kalingaHeaderLogo} alt="Kalinga" className="nav-wordmark-img" />
           </button>
           <LayoutGroup id="nav-desktop-pills">
             <nav className="nav-links-desktop" aria-label="Primary">

@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -10,9 +11,12 @@ import {
   ActivityIndicator,
   Dimensions,
   Alert,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
@@ -21,7 +25,6 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
 import { computeAdmissionDisplayId } from '../../lib/admissionDisplayId';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
-import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import {
@@ -50,6 +53,14 @@ import {
 } from '../../components/family/TemporaryDischargeNoticeMobile';
 
 const WINDOW_H = Dimensions.get('window').height;
+const SCREEN_W = Dimensions.get('window').width;
+const HEADER_OVERLAY_HEIGHT_BASE = 56;
+// Native pixel size of assets/images/residents-header.png — sets the hero's
+// aspect ratio so the full illustration (including the right-edge plant)
+// renders with no crop.
+const HERO_IMG_NATURAL_W = 1298;
+const HERO_IMG_NATURAL_H = 563;
+const HERO_HEIGHT = SCREEN_W * (HERO_IMG_NATURAL_H / HERO_IMG_NATURAL_W);
 
 type ReportRow = Record<string, unknown>;
 
@@ -201,19 +212,28 @@ function normalizeResidentList(list: PatientListEntry[]): PatientListEntry[] {
 
 function ProgressRing({ pct, size = 56, color }: { pct: number; size?: number; color: string }) {
   const p = Math.min(100, Math.max(0, Math.round(pct)));
+  const strokeWidth = Math.max(3, Math.round(size * 0.07));
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dashoffset = circumference * (1 - p / 100);
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: '#EEF2FF',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 3,
-        borderColor: color,
-      }}
-    >
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
+        <Circle cx={size / 2} cy={size / 2} r={radius} stroke="#EEF2FF" strokeWidth={strokeWidth} fill="none" />
+        {p > 0 ? (
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={color}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeDasharray={`${circumference} ${circumference}`}
+            strokeDashoffset={dashoffset}
+            strokeLinecap="round"
+          />
+        ) : null}
+      </Svg>
       <Text style={{ fontSize: 12, fontWeight: '900', color }}>{p}%</Text>
     </View>
   );
@@ -223,24 +243,22 @@ function StatMiniCard({
   label,
   value,
   icon,
-  borderColor,
   iconBg,
   iconColor,
 }: {
   label: string;
   value: string | number;
   icon: React.ComponentProps<typeof Ionicons>['name'];
-  borderColor: string;
   iconBg: string;
   iconColor: string;
 }) {
   return (
-    <View style={[styles.statCard, { borderColor }]}>
-      <View style={[styles.statIconWrap, { backgroundColor: iconBg, borderColor }]}>
-        <Ionicons name={icon} size={20} color={iconColor} />
+    <View style={styles.statCard}>
+      <View style={[styles.statIconWrap, { backgroundColor: iconBg }]}>
+        <Ionicons name={icon} size={19} color={iconColor} />
       </View>
-      <Text style={styles.statCardLabel}>{label}</Text>
       <Text style={styles.statCardValue}>{value}</Text>
+      <Text style={styles.statCardLabel}>{label}</Text>
     </View>
   );
 }
@@ -290,12 +308,14 @@ export default function PatientDetailsScreen() {
   const [patientDetailsById, setPatientDetailsById] = useState<Record<string, Record<string, unknown>>>({});
   const [weeklyReportsByPatient, setWeeklyReportsByPatient] = useState<Record<string, ReportRow[]>>({});
   const [loading, setLoading] = useState(true);
+  const [headerSolid, setHeaderSolid] = useState(false);
   const [selected, setSelected] = useState<PatientListEntry | null>(null);
   const [temporaryLeaveFromRequest, setTemporaryLeaveFromRequest] = useState<TemporaryLeaveFields | null>(
     null
   );
   const [residentReturnBusy, setResidentReturnBusy] = useState(false);
   const [showResidentReturnConfirm, setShowResidentReturnConfirm] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured()) {
@@ -306,7 +326,12 @@ export default function PatientDetailsScreen() {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    // Re-focusing this tab re-runs load() every time — only show the
+    // full loading state the first time, so already-loaded data stays
+    // on screen while subsequent visits refresh quietly in the background.
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true);
+    }
     try {
       const {
         data: { user },
@@ -575,6 +600,7 @@ export default function PatientDetailsScreen() {
       setWeeklyReportsByPatient({});
     } finally {
       setLoading(false);
+      hasLoadedOnceRef.current = true;
     }
   }, []);
 
@@ -779,11 +805,27 @@ export default function PatientDetailsScreen() {
     ? tempLeaveStatusLabel || 'Temporarily discharged'
     : detailSummaryForModal?.status || patientStatusTone(Number(selected?.progress) || 0).label;
 
+  const headerOverlayHeight = insets.top + HEADER_OVERLAY_HEIGHT_BASE;
+  const showHeroBlend = !loading && patients.length > 0;
+
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    setHeaderSolid(y > HERO_HEIGHT - headerOverlayHeight);
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: '#F0F4FF' }]}>
-      <FamilyMobilePageHeader title="Resident Details" onBrandPress={scrollToTop} />
-
-      <ScrollView ref={scrollRef} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.heroOverlapScroll}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + 100, paddingTop: showHeroBlend ? 0 : headerOverlayHeight },
+        ]}
+        showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
         {loading ? (
           <View style={styles.loading}>
             <ActivityIndicator color="#F54E25" />
@@ -802,92 +844,51 @@ export default function PatientDetailsScreen() {
           </View>
         ) : (
           <>
-            <LinearGradient
-              colors={['#0F172A', '#1E2D4F', '#2D1B69']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.heroBanner}
-            >
-              <View style={styles.heroKickerRow}>
-                <View style={styles.heroIconBox}>
-                  <Ionicons name="clipboard" size={16} color="#FFFFFF" />
-                </View>
-                <Text style={styles.heroKicker}>Family Portal · Resident Overview</Text>
-              </View>
-              <Text style={styles.heroTitle}>Assigned Residents</Text>
-              <Text style={styles.heroSub}>Monitor progress, vitals, and care updates in one place</Text>
-            </LinearGradient>
-
-            <View style={styles.statGrid}>
-              <StatMiniCard
-                label="Active Residents"
-                value={patients.length}
-                icon="pulse"
-                borderColor="#C7D2FE"
-                iconBg="#EEF2FF"
-                iconColor="#6366F1"
-              />
-              <StatMiniCard
-                label="Total Reports"
-                value={totalReportsSubmitted}
-                icon="document-text"
-                borderColor="#A7F3D0"
-                iconBg="#ECFDF5"
-                iconColor="#10B981"
-              />
-              <StatMiniCard
-                label="Avg Progress"
-                value={`${averageProgress}%`}
-                icon="trending-up"
-                borderColor="#DDD6FE"
-                iconBg="#F5F3FF"
-                iconColor="#8B5CF6"
-              />
-              <StatMiniCard
-                label="Pending Review"
-                value={pendingReviewCount}
-                icon="alert-circle"
-                borderColor="#FDE68A"
-                iconBg="#FFFBEB"
-                iconColor="#F59E0B"
+            <View style={styles.heroHeaderWrap}>
+              <Image
+                source={require('../../assets/images/residents-header.png')}
+                style={styles.heroHeaderImage}
+                resizeMode="cover"
               />
             </View>
 
-            {latestWeeklyReportStrip.length > 0 ? (
-              <View style={styles.recentSection}>
-                <View style={styles.recentHead}>
-                  <Ionicons name="document-text" size={16} color="#F54E25" />
-                  <Text style={styles.recentTitle}>Recent Weekly Reports</Text>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recentScroll}>
-                  {latestWeeklyReportStrip.map((item, ridx) => {
-                    const match = patients.find((x) => String(x.id) === item.patientId);
-                    return (
-                      <TouchableOpacity
-                        key={`${item.patientId}-${String(item.week)}-${ridx}`}
-                        style={styles.recentCard}
-                        onPress={() => match && setSelected(match)}
-                        activeOpacity={0.9}
-                        disabled={!match}
-                      >
-                        <Text style={styles.recentWeek}>Week {String(item.week)}</Text>
-                        <Text style={styles.recentId}>ID: {formatResidentDisplayIdFor(item.patientId)}</Text>
-                        <Text style={styles.recentDate}>{formatDate(String(item.submittedAt))}</Text>
-                        <Text style={styles.recentNurse} numberOfLines={1}>
-                          Nurse: {item.nurseName}
-                        </Text>
-                        <Text style={styles.recentCta}>View resident →</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
+            <View style={styles.overviewCard}>
+              <Text style={styles.overviewCardLabel}>Care Overview</Text>
+              <View style={styles.statGrid}>
+                <StatMiniCard
+                  label="Active Residents"
+                  value={patients.length}
+                  icon="people"
+                  iconBg="#EEF2FF"
+                  iconColor="#6366F1"
+                />
+                <StatMiniCard
+                  label="Avg Progress"
+                  value={`${averageProgress}%`}
+                  icon="trending-up"
+                  iconBg="#ECFDF5"
+                  iconColor="#10B981"
+                />
+                <StatMiniCard
+                  label="Total Reports"
+                  value={totalReportsSubmitted}
+                  icon="document-text"
+                  iconBg="#F54E25"
+                  iconColor="#FFFFFF"
+                />
+                <StatMiniCard
+                  label="Pending Review"
+                  value={pendingReviewCount}
+                  icon="warning"
+                  iconBg="#FEF3C7"
+                  iconColor="#F59E0B"
+                />
               </View>
-            ) : null}
+            </View>
 
             <View style={styles.dirHead}>
-              <Ionicons name="bar-chart" size={16} color="#F54E25" />
-              <Text style={styles.dirTitle}>Resident directory</Text>
-              <Text style={styles.dirMeta}>{patients.length} entries</Text>
+              <Text style={styles.dirTitle}>Resident Directory</Text>
+              <Text style={styles.dirMeta}>View all</Text>
             </View>
             {patients.map((p, idx) => {
               const onTempLeave = isResidentOnTemporaryLeave(p);
@@ -906,63 +907,83 @@ export default function PatientDetailsScreen() {
                   activeOpacity={0.9}
                 >
                   <View style={styles.cardV2Top}>
-                    <LinearGradient
-                      colors={['#EEF2FF', '#C7D2FE']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.cardV2Avatar}
-                    >
+                    <View style={styles.cardV2Avatar}>
                       <Text style={styles.cardV2Initials}>{deriveInitials(p.name)}</Text>
-                    </LinearGradient>
-                <View style={{ flex: 1, minWidth: 0 }}>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={styles.nameRow}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {p.name}
-                  </Text>
+                        <Text style={styles.name} numberOfLines={1}>
+                          {p.name}
+                        </Text>
                         <View style={[styles.statusChip, { backgroundColor: tone.bg }]}>
                           <Text style={[styles.statusChipTxt, { color: tone.color }]}>{tone.label}</Text>
-                </View>
+                        </View>
                       </View>
                       <Text style={styles.meta}>
-                        Admitted <Text style={styles.metaStrong}>{p.date || '—'}</Text>
+                        Admitted: <Text style={styles.metaStrong}>{p.date || '—'}</Text>
                       </Text>
                       <Text style={styles.miniLine} numberOfLines={1}>
                         Concern: <Text style={styles.metaStrong}>{concern}</Text>
                       </Text>
                       <Text style={styles.miniLine}>
-                        Reports: <Text style={styles.metaStrong}>{reportCount}</Text>
+                        Reports: <Text style={styles.metaStrong}>{reportCount}</Text> • Room:{' '}
+                        <Text style={styles.metaStrong}>{String(room)}</Text>
                       </Text>
-                      <Text style={styles.miniLine}>Room: {String(room)}</Text>
                     </View>
-                    <ProgressRing pct={prog} size={56} color={tone.color} />
-              </View>
-              <View style={styles.progressRow}>
-                <Text style={styles.progressLabel}>Recovery progress</Text>
-                    <Text style={styles.progressPct}>{prog}%</Text>
-              </View>
-              <View style={styles.track}>
-                    <LinearGradient
-                      colors={['#F54E25', '#EA580C']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={[styles.fillGradient, { width: `${prog}%` }]}
-                    />
-              </View>
-                  <TouchableOpacity
-                    style={styles.viewDetailsCta}
-                    onPress={() => setSelected(p)}
-                    accessibilityRole="button"
-                    accessibilityLabel="View details"
-                  >
-                    <Text style={styles.viewDetailsCtaTxt}>View details</Text>
-                    <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-            </TouchableOpacity>
+                    <View style={styles.cardV2Trail}>
+                      <ProgressRing pct={prog} size={52} color={tone.color} />
+                      <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    </View>
+                  </View>
                 </TouchableOpacity>
               );
             })}
+
+            {latestWeeklyReportStrip.length > 0 ? (
+              <View style={styles.recentSection}>
+                <View style={styles.recentHead}>
+                  <Ionicons name="document-text" size={16} color="#F54E25" />
+                  <Text style={styles.recentTitle}>Recent Weekly Reports</Text>
+                </View>
+                {latestWeeklyReportStrip.map((item, ridx) => {
+                  const match = patients.find((x) => String(x.id) === item.patientId);
+                  return (
+                    <View key={`${item.patientId}-${String(item.week)}-${ridx}`} style={styles.recentRow}>
+                      <View style={styles.recentIconChip}>
+                        <Ionicons name="document-text-outline" size={18} color="#F54E25" />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.recentWeek}>
+                          WEEK {String(item.week)} <Text style={styles.recentId}>· ID: {formatResidentDisplayIdFor(item.patientId)}</Text>
+                        </Text>
+                        <Text style={styles.recentDate}>
+                          {formatDate(String(item.submittedAt))} · Nurse: {item.nurseName}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.recentCtaBtn}
+                        onPress={() => match && setSelected(match)}
+                        activeOpacity={0.85}
+                        disabled={!match}
+                      >
+                        <Text style={styles.recentCtaBtnTxt}>View resident →</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
           </>
         )}
       </ScrollView>
+
+      <View style={styles.headerOverlay} pointerEvents="box-none">
+        <FamilyMobilePageHeader
+          title="Resident Details"
+          onBrandPress={scrollToTop}
+          transparent={showHeroBlend && !headerSolid}
+        />
+      </View>
 
       <Modal visible={!!selected} animationType="slide" onRequestClose={() => setSelected(null)}>
         <View style={[styles.detailFullScreen, { paddingTop: insets.top, backgroundColor: '#F8FAFF' }]}>
@@ -1289,7 +1310,6 @@ export default function PatientDetailsScreen() {
       />
 
       <FamilyWebMobileNav active="patientDetails" />
-      <FamilyFloatingChat />
     </View>
   );
 }
@@ -1335,63 +1355,81 @@ const styles = StyleSheet.create({
   notifText: { flex: 1, fontSize: 13, color: '#334155' },
   notifDismiss: { fontSize: 18, lineHeight: 18, color: '#94A3B8', fontWeight: '700', paddingHorizontal: 2 },
   scroll: { paddingHorizontal: 18, paddingTop: 14 },
-  heroBanner: {
-    borderRadius: 24,
-    padding: 22,
-    marginBottom: 14,
+  headerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  heroHeaderWrap: {
+    marginHorizontal: -18,
+    aspectRatio: HERO_IMG_NATURAL_W / HERO_IMG_NATURAL_H,
     overflow: 'hidden',
+    backgroundColor: '#0F172A',
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
   },
-  heroKickerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  heroIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  heroHeaderImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
   },
-  heroKicker: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.4)',
-    fontWeight: '700',
-    letterSpacing: 1,
+  heroOverlapScroll: { flex: 1 },
+  overviewCard: {
+    marginTop: -44,
+    marginBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+    padding: 18,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 6,
+  },
+  overviewCardLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748B',
     textTransform: 'uppercase',
-    flex: 1,
+    letterSpacing: 0.8,
+    marginBottom: 14,
   },
-  heroTitle: { fontSize: 22, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.5 },
-  heroSub: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 6, lineHeight: 18 },
   statGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 14,
-    justifyContent: 'space-between',
+    gap: 6,
   },
   statCard: {
-    width: '48%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 4,
+    flex: 1,
+    alignItems: 'center',
   },
   statIconWrap: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   statCardLabel: {
-    fontSize: 10,
-    color: '#94A3B8',
-    fontWeight: '700',
+    fontSize: 8.5,
+    lineHeight: 11,
+    minHeight: 22,
+    color: '#334155',
+    fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 0.7,
+    letterSpacing: 0.3,
+    marginTop: 6,
+    textAlign: 'center',
   },
-  statCardValue: { fontSize: 26, fontWeight: '900', color: '#0F172A', marginTop: 5 },
+  statCardValue: { fontSize: 20, fontWeight: '900', color: '#1B2559', textAlign: 'center' },
   recentSection: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
@@ -1400,53 +1438,55 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 14,
   },
-  recentHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  recentHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   recentTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
-  recentScroll: { gap: 10, paddingRight: 8 },
-  recentCard: {
-    width: 200,
-    backgroundColor: '#FAFBFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E9EDF7',
-    padding: 14,
-    marginRight: 10,
+  recentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
   },
-  recentWeek: { fontSize: 10, fontWeight: '800', color: '#8B5CF6', textTransform: 'uppercase' },
-  recentId: { fontSize: 13, fontWeight: '800', color: '#0F172A', marginTop: 8 },
-  recentDate: { fontSize: 11, color: '#64748B', marginTop: 4 },
-  recentNurse: { fontSize: 11, color: '#94A3B8', marginTop: 4 },
-  recentCta: { fontSize: 11, fontWeight: '700', color: '#6366F1', marginTop: 10 },
+  recentIconChip: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#FFF1EC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recentWeek: { fontSize: 12, fontWeight: '800', color: '#F54E25', letterSpacing: 0.3 },
+  recentId: { fontSize: 12, fontWeight: '800', color: '#0F172A' },
+  recentDate: { fontSize: 11, color: '#64748B', marginTop: 3, fontWeight: '600' },
+  recentCtaBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#F54E25',
+  },
+  recentCtaBtnTxt: { fontSize: 11, fontWeight: '800', color: '#F54E25' },
   cardV2: {
     backgroundColor: '#FFFFFF',
     borderRadius: 22,
     borderWidth: 1,
     borderColor: '#E9EDF7',
-    padding: 18,
+    padding: 16,
     marginBottom: 12,
   },
   cardV2Top: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
   cardV2Avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardV2Initials: { fontSize: 18, fontWeight: '900', color: '#4338CA' },
+  cardV2Initials: { fontSize: 17, fontWeight: '900', color: '#4338CA' },
+  cardV2Trail: { alignItems: 'center', gap: 8 },
   metaStrong: { color: '#334155', fontWeight: '800' },
-  fillGradient: { height: '100%', borderRadius: 8 },
-  viewDetailsCta: {
-    marginTop: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#F54E25',
-    paddingVertical: 12,
-    borderRadius: 14,
-  },
-  viewDetailsCtaTxt: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
   modalHero: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18 },
   modalHeroTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   modalHeroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
@@ -1536,12 +1576,18 @@ const styles = StyleSheet.create({
   dirHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
     marginBottom: 10,
-    marginTop: 8,
+    marginTop: 4,
   },
-  dirTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: '#1B2559' },
-  dirMeta: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  dirTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1B2559',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  dirMeta: { fontSize: 12, fontWeight: '800', color: '#F54E25' },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -1567,11 +1613,6 @@ const styles = StyleSheet.create({
   statusChipTxt: { fontSize: 10, fontWeight: '800' },
   meta: { fontSize: 12, color: '#64748B', fontWeight: '600', marginTop: 4 },
   miniLine: { fontSize: 11, color: '#475569', fontWeight: '600', marginTop: 3 },
-  progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
-  progressLabel: { fontSize: 12, fontWeight: '700', color: '#94A3B8' },
-  progressPct: { fontSize: 12, fontWeight: '800', color: '#1B2559' },
-  track: { height: 8, backgroundColor: '#F1F5F9', borderRadius: 8, marginTop: 6, overflow: 'hidden' },
-  fill: { height: '100%', backgroundColor: '#4318FF', borderRadius: 8 },
   viewSummaryBtn: {
     marginTop: 12,
     alignSelf: 'flex-start',

@@ -25,7 +25,6 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
-import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { notificationTextMobile } from '../../lib/familyNotificationsMobile';
 import { useFamilyNotificationsState } from '../../lib/useFamilyNotificationsMobile';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
@@ -1118,12 +1117,7 @@ export default function MessageScreen() {
         </View>
       )}
 
-      {!activeThreadId ? (
-        <>
-          <FamilyWebMobileNav active="none" />
-          <FamilyFloatingChat />
-        </>
-      ) : null}
+      {!activeThreadId ? <FamilyWebMobileNav active="none" /> : null}
     </View>
   );
 }

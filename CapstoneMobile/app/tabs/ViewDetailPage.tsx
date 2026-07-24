@@ -18,7 +18,6 @@ import { useFocusEffect } from 'expo-router/react-navigation';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
-import { FamilyFloatingChat } from '../../components/family/FamilyFloatingChat';
 import { uiPatientFromRow, type PatientRow, type UIPatient } from '../../lib/patientMappers';
 import { notificationTextMobile } from '../../lib/familyNotificationsMobile';
 import { useFamilyNotificationsState } from '../../lib/useFamilyNotificationsMobile';
@@ -437,7 +436,6 @@ export default function ViewDetailsPage() {
       </ScrollView>
 
       <FamilyWebMobileNav active="none" />
-      <FamilyFloatingChat />
     </View>
   );
 }

@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { LogOut, FileText, ChevronDown, Users, Calendar, LayoutGrid, User } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { LogOut, FileText, ChevronDown, Users, Calendar, LayoutGrid, User, X, Copy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import BulletedListFieldInput from '@/components/clinical/BulletedListFieldInput';
 import MedicationTableField from '@/components/clinical/MedicationTableField';
 import { appendActivityFeed } from '@/lib/activityFeed';
-import { formatBulletedListNoteSection } from '@/lib/bulletedListField';
-import { formatMedicationTableNoteSection } from '@/lib/medicationTableField';
+import { formatBulletedListNoteSection, bulletedListHasContent } from '@/lib/bulletedListField';
+import { formatMedicationTableNoteSection, medicationTableHasContent } from '@/lib/medicationTableField';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
 
@@ -131,6 +131,9 @@ const NurseMedicalReportPage = () => {
   const [nurseIdentityNames, setNurseIdentityNames] = useState([]);
   const [nurseSignatureName, setNurseSignatureName] = useState('');
   const [nurseSignatureDate, setNurseSignatureDate] = useState(() => new Date().toLocaleDateString('en-US'));
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [summaryText, setSummaryText] = useState('');
+  const [summaryCopied, setSummaryCopied] = useState(false);
   const pickerRef = useRef(null);
 
   useEffect(() => {
@@ -501,6 +504,108 @@ const NurseMedicalReportPage = () => {
     setShowConfirm(false);
     navigate('/patient-database');
   }, [activeReportPatientId, admittedPatients, reportBasics.patientName, reportBasics.weekLabel, navigate, reportDetails, vitals, nurseSignatureName, nurseSignatureDate]);
+
+  const isReportComplete = useMemo(() => Boolean(
+    reportBasics.weekLabel.trim() &&
+    reportBasics.patientName.trim() &&
+    medicationTableHasContent(reportDetails.currentMedications) &&
+    vitals.weight.trim() &&
+    vitals.bp.trim() &&
+    vitals.pr.trim() &&
+    vitals.rr.trim() &&
+    vitals.spo2.trim() &&
+    vitals.temperature.trim() &&
+    bulletedListHasContent(reportDetails.ongoingMedicalConcern) &&
+    nurseSignatureName.trim() &&
+    nurseSignatureDate.trim()
+  ), [
+    reportBasics.weekLabel,
+    reportBasics.patientName,
+    reportDetails.currentMedications,
+    reportDetails.ongoingMedicalConcern,
+    vitals.weight,
+    vitals.bp,
+    vitals.pr,
+    vitals.rr,
+    vitals.spo2,
+    vitals.temperature,
+    nurseSignatureName,
+    nurseSignatureDate,
+  ]);
+
+  const buildReportSummary = useCallback(() => {
+    const lines = [];
+    lines.push(`Medical Report Summary — ${reportBasics.weekLabel || 'Week not set'}`);
+    lines.push(`Resident: ${reportBasics.patientName || '—'}${reportBasics.age ? `, Age ${reportBasics.age}` : ''}`);
+    if (reportBasics.admissionDate.trim()) lines.push(`Admission Date: ${reportBasics.admissionDate.trim()}`);
+    if (reportBasics.primaryConcern.trim()) lines.push(`Primary Concern: ${reportBasics.primaryConcern.trim()}`);
+
+    const vitalsParts = [
+      vitals.weight.trim() && `Weight ${vitals.weight.trim()} kg`,
+      vitals.height.trim() && `Height ${vitals.height.trim()} cm`,
+      vitals.bmi.trim() && `BMI ${vitals.bmi.trim()}`,
+      vitals.bp.trim() && `BP ${vitals.bp.trim()}`,
+      vitals.pr.trim() && `PR ${vitals.pr.trim()}`,
+      vitals.rr.trim() && `RR ${vitals.rr.trim()}`,
+      vitals.spo2.trim() && `SPO2 ${vitals.spo2.trim()}`,
+      vitals.temperature.trim() && `Temperature ${vitals.temperature.trim()}°F`,
+    ].filter(Boolean);
+    if (vitalsParts.length) lines.push('', 'Vitals:', vitalsParts.join(' | '));
+
+    const medsBlock = formatMedicationTableNoteSection('Current Medications', reportDetails.currentMedications);
+    if (medsBlock) lines.push('', medsBlock);
+
+    const dietBlock = formatBulletedListNoteSection('Dietary Restrictions', reportDetails.dietaryRestrictions);
+    if (dietBlock) lines.push('', dietBlock);
+
+    if (reportDetails.foodAllergies.trim()) lines.push('', `Food Allergies:\n${reportDetails.foodAllergies.trim()}`);
+
+    const concernBlock = formatBulletedListNoteSection('Ongoing Medical Concern', reportDetails.ongoingMedicalConcern);
+    if (concernBlock) lines.push('', concernBlock);
+
+    lines.push('', `Reported by: ${nurseSignatureName || '—'} on ${nurseSignatureDate || '—'}`);
+
+    return lines.join('\n');
+  }, [reportBasics, vitals, reportDetails, nurseSignatureName, nurseSignatureDate]);
+
+  const handleCreateSummary = useCallback(() => {
+    setSummaryText(buildReportSummary());
+    setSummaryCopied(false);
+    setShowSummaryModal(true);
+  }, [buildReportSummary]);
+
+  const handleCopySummary = useCallback(async () => {
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(summaryText);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+
+    if (!copied) {
+      const textarea = document.createElement('textarea');
+      textarea.value = summaryText;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      try {
+        copied = document.execCommand('copy');
+      } catch {
+        copied = false;
+      }
+      document.body.removeChild(textarea);
+    }
+
+    setSummaryCopied(copied);
+    if (!copied) {
+      window.alert('Could not copy automatically — please select and copy the text manually.');
+    }
+  }, [summaryText]);
 
   return (
     <div className="wr-container">
@@ -998,6 +1103,8 @@ const NurseMedicalReportPage = () => {
         .submit-row {
           display: flex;
           justify-content: flex-end;
+          align-items: center;
+          gap: 14px;
           padding-top: 18px;
         }
 
@@ -1017,6 +1124,85 @@ const NurseMedicalReportPage = () => {
 
         .btn-submit:hover { filter: brightness(1.02); transform: translateY(-1px); }
         .btn-submit:active { transform: scale(0.98); }
+
+        .btn-summary {
+          background: white;
+          color: #1B2559;
+          border: 1.5px solid #E9EDF7;
+          padding: 13px 30px;
+          border-radius: 18px;
+          font-size: 14px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          font-family: 'Inter', sans-serif;
+        }
+
+        .btn-summary:hover:not(:disabled) { background: #F4F7FE; transform: translateY(-1px); }
+        .btn-summary:active:not(:disabled) { transform: scale(0.98); }
+        .btn-summary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* ---- SUMMARY MODAL ---- */
+        .mr-summary-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.35);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1100;
+          padding: 20px;
+        }
+
+        .mr-summary-modal {
+          width: min(92vw, 640px);
+          max-height: 85vh;
+          overflow-y: auto;
+          background: white;
+          border: 1px solid #E9EDF7;
+          border-radius: 20px;
+          box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+        }
+
+        .mr-summary-head {
+          position: sticky;
+          top: 0;
+          background: white;
+          padding: 18px 20px;
+          border-bottom: 1px solid #EEF2FF;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .mr-summary-title { font-size: 16px; font-weight: 800; color: #1B2559; }
+
+        .mr-summary-close {
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #707EAE;
+          display: flex;
+          padding: 4px;
+          border-radius: 8px;
+        }
+        .mr-summary-close:hover { background: #F4F7FE; }
+
+        .mr-summary-body {
+          padding: 20px;
+          white-space: pre-wrap;
+          font-size: 13.5px;
+          line-height: 1.6;
+          color: #2B3674;
+          font-family: 'Inter', sans-serif;
+        }
+
+        .mr-summary-foot {
+          padding: 14px 20px 20px;
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+        }
 
         /* ---- CONFIRM DIALOG ---- */
         .confirm-bar {
@@ -1611,7 +1797,18 @@ const NurseMedicalReportPage = () => {
                   <button type="button" className="confirm-btn-ok" onClick={persistWeeklyReport}>Confirm</button>
                 </div>
               ) : (
-                <button type="submit" className="btn-submit">Submit Medical Report</button>
+                <>
+                  <button
+                    type="button"
+                    className="btn-summary"
+                    disabled={!isReportComplete}
+                    onClick={handleCreateSummary}
+                    title={isReportComplete ? 'Combine and preview everything filled out on this report' : 'Fill out all required fields to create a summary'}
+                  >
+                    Create Summary
+                  </button>
+                  <button type="submit" className="btn-submit">Submit Medical Report</button>
+                </>
               )}
             </div>
 
@@ -1654,6 +1851,29 @@ const NurseMedicalReportPage = () => {
           <span style={{ color: '#F54E25' }}>Logout</span>
         </div>
       </div>
+
+      {showSummaryModal ? (
+        <div className="mr-summary-backdrop" onClick={() => setShowSummaryModal(false)}>
+          <div className="mr-summary-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="mr-summary-head">
+              <span className="mr-summary-title">Report Summary</span>
+              <button type="button" className="mr-summary-close" onClick={() => setShowSummaryModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mr-summary-body">{summaryText}</div>
+            <div className="mr-summary-foot">
+              <button type="button" className="confirm-btn-cancel" onClick={() => setShowSummaryModal(false)}>Close</button>
+              <button type="button" className="confirm-btn-ok" onClick={handleCopySummary}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Copy size={14} />
+                  {summaryCopied ? 'Copied' : 'Copy'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
     </div>
   );

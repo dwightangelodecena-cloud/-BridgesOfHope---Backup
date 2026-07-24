@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  Modal,
+  Pressable,
+  ScrollView,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { KalingaLogoMark } from './KalingaLogoMark';
 import { FamilyHeaderBrand, FamilyPageTitleBrand } from './FamilyHeaderBrand';
 import { FamilyHeaderAvatarMobile } from './FamilyHeaderAvatarMobile';
+import { NotificationsPanel } from './NotificationsPanel';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 import { useFamilyNotificationsInbox } from '../../lib/useFamilyNotificationsInbox';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
@@ -26,6 +30,8 @@ type Props = {
   showLogo?: boolean;
   /** Scroll main page content to top (tap brand / title area). */
   onBrandPress?: () => void;
+  /** Renders with a transparent background — for screens placing the header over a hero image. */
+  transparent?: boolean;
 };
 
 /**
@@ -35,20 +41,103 @@ export function FamilyMobilePageHeader({
   title,
   showLogo = true,
   onBrandPress,
+  transparent = false,
 }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { userId, initials } = useFamilyUserMobile();
   const notif = useFamilyNotificationsInbox(userId);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   const onProfile = () => router.navigate(TAB_ROUTES.profile as never);
-  const openNotifications = () => router.navigate(TAB_ROUTES.notifications as never);
   const isHomeBrand = showLogo && !title;
+
+  const visibleNotifItems = notif.items.filter((i) => !dismissedIds.has(i.id)).slice(0, 6);
+
+  const dismissItem = (id: string) => {
+    setDismissedIds((prev) => new Set(prev).add(id));
+  };
+
+  const clearAllNotifs = () => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      for (const item of notif.items) next.add(item.id);
+      return next;
+    });
+    for (const item of notif.items) void notif.markRead(item);
+  };
+
+  const openFullNotifications = () => {
+    setNotifDropdownOpen(false);
+    setNotifOpen(true);
+  };
 
   return (
     <>
-      <View style={styles.headerShell}>
-        <View style={[styles.bar, { paddingTop: Math.max(insets.top, 8) }]}>
+      <Modal
+        visible={notifDropdownOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNotifDropdownOpen(false)}
+      >
+        <View style={styles.notifRoot}>
+          <Pressable style={styles.notifBackdrop} onPress={() => setNotifDropdownOpen(false)} />
+          <View style={[styles.notifPanel, { top: insets.top + 46, right: 16 }]}>
+            <View style={styles.notifHead}>
+              <View style={styles.notifTitleRow}>
+                <Ionicons name="notifications" size={16} color={BH.brand} />
+                <Text style={styles.notifTitle}>Notifications</Text>
+              </View>
+              {visibleNotifItems.length > 0 ? (
+                <TouchableOpacity onPress={clearAllNotifs} accessibilityRole="button">
+                  <Text style={styles.clearAll}>Clear all</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {visibleNotifItems.length === 0 ? (
+              <Text style={styles.notifEmpty}>No notifications.</Text>
+            ) : (
+              <>
+                <ScrollView
+                  style={styles.notifScroll}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  {visibleNotifItems.map((item) => (
+                    <View key={item.id} style={styles.notifRow}>
+                      <Ionicons name="checkmark-circle" size={15} color={BH.indigo500} style={{ marginTop: 2 }} />
+                      <Text style={styles.notifText}>{item.body || item.title}</Text>
+                      <TouchableOpacity
+                        onPress={() => dismissItem(item.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Remove notification"
+                      >
+                        <Text style={styles.notifDismiss}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity onPress={openFullNotifications} style={styles.notifShowMore} accessibilityRole="button">
+                  <Text style={styles.notifShowMoreTxt}>Show more</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={notifOpen}
+        animationType="slide"
+        onRequestClose={() => setNotifOpen(false)}
+      >
+        <NotificationsPanel userId={userId} onClose={() => setNotifOpen(false)} />
+      </Modal>
+
+      <View style={[styles.headerShell, transparent && styles.headerShellTransparent]}>
+        <View style={[styles.bar, transparent && styles.barTransparent, { paddingTop: Math.max(insets.top, 8) }]}>
           <TouchableOpacity
             style={styles.brandArea}
             onPress={onBrandPress}
@@ -68,7 +157,7 @@ export function FamilyMobilePageHeader({
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.notifyBtn, notif.unreadCount > 0 ? styles.notifyBtnActive : styles.notifyBtnIdle]}
-              onPress={openNotifications}
+              onPress={() => setNotifDropdownOpen(true)}
               accessibilityRole="button"
               accessibilityLabel={
                 notif.unreadCount > 0
@@ -91,13 +180,16 @@ export function FamilyMobilePageHeader({
                 </View>
               ) : null}
             </TouchableOpacity>
-            <FamilyHeaderAvatarMobile
-              userId={userId}
-              initials={initials}
-              onPress={onProfile}
-              size={34}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            />
+            <View style={styles.avatarWrap}>
+              <FamilyHeaderAvatarMobile
+                userId={userId}
+                initials={initials}
+                onPress={onProfile}
+                size={34}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              />
+              {isHomeBrand ? <View style={styles.avatarStatusDot} /> : null}
+            </View>
           </View>
         </View>
       </View>
@@ -121,6 +213,14 @@ const styles = StyleSheet.create({
       default: {},
     }),
   },
+  headerShellTransparent: {
+    backgroundColor: 'transparent',
+    ...Platform.select({
+      ios: { shadowOpacity: 0 },
+      android: { elevation: 0 },
+      default: {},
+    }),
+  },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -130,6 +230,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     backgroundColor: BH.surface,
   },
+  barTransparent: { backgroundColor: 'transparent' },
   brandArea: {
     flex: 1,
     minWidth: 0,
@@ -137,6 +238,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  avatarWrap: { position: 'relative' },
+  avatarStatusDot: {
+    position: 'absolute',
+    right: -1,
+    bottom: -1,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#22C55E',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
   notifyBtn: {
     width: 34,
     height: 34,
@@ -190,4 +303,43 @@ const styles = StyleSheet.create({
       default: {},
     }),
   },
+  notifRoot: { flex: 1 },
+  notifBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' },
+  notifPanel: {
+    position: 'absolute',
+    width: Math.min(320, 340),
+    maxHeight: 380,
+    backgroundColor: BH.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BH.border,
+    padding: 16,
+    shadowColor: BH.slate900,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  notifHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  notifTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  notifTitle: { fontSize: 15, fontWeight: '800', color: BH.slate900 },
+  clearAll: { fontSize: 12, fontWeight: '700', color: BH.brand },
+  notifEmpty: { fontSize: 12, color: BH.slate500, fontWeight: '600', paddingVertical: 8 },
+  notifScroll: { maxHeight: 280 },
+  notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
+  notifText: { flex: 1, fontSize: 13, color: BH.slate700, lineHeight: 18 },
+  notifDismiss: { fontSize: 18, lineHeight: 18, color: BH.slate400, fontWeight: '700', paddingHorizontal: 2 },
+  notifShowMore: {
+    marginTop: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  notifShowMoreTxt: { fontSize: 12.5, fontWeight: '800', color: BH.brand },
 });
