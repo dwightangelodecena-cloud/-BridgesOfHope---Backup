@@ -896,7 +896,7 @@ const styles = StyleSheet.create({
   },
   avatarInitials: {
     color: '#FFFFFF',
-    fontSize: 40,
+    fontSize: 30,
     fontWeight: '800',
   },
   avatarEditFab: {
@@ -922,7 +922,7 @@ const styles = StyleSheet.create({
     }),
   },
   displayName: {
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'center',

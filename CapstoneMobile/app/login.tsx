@@ -573,7 +573,7 @@ const styles = StyleSheet.create({
   },
   logo: { width: 82, height: 82 },
   heroTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "800",
     color: C.white,
     letterSpacing: -0.3,
@@ -604,7 +604,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   formTitle: {
-    fontSize: 26,
+    fontSize: 20,
     fontWeight: "800",
     color: C.navy,
     letterSpacing: -0.5,

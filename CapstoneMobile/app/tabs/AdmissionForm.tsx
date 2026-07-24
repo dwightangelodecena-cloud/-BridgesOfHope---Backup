@@ -1873,7 +1873,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   termsH1: {
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: '800',
     color: '#0F172A',
     textAlign: 'center',
@@ -1944,7 +1944,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   successTitle: {
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: '800',
     color: C.navy,
     marginBottom: 8,

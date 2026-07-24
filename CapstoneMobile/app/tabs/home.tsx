@@ -1212,7 +1212,7 @@ const styles = StyleSheet.create({
   heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: -1 },
   heroTitle: {
     flexShrink: 1,
-    fontSize: isCompactScreen ? 25 : 29,
+    fontSize: isCompactScreen ? 20 : 22,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -0.5,
@@ -1259,7 +1259,7 @@ const styles = StyleSheet.create({
   summaryStatCol: { flex: 1, minWidth: 0 },
   summaryStatLabel: { fontSize: 12, color: '#64748B', fontWeight: '600' },
   summaryStatValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  summaryStatValue: { fontSize: 26, fontWeight: '900', color: BH.slate900, letterSpacing: -0.5 },
+  summaryStatValue: { fontSize: 22, fontWeight: '900', color: BH.slate900, letterSpacing: -0.5 },
   summaryStatIconWrap: {
     width: 22,
     height: 22,
@@ -1310,7 +1310,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   heroHeadline: {
-    fontSize: isCompactScreen ? 22 : 25,
+    fontSize: isCompactScreen ? 18 : 20,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -0.4,
@@ -1380,7 +1380,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   statLabel: { fontSize: 9.5, color: '#64748B', fontWeight: '800', letterSpacing: 0.4 },
-  statValue: { fontSize: 22, fontWeight: '900', marginTop: 4, letterSpacing: -0.5 },
+  statValue: { fontSize: 19, fontWeight: '900', marginTop: 4, letterSpacing: -0.5 },
   statGhostIcon: {
     position: 'absolute',
     right: -12,

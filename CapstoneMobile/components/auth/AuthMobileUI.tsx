@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   cardHeading: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '800',
     color: AUTH_MOBILE.navy,
     letterSpacing: -0.4,

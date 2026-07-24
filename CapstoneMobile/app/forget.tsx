@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   heroTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "800",
     color: C.white,
     letterSpacing: -0.4,
@@ -519,7 +519,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   formTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "800",
     color: C.navy,
     letterSpacing: -0.4,

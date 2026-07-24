@@ -556,7 +556,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   careUpdatesTitle: {
-    fontSize: isCompactScreen ? 20 : 22,
+    fontSize: isCompactScreen ? 17 : 19,
     fontWeight: '800',
     color: '#1B2559',
   },

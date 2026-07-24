@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
   },
   admissionAmount: {
     color: '#FFFFFF',
-    fontSize: 32,
+    fontSize: 24,
     fontWeight: '800',
     letterSpacing: -0.5,
     marginBottom: 4,

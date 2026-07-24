@@ -906,7 +906,7 @@ const styles = StyleSheet.create({
   },
   patientCardV2Top: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   patientAvatarCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  patientCardV2Initials: { fontSize: 16, fontWeight: '900', color: '#4338CA' },
+  patientCardV2Initials: { fontSize: 15, fontWeight: '900', color: '#4338CA' },
   patientCardV2ProgRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   patientCardV2Track: {
     flex: 1,
@@ -1006,8 +1006,8 @@ const styles = StyleSheet.create({
     borderColor: '#E9EDF7',
     padding: 16,
   },
-  panelTitle: { fontSize: 18, fontWeight: '800', color: '#1B2559' },
-  panelSub: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 6 },
+  panelTitle: { fontSize: 15.5, fontWeight: '800', color: '#1B2559' },
+  panelSub: { fontSize: 11.5, color: '#64748B', fontWeight: '600', marginTop: 4, lineHeight: 15 },
   muted: { color: '#64748B', fontSize: 13, fontWeight: '700', marginBottom: 8 },
   err: {
     color: '#b91c1c',
@@ -1030,7 +1030,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   patientBtnOn: { borderColor: '#F54E25', backgroundColor: '#FFF7F4' },
-  patientName: { fontSize: 16, fontWeight: '800', color: '#1B2559', marginBottom: 6 },
+  patientName: { fontSize: 14.5, fontWeight: '800', color: '#1B2559', marginBottom: 6 },
   patientMeta: { fontSize: 12, color: '#64748B', fontWeight: '600', marginBottom: 2 },
   kpi: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: '#EEF4FF' },
   kpiTxt: { fontSize: 10, fontWeight: '800', color: '#3758D5' },
