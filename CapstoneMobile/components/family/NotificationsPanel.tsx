@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { useFamilyNotificationsInbox, type InboxItem } from '../../lib/useFamilyNotificationsInbox';
+import { BH, RADIUS, SHADOW } from '../../theme/tokens';
 
 function relativeTime(ts: number): string {
   const diffMs = Date.now() - ts;
@@ -18,28 +19,39 @@ function relativeTime(ts: number): string {
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-type NotifVisual = { icon: keyof typeof Ionicons.glyphMap; bg: string; color: string; accent: string };
+export type NotifVisual = { icon: keyof typeof Ionicons.glyphMap; bg: string; color: string; accent: string; label: string };
 
-const RELATED_CFG: Record<string, NotifVisual> = {
-  admission_request: { icon: 'document-text', bg: '#FFE4D6', color: '#C2410C', accent: '#F97316' },
-  visitation_request: { icon: 'calendar', bg: '#E0E7FF', color: '#4338CA', accent: '#6366F1' },
+/** Primary lookup: the notification's own `category` column. Covers every new send path. */
+const CATEGORY_CFG: Record<string, NotifVisual> = {
+  admission: { icon: 'document-text', bg: BH.brandSurface, color: BH.brand700, accent: BH.brand, label: 'Admission' },
+  visitation: { icon: 'calendar', bg: BH.indigoTint, color: BH.indigo, accent: BH.indigo500, label: 'Visitation' },
+  promo: { icon: 'megaphone', bg: '#FCE7F3', color: '#BE185D', accent: '#EC4899', label: 'Promo' },
+  clinical: { icon: 'medkit', bg: '#CCFBF1', color: '#0F766E', accent: '#14B8A6', label: 'Clinical' },
+  progress: { icon: 'trending-up', bg: BH.infoBg, color: BH.info, accent: '#3B82F6', label: 'Progress' },
 };
-const DEFAULT_CFG: NotifVisual = { icon: 'notifications-outline', bg: '#F1F5F9', color: '#64748B', accent: '#94A3B8' };
+const RELATED_CFG: Record<string, NotifVisual> = {
+  admission_request: CATEGORY_CFG.admission,
+  visitation_request: CATEGORY_CFG.visitation,
+};
+const DEFAULT_CFG: NotifVisual = { icon: 'notifications-outline', bg: BH.slate100, color: BH.slate500, accent: BH.slate400, label: 'General' };
 
-/** Status-coloured pill icon derived from the notification's title, falling back to its related-record type. */
-function getNotifVisual(item: InboxItem): NotifVisual {
+/** Category-first lookup; falls back to the old title/related-type heuristics for rows without a meaningful category. */
+export function getNotifVisual(item: InboxItem): NotifVisual {
+  if (item.category && CATEGORY_CFG[item.category]) {
+    return CATEGORY_CFG[item.category];
+  }
   const t = item.title.toLowerCase();
   if (t.includes('approved') || t.includes('confirmed')) {
-    return { icon: 'checkmark-circle', bg: '#DCFCE7', color: '#16A34A', accent: '#22C55E' };
+    return { icon: 'checkmark-circle', bg: BH.successBg, color: BH.successText, accent: BH.success, label: 'Approved' };
   }
   if (t.includes('rejected') || t.includes('declined')) {
-    return { icon: 'close-circle', bg: '#FEE2E2', color: '#DC2626', accent: '#EF4444' };
+    return { icon: 'close-circle', bg: BH.dangerBg, color: BH.danger, accent: BH.dangerStrong, label: 'Declined' };
   }
   if (t.includes('documents needed') || t.includes('required')) {
-    return { icon: 'alert-circle', bg: '#FEF3C7', color: '#B45309', accent: '#F59E0B' };
+    return { icon: 'alert-circle', bg: BH.warningBg, color: BH.warning, accent: '#F59E0B', label: 'Action needed' };
   }
   if (t.includes('rescheduled')) {
-    return { icon: 'time', bg: '#E0E7FF', color: '#4338CA', accent: '#6366F1' };
+    return { icon: 'time', bg: BH.indigoTint, color: BH.indigo, accent: BH.indigo500, label: 'Rescheduled' };
   }
   return RELATED_CFG[item.relatedType || ''] || DEFAULT_CFG;
 }
@@ -82,17 +94,17 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.headerBack} hitSlop={12} accessibilityLabel="Close">
-          <Ionicons name="arrow-back" size={20} color="#1B2559" />
+          <Ionicons name="arrow-back" size={20} color={BH.textStrong} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
         <View style={{ width: 28 }} />
       </View>
 
       {inbox.loading ? (
-        <ActivityIndicator color="#F54E25" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={BH.brand} style={{ marginTop: 40 }} />
       ) : inbox.items.length === 0 ? (
         <View style={styles.emptyWrap}>
-          <Ionicons name="mail-open-outline" size={40} color="#CBD5E1" />
+          <Ionicons name="mail-open-outline" size={40} color={BH.slate300} />
           <Text style={styles.emptyTxt}>No notifications yet.</Text>
         </View>
       ) : (
@@ -108,7 +120,7 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
                 style={({ pressed }) => [
                   styles.card,
                   !item.isRead && styles.cardUnread,
-                  { borderLeftColor: !item.isRead ? cfg.accent : '#EEF1F6' },
+                  { borderLeftColor: !item.isRead ? cfg.accent : BH.border },
                   pressed && styles.rowPressed,
                 ]}
                 onPress={() => openDetail(item)}
@@ -118,17 +130,20 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={styles.rowTop}>
-                    <Text style={[styles.rowTitle, !item.isRead && styles.rowTitleUnread]} numberOfLines={1}>
-                      {item.title}
+                    <Text style={[styles.categoryPill, { color: cfg.color, backgroundColor: cfg.bg }]}>
+                      {cfg.label.toUpperCase()}
                     </Text>
                     {!item.isRead ? <View style={[styles.unreadDot, { backgroundColor: cfg.accent }]} /> : null}
                   </View>
+                  <Text style={[styles.rowTitle, !item.isRead && styles.rowTitleUnread]} numberOfLines={1}>
+                    {item.title}
+                  </Text>
                   <Text style={styles.rowSender}>Bridges of Hope · {relativeTime(item.createdAt)}</Text>
                   <Text style={styles.rowSnippet} numberOfLines={2}>
                     {item.body}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginTop: 2 }} />
+                <Ionicons name="chevron-forward" size={16} color={BH.slate300} style={{ marginTop: 2 }} />
               </Pressable>
             );
           })}
@@ -140,17 +155,22 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
           <Pressable style={styles.detailBackdrop} onPress={() => setOpenItem(null)} />
           <View style={[styles.detailCard, { marginBottom: insets.bottom + 24 }]}>
             <View style={styles.detailHead}>
-              <View style={[styles.detailAvatar, { backgroundColor: openItem ? getNotifVisual(openItem).accent : '#F54E25' }]}>
-                <Ionicons name="business" size={16} color="#FFFFFF" />
+              <View style={[styles.detailAvatar, { backgroundColor: openItem ? getNotifVisual(openItem).accent : BH.brand }]}>
+                <Ionicons name={openItem ? getNotifVisual(openItem).icon : 'business'} size={16} color={BH.brandContrast} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
+                {openItem ? (
+                  <Text style={[styles.categoryPill, styles.detailCategoryPill, { color: getNotifVisual(openItem).color, backgroundColor: getNotifVisual(openItem).bg }]}>
+                    {getNotifVisual(openItem).label.toUpperCase()}
+                  </Text>
+                ) : null}
                 <Text style={styles.detailTitle}>{openItem?.title}</Text>
                 <Text style={styles.detailFrom}>
                   From Bridges of Hope{openItem ? ` · ${relativeTime(openItem.createdAt)}` : ''}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setOpenItem(null)} hitSlop={10}>
-                <Ionicons name="close" size={22} color="#64748B" />
+                <Ionicons name="close" size={22} color={BH.slate500} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.detailBodyScroll} showsVerticalScrollIndicator={false}>
@@ -171,7 +191,7 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F8FAFF' },
+  screen: { flex: 1, backgroundColor: BH.surface2 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -179,82 +199,85 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: BH.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: BH.slate100,
   },
   headerBack: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 14.5, fontWeight: '800', color: '#1B2559' },
+  headerTitle: { fontSize: 14.5, fontWeight: '800', color: BH.textStrong },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  emptyTxt: { fontSize: 13, color: '#94A3B8', fontWeight: '600' },
+  emptyTxt: { fontSize: 13, color: BH.textSubtle, fontWeight: '600' },
   listContent: { padding: 14, paddingBottom: 28 },
   card: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: BH.surface,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
     borderColor: 'rgba(233, 237, 247, 0.9)',
     borderLeftWidth: 3,
     padding: 13,
     marginBottom: 10,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-      },
-      android: { elevation: 1 },
-    }),
+    ...SHADOW.sm,
   },
   cardUnread: { backgroundColor: '#FFFBF9' },
   rowPressed: { opacity: 0.75 },
   rowIconWrap: {
     width: 38,
     height: 38,
-    borderRadius: 13,
+    borderRadius: RADIUS.md + 1,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
     marginTop: 1,
   },
-  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  rowTitle: { flex: 1, fontSize: 13.5, fontWeight: '700', color: '#475569' },
-  rowTitleUnread: { fontWeight: '800', color: '#1B2559' },
-  rowSender: { fontSize: 10.5, color: '#94A3B8', fontWeight: '700', marginTop: 1 },
-  rowSnippet: { fontSize: 12.5, color: '#64748B', marginTop: 3, lineHeight: 17 },
-  unreadDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#F54E25', marginTop: 6, flexShrink: 0 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
+  categoryPill: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: RADIUS.pill,
+    overflow: 'hidden',
+  },
+  detailCategoryPill: { alignSelf: 'flex-start', marginBottom: 3 },
+  rowTitle: { fontSize: 13.5, fontWeight: '700', color: BH.slate600 },
+  rowTitleUnread: { fontWeight: '800', color: BH.textStrong },
+  rowSender: { fontSize: 10.5, color: BH.textSubtle, fontWeight: '700', marginTop: 1 },
+  rowSnippet: { fontSize: 12.5, color: BH.textMuted, marginTop: 3, lineHeight: 17 },
+  unreadDot: { width: 7, height: 7, borderRadius: 4, marginLeft: 'auto', flexShrink: 0 },
   detailRoot: { flex: 1, justifyContent: 'flex-end' },
   detailBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.4)' },
   detailCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    backgroundColor: BH.surface,
+    borderRadius: RADIUS['2xl'] - 4,
     marginHorizontal: 16,
     padding: 20,
     maxHeight: '70%',
+    ...SHADOW.lg,
   },
   detailHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
   detailAvatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F54E25',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
   },
-  detailTitle: { fontSize: 15, fontWeight: '800', color: '#1B2559' },
-  detailFrom: { fontSize: 11, color: '#94A3B8', fontWeight: '600', marginTop: 2 },
+  detailTitle: { fontSize: 15, fontWeight: '800', color: BH.textStrong },
+  detailFrom: { fontSize: 11, color: BH.textSubtle, fontWeight: '600', marginTop: 2 },
   detailBodyScroll: { maxHeight: 260 },
-  detailBody: { fontSize: 14, color: '#334155', lineHeight: 21 },
+  detailBody: { fontSize: 14, color: BH.text, lineHeight: 21 },
   detailActionBtn: {
     marginTop: 16,
-    backgroundColor: '#F54E25',
-    borderRadius: 14,
+    backgroundColor: BH.brand,
+    borderRadius: RADIUS.lg,
     paddingVertical: 13,
     alignItems: 'center',
+    ...SHADOW.brand,
   },
-  detailActionTxt: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
+  detailActionTxt: { color: BH.brandContrast, fontWeight: '800', fontSize: 14 },
 });

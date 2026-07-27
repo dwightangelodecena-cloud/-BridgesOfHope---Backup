@@ -8,6 +8,7 @@ export type DbFamilyNotification = {
   readAt: number | null;
   relatedType: string;
   relatedId: string;
+  category: string;
 };
 
 function mapRow(r: Record<string, unknown>): DbFamilyNotification {
@@ -19,6 +20,7 @@ function mapRow(r: Record<string, unknown>): DbFamilyNotification {
     readAt: r.read_at ? new Date(String(r.read_at)).getTime() : null,
     relatedType: String(r.related_type || ''),
     relatedId: String(r.related_id || ''),
+    category: String(r.category || 'general'),
   };
 }
 

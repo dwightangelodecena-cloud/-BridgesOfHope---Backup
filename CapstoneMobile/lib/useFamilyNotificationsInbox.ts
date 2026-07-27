@@ -17,6 +17,7 @@ export type InboxItem = {
   source: 'db' | 'legacy';
   relatedType?: string;
   relatedId?: string;
+  category: string;
 };
 
 /**
@@ -71,6 +72,7 @@ export function useFamilyNotificationsInbox(userId: string) {
       source: 'db' as const,
       relatedType: n.relatedType,
       relatedId: n.relatedId,
+      category: n.category,
     }));
     const fromLegacy: InboxItem[] = legacyItems.map((n) => ({
       id: `legacy-${n.id}`,
@@ -79,6 +81,7 @@ export function useFamilyNotificationsInbox(userId: string) {
       createdAt: n.createdAt,
       isRead: n.createdAt <= legacyLastReadAt,
       source: 'legacy' as const,
+      category: 'progress',
     }));
     return [...fromDb, ...fromLegacy].sort((a, b) => b.createdAt - a.createdAt);
   }, [dbItems, legacyItems, legacyLastReadAt]);

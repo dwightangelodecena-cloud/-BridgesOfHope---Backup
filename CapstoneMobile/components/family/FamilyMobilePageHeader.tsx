@@ -15,7 +15,7 @@ import { useRouter } from 'expo-router';
 import { KalingaLogoMark } from './KalingaLogoMark';
 import { FamilyHeaderBrand, FamilyPageTitleBrand } from './FamilyHeaderBrand';
 import { FamilyHeaderAvatarMobile } from './FamilyHeaderAvatarMobile';
-import { NotificationsPanel } from './NotificationsPanel';
+import { NotificationsPanel, getNotifVisual } from './NotificationsPanel';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
 import { useFamilyNotificationsInbox } from '../../lib/useFamilyNotificationsInbox';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
@@ -105,19 +105,24 @@ export function FamilyMobilePageHeader({
                   keyboardShouldPersistTaps="handled"
                   showsVerticalScrollIndicator={false}
                 >
-                  {visibleNotifItems.map((item) => (
-                    <View key={item.id} style={styles.notifRow}>
-                      <Ionicons name="checkmark-circle" size={15} color={BH.indigo500} style={{ marginTop: 2 }} />
-                      <Text style={styles.notifText}>{item.body || item.title}</Text>
-                      <TouchableOpacity
-                        onPress={() => dismissItem(item.id)}
-                        accessibilityRole="button"
-                        accessibilityLabel="Remove notification"
-                      >
-                        <Text style={styles.notifDismiss}>×</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                  {visibleNotifItems.map((item) => {
+                    const cfg = getNotifVisual(item);
+                    return (
+                      <View key={item.id} style={styles.notifRow}>
+                        <View style={[styles.notifRowIconWrap, { backgroundColor: cfg.bg }]}>
+                          <Ionicons name={cfg.icon} size={13} color={cfg.color} />
+                        </View>
+                        <Text style={styles.notifText}>{item.body || item.title}</Text>
+                        <TouchableOpacity
+                          onPress={() => dismissItem(item.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel="Remove notification"
+                        >
+                          <Text style={styles.notifDismiss}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
                 </ScrollView>
                 <TouchableOpacity onPress={openFullNotifications} style={styles.notifShowMore} accessibilityRole="button">
                   <Text style={styles.notifShowMoreTxt}>Show more</Text>
@@ -332,6 +337,15 @@ const styles = StyleSheet.create({
   notifEmpty: { fontSize: 12, color: BH.slate500, fontWeight: '600', paddingVertical: 8 },
   notifScroll: { maxHeight: 280 },
   notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
+  notifRowIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+    flexShrink: 0,
+  },
   notifText: { flex: 1, fontSize: 13, color: BH.slate700, lineHeight: 18 },
   notifDismiss: { fontSize: 18, lineHeight: 18, color: BH.slate400, fontWeight: '700', paddingHorizontal: 2 },
   notifShowMore: {
