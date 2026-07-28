@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
   useWindowDimensions,
   Platform,
   Modal,
+  Animated,
+  Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,9 +35,9 @@ import {
   isAwaitingFamilyRescheduleResponse,
   acceptVisitationReschedule,
   counterProposeVisitationReschedule,
+  cancelVisitationRequest,
   type VisitationRequestRow,
 } from '../../lib/visitationAppointmentsMobile';
-import { PlatformDateTimeField } from '../../components/family/PlatformDateTimeField';
 import { isPastIsoDate } from '../../lib/bookingDates';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
@@ -75,6 +77,68 @@ const CAL_HORIZONTAL_PAD = 72;
 const HERO_IMG_NATURAL_W = 1672;
 const HERO_IMG_NATURAL_H = 836;
 
+/** Single-line text that auto-scrolls left like a ticker/banner when it's too long to fit,
+ *  instead of ellipsizing. No-op (renders still, centered) when the text already fits. */
+function MarqueeText({ text, style, containerStyle }: { text: string; style?: object; containerStyle?: object }) {
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [textWidth, setTextWidth] = useState(0);
+  const translateX = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!containerWidth || !textWidth || textWidth <= containerWidth) {
+      translateX.setValue(0);
+      return undefined;
+    }
+    const distance = textWidth - containerWidth + 20;
+    const duration = Math.max(2200, distance * 42);
+    let cancelled = false;
+    const run = () => {
+      translateX.setValue(-distance);
+      Animated.sequence([
+        Animated.delay(1100),
+        Animated.timing(translateX, { toValue: 0, duration, easing: Easing.linear, useNativeDriver: true }),
+        Animated.delay(900),
+      ]).start(({ finished }) => {
+        if (finished && !cancelled) run();
+      });
+    };
+    run();
+    return () => {
+      cancelled = true;
+      translateX.stopAnimation();
+    };
+  }, [containerWidth, textWidth, translateX]);
+
+  const overflowing = textWidth > containerWidth && containerWidth > 0;
+
+  return (
+    <View style={[{ overflow: 'hidden' }, containerStyle]} onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}>
+      <Animated.Text
+        style={[
+          style,
+          overflowing ? { width: textWidth, maxWidth: textWidth, transform: [{ translateX }] } : null,
+        ]}
+        numberOfLines={1}
+      >
+        {text}
+      </Animated.Text>
+      {/* Off-flow measurer: absolute positioning exempts it from the parent's shrink-to-fit width,
+          so onLayout reports the text's true natural width instead of the already-clamped one. */}
+      <Text
+        style={[style, marqueeStyles.measurer]}
+        numberOfLines={1}
+        onLayout={(e) => setTextWidth(e.nativeEvent.layout.width)}
+      >
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+const marqueeStyles = StyleSheet.create({
+  measurer: { position: 'absolute', opacity: 0, left: 0, top: 0, maxWidth: 9999 },
+});
+
 function useCalendarGridLayout() {
   const { width: screenWidth } = useWindowDimensions();
   return useMemo(() => {
@@ -90,6 +154,8 @@ const STATUS_CFG: Record<string, { bg: string; color: string; border: string; ic
   Declined: { bg: '#FEE2E2', color: '#991B1B', border: '#FECACA', icon: 'close-circle-outline' },
   Rescheduled: { bg: '#E0E7FF', color: '#3730A3', border: '#C7D2FE', icon: 'swap-horizontal-outline' },
   Requested: { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', icon: 'time-outline' },
+  Cancelled: { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0', icon: 'ban-outline' },
+  Completed: { bg: '#CCFBF1', color: '#0F766E', border: '#99F6E4', icon: 'checkmark-done-circle-outline' },
 };
 
 const AVATAR_PALETTE = [
@@ -120,6 +186,29 @@ const HOLIDAY_LABELS: Record<string, string> = {
 };
 
 type PatientOpt = { id: string; name: string };
+
+type OverviewKey =
+  | 'today'
+  | 'tomorrow'
+  | 'upcoming'
+  | 'missed'
+  | 'pending'
+  | 'confirmed'
+  | 'rescheduled'
+  | 'cancelled'
+  | 'completed';
+
+const OVERVIEW_CARDS: { key: OverviewKey; label: string; icon: keyof typeof Ionicons.glyphMap; color: string; bg: string }[] = [
+  { key: 'today', label: 'Today', icon: 'today-outline', color: '#4F46E5', bg: '#E0E7FF' },
+  { key: 'tomorrow', label: 'Tomorrow', icon: 'calendar-outline', color: '#7E22CE', bg: '#F3E8FF' },
+  { key: 'upcoming', label: 'Upcoming', icon: 'trending-up-outline', color: '#0284C7', bg: '#E0F2FE' },
+  { key: 'missed', label: 'Missed', icon: 'alert-circle-outline', color: '#DC2626', bg: '#FEE2E2' },
+  { key: 'pending', label: 'Pending', icon: 'time-outline', color: '#92400E', bg: '#FEF3C7' },
+  { key: 'confirmed', label: 'Confirmed', icon: 'checkmark-circle-outline', color: '#166534', bg: '#DCFCE7' },
+  { key: 'rescheduled', label: 'Rescheduled', icon: 'swap-horizontal-outline', color: '#3730A3', bg: '#E0E7FF' },
+  { key: 'cancelled', label: 'Cancelled', icon: 'ban-outline', color: '#475569', bg: '#F1F5F9' },
+  { key: 'completed', label: 'Completed', icon: 'checkmark-done-circle-outline', color: '#0F766E', bg: '#CCFBF1' },
+];
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -215,6 +304,53 @@ export default function AppointmentsScreen() {
   }, []);
   const approvedCount = requests.filter((r) => normalizeVisitationStatus(r.status) === 'Approved').length;
   const pendingCount = requests.filter((r) => normalizeVisitationStatus(r.status) === 'Requested').length;
+
+  const tomorrowIso = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return isoLocalDate(d);
+  }, [todayIso]);
+
+  const overviewBuckets = useMemo(() => {
+    const buckets: Record<OverviewKey, VisitationRequestRow[]> = {
+      today: [],
+      tomorrow: [],
+      upcoming: [],
+      missed: [],
+      pending: [],
+      confirmed: [],
+      rescheduled: [],
+      cancelled: [],
+      completed: [],
+    };
+    for (const r of requests) {
+      const st = normalizeVisitationStatus(r.status);
+      const effDate = r.confirmedDate || r.preferredDate;
+      const isPast = isPastIsoDate(effDate);
+      if (st === 'Requested') buckets.pending.push(r);
+      if (st === 'Approved') buckets.confirmed.push(r);
+      if (st === 'Rescheduled') buckets.rescheduled.push(r);
+      if (st === 'Declined' || st === 'Cancelled') buckets.cancelled.push(r);
+      if (st === 'Completed' || (st === 'Approved' && isPast)) buckets.completed.push(r);
+      if (isPast && (st === 'Requested' || st === 'Rescheduled')) buckets.missed.push(r);
+      if (effDate && !isPast && st !== 'Declined' && st !== 'Cancelled') {
+        if (effDate === todayIso) buckets.today.push(r);
+        else if (effDate === tomorrowIso) buckets.tomorrow.push(r);
+        else buckets.upcoming.push(r);
+      }
+    }
+    const byEffDate = (a: VisitationRequestRow, b: VisitationRequestRow) =>
+      (a.confirmedDate || a.preferredDate).localeCompare(b.confirmedDate || b.preferredDate);
+    for (const key of Object.keys(buckets) as OverviewKey[]) buckets[key].sort(byEffDate);
+    return buckets;
+  }, [requests, todayIso, tomorrowIso]);
+
+  const [overviewFilter, setOverviewFilter] = useState<OverviewKey>('today');
+  useEffect(() => {
+    if (overviewBuckets[overviewFilter].length > 0) return;
+    const firstNonEmpty = OVERVIEW_CARDS.find((c) => overviewBuckets[c.key].length > 0);
+    if (firstNonEmpty) setOverviewFilter(firstNonEmpty.key);
+  }, [overviewBuckets]);
   const selectedDayLabel = form.preferredDate ? formatVisitationWeekdayLong(form.preferredDate) : '';
   const selectedDateLong = form.preferredDate
     ? new Date(`${form.preferredDate}T12:00:00`).toLocaleDateString('en-US', {
@@ -482,13 +618,18 @@ export default function AppointmentsScreen() {
   };
 
   const openCounterModal = (row: VisitationRequestRow) => {
-    setCounterModal({ row, date: row.preferredDate || row.confirmedDate || '', time: row.preferredTime || row.confirmedTime || '13:00' });
+    const initialDate = row.preferredDate || row.confirmedDate || '';
+    setCounterModal({ row, date: initialDate, time: row.preferredTime || row.confirmedTime || '13:00' });
+    if (initialDate) {
+      const d = new Date(`${initialDate}T12:00:00`);
+      if (!Number.isNaN(d.getTime())) setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    }
   };
 
   const submitCounterProposal = async () => {
     if (!counterModal.row || !counterModal.date || !counterModal.time) return;
     setRespondingId(counterModal.row.id);
-    const res = await counterProposeVisitationReschedule(counterModal.row.id, {
+    const res = await counterProposeVisitationReschedule(counterModal.row, {
       preferredDate: counterModal.date,
       preferredTime: counterModal.time,
       note: counterModal.row.note,
@@ -501,6 +642,31 @@ export default function AppointmentsScreen() {
     setCounterModal({ row: null, date: '', time: '13:00' });
     await loadAll();
     Alert.alert('Sent', 'Your preferred time has been sent to the facility.');
+  };
+
+  const handleCancelAppointment = (row: VisitationRequestRow) => {
+    Alert.alert(
+      'Cancel this appointment?',
+      `This will cancel the visit for ${row.patientName}. You can always submit a new request later.`,
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Cancel appointment',
+          style: 'destructive',
+          onPress: async () => {
+            setRespondingId(row.id);
+            const res = await cancelVisitationRequest(row);
+            setRespondingId(null);
+            if (!res.ok) {
+              Alert.alert('Could not cancel', res.errorMessage);
+              return;
+            }
+            setSelectedRequest(null);
+            await loadAll();
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -550,6 +716,91 @@ export default function AppointmentsScreen() {
           </View>
         </View>
 
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionCardHeader}>
+            <View style={[styles.sectionIconWrap, { backgroundColor: '#EEF2FF' }]}>
+              <Image
+                source={require('../../assets/images/appointment.png')}
+                style={styles.sectionIconImage}
+                resizeMode="contain"
+                tintColor="#4F46E5"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionCardTitle}>Appointment Overview</Text>
+              <Text style={styles.sectionCardSubtitleTight}>Tap a category to preview it below.</Text>
+            </View>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.overviewScrollRow}
+          >
+            {OVERVIEW_CARDS.map((c) => {
+              const count = overviewBuckets[c.key].length;
+              const active = overviewFilter === c.key;
+              return (
+                <Pressable
+                  key={c.key}
+                  onPress={() => setOverviewFilter(c.key)}
+                  style={({ pressed }) => [
+                    styles.overviewCard,
+                    { backgroundColor: active ? c.color : c.bg, borderColor: active ? c.color : 'transparent' },
+                    pressed && styles.statCardPressed,
+                  ]}
+                >
+                  <Ionicons name={c.icon} size={18} color={active ? '#FFFFFF' : c.color} />
+                  <Text style={[styles.overviewCardVal, { color: active ? '#FFFFFF' : '#1B2559' }]}>{count}</Text>
+                  <Text style={[styles.overviewCardLabel, { color: active ? 'rgba(255,255,255,0.85)' : '#64748B' }]}>
+                    {c.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.overviewPreviewWrap}>
+            {overviewBuckets[overviewFilter].length === 0 ? (
+              <Text style={styles.overviewEmptyTxt}>
+                No {OVERVIEW_CARDS.find((c) => c.key === overviewFilter)?.label.toLowerCase()} appointments.
+              </Text>
+            ) : (
+              overviewBuckets[overviewFilter].slice(0, 4).map((r) => {
+                const st = normalizeVisitationStatus(r.status);
+                const stCfg = STATUS_CFG[st] || STATUS_CFG.Requested;
+                const effDate = r.confirmedDate || r.preferredDate;
+                const effTime = r.confirmedTime || r.preferredTime;
+                return (
+                  <Pressable
+                    key={r.id}
+                    style={({ pressed }) => [styles.overviewPreviewRow, pressed && styles.reqRowPressed]}
+                    onPress={() => setSelectedRequest(r)}
+                  >
+                    <View style={styles.reqAvatar}>
+                      <Text style={styles.reqAvatarTxt}>{getInitials(r.patientName)}</Text>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.reqName} numberOfLines={1}>
+                        {r.patientName}
+                      </Text>
+                      <MarqueeText
+                        text={`Visitation · ${formatReqDateTime(effDate, effTime)}`}
+                        style={styles.overviewPreviewMeta}
+                        containerStyle={styles.overviewPreviewMetaBox}
+                      />
+                    </View>
+                    <View style={[styles.statusPill, { backgroundColor: stCfg.bg, borderColor: stCfg.border }]}>
+                      <Text style={[styles.statusPillTxt, { color: stCfg.color }]}>{st}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={17} color="#CBD5E1" style={{ flexShrink: 0 }} />
+                  </Pressable>
+                );
+              })
+            )}
+          </View>
+        </View>
+
         {notices.length > 0 ? (
           <View style={styles.sectionCard}>
             <View style={styles.sectionCardHeader}>
@@ -588,9 +839,11 @@ export default function AppointmentsScreen() {
           <View style={styles.visitInfoRow}>
             <View style={[styles.visitInfoItem, styles.visitInfoItemShrink]}>
               <Ionicons name="calendar-outline" size={16} color="#4F46E5" />
-              <Text style={styles.visitInfoTxt} numberOfLines={1} ellipsizeMode="tail">
-                {(visitationSettings.days || []).join(', ')}
-              </Text>
+              <MarqueeText
+                text={(visitationSettings.days || []).join(', ')}
+                style={styles.visitInfoTxt}
+                containerStyle={styles.visitInfoMarqueeBox}
+              />
             </View>
             <View style={styles.visitInfoDivider} />
             <View style={[styles.visitInfoItem, styles.visitInfoItemFixed]}>
@@ -965,26 +1218,135 @@ export default function AppointmentsScreen() {
       >
         <View style={styles.counterModalRoot}>
           <Pressable style={styles.counterBackdrop} onPress={() => setCounterModal({ row: null, date: '', time: '13:00' })} />
-          <View style={[styles.counterCard, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={[styles.counterCard, styles.counterCardTall]}>
             <View style={styles.counterHandle} />
             <Text style={styles.counterTitle}>Propose a different time</Text>
             <Text style={styles.counterSub}>
               For {counterModal.row?.patientName}. This will be sent to the facility for review.
             </Text>
-            <PlatformDateTimeField
-              label="Preferred date"
-              mode="date"
-              value={counterModal.date}
-              minimumDate={new Date()}
-              onChange={(v) => setCounterModal((prev) => ({ ...prev, date: v }))}
-            />
-            <PlatformDateTimeField
-              label="Preferred time"
-              mode="time"
-              value={counterModal.time}
-              onChange={(v) => setCounterModal((prev) => ({ ...prev, time: v }))}
-            />
-            <View style={styles.counterFoot}>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ flexGrow: 0 }}>
+              <Text style={styles.label}>Preferred Date</Text>
+              <View style={styles.calHero}>
+                <View style={styles.calHeader}>
+                  <Pressable
+                    onPress={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                    style={({ pressed }) => [styles.calNavBtn, pressed && styles.calNavBtnPressed]}
+                    accessibilityLabel="Previous month"
+                  >
+                    <Ionicons name="chevron-back" size={22} color="#1B2559" />
+                  </Pressable>
+                  <View style={styles.calMonthCenter}>
+                    <Text style={styles.calMonthLabel}>{monthLabel}</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                    style={({ pressed }) => [styles.calNavBtn, pressed && styles.calNavBtnPressed]}
+                    accessibilityLabel="Next month"
+                  >
+                    <Ionicons name="chevron-forward" size={22} color="#1B2559" />
+                  </Pressable>
+                </View>
+                <View style={[styles.weekdayRow, { width: CAL_GRID_WIDTH, gap: CELL_GAP }]}>
+                  {WEEKDAY_LABELS.map((d) => (
+                    <View key={d} style={[styles.weekdayCell, { width: CELL }]}>
+                      <Text style={styles.weekdayTxt}>{d}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={[styles.calGrid, { width: CAL_GRID_WIDTH, gap: CELL_GAP }]}>
+                  {calendarCells.map((cell, idx) => {
+                    if (!cell) {
+                      return <View key={`cm-e-${idx}`} style={[styles.calCellEmpty, { width: CELL, height: CELL }]} />;
+                    }
+                    const { iso, dayNum, dayOfWeek } = cell;
+                    const mmdd = iso.slice(5);
+                    const isHoliday = Boolean(HOLIDAY_LABELS[mmdd]);
+                    const bookable = isBookableDate(iso, dayOfWeek);
+                    const selected = counterModal.date === iso;
+                    const isToday = iso === todayIso;
+                    const dayVisits = confirmedByDate.get(iso) || [];
+                    const hasVisit = dayVisits.length > 0;
+                    const hasPending = pendingDates.has(iso) && !hasVisit;
+                    return (
+                      <Pressable
+                        key={iso}
+                        style={({ pressed }) => [
+                          styles.calCell,
+                          { width: CELL, height: CELL },
+                          !bookable && !hasVisit && !hasPending && styles.calCellDisabled,
+                          isHoliday && !hasVisit && !hasPending && !selected && styles.calCellHoliday,
+                          bookable && !hasVisit && !hasPending && !selected && styles.calCellBookable,
+                          hasPending && !selected && styles.calCellPending,
+                          hasVisit && !selected && styles.calCellVisit,
+                          selected && styles.calCellSelected,
+                          isToday && !selected && styles.calCellToday,
+                          pressed && styles.calCellPressed,
+                        ]}
+                        onPress={() => {
+                          if (!bookable) {
+                            const reason = isPastIsoDate(iso)
+                              ? 'Past dates cannot be booked.'
+                              : HOLIDAY_LABELS[mmdd]
+                                ? HOLIDAY_LABELS[mmdd]
+                                : 'Not an available visitation day.';
+                            Alert.alert('Date not available', reason);
+                            return;
+                          }
+                          setCounterModal((prev) => ({ ...prev, date: iso }));
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.calCellNum,
+                            !bookable && !hasVisit && !hasPending && styles.calCellNumDisabled,
+                            selected && styles.calCellNumSelected,
+                            hasVisit && !selected && styles.calCellNumVisit,
+                            hasPending && !selected && styles.calCellNumPending,
+                          ]}
+                        >
+                          {dayNum}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.legendCard}>
+                  <View style={styles.legendRow}>
+                    {[
+                      { label: 'Your visit', ring: '#22C55E', dot: '#16A34A' },
+                      { label: 'Pending', ring: '#F59E0B', dot: '#D97706' },
+                      { label: 'Available', ring: '#FDBA74', dot: '#EA580C' },
+                      { label: 'Holiday', ring: '#FDA4AF', dot: '#E11D48' },
+                    ].map((l) => (
+                      <View key={l.label} style={styles.legendItem}>
+                        <View style={[styles.legendRing, { borderColor: l.ring }]}>
+                          <View style={[styles.legendDot, { backgroundColor: l.dot }]} />
+                        </View>
+                        <Text style={styles.legendTxt}>{l.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              <Text style={styles.label}>Preferred Time</Text>
+              <View style={styles.slotWrap}>
+                {timeSlots.map((slot) => (
+                  <Pressable
+                    key={slot}
+                    style={({ pressed }) => [
+                      styles.slot,
+                      counterModal.time === slot && styles.slotOn,
+                      pressed && styles.slotPressed,
+                    ]}
+                    onPress={() => setCounterModal((prev) => ({ ...prev, time: slot }))}
+                  >
+                    <Text style={[styles.slotTxt, counterModal.time === slot && styles.slotTxtOn]}>{slot}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+            <View style={[styles.counterFoot, { paddingBottom: insets.bottom }]}>
               <Pressable onPress={() => setCounterModal({ row: null, date: '', time: '13:00' })} style={styles.counterCancelBtn}>
                 <Text style={styles.counterCancelTxt}>Cancel</Text>
               </Pressable>
@@ -1087,6 +1449,29 @@ export default function AppointmentsScreen() {
                           <Text style={styles.detailLabel}>Facility note: </Text>
                           {adminReason}
                         </Text>
+                      </View>
+                    ) : null}
+                    {(st === 'Requested' || st === 'Approved' || st === 'Rescheduled') ? (
+                      <View style={styles.detailActions}>
+                        {(st === 'Requested' || st === 'Approved') ? (
+                          <Pressable
+                            style={({ pressed }) => [styles.detailRescheduleBtn, pressed && styles.primaryBtnPressed]}
+                            onPress={() => {
+                              setSelectedRequest(null);
+                              openCounterModal(selectedRequest);
+                            }}
+                          >
+                            <Ionicons name="calendar-outline" size={15} color="#3730A3" />
+                            <Text style={styles.detailRescheduleBtnTxt} numberOfLines={1}>Reschedule</Text>
+                          </Pressable>
+                        ) : null}
+                        <Pressable
+                          style={({ pressed }) => [styles.detailCancelBtn, pressed && styles.primaryBtnPressed]}
+                          onPress={() => handleCancelAppointment(selectedRequest)}
+                        >
+                          <Ionicons name="ban-outline" size={15} color="#B91C1C" />
+                          <Text style={styles.detailCancelBtnTxt} numberOfLines={1}>Cancel</Text>
+                        </Pressable>
                       </View>
                     ) : null}
                   </ScrollView>
@@ -1198,6 +1583,30 @@ const styles = StyleSheet.create({
     opacity: 0.92,
     transform: [{ scale: 0.98 }],
   },
+  overviewScrollRow: { flexDirection: 'row', gap: 10, marginTop: 14, paddingRight: 4 },
+  overviewCard: {
+    width: 76,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  overviewCardVal: { fontSize: 17, fontWeight: '900', letterSpacing: -0.3 },
+  overviewCardLabel: { fontSize: 9.5, fontWeight: '700', textAlign: 'center' },
+  overviewPreviewWrap: { marginTop: 14 },
+  overviewEmptyTxt: { fontSize: 12.5, color: '#94A3B8', fontWeight: '600', paddingVertical: 6 },
+  overviewPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F3FA',
+  },
+  overviewPreviewMeta: { fontSize: 11.5, color: '#64748B', fontWeight: '500', marginTop: 2 },
+  overviewPreviewMetaBox: { minWidth: 0, flexShrink: 1 },
   statIconWrapLg: {
     width: 44,
     height: 44,
@@ -1261,6 +1670,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  sectionIconImage: { width: 19, height: 19 },
   sectionCardTitle: { fontSize: 16, fontWeight: '800', color: '#1B2559', letterSpacing: -0.2 },
   sectionCardSubtitle: { fontSize: 12.5, fontWeight: '600', color: '#94A3B8', marginTop: 10 },
   sectionCardSubtitleTight: { fontSize: 12.5, fontWeight: '600', color: '#94A3B8', marginTop: 2 },
@@ -1288,6 +1698,7 @@ const styles = StyleSheet.create({
   },
   visitInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   visitInfoItemShrink: { flexShrink: 1, minWidth: 0 },
+  visitInfoMarqueeBox: { flexShrink: 1, minWidth: 0 },
   visitInfoItemFixed: { flexShrink: 0 },
   visitInfoTxt: { fontSize: 13, fontWeight: '700', color: '#312E81', flexShrink: 1 },
   visitInfoDivider: { width: 1, height: 18, backgroundColor: '#C7D2FE' },
@@ -1643,6 +2054,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rescheduleBtnCounterTxt: { color: '#3730A3', fontWeight: '800', fontSize: 13 },
+  detailActions: { flexDirection: 'row', gap: 8, marginTop: 18 },
+  detailRescheduleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailRescheduleBtnTxt: { color: '#3730A3', fontWeight: '800', fontSize: 13 },
+  detailCancelBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailCancelBtnTxt: { color: '#B91C1C', fontWeight: '800', fontSize: 13 },
   counterModalRoot: { flex: 1, justifyContent: 'flex-end' },
   counterBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.4)' },
   counterCard: {
@@ -1652,6 +2090,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 22,
     padding: 20,
   },
+  counterCardTall: { maxHeight: '86%' },
   counterHandle: {
     alignSelf: 'center',
     width: 40,

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { LayoutGrid, BookUser, ClipboardList, ArrowRightSquare, Users, Stethoscope, LayoutTemplate, User, LogOut, Calendar, FileText, MessageCircle } from 'lucide-react';
+import { LayoutGrid, BookUser, ClipboardList, ArrowRightSquare, Users, Stethoscope, LayoutTemplate, User, LogOut, Calendar, FileText, MessageCircle, Search } from 'lucide-react';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { useNavigate } from 'react-router-dom';
 import AdminSidebar from '@/components/admin/AdminSidebar';
@@ -46,6 +46,33 @@ import {
   renderNotificationTemplate,
 } from '@/lib/notificationTemplates';
 
+const STATUS_PILL_COLORS = {
+  Requested: { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' },
+  Approved: { bg: '#DCFCE7', color: '#166534', border: '#BBF7D0' },
+  Declined: { bg: '#FEE2E2', color: '#991B1B', border: '#FECACA' },
+  Rescheduled: { bg: '#E0E7FF', color: '#3730A3', border: '#C7D2FE' },
+  Cancelled: { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0' },
+  Completed: { bg: '#CCFBF1', color: '#0F766E', border: '#99F6E4' },
+};
+
+/** Sidebar "Status" filter chips for the calendar board — same statuses as STATUS_PILL_COLORS,
+ *  relabeled to match the board's plain-language wording (Requested -> Pending, etc). */
+const STATUS_FILTER_OPTIONS = [
+  { key: 'Approved', label: 'Confirmed', ...STATUS_PILL_COLORS.Approved },
+  { key: 'Requested', label: 'Pending', ...STATUS_PILL_COLORS.Requested },
+  { key: 'Rescheduled', label: 'Rescheduled', ...STATUS_PILL_COLORS.Rescheduled },
+  { key: 'Cancelled', label: 'Canceled', ...STATUS_PILL_COLORS.Cancelled },
+];
+
+const BOARD_WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function initialsOf(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 export default function AdminAppointmentsPage() {
   const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const RESCHEDULE_REASON_OPTIONS = [
@@ -85,6 +112,13 @@ export default function AdminAppointmentsPage() {
   const [notifyTemplates, setNotifyTemplates] = useState([]);
   /** Confirm-before-send modal for Approve/Decline (Reschedule already confirms via its own modal). */
   const [notifyConfirmModal, setNotifyConfirmModal] = useState({ open: false, row: null, action: null });
+
+  /** Calendar board (sidebar + week/month grid) state. */
+  const [boardSearch, setBoardSearch] = useState('');
+  const [boardStatusFilter, setBoardStatusFilter] = useState(() => new Set());
+  const [boardPatientFilter, setBoardPatientFilter] = useState(() => new Set());
+  const [boardView, setBoardView] = useState('month');
+  const [boardWeekAnchor, setBoardWeekAnchor] = useState(() => new Date());
 
   useEffect(() => {
     (async () => {
@@ -300,6 +334,36 @@ export default function AdminAppointmentsPage() {
     setNotifyConfirmModal({ open: false, row: null, action: null });
   };
 
+  const handleCancel = (row) => {
+    if (!row?.id) return;
+    if (!window.confirm(`Cancel the visitation for ${row.patientName || 'this resident'}?`)) return;
+    applyDecision(row, 'Cancelled', row.confirmedDate || row.preferredDate || '', row.confirmedTime || row.preferredTime || '', { allowNonPending: true });
+    if (row.familyId) {
+      void insertFamilyNotification({
+        familyId: row.familyId,
+        templateKey: 'visitation_cancelled',
+        vars: { patient_name: row.patientName },
+        relatedType: 'visitation_request',
+        relatedId: row.id,
+      });
+    }
+  };
+
+  const handleMarkCompleted = (row) => {
+    if (!row?.id) return;
+    const confirmedDate = row.confirmedDate || row.preferredDate || '';
+    applyDecision(row, 'Completed', confirmedDate, row.confirmedTime || row.preferredTime || '', { allowNonPending: true });
+    if (row.familyId) {
+      void insertFamilyNotification({
+        familyId: row.familyId,
+        templateKey: 'visitation_completed',
+        vars: { patient_name: row.patientName, confirmed_date: confirmedDate },
+        relatedType: 'visitation_request',
+        relatedId: row.id,
+      });
+    }
+  };
+
   const decide = (row, action) => {
     if (!row?.id) return;
     const current = queue.find((q) => String(q.id) === String(row.id)) || row;
@@ -326,19 +390,49 @@ export default function AdminAppointmentsPage() {
   };
 
   const monthLabel = calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const monthStartDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay();
-  const monthDays = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
-  const calendarCells = Array.from({ length: 42 }, (_, idx) => {
-    const dayNum = idx - monthStartDay + 1;
-    if (dayNum < 1 || dayNum > monthDays) return null;
-    const dateObj = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), dayNum);
-    const y = dateObj.getFullYear();
-    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const d = String(dayNum).padStart(2, '0');
-    const iso = `${y}-${m}-${d}`;
-    const dayOfWeek = dateObj.getDay();
-    return { dayNum, iso, dayOfWeek };
-  });
+  /** Monday-first weeks (matches the board grid's MON..SUN columns), grouped into full rows. */
+  const boardMonthCells = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const firstDow = new Date(year, month, 1).getDay();
+    const leadBlanks = (firstDow + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < leadBlanks; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(year, month, d);
+      const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells.push({ dayNum: d, iso, dayOfWeek: dateObj.getDay() });
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+    const weeks = [];
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+    return weeks;
+  }, [calendarMonth]);
+  const boardWeekCells = useMemo(() => {
+    const anchor = boardWeekAnchor;
+    const mondayOffset = (anchor.getDay() + 6) % 7;
+    const monday = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() - mondayOffset);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+      return {
+        dayNum: d.getDate(),
+        iso: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+        dayOfWeek: d.getDay(),
+      };
+    });
+  }, [boardWeekAnchor]);
+  const weekRangeLabel = useMemo(() => {
+    const first = boardWeekCells[0];
+    const last = boardWeekCells[6];
+    if (!first || !last) return '';
+    const firstD = new Date(`${first.iso}T12:00:00`);
+    const lastD = new Date(`${last.iso}T12:00:00`);
+    const sameMonth = firstD.getMonth() === lastD.getMonth();
+    return sameMonth
+      ? `${firstD.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${lastD.toLocaleDateString('en-US', { day: 'numeric' })}, ${lastD.getFullYear()}`
+      : `${firstD.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${lastD.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${lastD.getFullYear()}`;
+  }, [boardWeekCells]);
   const today = new Date();
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const resMonthStartDay = new Date(rescheduleMonth.getFullYear(), rescheduleMonth.getMonth(), 1).getDay();
@@ -363,22 +457,93 @@ export default function AdminAppointmentsPage() {
     '12-25': 'Christmas Day',
     '12-30': 'Rizal Day',
   };
-  const visibleQueue = queue.filter((row) => row.status !== 'Declined');
+  const visibleQueue = useMemo(() => queue.filter((row) => row.status !== 'Declined'), [queue]);
   const filteredQueue = selectedCalendarDate
     ? visibleQueue.filter((row) => visitationCalendarDateKeys(row).includes(selectedCalendarDate))
     : visibleQueue;
-  const requestCountByDate = useMemo(() => {
+
+  /** Calendar board: sidebar search/status/patient filters applied on top of visibleQueue.
+   *  Kept separate from filteredQueue/queueToRender below so the existing Request Queue list's
+   *  own date-only filtering behavior is untouched. */
+  const boardQueue = useMemo(() => {
+    const q = boardSearch.trim().toLowerCase();
+    return visibleQueue.filter((row) => {
+      if (boardStatusFilter.size > 0 && !boardStatusFilter.has(normalizeVisitationStatus(row.status))) return false;
+      const pid = row.patientId || row.patientName;
+      if (boardPatientFilter.size > 0 && !boardPatientFilter.has(pid)) return false;
+      if (q) {
+        const hay = `${row.patientName || ''} ${row.familyName || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [visibleQueue, boardStatusFilter, boardPatientFilter, boardSearch]);
+
+  const uniquePatients = useMemo(() => {
     const map = new Map();
     visibleQueue.forEach((row) => {
-      visitationCalendarDateKeys(row).forEach((d) => {
-        map.set(d, (map.get(d) || 0) + 1);
-      });
+      const id = row.patientId || row.patientName;
+      if (!id || map.has(id)) return;
+      map.set(id, { id, name: row.patientName || 'Resident', familyName: row.familyName || '' });
     });
-    return map;
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [visibleQueue]);
 
-  const visitationsOnIso = (iso) =>
-    visibleQueue.filter((row) => visitationCalendarDateKeys(row).includes(iso));
+  const visitsOnIso = (iso) => boardQueue.filter((row) => visitationCalendarDateKeys(row).includes(iso));
+
+  const openDayFromBoard = (iso) => {
+    if (!iso) return;
+    const items = visitsOnIso(iso);
+    setSelectedCalendarDate(iso);
+    setDayAppointmentsModal(items.length > 0 ? { iso, items } : null);
+  };
+
+  const toggleBoardStatus = (key) => {
+    setBoardStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleBoardPatient = (id) => {
+    setBoardPatientFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const goBoardToday = () => {
+    const now = new Date();
+    setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+    setBoardWeekAnchor(now);
+    setSelectedCalendarDate(todayIso);
+  };
+
+  const goBoardPrev = () => {
+    if (boardView === 'week') {
+      setBoardWeekAnchor((prev) => {
+        const d = new Date(prev);
+        d.setDate(d.getDate() - 7);
+        return d;
+      });
+    } else {
+      setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    }
+  };
+
+  const goBoardNext = () => {
+    if (boardView === 'week') {
+      setBoardWeekAnchor((prev) => {
+        const d = new Date(prev);
+        d.setDate(d.getDate() + 7);
+        return d;
+      });
+    } else {
+      setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    }
+  };
 
   const slotLabelAndTimeForDay = (row, iso) => {
     const conf = String(row.confirmedDate || '') === iso;
@@ -409,123 +574,257 @@ export default function AdminAppointmentsPage() {
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         .ap-outer { width: 100%; max-width: 100%; overflow-x: hidden; }
         .ap-main { flex: 1; min-height: 100vh;   padding: 34px 30px 42px; }
-        .mini-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
-        .calendar-shell {
-          margin-top: 12px;
-          border: 1px solid #dbe4f0;
-          border-radius: 14px;
-          padding: 14px;
-          background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
-          box-shadow: inset 0 1px 0 #ffffff, 0 6px 18px rgba(15, 23, 42, 0.04);
-        }
-        .calendar-month-bar {
+        .ap-board-row {
           display: flex;
-          justify-content: space-between;
+          align-items: flex-start;
+          gap: 18px;
+          margin-bottom: 16px;
+        }
+        .ap-board-sidebar {
+          width: 264px;
+          flex-shrink: 0;
+          background: #ffffff;
+          border: 1px solid #E9EDF7;
+          border-radius: 18px;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .ap-board-search {
+          display: flex;
           align-items: center;
-          margin-bottom: 10px;
-          padding: 8px 10px;
-          border-radius: 10px;
-          background: linear-gradient(135deg, #f8fafc, #eef2f7);
-          border: 1px solid #dbe4f0;
+          gap: 8px;
+          border: 1px solid #E2E8F0;
+          background: #F8FAFC;
+          border-radius: 12px;
+          padding: 9px 12px;
         }
-        .calendar-nav-btn {
-          border: 1px solid #d6e0ee;
-          background: white;
-          border-radius: 10px;
-          padding: 5px 10px;
-          cursor: pointer;
-          color: #475569;
-          font-weight: 800;
-          transition: all 0.15s ease;
-        }
-        .calendar-nav-btn:hover { border-color: #fb923c; color: #ea580c; background: #fff7ed; }
-        .calendar-weekday {
-          text-align: center;
-          font-size: 11px;
-          font-weight: 800;
-          color: #64748b;
-          text-transform: uppercase;
-          letter-spacing: 0.03em;
-          padding: 3px 0;
-        }
-        .calendar-day-btn {
-          border: 1px solid #dbe4f0;
-          background: white;
-          color: #334155;
-          border-radius: 10px;
-          min-height: 56px;
-          cursor: pointer;
+        .ap-board-search-input {
+          border: none;
+          background: transparent;
+          outline: none;
           font-size: 13px;
-          font-weight: 800;
-          transition: all 0.15s ease;
-          position: relative;
+          color: #1B2559;
+          width: 100%;
+        }
+        .ap-side-cal-head {
           display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 8px;
+        }
+        .ap-side-cal-nav {
+          border: 1px solid #E2E8F0;
+          background: #fff;
+          color: #475569;
+          width: 26px;
+          height: 26px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 800;
+          font-size: 13px;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 1px 0 rgba(255, 255, 255, 0.95) inset;
+          flex-shrink: 0;
+          padding: 0;
+          transition: all 0.15s ease;
         }
-        .calendar-day-btn:hover { border-color: #fb923c; color: #ea580c; background: #fff7ed; transform: translateY(-2px); box-shadow: 0 6px 14px rgba(251, 146, 60, 0.14); }
-        .calendar-day-btn.selected {
-          background: linear-gradient(145deg, #fb923c, #f97316);
-          border-color: #f97316;
-          color: white;
-          box-shadow: 0 8px 16px rgba(249, 115, 22, 0.22);
+        .ap-side-cal-nav:hover { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+        .ap-side-cal-label { font-size: 12.5px; font-weight: 800; color: #1B2559; }
+        .ap-side-cal-week {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 4px;
+          margin-bottom: 4px;
         }
-        .calendar-day-btn.today {
-          border-color: #f59e0b;
-          box-shadow: inset 0 0 0 1px #fcd34d;
-        }
-        .calendar-day-btn.weekend {
-          background: linear-gradient(180deg, #fffaf2, #fff4e6);
-          border-color: #fde1b8;
-          color: #9a3412;
-        }
-        .calendar-day-btn.holiday {
-          background: linear-gradient(180deg, #fff1f2, #ffe4e6);
-          border-color: #fecdd3;
-          color: #be123c;
-        }
-        .calendar-day-btn.has-request {
-          border-color: #93c5fd;
-          box-shadow: inset 0 0 0 1px #bfdbfe;
-        }
-        .request-dot {
-          position: absolute;
-          top: 6px;
-          right: 6px;
-          min-width: 17px;
-          height: 17px;
-          border-radius: 999px;
-          background: #f97316;
-          color: #fff;
-          font-size: 10px;
-          font-weight: 900;
-          line-height: 17px;
+        .ap-side-cal-weekday {
           text-align: center;
-          padding: 0 4px;
-          box-shadow: 0 2px 8px rgba(249, 115, 22, 0.35);
+          font-size: 10px;
+          font-weight: 800;
+          color: #94a3b8;
+          text-transform: uppercase;
         }
-        .calendar-day-btn.selected.weekend,
-        .calendar-day-btn.selected.holiday,
-        .calendar-day-btn.selected.today {
-          background: linear-gradient(145deg, #fb923c, #f97316);
-          border-color: #f97316;
-          color: white;
-          box-shadow: 0 8px 16px rgba(249, 115, 22, 0.22);
+        .ap-side-cal-day {
+          border: none;
+          background: transparent;
+          color: #334155;
+          border-radius: 8px;
+          height: 28px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          position: relative;
+          transition: all 0.15s ease;
         }
-        .holiday-dot {
-          position: absolute;
-          bottom: 6px;
-          width: 7px;
-          height: 7px;
-          border-radius: 50%;
-          background: #e11d48;
-          opacity: 0.85;
+        .ap-side-cal-day:hover:not(.empty) { background: #f1f5f9; }
+        .ap-side-cal-day.selected { background: #2563eb; color: #fff; }
+        .ap-side-cal-day.today:not(.selected) { color: #ea580c; font-weight: 900; }
+        .ap-side-cal-day.empty { cursor: default; }
+        .ap-side-cal-day.holiday:not(.selected) { color: #e11d48; }
+        .ap-board-section-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 12px;
+          font-weight: 800;
+          color: #1B2559;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+          margin-bottom: 10px;
         }
-        .day-number {
-          font-size: 14px;
+        .ap-board-count-badge {
+          background: #EEF2FF;
+          color: #3730A3;
+          border-radius: 999px;
+          font-size: 10.5px;
+          font-weight: 800;
+          padding: 2px 8px;
+          text-transform: none;
+          letter-spacing: 0;
+        }
+        .ap-board-clear-btn {
+          border: none;
+          background: none;
+          color: #2563eb;
+          font-size: 10.5px;
+          font-weight: 700;
+          cursor: pointer;
+          text-transform: none;
+          letter-spacing: 0;
+          padding: 0;
+        }
+        .ap-status-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .ap-status-chip {
+          border: 1px solid transparent;
+          border-radius: 999px;
+          padding: 6px 12px;
+          font-size: 11.5px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .ap-board-patients { max-height: 260px; display: flex; flex-direction: column; min-height: 0; }
+        .ap-board-patient-list { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+        .ap-board-patient-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border: none;
+          background: transparent;
+          border-radius: 10px;
+          padding: 6px 6px;
+          cursor: pointer;
+          text-align: left;
+          transition: background 0.15s ease;
+        }
+        .ap-board-patient-row:hover { background: #F8FAFC; }
+        .ap-board-patient-row.active { background: #EFF6FF; }
+        .ap-board-patient-avatar {
+          width: 26px;
+          height: 26px;
+          border-radius: 999px;
+          background: #E0E7FF;
+          color: #3730A3;
+          font-size: 10.5px;
+          font-weight: 800;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .ap-board-patient-name { font-size: 12.5px; font-weight: 700; color: #1B2559; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ap-board-patient-check {
+          width: 15px;
+          height: 15px;
+          border-radius: 5px;
+          border: 1.5px solid #CBD5E1;
+          flex-shrink: 0;
+        }
+        .ap-board-patient-check.checked { background: #2563eb; border-color: #2563eb; }
+        .ap-board-empty-note { font-size: 12px; color: #94a3b8; padding: 4px 6px; }
+        .ap-board-main { flex: 1; min-width: 0; background: #fff; border: 1px solid #E9EDF7; border-radius: 18px; padding: 16px; }
+        .ap-board-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+        .ap-board-toolbar-nav { display: flex; align-items: center; gap: 10px; }
+        .ap-board-toolbar-title { font-size: 14px; font-weight: 800; color: #1B2559; min-width: 150px; }
+        .ap-board-toolbar-actions { display: flex; gap: 8px; }
+        .ap-board-toolbar-btn {
+          border: 1px solid #E2E8F0;
+          background: #fff;
+          color: #334155;
+          border-radius: 10px;
+          padding: 7px 14px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .ap-board-toolbar-btn:hover { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+        .ap-board-grid-head {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        .ap-board-grid-head-cell {
+          text-align: left;
+          font-size: 11px;
           font-weight: 900;
-          letter-spacing: 0.01em;
+          color: #475569;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          padding: 0 4px;
+        }
+        .ap-board-grid-row {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        .ap-board-cell {
+          border: 1px solid #EEF1F8;
+          background: #FBFCFE;
+          border-radius: 12px;
+          min-height: 84px;
+          padding: 8px;
+          text-align: left;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          transition: all 0.15s ease;
+        }
+        .ap-board-cell:hover { border-color: #bfdbfe; background: #f8fbff; }
+        .ap-board-cell-big { min-height: 220px; }
+        .ap-board-cell-empty { background: transparent; border: none; cursor: default; }
+        .ap-board-cell.is-today { border-color: #f59e0b; box-shadow: inset 0 0 0 1px #fcd34d; }
+        .ap-board-cell.is-selected { border-color: #2563eb; box-shadow: inset 0 0 0 1px #93c5fd; background: #f5f9ff; }
+        .ap-board-cell-daynum { font-size: 12.5px; font-weight: 800; color: #334155; display: inline-flex; align-items: center; gap: 5px; }
+        .ap-board-cell-holiday-dot { width: 5px; height: 5px; border-radius: 50%; background: #e11d48; }
+        .ap-board-cell-avatars { display: flex; flex-direction: column; gap: 4px; margin-top: auto; }
+        .ap-board-avatar-stack { display: flex; align-items: center; }
+        .ap-board-avatar {
+          width: 22px;
+          height: 22px;
+          border-radius: 999px;
+          background: #E0E7FF;
+          color: #3730A3;
+          font-size: 9px;
+          font-weight: 800;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 2px solid #fff;
+          margin-left: -7px;
+          box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+        }
+        .ap-board-avatar:first-child { margin-left: 0; }
+        .ap-board-avatar-more { background: #F1F5F9; color: #475569; }
+        .ap-board-cell-label { font-size: 10px; font-weight: 700; color: #94a3b8; }
+        @media (max-width: 980px) {
+          .ap-board-row { flex-direction: column; }
+          .ap-board-sidebar { width: 100%; }
         }
         .modern-input {
           border: 1px solid #dbe5f3;
@@ -949,7 +1248,183 @@ export default function AdminAppointmentsPage() {
           </div>
           <div className="admin-pill">{queue.length} total requests</div>
         </div>
-        <div style={{ background: 'white', border: '1px solid #E9EDF7', borderRadius: 18, padding: 18, marginBottom: 16 }}>
+
+        <div className="ap-board-row">
+          <aside className="ap-board-sidebar">
+            <div className="ap-board-search">
+              <Search size={15} color="#94a3b8" />
+              <input
+                type="text"
+                className="ap-board-search-input"
+                placeholder="Search patient or family..."
+                value={boardSearch}
+                onChange={(e) => setBoardSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="ap-side-cal">
+              <div className="ap-side-cal-head">
+                <button type="button" className="ap-side-cal-nav" onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>{'<'}</button>
+                <div className="ap-side-cal-label">{monthLabel}</div>
+                <button type="button" className="ap-side-cal-nav" onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>{'>'}</button>
+              </div>
+              <div className="ap-side-cal-week">
+                {BOARD_WEEKDAY_LABELS.map((d) => <div key={d} className="ap-side-cal-weekday">{d[0]}</div>)}
+              </div>
+              {boardMonthCells.map((week, wi) => (
+                <div className="ap-side-cal-week" key={`side-week-${wi}`}>
+                  {week.map((cell, ci) => {
+                    const mmdd = cell?.iso ? cell.iso.slice(5) : '';
+                    const isHoliday = Boolean(cell && HOLIDAY_LABELS[mmdd]);
+                    return (
+                      <button
+                        key={cell?.iso || `side-blank-${wi}-${ci}`}
+                        type="button"
+                        disabled={!cell}
+                        title={isHoliday ? HOLIDAY_LABELS[mmdd] : ''}
+                        className={[
+                          'ap-side-cal-day',
+                          !cell ? 'empty' : '',
+                          cell?.iso === selectedCalendarDate ? 'selected' : '',
+                          cell?.iso === todayIso ? 'today' : '',
+                          isHoliday ? 'holiday' : '',
+                        ].join(' ')}
+                        onClick={() => cell && openDayFromBoard(cell.iso)}
+                      >
+                        {cell ? cell.dayNum : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+
+            <div className="ap-board-section">
+              <div className="ap-board-section-head">
+                <span>Status</span>
+                {boardStatusFilter.size > 0 ? (
+                  <button type="button" className="ap-board-clear-btn" onClick={() => setBoardStatusFilter(new Set())}>Clear</button>
+                ) : null}
+              </div>
+              <div className="ap-status-chip-row">
+                {STATUS_FILTER_OPTIONS.map((opt) => {
+                  const active = boardStatusFilter.has(opt.key);
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      className="ap-status-chip"
+                      style={{
+                        background: active ? opt.color : opt.bg,
+                        color: active ? '#ffffff' : opt.color,
+                        borderColor: opt.border,
+                      }}
+                      onClick={() => toggleBoardStatus(opt.key)}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="ap-board-section ap-board-patients">
+              <div className="ap-board-section-head">
+                <span>Patients</span>
+                <span className="ap-board-count-badge">{uniquePatients.length}</span>
+              </div>
+              <div className="ap-board-patient-list">
+                {uniquePatients.map((p) => {
+                  const active = boardPatientFilter.has(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`ap-board-patient-row${active ? ' active' : ''}`}
+                      onClick={() => toggleBoardPatient(p.id)}
+                    >
+                      <span className="ap-board-patient-avatar">{initialsOf(p.name)}</span>
+                      <span className="ap-board-patient-name">{p.name}</span>
+                      <span className={`ap-board-patient-check${active ? ' checked' : ''}`} />
+                    </button>
+                  );
+                })}
+                {uniquePatients.length === 0 ? <div className="ap-board-empty-note">No patients with visits yet.</div> : null}
+              </div>
+            </div>
+          </aside>
+
+          <section className="ap-board-main">
+            <div className="ap-board-toolbar">
+              <div className="ap-board-toolbar-nav">
+                <button type="button" className="ap-side-cal-nav" onClick={goBoardPrev}>{'<'}</button>
+                <div className="ap-board-toolbar-title">{boardView === 'week' ? weekRangeLabel : monthLabel}</div>
+                <button type="button" className="ap-side-cal-nav" onClick={goBoardNext}>{'>'}</button>
+              </div>
+              <div className="ap-board-toolbar-actions">
+                <button type="button" className="ap-board-toolbar-btn" onClick={goBoardToday}>Today</button>
+                <button
+                  type="button"
+                  className="ap-board-toolbar-btn"
+                  onClick={() => setBoardView((v) => (v === 'week' ? 'month' : 'week'))}
+                >
+                  {boardView === 'week' ? 'Month' : 'Week'}
+                </button>
+              </div>
+            </div>
+            <div className="ap-board-grid">
+              <div className="ap-board-grid-head">
+                {BOARD_WEEKDAY_LABELS.map((d) => <div key={d} className="ap-board-grid-head-cell">{d}</div>)}
+              </div>
+              {(boardView === 'week' ? [boardWeekCells] : boardMonthCells).map((week, wi) => (
+                <div className="ap-board-grid-row" key={`board-week-${wi}`}>
+                  {week.map((cell, ci) => {
+                    if (!cell) return <div key={`board-blank-${wi}-${ci}`} className="ap-board-cell ap-board-cell-empty" />;
+                    const items = visitsOnIso(cell.iso);
+                    const visible = items.slice(0, 3);
+                    const extra = items.length - visible.length;
+                    const mmdd = cell.iso.slice(5);
+                    const isHoliday = Boolean(HOLIDAY_LABELS[mmdd]);
+                    return (
+                      <button
+                        key={cell.iso}
+                        type="button"
+                        title={isHoliday ? HOLIDAY_LABELS[mmdd] : ''}
+                        className={[
+                          'ap-board-cell',
+                          cell.iso === todayIso ? 'is-today' : '',
+                          cell.iso === selectedCalendarDate ? 'is-selected' : '',
+                          boardView === 'week' ? 'ap-board-cell-big' : '',
+                        ].join(' ')}
+                        onClick={() => openDayFromBoard(cell.iso)}
+                      >
+                        <span className="ap-board-cell-daynum">
+                          {cell.dayNum}
+                          {isHoliday ? <span className="ap-board-cell-holiday-dot" /> : null}
+                        </span>
+                        {items.length > 0 ? (
+                          <div className="ap-board-cell-avatars">
+                            <div className="ap-board-avatar-stack">
+                              {visible.map((row, i) => (
+                                <span key={row.id} className="ap-board-avatar" style={{ zIndex: visible.length - i }}>
+                                  {initialsOf(row.patientName)}
+                                </span>
+                              ))}
+                              {extra > 0 ? <span className="ap-board-avatar ap-board-avatar-more">+{extra}</span> : null}
+                            </div>
+                            <span className="ap-board-cell-label">{items.length === 1 ? 'Patient' : 'Patients'}</span>
+                          </div>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div style={{ background: 'white', border: '1px solid #E9EDF7', borderRadius: 18, padding: 18, marginBottom: 16, marginTop: 16 }}>
           <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 800 }}>Fixed Visitation Schedule</h3>
           <div className="schedule-config-grid">
             <div className="schedule-weekday-cell">
@@ -985,74 +1460,6 @@ export default function AdminAppointmentsPage() {
           <p style={{ marginTop: 12, fontSize: 12, color: '#64748B' }}>
             Active schedule: {settings.days.join(', ')} · {settings.startTime} - {settings.endTime}
           </p>
-          <div className="calendar-shell">
-            <div className="calendar-month-bar">
-              <button type="button" className="calendar-nav-btn" onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>{'<'}</button>
-              <div style={{ fontWeight: 900, fontSize: 13, color: '#1e293b', letterSpacing: '0.02em' }}>{monthLabel}</div>
-              <button type="button" className="calendar-nav-btn" onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>{'>'}</button>
-            </div>
-            <div className="mini-calendar-grid" style={{ marginBottom: 6 }}>
-              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => <div key={d} className="calendar-weekday">{d}</div>)}
-            </div>
-            <div className="mini-calendar-grid">
-              {calendarCells.map((cell, idx) => (
-                (() => {
-                  const mmdd = cell?.iso ? cell.iso.slice(5) : '';
-                  const isHoliday = Boolean(cell && HOLIDAY_LABELS[mmdd]);
-                  const isWeekend = Boolean(cell && (cell.dayOfWeek === 0 || cell.dayOfWeek === 6));
-                  const requestCount = cell?.iso ? (requestCountByDate.get(cell.iso) || 0) : 0;
-                  const hasRequest = requestCount > 0;
-                  return (
-                <button
-                  key={`admin-cal-cell-${idx}`}
-                  type="button"
-                  disabled={!cell}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!cell?.iso) return;
-                    const items = visitationsOnIso(cell.iso);
-                    if (items.length > 0) {
-                      if (selectedCalendarDate === cell.iso && dayAppointmentsModal?.iso === cell.iso) {
-                        setSelectedCalendarDate('');
-                        setDayAppointmentsModal(null);
-                      } else {
-                        setSelectedCalendarDate(cell.iso);
-                        setDayAppointmentsModal({ iso: cell.iso, items });
-                      }
-                    } else {
-                      setDayAppointmentsModal(null);
-                      setSelectedCalendarDate((prev) => (prev === cell.iso ? '' : cell.iso));
-                    }
-                  }}
-                  className={[
-                    'calendar-day-btn',
-                    cell?.iso === selectedCalendarDate ? 'selected' : '',
-                    cell?.iso === todayIso ? 'today' : '',
-                    isWeekend ? 'weekend' : '',
-                    isHoliday ? 'holiday' : '',
-                    hasRequest ? 'has-request' : '',
-                  ].join(' ')}
-                  style={{ opacity: cell ? 1 : 0.35 }}
-                  title={isHoliday ? HOLIDAY_LABELS[mmdd] : isWeekend ? 'Weekend' : ''}
-                >
-                  {cell ? <span className="day-number">{cell.dayNum}</span> : ''}
-                  {hasRequest ? <span className="request-dot">{requestCount}</span> : null}
-                  {isHoliday ? <span className="holiday-dot" /> : null}
-                </button>
-                  );
-                })()
-              ))}
-            </div>
-            <div style={{ marginTop: 8, fontSize: 12, color: '#64748B' }}>
-              {selectedCalendarDate
-                ? `Filtering requests for ${selectedCalendarDate}. Dates with a blue dot have visit requests — click to view patient, date, and time.`
-                : 'Click a date to filter the queue. Dates with visit requests open a summary with patient, date, and time.'}
-            </div>
-            <div style={{ marginTop: 8, display: 'flex', gap: 14, fontSize: 11, color: '#64748B', fontWeight: 700 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: '#bfdbfe', border: '1px solid #93c5fd' }} />Weekend</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: '#fecaca', border: '1px solid #f87171' }} />Holiday</span>
-            </div>
-          </div>
         </div>
         <div style={{ background: 'white', border: '1px solid #E9EDF7', borderRadius: 18, padding: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
@@ -1104,9 +1511,9 @@ export default function AdminAppointmentsPage() {
                   <span
                     className="admin-status-pill"
                     style={{
-                      background: st === 'Approved' ? '#DCFCE7' : st === 'Declined' ? '#FEE2E2' : st === 'Rescheduled' ? '#E0E7FF' : '#FEF3C7',
-                      color: st === 'Approved' ? '#166534' : st === 'Declined' ? '#991B1B' : st === 'Rescheduled' ? '#3730A3' : '#92400E',
-                      border: `1px solid ${st === 'Approved' ? '#BBF7D0' : st === 'Declined' ? '#FECACA' : st === 'Rescheduled' ? '#C7D2FE' : '#FDE68A'}`,
+                      background: STATUS_PILL_COLORS[st]?.bg || STATUS_PILL_COLORS.Requested.bg,
+                      color: STATUS_PILL_COLORS[st]?.color || STATUS_PILL_COLORS.Requested.color,
+                      border: `1px solid ${STATUS_PILL_COLORS[st]?.border || STATUS_PILL_COLORS.Requested.border}`,
                     }}
                   >
                     {st}
@@ -1116,6 +1523,12 @@ export default function AdminAppointmentsPage() {
                       <button type="button" onClick={() => decide(row, 'Approved')} style={{ border: '1px solid #DCFCE7', background: '#ECFDF3', color: '#166534', borderRadius: 7, padding: '5px 8px', fontSize: 11, fontWeight: 700 }}>Approve</button>
                       <button type="button" onClick={() => decide(row, 'Rescheduled')} style={{ border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', borderRadius: 7, padding: '5px 8px', fontSize: 11, fontWeight: 700 }}>Reschedule</button>
                       <button type="button" onClick={() => decide(row, 'Declined')} style={{ border: '1px solid #FECACA', background: '#FEF2F2', color: '#991B1B', borderRadius: 7, padding: '5px 8px', fontSize: 11, fontWeight: 700 }}>Decline</button>
+                    </>
+                  ) : null}
+                  {st === 'Approved' || st === 'Rescheduled' ? (
+                    <>
+                      <button type="button" onClick={() => handleMarkCompleted(row)} style={{ border: '1px solid #99F6E4', background: '#F0FDFA', color: '#0F766E', borderRadius: 7, padding: '5px 8px', fontSize: 11, fontWeight: 700 }}>Mark Completed</button>
+                      <button type="button" onClick={() => handleCancel(row)} style={{ border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#475569', borderRadius: 7, padding: '5px 8px', fontSize: 11, fontWeight: 700 }}>Cancel</button>
                     </>
                   ) : null}
                 </div>
@@ -1366,7 +1779,19 @@ export default function AdminAppointmentsPage() {
                 const canDayModalAct = st !== 'Declined';
                 return (
                   <div key={row.id} className="ap-day-modal-card">
-                    <div className="ap-day-modal-patient">{row.patientName || 'Resident'}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div className="ap-day-modal-patient">{row.patientName || 'Resident'}</div>
+                      <span
+                        className="admin-status-pill"
+                        style={{
+                          background: STATUS_PILL_COLORS[st]?.bg || STATUS_PILL_COLORS.Requested.bg,
+                          color: STATUS_PILL_COLORS[st]?.color || STATUS_PILL_COLORS.Requested.color,
+                          border: `1px solid ${STATUS_PILL_COLORS[st]?.border || STATUS_PILL_COLORS.Requested.border}`,
+                        }}
+                      >
+                        {st}
+                      </span>
+                    </div>
                     <div className="ap-day-modal-meta">
                       {row.familyName ? (
                         <>
@@ -1376,9 +1801,6 @@ export default function AdminAppointmentsPage() {
                           <br />
                         </>
                       ) : null}
-                      Status:
-                      {' '}
-                      {st}
                       {row.preferredDate && row.preferredDate !== dayAppointmentsModal.iso ? (
                         <>
                           <br />

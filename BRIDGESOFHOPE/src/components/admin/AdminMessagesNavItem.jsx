@@ -1,6 +1,7 @@
 import React from 'react';
 import { MessageCircle } from 'lucide-react';
 import { useAdminUnreadMessages } from '@/hooks/useAdminUnreadMessages';
+import { SidebarLabel } from '@/components/admin/SidebarLabel';
 
 /**
  * Admin sidebar Messages — matches family portal icon-tile style.
@@ -28,12 +29,12 @@ export function AdminMessagesNavItem({ active = false, onClick, showLabel = true
         ) : null}
       </div>
       {showLabel ? (
-        <span className="sidebar-label">
+        <SidebarLabel>
           Messages
           {unread > 0 && !active ? (
             <span className="admin-msg-nav-label-count"> ({unread > 99 ? '99+' : unread})</span>
           ) : null}
-        </span>
+        </SidebarLabel>
       ) : null}
     </div>
   );

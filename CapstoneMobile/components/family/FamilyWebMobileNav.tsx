@@ -92,9 +92,10 @@ export function FamilyWebMobileNav({ active }: Props) {
                 accessibilityState={{ selected: isActive }}
               >
                 <LinearGradient
-                  colors={[BH.brandLight, BH.brand]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
+                  colors={['#FF8A3D', '#F5761E', '#F54E25', '#EA3E12']}
+                  locations={[0, 0.3, 0.65, 1]}
+                  start={{ x: 0.37, y: 0.02 }}
+                  end={{ x: 0.63, y: 0.98 }}
                   style={styles.poppedCircle}
                 >
                   <Image

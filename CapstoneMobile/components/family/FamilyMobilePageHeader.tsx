@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { KalingaLogoMark } from './KalingaLogoMark';
@@ -161,7 +162,7 @@ export function FamilyMobilePageHeader({
           </TouchableOpacity>
           <View style={styles.actions}>
             <TouchableOpacity
-              style={[styles.notifyBtn, notif.unreadCount > 0 ? styles.notifyBtnActive : styles.notifyBtnIdle]}
+              style={[styles.notifyBtn, notif.unreadCount > 0 && styles.notifyBtnActiveShadow]}
               onPress={() => setNotifDropdownOpen(true)}
               accessibilityRole="button"
               accessibilityLabel={
@@ -172,11 +173,21 @@ export function FamilyMobilePageHeader({
               activeOpacity={0.85}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons
-                name="notifications"
-                size={17}
-                color={notif.unreadCount > 0 ? BH.brandContrast : BH.slate500}
-              />
+              {notif.unreadCount > 0 ? (
+                <LinearGradient
+                  colors={['#FF8A3D', '#F5761E', '#F54E25', '#EA3E12']}
+                  locations={[0, 0.3, 0.65, 1]}
+                  start={{ x: 0.37, y: 0.02 }}
+                  end={{ x: 0.63, y: 0.98 }}
+                  style={styles.notifyBtnFill}
+                >
+                  <Ionicons name="notifications" size={17} color={BH.brandContrast} />
+                </LinearGradient>
+              ) : (
+                <View style={[styles.notifyBtnFill, styles.notifyBtnIdle]}>
+                  <Ionicons name="notifications" size={17} color={BH.slate500} />
+                </View>
+              )}
               {notif.unreadCount > 0 ? (
                 <View style={styles.notifBadge}>
                   <Text style={styles.notifBadgeText}>
@@ -264,10 +275,16 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'visible',
   },
-  // Unread: strong brand fill + soft colour glow — draws the eye only when
-  // there's something to see.
-  notifyBtnActive: {
-    backgroundColor: BH.brand,
+  notifyBtnFill: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Unread: soft colour glow on the outer tile — draws the eye only when
+  // there's something to see. The gradient fill itself lives in notifyBtnFill.
+  notifyBtnActiveShadow: {
     ...Platform.select({
       ios: {
         shadowColor: BH.brand,

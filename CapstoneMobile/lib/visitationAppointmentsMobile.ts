@@ -299,9 +299,31 @@ export async function acceptVisitationReschedule(requestId: string): Promise<{ o
   return { ok: true };
 }
 
+/** Renders {{var}} placeholders and logs a guardian's own visitation action into their notification
+ *  feed — mirrors the admin-side insertFamilyNotification but scoped by RLS to self-insert only,
+ *  and only for the template_keys a guardian is allowed to write (see family_notifications_insert_self_visitation). */
+async function insertOwnVisitationNotification(
+  templateKey: 'visitation_cancelled' | 'visitation_new_time_submitted',
+  title: string,
+  body: string,
+  { familyId, requestId }: { familyId: string; requestId: string }
+): Promise<void> {
+  if (!familyId) return;
+  const { error } = await supabase.from('family_notifications').insert({
+    family_id: familyId,
+    template_key: templateKey,
+    title,
+    body,
+    related_type: 'visitation_request',
+    related_id: requestId,
+    category: 'visitation',
+  });
+  if (error) console.warn('[family_notifications insert]', error.message);
+}
+
 /** Guardian declines admin's suggested reschedule and proposes a different date/time instead — reopens the request. */
 export async function counterProposeVisitationReschedule(
-  requestId: string,
+  row: VisitationRequestRow,
   { preferredDate, preferredTime, note }: { preferredDate: string; preferredTime: string; note?: string }
 ): Promise<{ ok: true } | { ok: false; errorMessage: string }> {
   if (!isSupabaseConfigured()) return { ok: false, errorMessage: 'Not connected.' };
@@ -317,10 +339,10 @@ export async function counterProposeVisitationReschedule(
       confirmed_by_family: false,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', requestId);
+    .eq('id', row.id);
   if (error) return { ok: false, errorMessage: error.message || 'Could not propose a different time.' };
   const rows = await loadVisitationRequests();
-  const idx = rows.findIndex((r) => String(r.id) === String(requestId));
+  const idx = rows.findIndex((r) => String(r.id) === String(row.id));
   if (idx >= 0) {
     rows[idx] = {
       ...rows[idx],
@@ -334,6 +356,35 @@ export async function counterProposeVisitationReschedule(
     };
     await saveVisitationRequests(rows);
   }
+  void insertOwnVisitationNotification(
+    'visitation_new_time_submitted',
+    'Visitation — New Time Submitted',
+    `Your new requested time for ${row.patientName}'s visit (${preferredDate} at ${preferredTime}) has been submitted and is pending confirmation.`,
+    { familyId: row.familyId, requestId: row.id }
+  );
+  return { ok: true };
+}
+
+/** Guardian cancels their own request (Requested, Approved, or Rescheduled). */
+export async function cancelVisitationRequest(row: VisitationRequestRow): Promise<{ ok: true } | { ok: false; errorMessage: string }> {
+  if (!isSupabaseConfigured()) return { ok: false, errorMessage: 'Not connected.' };
+  const { error } = await supabase
+    .from('visitation_requests')
+    .update({ status: 'Cancelled', updated_at: new Date().toISOString() })
+    .eq('id', row.id);
+  if (error) return { ok: false, errorMessage: error.message || 'Could not cancel the appointment.' };
+  const rows = await loadVisitationRequests();
+  const idx = rows.findIndex((r) => String(r.id) === String(row.id));
+  if (idx >= 0) {
+    rows[idx] = { ...rows[idx], status: 'Cancelled' };
+    await saveVisitationRequests(rows);
+  }
+  void insertOwnVisitationNotification(
+    'visitation_cancelled',
+    'Visitation — Cancelled',
+    `Your visitation request for ${row.patientName} has been cancelled.`,
+    { familyId: row.familyId, requestId: row.id }
+  );
   return { ok: true };
 }
 

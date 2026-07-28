@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BH } from '../../theme/tokens';
 
@@ -8,6 +8,21 @@ import { BH } from '../../theme/tokens';
 // gradient-text isn't reliable across every target this app renders on
 // (notably React Native Web), so a flat match is the robust choice here.
 const LOGO_COLOR = '#F0851F';
+
+// Same 4-stop orange gradient as the admin sidebar / floating nav button.
+// True gradient text needs @react-native-masked-view, which isn't installed
+// (see note above on MaskedView reliability) — so on native this still falls
+// back to the flat LOGO_COLOR; web can do it for free via background-clip.
+const webGradientTitleStyle =
+  Platform.OS === 'web'
+    ? ({
+        backgroundImage: 'linear-gradient(165deg, #FF8A3D 0%, #F5761E 30%, #F54E25 65%, #EA3E12 100%)',
+        WebkitBackgroundClip: 'text',
+        backgroundClip: 'text',
+        color: 'transparent',
+        WebkitTextFillColor: 'transparent',
+      } as const)
+    : null;
 
 /** Home header brand — matches family portal orange / navy theme. */
 export function FamilyHeaderBrand({ title = 'Bridges of Hope' }: { title?: string }) {
@@ -23,7 +38,7 @@ export function FamilyHeaderBrand({ title = 'Bridges of Hope' }: { title?: strin
       </View>
 
       <View style={styles.textCol}>
-        <Text style={styles.title} numberOfLines={1}>
+        <Text style={[styles.title, webGradientTitleStyle]} numberOfLines={1}>
           {title}
         </Text>
         <View style={styles.subRow}>

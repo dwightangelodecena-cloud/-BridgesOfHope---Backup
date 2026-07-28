@@ -18,6 +18,7 @@ import {
 import logo from '@/assets/kalingalogo.png';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
+import { SidebarLabel } from '@/components/admin/SidebarLabel';
 
 const NAV_ITEMS = [
   { path: '/admin-dashboard', label: 'Dashboard', icon: LayoutGrid },
@@ -98,8 +99,7 @@ export default function AdminSidebar({
           </div>
           <div className="sidebar-brand-text">
             <span className="sidebar-brand-eyebrow">Bridges of Hope</span>
-            <span className="sidebar-brand-name">Kalinga</span>
-            <span className="sidebar-brand-tagline">{brandTagline}</span>
+            <span className="sidebar-brand-name">{brandTagline}</span>
           </div>
         </div>
       </div>
@@ -127,7 +127,7 @@ export default function AdminSidebar({
                   <div className="sidebar-icon-wrap">
                     <Icon size={22} color="#707EAE" />
                   </div>
-                  <span className="sidebar-label">{label}</span>
+                  <SidebarLabel>{label}</SidebarLabel>
                 </div>
               );
             })}
@@ -147,15 +147,13 @@ export default function AdminSidebar({
           <div className="sidebar-icon-wrap">
             <User size={22} color="#707EAE" />
           </div>
-          <span className="sidebar-label">{profileLabel}</span>
+          <SidebarLabel>{profileLabel}</SidebarLabel>
         </div>
         <div className="sidebar-nav-item sidebar-nav-item--logout" onClick={(e) => go(e, '/login')}>
           <div className="sidebar-icon-wrap">
             <LogOut size={22} color="#F54E25" />
           </div>
-          <span className="sidebar-label" style={{ color: '#F54E25' }}>
-            Logout
-          </span>
+          <SidebarLabel>Logout</SidebarLabel>
         </div>
       </div>
 

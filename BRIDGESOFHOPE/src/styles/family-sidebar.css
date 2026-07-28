@@ -1,8 +1,8 @@
 /* Shared family portal sidebar — matches polished dashboard style */
 
 .family-portal {
-  --family-sidebar-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --family-sidebar-duration: 0.42s;
+  --family-sidebar-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --family-sidebar-duration: 0.55s;
 }
 
 .family-portal .desktop-sidebar,
@@ -19,6 +19,7 @@
   padding: 0 0 170px;
   z-index: 120;
   transition: width var(--family-sidebar-duration) var(--family-sidebar-ease);
+  will-change: width;
   cursor: pointer;
   position: relative;
   flex-shrink: 0;
@@ -26,7 +27,7 @@
 }
 
 .family-portal .desktop-sidebar {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(252, 253, 255, 0.97) 100%);
+  background: linear-gradient(165deg, #ff8a3d 0%, #f5761e 30%, #f54e25 65%, #ea3e12 100%);
 }
 
 .family-portal .sidebar-accent-bar {
@@ -59,11 +60,11 @@
 }
 
 .family-portal .sidebar-logo-container:hover {
-  background: rgba(245, 78, 37, 0.04);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .family-portal .sidebar-logo-container:focus-visible {
-  outline: 2px solid rgba(245, 78, 37, 0.45);
+  outline: 2px solid rgba(255, 255, 255, 0.7);
   outline-offset: -2px;
 }
 
@@ -160,7 +161,7 @@
   max-width: 200px;
   height: 1px;
   margin: 0 auto 18px;
-  background: linear-gradient(90deg, transparent, rgba(245, 78, 37, 0.2), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
   opacity: 0.9;
   transition:
     width var(--family-sidebar-duration) var(--family-sidebar-ease),
@@ -373,8 +374,8 @@
 .family-portal .sidebar-expand-hint__chevron {
   width: 4px;
   height: 4px;
-  border-right: 2px solid #94a3b8;
-  border-bottom: 2px solid #94a3b8;
+  border-right: 2px solid rgba(255, 255, 255, 0.85);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.85);
   transform: rotate(-45deg);
   margin-left: -2px;
   transition: transform var(--family-sidebar-duration) var(--family-sidebar-ease);
@@ -413,11 +414,11 @@
 }
 
 .family-portal .sidebar-nav-item:hover {
-  background: rgba(241, 245, 249, 0.9);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .family-portal .sidebar-nav-item:focus-visible {
-  outline: 2px solid rgba(245, 78, 37, 0.55);
+  outline: 2px solid rgba(255, 255, 255, 0.8);
   outline-offset: -2px;
 }
 
@@ -426,7 +427,7 @@
 }
 
 .family-portal .sidebar-nav-item.sidebar-nav-active {
-  background: rgba(245, 78, 37, 0.08);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .family-portal .sidebar-nav-item.sidebar-nav-active::before {
@@ -438,8 +439,8 @@
   width: 4px;
   height: 24px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #f54e25, #ea580c);
-  box-shadow: 0 0 12px rgba(245, 78, 37, 0.35);
+  background: #ffffff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.55);
   transition: left var(--family-sidebar-duration) var(--family-sidebar-ease);
 }
 
@@ -450,34 +451,39 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: #f4f7fe;
+  background: rgba(255, 255, 255, 0.16);
   /* Icons inherit this via currentColor, so they can animate with state. */
-  color: #707eae;
+  color: #ffffff;
   transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, color 0.2s ease;
+}
+
+.family-portal .sidebar-icon-wrap svg {
+  stroke: #ffffff !important;
+  color: #ffffff !important;
 }
 
 .family-portal .sidebar-nav-item:hover .sidebar-icon-wrap {
   transform: translateY(-1px);
-  background: rgba(245, 78, 37, 0.1);
-  color: #f54e25;
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
 }
 
 .family-portal .sidebar-nav-item:hover .sidebar-label {
-  color: #1b2559;
+  color: #ffffff;
 }
 
 .family-portal .sidebar-nav-active .sidebar-icon-wrap {
-  background: linear-gradient(145deg, #f54e25, #ea580c);
-  box-shadow: 0 8px 18px rgba(245, 78, 37, 0.28);
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(154, 52, 18, 0.28);
 }
 
 .family-portal .sidebar-nav-active .sidebar-icon-wrap svg {
-  stroke: #fff !important;
-  color: #fff !important;
+  stroke: #f54e25 !important;
+  color: #f54e25 !important;
 }
 
 .family-portal .sidebar-nav-active .sidebar-label {
-  color: #1b2559 !important;
+  color: #ffffff !important;
   font-weight: 800;
 }
 
@@ -487,7 +493,7 @@
   min-width: 0;
   font-weight: 600;
   font-size: 15px;
-  color: #707eae;
+  color: rgba(255, 255, 255, 0.88);
   max-width: var(--family-sidebar-label-max-w, 0);
   opacity: var(--family-sidebar-label-opacity, 0);
   white-space: nowrap;
@@ -507,6 +513,29 @@
   transition-delay: 0s, 0s;
 }
 
+/* Auto-sliding text for labels the fixed sidebar width cuts off — same idea as the
+   mobile app's MarqueeText, ported to CSS: JS measures overflow and sets --marquee-shift/
+   --marquee-duration; this animation only runs when .sidebar-label-marquee is applied. */
+.family-portal .sidebar-label-inner {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.family-portal .sidebar-label-marquee {
+  animation: sidebarLabelMarquee var(--marquee-duration, 3s) ease-in-out infinite alternate;
+}
+
+@keyframes sidebarLabelMarquee {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  88%,
+  100% {
+    transform: translateX(var(--marquee-shift, 0));
+  }
+}
+
 .family-portal .sidebar-primary {
   width: 100%;
 }
@@ -518,8 +547,8 @@
   bottom: 20px;
   width: 100%;
   padding-top: 12px;
-  border-top: 1px solid #f1f5f9;
-  background: #fff;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
   z-index: 3;
   display: flex;
   flex-direction: column;
@@ -534,41 +563,41 @@
   margin-top: 10px;
 }
 
-/* Footer tiles: always light background with colored icons (match reference) */
+/* Footer tiles: same translucent-white-on-orange treatment as the main nav tiles. */
 .family-portal .sidebar-footer .sidebar-icon-wrap {
   width: 44px;
   height: 44px;
   padding: 0;
-  background: #f4f7fe;
+  background: rgba(255, 255, 255, 0.16);
   box-shadow: none;
 }
 
 /* Footer tiles stay flat (no lift/shadow) but still respond on hover. */
 .family-portal .sidebar-footer .sidebar-nav-active .sidebar-icon-wrap {
-  background: #f4f7fe;
+  background: #ffffff;
   box-shadow: none;
   transform: none;
 }
 
 .family-portal .sidebar-footer .sidebar-nav-item:hover .sidebar-icon-wrap {
-  background: rgba(245, 78, 37, 0.1);
+  background: rgba(255, 255, 255, 0.28);
   box-shadow: none;
   transform: none;
 }
 
-/* Logout — brand-coloured label (was an inline style) + soft tint on hover. */
-.family-portal .sidebar-nav-item--logout .sidebar-label,
-.family-portal .sidebar-nav-item--logout:hover .sidebar-label {
-  color: #f54e25;
+/* Logout stays visually distinct with a solid white tile + orange icon (like the active state)
+   so it still reads as "different" now that the whole rail is orange. */
+.family-portal .sidebar-nav-item--logout .sidebar-icon-wrap {
+  background: #ffffff;
 }
 
 .family-portal .sidebar-nav-item--logout:hover {
-  background: rgba(245, 78, 37, 0.08);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .family-portal .sidebar-footer .sidebar-nav-active .sidebar-icon-wrap svg {
-  stroke: #707eae !important;
-  color: #707eae !important;
+  stroke: #f54e25 !important;
+  color: #f54e25 !important;
 }
 
 .family-portal .sidebar-footer .sidebar-nav-item--logout .sidebar-icon-wrap svg {
