@@ -29,6 +29,7 @@ import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
+import { useAdminRealtimeRefresh } from '@/hooks/useAdminRealtimeRefresh';
 import { BRANCH_KEYS, BRANCH_LABEL, formatPhp } from '@/lib/servicePricing';
 import { partitionProfilesForStaffAssignment } from '@/lib/staffAssignmentLists';
 import {
@@ -143,6 +144,7 @@ function isOrphanedAdmissionRow(row) {
 }
 
 const AdmissionManagement = () => {
+  useAdminRealtimeRefresh();
   const navigate = useNavigate();
   const location = useLocation();
   const pendingApproveRowRef = useRef(null);
@@ -628,6 +630,8 @@ const AdmissionManagement = () => {
         meeting_scheduled_at: new Date().toISOString(),
         meeting_confirmed_by_family: confirmedByFamily,
         status: confirmedByFamily ? 'processing' : 'awaiting_guardian_response',
+        meeting_rejected_at: null,
+        meeting_rejected_reason: null,
       })
       .eq('id', meetingRow.requestId);
     if (error) {
@@ -1065,6 +1069,11 @@ const AdmissionManagement = () => {
                         <td style={{ padding: '9px 10px', fontWeight: 700, color: '#05CD99', whiteSpace: 'nowrap' }}>{formatPhp(r.estimatedCost)}</td>
                         <td style={{ padding: '9px 10px' }}>
                           <span className={`am-pill ${statusPillClass(r.status)}`}>{r.status}</span>
+                          {r.meetingRejectedReason ? (
+                            <div style={{ fontSize: 10, color: '#991B1B', marginTop: 4, fontWeight: 700 }} title={r.meetingRejectedReason}>
+                              Guardian rejected: {r.meetingRejectedReason}
+                            </div>
+                          ) : null}
                         </td>
                         <td style={{ padding: '9px 10px' }}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

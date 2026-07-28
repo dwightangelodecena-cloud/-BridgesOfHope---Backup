@@ -32,6 +32,8 @@ import {
   type PickedAdmissionFile,
 } from '../../lib/admissionDocumentUploadMobile';
 import { appendFamilyNotificationsIfNewMobile } from '../../lib/familyNotificationsMobile';
+import { fetchDischargedPatientIdentity } from '../../lib/dischargedPatientsMobile';
+import { subscribeToTableChanges } from '../../lib/realtimeMobile';
 import * as DocumentPicker from 'expo-document-picker';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
@@ -95,6 +97,7 @@ export default function ProgressScreen() {
   const [pendingAdmissions, setPendingAdmissions] = useState(0);
   const [pendingDischarges, setPendingDischarges] = useState(0);
   const [submittedAdmissions, setSubmittedAdmissions] = useState<Record<string, unknown>[]>([]);
+  const [dischargedNames, setDischargedNames] = useState<Set<string>>(new Set());
   const [uploadingRequestId, setUploadingRequestId] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<Record<string, unknown> | null>(null);
@@ -120,16 +123,18 @@ export default function ProgressScreen() {
         return;
       }
       setFamilyUserId(user.id);
-      const [{ data: aRows }, { data: dRows }, admissionRows] = await Promise.all([
+      const [{ data: aRows }, { data: dRows }, admissionRows, discharged] = await Promise.all([
         supabase.from('admission_requests').select('id').eq('family_id', user.id).in('status', [...FAMILY_ACTIVE_ADMISSION_STATUSES]),
         supabase.from('discharge_requests').select('id').eq('family_id', user.id).eq('status', 'pending'),
         fetchFamilyAdmissionRequests(user.id),
+        fetchDischargedPatientIdentity(user.id),
       ]);
       const ac = (aRows || []).filter((r) => uiAdmissionRequestFromRow(r as Record<string, unknown>)).length;
       const dc = (dRows || []).filter((r) => uiDischargeRequestFromRow(r as Record<string, unknown>)).length;
       setPendingAdmissions(ac);
       setPendingDischarges(dc);
       setSubmittedAdmissions(admissionRows);
+      setDischargedNames(discharged.names);
     } catch {
       setFamilyUserId('');
       setPendingAdmissions(0);
@@ -146,7 +151,31 @@ export default function ProgressScreen() {
     }, [loadCounts])
   );
 
-  const visibleSubmitted = visibleFamilyAdmissionRequests(submittedAdmissions, familyUserId);
+  // Live-refresh while Requests is open — e.g. admin approves/rejects an admission or discharge
+  // request elsewhere — instead of only refetching on tab focus.
+  useEffect(() => {
+    if (!familyUserId) return undefined;
+    const unsubAdmission = subscribeToTableChanges(
+      `requests-admission-${familyUserId}`,
+      'admission_requests',
+      `family_id=eq.${familyUserId}`,
+      () => void loadCounts()
+    );
+    const unsubDischarge = subscribeToTableChanges(
+      `requests-discharge-${familyUserId}`,
+      'discharge_requests',
+      `family_id=eq.${familyUserId}`,
+      () => void loadCounts()
+    );
+    return () => {
+      unsubAdmission();
+      unsubDischarge();
+    };
+  }, [familyUserId, loadCounts]);
+
+  const visibleSubmitted = visibleFamilyAdmissionRequests(submittedAdmissions, familyUserId).filter(
+    (r) => !dischargedNames.has(String((r as Record<string, unknown>).patient_name || '').trim().toLowerCase())
+  );
 
   const uploadSupplementalDocuments = async (requestId: string) => {
     if (!requestId || !familyUserId) return;

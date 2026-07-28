@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -40,6 +40,7 @@ import {
   type VisitationRequestRow,
 } from '../../lib/visitationAppointmentsMobile';
 import { BH, SHADOW } from '../../theme/tokens';
+import { subscribeToTableChanges } from '../../lib/realtimeMobile';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
@@ -347,6 +348,18 @@ export default function HomeScreen() {
     }, [loadDashboard])
   );
 
+  // Live-refresh while the dashboard is open (e.g. admin finalizes a discharge elsewhere) instead
+  // of only refetching on tab focus.
+  useEffect(() => {
+    if (!familyUserId) return undefined;
+    return subscribeToTableChanges(
+      `home-patients-${familyUserId}`,
+      'patients',
+      `family_id=eq.${familyUserId}`,
+      () => loadDashboard()
+    );
+  }, [familyUserId, loadDashboard]);
+
   const reportsReceivedCount = Object.values(nurseWeeklyByPatient || {}).reduce(
     (count, patientWeeks) => count + Object.keys(patientWeeks || {}).length,
     0
@@ -356,8 +369,12 @@ export default function HomeScreen() {
   );
   const totalPendingRequests =
     pendingAdmissions.length + pendingDischarges.length + pendingAppointmentRequests.length;
-  const averageProgress = patients.length
-    ? Math.round(patients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / patients.length)
+  // Discharged residents stay out of the "active" dashboard sections (they live in Patient
+  // Archives now) but averageStayDays below still needs the full list — it's a historical stat
+  // computed FROM discharged_at, not a currently-active count.
+  const activePatients = patients.filter((p) => !p.discharged_at);
+  const averageProgress = activePatients.length
+    ? Math.round(activePatients.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / activePatients.length)
     : 0;
   const patientsWithReportsCount = patients.filter(
     (p) => Object.keys(nurseWeeklyByPatient[String(p.id)] || {}).length > 0
@@ -451,7 +468,7 @@ export default function HomeScreen() {
   const greetingIcon = getFamilyGreetingIcon();
 
   const statTiles = [
-    { key: 'residents', label: 'Residents', value: String(patients.length), icon: 'people' as const, bg: '#EEF2FF', color: '#4F46E5' },
+    { key: 'residents', label: 'Residents', value: String(activePatients.length), icon: 'people' as const, bg: '#EEF2FF', color: '#4F46E5' },
     { key: 'totalReports', label: 'Total Reports', value: String(reportsReceivedCount), icon: 'document-text' as const, bg: '#ECFDF5', color: '#16A34A' },
     { key: 'withReports', label: 'With Reports', value: String(patientsWithReportsCount), icon: 'checkmark-circle' as const, bg: '#FFFBEB', color: '#D97706' },
     { key: 'pendingRequests', label: 'Pending Requests', value: String(totalPendingRequests), icon: 'clipboard' as const, bg: BH.brandSurface, color: BH.brand700 },
@@ -460,7 +477,7 @@ export default function HomeScreen() {
   ];
 
   const highlightTiles = [
-    { key: 'active', icon: 'people' as const, label: 'Active Residents', value: String(patients.length), bg: '#EEF2FF', color: '#4338CA' },
+    { key: 'active', icon: 'people' as const, label: 'Active Residents', value: String(activePatients.length), bg: '#EEF2FF', color: '#4338CA' },
     { key: 'pending', icon: 'hourglass' as const, label: 'Pending Requests', value: String(periodPendingRequestsCount), bg: '#FFFBEB', color: '#B45309' },
     { key: 'progress', icon: 'trending-up' as const, label: 'Avg Progress', value: `${averageProgress}%`, bg: '#ECFDF5', color: '#047857' },
     { key: 'reports', icon: 'document-text' as const, label: 'Reports Received', value: String(periodReportsReceivedCount), bg: BH.brandSurface, color: BH.brand700 },
@@ -503,7 +520,7 @@ export default function HomeScreen() {
             <View style={styles.summaryStatCol}>
               <Text style={styles.summaryStatLabel}>Active Residents</Text>
               <View style={styles.summaryStatValueRow}>
-                <Text style={styles.summaryStatValue}>{patients.length}</Text>
+                <Text style={styles.summaryStatValue}>{activePatients.length}</Text>
                 <View style={styles.summaryStatIconWrap}>
                   <Ionicons name="people" size={14} color={BH.indigo} />
                 </View>
@@ -853,7 +870,7 @@ export default function HomeScreen() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              {patients.length === 0 ? (
+              {activePatients.length === 0 ? (
                 <View style={styles.reportEmptyCard}>
                   <Ionicons name="document-text-outline" size={28} color="#94A3B8" />
                   <Text style={styles.reportEmptyTitle}>No patient records yet</Text>
@@ -862,7 +879,7 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               ) : (
-                patients.map((p) => {
+                activePatients.map((p) => {
                   const expanded = weeklyReportExpandedPatientId === p.id;
                   const count = patientReportCount(p.id);
                   const reportPct = Math.round((count / 7) * 100);

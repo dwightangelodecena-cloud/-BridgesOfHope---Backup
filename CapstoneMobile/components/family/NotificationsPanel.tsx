@@ -28,10 +28,12 @@ const CATEGORY_CFG: Record<string, NotifVisual> = {
   promo: { icon: 'megaphone', bg: '#FCE7F3', color: '#BE185D', accent: '#EC4899', label: 'Promo' },
   clinical: { icon: 'medkit', bg: '#CCFBF1', color: '#0F766E', accent: '#14B8A6', label: 'Clinical' },
   progress: { icon: 'trending-up', bg: BH.infoBg, color: BH.info, accent: '#3B82F6', label: 'Progress' },
+  discharge: { icon: 'exit-outline', bg: '#FFE4D6', color: '#9A3412', accent: '#F0851F', label: 'Discharge' },
 };
 const RELATED_CFG: Record<string, NotifVisual> = {
   admission_request: CATEGORY_CFG.admission,
   visitation_request: CATEGORY_CFG.visitation,
+  discharge_pickup: CATEGORY_CFG.discharge,
 };
 const DEFAULT_CFG: NotifVisual = { icon: 'notifications-outline', bg: BH.slate100, color: BH.slate500, accent: BH.slate400, label: 'General' };
 
@@ -80,7 +82,7 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
   const goToRelated = (item: InboxItem) => {
     setOpenItem(null);
     onClose();
-    if (item.relatedType === 'visitation_request') {
+    if (item.relatedType === 'visitation_request' || item.relatedType === 'discharge_pickup') {
       router.navigate(TAB_ROUTES.appointments as never);
     } else if (item.relatedType === 'admission_request') {
       router.push({
@@ -179,7 +181,9 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
             {openItem?.relatedType ? (
               <Pressable style={styles.detailActionBtn} onPress={() => openItem && goToRelated(openItem)}>
                 <Text style={styles.detailActionTxt}>
-                  {openItem.relatedType === 'visitation_request' ? 'View appointment' : 'View admission request'}
+                  {openItem.relatedType === 'visitation_request' || openItem.relatedType === 'discharge_pickup'
+                    ? 'View appointment'
+                    : 'View admission request'}
                 </Text>
               </Pressable>
             ) : null}

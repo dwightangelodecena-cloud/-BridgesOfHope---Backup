@@ -22,6 +22,7 @@ import {
   FileText,
   MessageCircle,
   UserPlus,
+  UserCheck,
   LayoutGrid,
   BookUser,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
+import { useAdminRealtimeRefresh } from '@/hooks/useAdminRealtimeRefresh';
 import { BRANCH_KEYS, BRANCH_LABEL, computeTotalServiceCostPhp, formatPhp } from '@/lib/servicePricing';
 import {
   DISCHARGE_FINAL_STATUSES,
@@ -45,6 +47,15 @@ import {
   isDischargeRowReadmitEligible,
   readmitPatientFromDischarge,
 } from '@/lib/readmitPatient';
+import {
+  canCallForPickup,
+  canMarkPickedUp,
+  isAwaitingFamilyPickupConfirmation,
+  markPickupCompleted,
+  markPickupConfirmed,
+  schedulePickupMeeting,
+} from '@/lib/dischargePickupMeeting';
+import { fetchNotificationTemplates, renderNotificationTemplate } from '@/lib/notificationTemplates';
 
 const FILTER_OPTIONS = ['All Discharges', ...DISCHARGE_FINAL_STATUSES];
 
@@ -188,6 +199,7 @@ function sortDischargeRows(rows, sortId) {
 }
 
 const DischargeManagement = () => {
+  useAdminRealtimeRefresh();
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -205,6 +217,23 @@ const DischargeManagement = () => {
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const filterDropdownRef = useRef(null);
   const sortDropdownRef = useRef(null);
+
+  const [notifyTemplates, setNotifyTemplates] = useState([]);
+  const [pickupModalRow, setPickupModalRow] = useState(null);
+  const [pickupDate, setPickupDate] = useState('');
+  const [pickupTime, setPickupTime] = useState('09:00');
+  const [pickupConfirmedByPhone, setPickupConfirmedByPhone] = useState(false);
+  const [pickupBusyId, setPickupBusyId] = useState(null);
+  const [syncBusyId, setSyncBusyId] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const res = await fetchNotificationTemplates();
+      if (res.ok) setNotifyTemplates(res.templates);
+    })();
+  }, []);
+
+  const templateBody = (templateKey) => notifyTemplates.find((t) => t.template_key === templateKey)?.body || '';
 
   const mergeRows = useCallback((localRows, patientRows, admissionRows) => {
     const overrides = loadWorkflowOverrides();
@@ -252,7 +281,7 @@ const DischargeManagement = () => {
         return;
       }
       const [{ data: patients, error }, { data: admissions, error: admErr }] = await Promise.all([
-        supabase.from('patients').select('*').not('discharged_at', 'is', null),
+        supabase.from('patients').select('*'),
         supabase.from('admission_requests').select('*'),
       ]);
       if (error) throw error;
@@ -261,7 +290,31 @@ const DischargeManagement = () => {
       const patientList = patients || [];
       const admissionList = admissions || [];
       const patientById = new Map(patientList.map((p) => [p.id, p]));
-      const localEnriched = local.map((r) => enrichDischargeRowDisplayId(r, admissionList, patientById));
+      const localEnrichedIds = local.map((r) => enrichDischargeRowDisplayId(r, admissionList, patientById));
+      const localEnriched = localEnrichedIds.map((r) => {
+        const p = r.patientId ? patientById.get(r.patientId) : null;
+        return {
+          ...r,
+          patientFamilyId: p?.family_id || null,
+          pickupMeetingDate: p?.pickup_meeting_date || null,
+          pickupMeetingTime: p?.pickup_meeting_time || null,
+          pickupConfirmedByFamily: Boolean(p?.pickup_meeting_confirmed_by_family),
+          pickupCompletedAt: p?.pickup_completed_at || null,
+          pickupMeetingRejectedAt: p?.pickup_meeting_rejected_at || null,
+          pickupMeetingRejectedReason: p?.pickup_meeting_rejected_reason || '',
+          pickupFamilyConfirmedAt: p?.pickup_family_confirmed_at || null,
+          patientDischargedAt: p?.discharged_at || null,
+        };
+      });
+      // Finalize requires two independent signals (staff's on-site mark + guardian's own app
+      // confirmation). Whichever happens second is only visible here on the next refresh, so sync
+      // the local record's pickupStatus every load rather than only at button-click time.
+      localEnriched.forEach((r) => {
+        if (r.source === 'history') return;
+        if (r.pickupCompletedAt && r.pickupFamilyConfirmedAt && String(r.pickupStatus || '').toLowerCase() !== 'completed') {
+          updateDischargeRecord(r.id, { pickupStatus: 'Completed' });
+        }
+      });
       const merged = mergeRows(localEnriched, patientList, admissionList);
       syncAdmissionWorkflowFromRows(merged);
       setRows(merged);
@@ -402,7 +455,7 @@ const DischargeManagement = () => {
     persistLocal();
   };
 
-  const handleFinalize = (r) => {
+  const handleFinalize = async (r) => {
     if (r.source === 'history') return;
     if (r.financialHold) {
       setFormError('Cannot finalize discharge while financial hold is active.');
@@ -421,15 +474,26 @@ const DischargeManagement = () => {
       return;
     }
     const now = new Date().toISOString();
+    const dischargeIso = r.dischargeDate || now;
+    if (r.patientId && isSupabaseConfigured()) {
+      const { error } = await supabase
+        .from('patients')
+        .update({ discharged_at: dischargeIso })
+        .eq('id', r.patientId);
+      if (error) {
+        setFormError(error.message || 'Could not mark resident as discharged in the database.');
+        return;
+      }
+    }
     updateDischargeRecord(r.id, {
-      dischargeDate: r.dischargeDate || now,
+      dischargeDate: dischargeIso,
       finalStatus: 'Completed',
       finalDispositionAt: now,
     });
     syncAdmissionWorkflowFromDischargeRow({
       ...r,
       finalStatus: 'Completed',
-      dischargeDate: r.dischargeDate || now,
+      dischargeDate: dischargeIso,
     });
     persistLocal();
   };
@@ -439,6 +503,120 @@ const DischargeManagement = () => {
     updateDischargeRecord(r.id, { archived: true, finalStatus: 'Archived' });
     persistLocal();
   };
+
+  const openPickupModal = (r) => {
+    setFormError('');
+    setPickupModalRow(r);
+    setPickupDate(r.pickupMeetingDate || '');
+    setPickupTime(r.pickupMeetingTime || '09:00');
+    setPickupConfirmedByPhone(false);
+  };
+
+  const handleSavePickup = async () => {
+    if (!pickupModalRow || !pickupDate) {
+      setFormError('Choose a pickup date.');
+      return;
+    }
+    setPickupBusyId(pickupModalRow.id);
+    const res = await schedulePickupMeeting({
+      patientId: pickupModalRow.patientId,
+      familyId: pickupModalRow.patientFamilyId,
+      patientName: pickupModalRow.patientName,
+      date: pickupDate,
+      time: pickupTime,
+      confirmedByPhone: pickupConfirmedByPhone,
+    });
+    setPickupBusyId(null);
+    if (!res.ok) {
+      setFormError(res.errorMessage || 'Could not schedule pickup meeting.');
+      return;
+    }
+    setPickupModalRow(null);
+    persistLocal();
+  };
+
+  const handleMarkConfirmed = async (r) => {
+    if (!r.patientId) return;
+    setPickupBusyId(r.id);
+    const res = await markPickupConfirmed(r.patientId);
+    setPickupBusyId(null);
+    if (!res.ok) {
+      setFormError(res.errorMessage || 'Could not mark pickup as confirmed.');
+      return;
+    }
+    persistLocal();
+  };
+
+  const handleMarkPickedUp = async (r) => {
+    if (!r.patientId) return;
+    setPickupBusyId(r.id);
+    const res = await markPickupCompleted(r.patientId);
+    setPickupBusyId(null);
+    if (!res.ok) {
+      setFormError(res.errorMessage || 'Could not mark resident as picked up.');
+      return;
+    }
+    // Finalize's gate only flips to "Completed" once the guardian's own app confirmation also
+    // lands (loadData syncs it on the next refresh, whichever signal comes second) — this staff
+    // click alone is only one of the two required signals.
+    if (r.pickupFamilyConfirmedAt) {
+      updateDischargeRecord(r.id, { pickupStatus: 'Completed' });
+    }
+    persistLocal();
+  };
+
+  /**
+   * Records finalized/archived before the Finalize-writes-to-Supabase fix never got
+   * patients.discharged_at set — they look "done" here (localStorage) but are still invisible
+   * to mobile and any other browser/session, since neither reads this admin's localStorage.
+   */
+  const needsDischargeSync = (r) =>
+    r.source !== 'history' &&
+    (r.finalStatus === 'Completed' || r.finalStatus === 'Archived') &&
+    !r.patientDischargedAt &&
+    Boolean(r.patientId);
+
+  const handleSyncDischarge = async (r) => {
+    if (!r.patientId) return;
+    setSyncBusyId(r.id);
+    const { error } = await supabase
+      .from('patients')
+      .update({ discharged_at: r.dischargeDate || new Date().toISOString() })
+      .eq('id', r.patientId);
+    setSyncBusyId(null);
+    if (error) {
+      setFormError(error.message || 'Could not sync this resident to the database.');
+      return;
+    }
+    persistLocal();
+  };
+
+  const pickupBadge = (r) => {
+    if (r.source === 'history') return null;
+    if (r.pickupCompletedAt && r.pickupFamilyConfirmedAt) {
+      return { label: `Picked up ${formatDate(r.pickupCompletedAt)}`, className: 'dm-pill--ok' };
+    }
+    if (r.pickupCompletedAt) {
+      return { label: `Staff confirmed pickup — awaiting guardian`, className: 'dm-pill--warn' };
+    }
+    if (r.pickupMeetingRejectedAt) {
+      return { label: `Guardian rejected — ${r.pickupMeetingRejectedReason || 'no reason given'}`, className: 'dm-pill--warn' };
+    }
+    if (r.pickupConfirmedByFamily && r.pickupMeetingDate) {
+      return { label: `Pickup confirmed ${formatDate(r.pickupMeetingDate)}`, className: 'dm-pill--ok' };
+    }
+    if (r.pickupMeetingDate) {
+      return { label: `Awaiting confirmation ${formatDate(r.pickupMeetingDate)}`, className: 'dm-pill--warn' };
+    }
+    return { label: 'Pickup not scheduled', className: 'dm-pill--muted' };
+  };
+
+  /** Row -> patient-column shape, so the shared pickup-eligibility helpers (which read snake_case patient columns) work off a discharge row. */
+  const rowAsPatient = (r) => ({
+    pickup_completed_at: r.pickupCompletedAt,
+    pickup_meeting_confirmed_by_family: r.pickupConfirmedByFamily,
+    pickup_meeting_date: r.pickupMeetingDate,
+  });
 
   const handleReadmit = async (r) => {
     if (!isDischargeRowReadmitEligible(r)) return;
@@ -746,8 +924,24 @@ const DischargeManagement = () => {
                           {!r.source && r.facilityHold ? (
                             <span style={{ fontSize: 10, color: '#7C2D12', marginLeft: 6, fontWeight: 700 }}>(facility hold)</span>
                           ) : null}
-                          {!r.source && r.pickupRequired !== false ? (
-                            <span style={{ fontSize: 10, color: '#1D4ED8', marginLeft: 6, fontWeight: 700 }}>(pickup required)</span>
+                          {pickupBadge(r) ? (
+                            <span className={`dm-pill ${pickupBadge(r).className}`} style={{ marginLeft: 6 }}>{pickupBadge(r).label}</span>
+                          ) : null}
+                          {needsDischargeSync(r) ? (
+                            <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 10, color: '#991B1B', fontWeight: 700 }}>
+                                Not synced to database — invisible to mobile
+                              </span>
+                              <button
+                                type="button"
+                                className="db-action-btn"
+                                style={{ padding: '3px 8px', fontSize: 10 }}
+                                disabled={syncBusyId === r.id}
+                                onClick={() => void handleSyncDischarge(r)}
+                              >
+                                {syncBusyId === r.id ? 'Syncing…' : 'Fix now'}
+                              </button>
+                            </div>
                           ) : null}
                         </td>
                         <td style={{ padding: '9px 10px', fontWeight: 700, color: '#05CD99' }}>{formatPhp(r.totalCost)}</td>
@@ -771,11 +965,42 @@ const DischargeManagement = () => {
                             >
                               <Edit2 size={12} /> Edit
                             </button>
+                            {r.source !== 'history' && canCallForPickup(rowAsPatient(r)) ? (
+                              <button
+                                type="button"
+                                className="db-action-btn"
+                                disabled={pickupBusyId === r.id}
+                                onClick={() => openPickupModal(r)}
+                              >
+                                <Calendar size={12} /> {r.pickupMeetingDate ? 'Reschedule Pickup' : 'Call for Pickup'}
+                              </button>
+                            ) : null}
+                            {r.source !== 'history' && isAwaitingFamilyPickupConfirmation(rowAsPatient(r)) ? (
+                              <button
+                                type="button"
+                                className="db-action-btn"
+                                disabled={pickupBusyId === r.id}
+                                title="Mark confirmed after the guardian confirms by phone/in person, without resending the notification"
+                                onClick={() => void handleMarkConfirmed(r)}
+                              >
+                                <UserCheck size={12} /> {pickupBusyId === r.id ? 'Saving…' : 'Mark Confirmed'}
+                              </button>
+                            ) : null}
+                            {r.source !== 'history' && canMarkPickedUp(rowAsPatient(r)) ? (
+                              <button
+                                type="button"
+                                className="db-action-btn"
+                                disabled={pickupBusyId === r.id}
+                                onClick={() => void handleMarkPickedUp(r)}
+                              >
+                                <UserCheck size={12} /> {pickupBusyId === r.id ? 'Saving…' : 'Mark Picked Up'}
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               className="db-action-btn"
                               disabled={r.source === 'history' || r.finalStatus === 'Completed' || r.finalStatus === 'Archived'}
-                              onClick={() => handleFinalize(r)}
+                              onClick={() => void handleFinalize(r)}
                             >
                               <CheckCircle size={12} /> Finalize
                             </button>
@@ -1004,6 +1229,14 @@ const DischargeManagement = () => {
                     onChange={(e) => patch({ _pickupStatus: e.target.value })}
                   />
                 </label>
+                {!historyReadOnly && pickupBadge(detailModal) ? (
+                  <label className="dm-modal-field">
+                    <span className="dm-modal-label">Pickup meeting (Call for Pickup)</span>
+                    <div className={`dm-pill ${pickupBadge(detailModal).className}`} style={{ width: 'fit-content' }}>
+                      {pickupBadge(detailModal).label}
+                    </div>
+                  </label>
+                ) : null}
                 <label className="dm-modal-field" style={{ gridColumn: '1 / -1', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <input
                     type="checkbox"
@@ -1112,6 +1345,65 @@ const DischargeManagement = () => {
           </div>
         );
       })()}
+
+      {pickupModalRow && (
+        <div className="dm-modal-backdrop" onClick={() => setPickupModalRow(null)}>
+          <div className="dm-modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="dm-modal-head">
+              <div style={{ fontSize: 18, fontWeight: 800 }}>
+                {pickupModalRow.pickupMeetingDate ? 'Reschedule pickup' : 'Call for pickup'}
+              </div>
+              <button type="button" className="db-action-btn" onClick={() => setPickupModalRow(null)}><X size={16} /></button>
+            </div>
+            <div className="dm-modal-body" style={{ gridTemplateColumns: '1fr' }}>
+              <div style={{ fontSize: 13, color: '#334155' }}>
+                Set when <strong>{pickupModalRow.patientName}</strong>'s guardian should come pick them up.
+              </div>
+              <label className="dm-modal-field">
+                <span className="dm-modal-label">Pickup date</span>
+                <input
+                  className="dm-input"
+                  type="date"
+                  value={pickupDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setPickupDate(e.target.value)}
+                />
+              </label>
+              <label className="dm-modal-field">
+                <span className="dm-modal-label">Pickup time</span>
+                <input className="dm-input" type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} />
+              </label>
+              <label className="dm-modal-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={pickupConfirmedByPhone}
+                  onChange={(e) => setPickupConfirmedByPhone(e.target.checked)}
+                />
+                <span className="dm-modal-label" style={{ margin: 0 }}>Family already confirmed this time (e.g. by phone)</span>
+              </label>
+              <div style={{ fontSize: 11, color: '#64748b', background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: 8, padding: '8px 10px' }}>
+                <strong>Guardian will be notified:</strong>{' '}
+                {renderNotificationTemplate(templateBody('discharge_pickup_scheduled'), {
+                  patient_name: pickupModalRow.patientName,
+                  pickup_date: pickupDate,
+                  pickup_time: pickupTime,
+                })}
+              </div>
+            </div>
+            <div style={{ padding: 16, borderTop: '1px solid #EEF2FF', display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="db-action-btn" onClick={() => setPickupModalRow(null)}>Cancel</button>
+              <button
+                type="button"
+                className="db-edit-btn"
+                disabled={pickupBusyId === pickupModalRow.id}
+                onClick={() => void handleSavePickup()}
+              >
+                {pickupBusyId === pickupModalRow.id ? 'Saving…' : 'Save & notify guardian'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

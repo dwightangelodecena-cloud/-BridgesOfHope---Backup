@@ -386,6 +386,8 @@ export function buildAdmissionRow(admissionRow, patientRow, override) {
     meetingScheduledAt: admissionRow.meeting_scheduled_at || null,
     meetingCompleted: Boolean(admissionRow.meeting_completed),
     meetingConfirmedByFamily: Boolean(admissionRow.meeting_confirmed_by_family),
+    meetingRejectedAt: admissionRow.meeting_rejected_at || null,
+    meetingRejectedReason: admissionRow.meeting_rejected_reason || '',
     preferredMeetingDate: admissionRow.preferred_meeting_date || null,
     preferredMeetingTime: admissionRow.preferred_meeting_time || null,
     preferredMeetingNote: admissionRow.preferred_meeting_note || '',

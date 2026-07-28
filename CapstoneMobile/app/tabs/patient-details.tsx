@@ -305,6 +305,7 @@ export default function PatientDetailsScreen() {
   const router = useRouter();
   const [familyUserId, setFamilyUserId] = useState('');
   const [patients, setPatients] = useState<PatientListEntry[]>([]);
+  const [archivedCount, setArchivedCount] = useState(0);
   const [patientDetailsById, setPatientDetailsById] = useState<Record<string, Record<string, unknown>>>({});
   const [weeklyReportsByPatient, setWeeklyReportsByPatient] = useState<Record<string, ReportRow[]>>({});
   const [loading, setLoading] = useState(true);
@@ -436,7 +437,19 @@ export default function PatientDetailsScreen() {
         .from('patients')
         .select(safeSelect)
         .eq('family_id', user.id)
+        .is('discharged_at', null)
         .order('admitted_at', { ascending: false });
+
+      try {
+        const { count } = await supabase
+          .from('patients')
+          .select('id', { count: 'exact', head: true })
+          .eq('family_id', user.id)
+          .not('discharged_at', 'is', null);
+        setArchivedCount(count || 0);
+      } catch {
+        /* ignore */
+      }
 
       let list: PatientListEntry[] = [];
       let details: Record<string, Record<string, unknown>> = {};
@@ -888,7 +901,13 @@ export default function PatientDetailsScreen() {
 
             <View style={styles.dirHead}>
               <Text style={styles.dirTitle}>Resident Directory</Text>
-              <Text style={styles.dirMeta}>View all</Text>
+              {archivedCount > 0 ? (
+                <TouchableOpacity onPress={() => router.push(TAB_ROUTES.patientArchives as never)} hitSlop={8}>
+                  <Text style={styles.dirMeta}>View archived ({archivedCount})</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.dirMeta}>View all</Text>
+              )}
             </View>
             {patients.map((p, idx) => {
               const onTempLeave = isResidentOnTemporaryLeave(p);

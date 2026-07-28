@@ -42,6 +42,8 @@ export const TAB_ROUTES = {
   messages: "/tabs/Messages",
   profile: "/tabs/profile",
   patientDetails: "/tabs/patient-details",
+  /** Read-only list of discharged residents, linked from the Residents tab. */
+  patientArchives: "/tabs/PatientArchives",
   appointments: "/tabs/appointments",
   reports: "/tabs/reports",
   /** Admission / upload documents / admit a patient */

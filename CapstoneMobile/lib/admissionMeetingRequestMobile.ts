@@ -8,6 +8,8 @@ export type AdmissionMeetingRow = {
   meetingTime: string;
   meetingCompleted: boolean;
   meetingConfirmedByFamily: boolean;
+  meetingRejectedAt: string;
+  meetingRejectedReason: string;
   preferredMeetingDate: string;
   preferredMeetingTime: string;
   preferredMeetingNote: string;
@@ -22,6 +24,8 @@ function mapRow(r: Record<string, unknown>): AdmissionMeetingRow {
     meetingTime: String(r.meeting_time || ''),
     meetingCompleted: Boolean(r.meeting_completed),
     meetingConfirmedByFamily: Boolean(r.meeting_confirmed_by_family),
+    meetingRejectedAt: String(r.meeting_rejected_at || ''),
+    meetingRejectedReason: String(r.meeting_rejected_reason || ''),
     preferredMeetingDate: String(r.preferred_meeting_date || ''),
     preferredMeetingTime: String(r.preferred_meeting_time || ''),
     preferredMeetingNote: String(r.preferred_meeting_note || ''),
@@ -96,5 +100,15 @@ export async function acceptSuggestedMeetingTime(requestId: string) {
   return updateRequest(requestId, {
     meeting_confirmed_by_family: true,
     status: 'processing',
+  });
+}
+
+/** Guardian declines admin's suggested meeting date/time with a required reason (no counter-time from this action). */
+export async function rejectMeetingTime(requestId: string, reason: string) {
+  const trimmed = String(reason || '').trim();
+  if (!trimmed) return { ok: false, errorMessage: 'A reason is required.' } as const;
+  return updateRequest(requestId, {
+    meeting_rejected_at: new Date().toISOString(),
+    meeting_rejected_reason: trimmed,
   });
 }

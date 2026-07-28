@@ -7,6 +7,7 @@ import {
   FAMILY_NOTIFICATIONS_CHANGED,
 } from './familyNotificationsMobile';
 import { fetchDbFamilyNotifications, markDbFamilyNotificationRead, type DbFamilyNotification } from './familyNotificationsDb';
+import { subscribeToTableChanges } from './realtimeMobile';
 
 export type InboxItem = {
   id: string;
@@ -61,6 +62,18 @@ export function useFamilyNotificationsInbox(userId: string) {
     });
     return () => sub.remove();
   }, [reload]);
+
+  // Live-refresh the badge/list as soon as a new notification lands, instead of waiting for the
+  // guardian to reopen the inbox.
+  useEffect(() => {
+    if (!userId.trim()) return undefined;
+    return subscribeToTableChanges(
+      `notifications-${userId}`,
+      'family_notifications',
+      `family_id=eq.${userId}`,
+      () => void reload()
+    );
+  }, [userId, reload]);
 
   const items: InboxItem[] = useMemo(() => {
     const fromDb: InboxItem[] = dbItems.map((n) => ({
