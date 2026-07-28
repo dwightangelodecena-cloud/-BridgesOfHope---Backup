@@ -1059,6 +1059,7 @@ export default function PatientDetailsScreen() {
               <ScrollView
                 contentContainerStyle={[styles.detailScroll, { paddingBottom: insets.bottom + 24 }]}
                 keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
               >
                 {onTemporaryLeave ? (
                   <TemporaryDischargeNotePanel
@@ -1572,7 +1573,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
-  primaryBtnTxt: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
+  primaryBtnTxt: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
   dirHead: {
     flexDirection: 'row',
     alignItems: 'center',

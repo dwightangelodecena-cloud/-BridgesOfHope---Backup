@@ -150,6 +150,7 @@ export default function AppointmentsScreen() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<VisitationRequestRow | null>(null);
   const [counterModal, setCounterModal] = useState<{ row: VisitationRequestRow | null; date: string; time: string }>({
     row: null,
     date: '',
@@ -329,6 +330,7 @@ export default function AppointmentsScreen() {
         preferredDate: form.preferredDate,
         preferredTime: form.preferredTime,
         note: form.note,
+        appointmentReason: form.appointmentReason,
       });
 
       if (isSupabaseConfigured() && familyUserId) {
@@ -766,9 +768,16 @@ export default function AppointmentsScreen() {
               const note = String(r.note || '').trim();
               const showNote = note && note.toUpperCase() !== 'N/A';
               return (
-                <View
+                <Pressable
                   key={r.id}
-                  style={[styles.reqRow, idx < requests.length - 1 && styles.reqRowDivider]}
+                  style={({ pressed }) => [
+                    styles.reqRow,
+                    idx < requests.length - 1 && styles.reqRowDivider,
+                    pressed && styles.reqRowPressed,
+                  ]}
+                  onPress={() => setSelectedRequest(r)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View details for ${r.patientName}`}
                 >
                   <View style={styles.reqAvatar}>
                     <Text style={styles.reqAvatarTxt}>{getInitials(r.patientName)}</Text>
@@ -824,7 +833,7 @@ export default function AppointmentsScreen() {
                     </View>
                     <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
                   </View>
-                </View>
+                </Pressable>
               );
             })
           )}
@@ -876,6 +885,99 @@ export default function AppointmentsScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={!!selectedRequest}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedRequest(null)}
+      >
+        <Pressable style={styles.centerModalBackdrop} onPress={() => setSelectedRequest(null)}>
+          <Pressable style={styles.centerModalCard} onPress={() => {}}>
+            <View style={styles.centerModalHandle} />
+            {(() => {
+              if (!selectedRequest) return null;
+              const st = normalizeVisitationStatus(selectedRequest.status);
+              const stCfg = STATUS_CFG[st] || STATUS_CFG.Requested;
+              const reason = String(selectedRequest.appointmentReason || '').trim();
+              const note = String(selectedRequest.note || '').trim();
+              const showNote = note && note.toUpperCase() !== 'N/A';
+              const adminReason = String(selectedRequest.adminNote || '').trim();
+              return (
+                <>
+                  <View style={styles.centerModalHeader}>
+                    <View style={styles.centerModalHeaderLeft}>
+                      <View style={styles.reqAvatar}>
+                        <Text style={styles.reqAvatarTxt}>{getInitials(selectedRequest.patientName)}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.centerModalTitle} numberOfLines={1}>
+                          {selectedRequest.patientName}
+                        </Text>
+                        <Text style={styles.centerModalSubtitle}>Appointment details</Text>
+                      </View>
+                    </View>
+                    <Pressable
+                      style={styles.centerModalCloseBtn}
+                      onPress={() => setSelectedRequest(null)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close"
+                    >
+                      <Ionicons name="close" size={18} color="#64748B" />
+                    </Pressable>
+                  </View>
+                  <ScrollView contentContainerStyle={styles.detailBody} showsVerticalScrollIndicator={false}>
+                    <View style={[styles.statusPill, styles.detailStatusPill, { backgroundColor: stCfg.bg, borderColor: stCfg.border }]}>
+                      <Text style={[styles.statusPillTxt, { color: stCfg.color }]}>{st}</Text>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                      <Ionicons name="calendar-outline" size={16} color="#64748B" />
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabel}>Date &amp; Time: </Text>
+                        {formatReqDateTime(
+                          selectedRequest.confirmedDate || selectedRequest.preferredDate,
+                          selectedRequest.confirmedTime || selectedRequest.preferredTime
+                        )}
+                      </Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Ionicons name={stCfg.icon} size={16} color="#64748B" />
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabel}>Status: </Text>
+                        {visitationStatusSubtext(selectedRequest)}
+                      </Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Ionicons name="chatbubble-outline" size={16} color="#64748B" />
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabel}>Reason for appointment: </Text>
+                        {reason || 'Not specified'}
+                      </Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Ionicons name="create-outline" size={16} color="#64748B" />
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabel}>Note: </Text>
+                        {showNote ? note : 'No note added'}
+                      </Text>
+                    </View>
+                    {adminReason ? (
+                      <View style={styles.detailRow}>
+                        <Ionicons name="business-outline" size={16} color="#64748B" />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabel}>Facility note: </Text>
+                          {adminReason}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </ScrollView>
+                </>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <FamilyWebMobileNav active="appointments" />
@@ -1321,6 +1423,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   reqRowDivider: { borderBottomWidth: 1, borderBottomColor: '#F1F3FA' },
+  reqRowPressed: { opacity: 0.7 },
   reqAvatar: {
     width: 34,
     height: 34,
@@ -1399,4 +1502,60 @@ const styles = StyleSheet.create({
   counterFoot: { flexDirection: 'row', gap: 10, marginTop: 4 },
   counterCancelBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
   counterCancelTxt: { color: '#475569', fontWeight: '700', fontSize: 14 },
+  centerModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  centerModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 30,
+    elevation: 16,
+  },
+  centerModalHandle: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  centerModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  centerModalHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
+  centerModalTitle: { fontSize: 15.5, fontWeight: '800', color: '#1B2559' },
+  centerModalSubtitle: { fontSize: 12, fontWeight: '600', color: '#94A3B8', marginTop: 2 },
+  centerModalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  detailBody: { padding: 18, paddingBottom: 28 },
+  detailStatusPill: { alignSelf: 'flex-start', marginBottom: 16, paddingHorizontal: 12, paddingVertical: 6 },
+  detailRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 14 },
+  detailText: { flex: 1, fontSize: 13.5, color: '#475569', fontWeight: '500', lineHeight: 19 },
+  detailLabel: { fontWeight: '800', color: '#1B2559' },
 });

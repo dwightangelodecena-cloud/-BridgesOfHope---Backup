@@ -148,6 +148,7 @@ export type VisitationRequestRow = {
   preferredDate: string;
   preferredTime: string;
   note: string;
+  appointmentReason?: string;
   status: string;
   confirmedDate?: string;
   confirmedTime?: string;
@@ -231,6 +232,7 @@ export async function createVisitationRequestLocal(payload: {
   preferredDate: string;
   preferredTime: string;
   note: string;
+  appointmentReason?: string;
 }): Promise<VisitationRequestRow> {
   const now = new Date().toISOString();
   const id = `visit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -243,6 +245,7 @@ export async function createVisitationRequestLocal(payload: {
     preferredDate: payload.preferredDate || '',
     preferredTime: payload.preferredTime || '',
     note: payload.note || '',
+    appointmentReason: payload.appointmentReason || '',
     status: 'Requested',
     createdAt: now,
     updatedAt: now,
@@ -263,6 +266,7 @@ function mapRemoteVisitationRow(r: Record<string, unknown>): VisitationRequestRo
     preferredDate: String(r.preferred_date || ''),
     preferredTime: String(r.preferred_time || ''),
     note: String(r.note || ''),
+    appointmentReason: String(r.appointment_reason || ''),
     status: normalizeVisitationStatus(r.status),
     confirmedDate: String(r.confirmed_date || ''),
     confirmedTime: String(r.confirmed_time || ''),
