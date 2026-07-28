@@ -1,12 +1,191 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { MessageSquare, RefreshCw, Save } from 'lucide-react';
+import { MessageSquare, RefreshCw, Save, Send, Users, User, Sparkles } from 'lucide-react';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import {
   fetchNotificationTemplates,
   updateNotificationTemplate,
   renderNotificationTemplate,
+  fetchNotifiableFamilyProfiles,
+  insertFamilyNotificationBroadcast,
+  SENDABLE_NOTIFICATION_CATEGORIES,
 } from '@/lib/notificationTemplates';
+import { draftNotificationWithAi } from '@/lib/aiNotificationDraft';
+
+function familyDisplayName(profile) {
+  const full = String(profile.full_name || '').trim();
+  if (full) return full;
+  const combined = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
+  if (combined) return combined;
+  return String(profile.login_email || profile.email || 'Unnamed guardian');
+}
+
+function SendNotificationCard() {
+  const [families, setFamilies] = useState([]);
+  const [loadingFamilies, setLoadingFamilies] = useState(true);
+  const [category, setCategory] = useState(SENDABLE_NOTIFICATION_CATEGORIES[0].value);
+  const [recipientMode, setRecipientMode] = useState('all'); // 'all' | 'specific'
+  const [familyId, setFamilyId] = useState('');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetchNotifiableFamilyProfiles();
+      if (cancelled) return;
+      if (res.ok) {
+        setFamilies(res.profiles);
+        if (res.profiles[0]) setFamilyId(res.profiles[0].id);
+      }
+      setLoadingFamilies(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const canSend = title.trim() && body.trim() && (recipientMode === 'all' || familyId) && !sending;
+
+  const handleSend = async () => {
+    setSending(true);
+    setError('');
+    setResult('');
+    const res = await insertFamilyNotificationBroadcast({
+      toAll: recipientMode === 'all',
+      familyId: recipientMode === 'specific' ? familyId : undefined,
+      category,
+      title,
+      body,
+    });
+    setSending(false);
+    if (!res.ok) {
+      setError(res.errorMessage);
+      return;
+    }
+    setResult(res.sent === 1 ? 'Sent to 1 guardian.' : `Sent to ${res.sent} guardians.`);
+    setTitle('');
+    setBody('');
+  };
+
+  const isPolish = Boolean(title.trim() || body.trim());
+
+  const handleDraftWithAi = async () => {
+    setDrafting(true);
+    setDraftError('');
+    try {
+      const hint = [title, body].filter(Boolean).join('\n');
+      const draft = await draftNotificationWithAi({ category, hint });
+      setTitle(draft.title);
+      setBody(draft.body);
+    } catch (e) {
+      setDraftError(e.message || 'Could not draft with AI.');
+    } finally {
+      setDrafting(false);
+    }
+  };
+
+  return (
+    <div className="nt-card nt-send-card">
+      <div className="nt-send-head">
+        <Send size={18} />
+        <div>
+          <h2 className="nt-send-title">Send Notification</h2>
+          <p className="nt-desc">Compose a promo, clinical concern, progress update, or general announcement and send it now.</p>
+        </div>
+      </div>
+
+      <label className="nt-field-label" htmlFor="nt-send-category">Category</label>
+      <select
+        id="nt-send-category"
+        className="nt-select"
+        value={category}
+        onChange={(e) => setCategory(e.target.value)}
+      >
+        {SENDABLE_NOTIFICATION_CATEGORIES.map((c) => (
+          <option key={c.value} value={c.value}>{c.label}</option>
+        ))}
+      </select>
+
+      <label className="nt-field-label" htmlFor="nt-send-title">Title</label>
+      <input
+        id="nt-send-title"
+        className="nt-title-input nt-send-input"
+        placeholder="e.g. New wellness program available"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+
+      <label className="nt-field-label" htmlFor="nt-send-body">Message</label>
+      <textarea
+        id="nt-send-body"
+        className="nt-body-input"
+        rows={3}
+        placeholder="Write the notification content, or leave blank and let AI draft one..."
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+      />
+
+      <button type="button" className="nt-ai-draft-btn" onClick={handleDraftWithAi} disabled={drafting}>
+        <Sparkles size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
+        {drafting ? 'Drafting...' : isPolish ? 'Polish with AI' : 'Draft with AI'}
+      </button>
+      {draftError ? <p className="nt-error">{draftError}</p> : null}
+
+      <span className="nt-field-label">Recipients</span>
+      <div className="nt-recipient-toggle">
+        <button
+          type="button"
+          className={`nt-recipient-btn ${recipientMode === 'all' ? 'nt-recipient-btn-active' : ''}`}
+          onClick={() => setRecipientMode('all')}
+        >
+          <Users size={13} style={{ verticalAlign: -2, marginRight: 5 }} />
+          All families
+        </button>
+        <button
+          type="button"
+          className={`nt-recipient-btn ${recipientMode === 'specific' ? 'nt-recipient-btn-active' : ''}`}
+          onClick={() => setRecipientMode('specific')}
+        >
+          <User size={13} style={{ verticalAlign: -2, marginRight: 5 }} />
+          Specific family
+        </button>
+      </div>
+
+      {recipientMode === 'specific' ? (
+        <select
+          className="nt-select"
+          value={familyId}
+          onChange={(e) => setFamilyId(e.target.value)}
+          disabled={loadingFamilies}
+        >
+          {loadingFamilies ? (
+            <option>Loading guardians...</option>
+          ) : families.length === 0 ? (
+            <option>No guardians found</option>
+          ) : (
+            families.map((f) => (
+              <option key={f.id} value={f.id}>{familyDisplayName(f)}</option>
+            ))
+          )}
+        </select>
+      ) : null}
+
+      {error ? <p className="nt-error">{error}</p> : null}
+      {result ? <p className="nt-saved">{result}</p> : null}
+
+      <button type="button" className="nt-save-btn nt-send-btn" onClick={handleSend} disabled={!canSend}>
+        <Send size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
+        {sending ? 'Sending...' : 'Send Notification'}
+      </button>
+    </div>
+  );
+}
 
 /** Sample values so admins can preview rendered wording regardless of which placeholders a template uses. */
 const SAMPLE_VARS = {
@@ -135,7 +314,20 @@ export default function NotificationTemplatesPage() {
         .nt-save-btn { border: none; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; background: #F54E25; color: white; }
         .nt-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .nt-refresh-btn { border: none; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; background: white; color: #0F766E; border: 2px solid #0F766E; }
-        @media (max-width: 768px) { .desktop-sidebar { display: none !important; } .nt-main { padding: 20px 12px 100px 12px !important; } }
+        .nt-send-card { max-width: 520px; margin-bottom: 24px; gap: 8px; }
+        .nt-send-head { display: flex; align-items: flex-start; gap: 10px; color: #F54E25; }
+        .nt-send-title { font-size: 16px; font-weight: 800; color: #0F172A; margin: 0; }
+        .nt-field-label { font-size: 11px; font-weight: 700; color: #707EAE; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 6px; }
+        .nt-send-input { width: 100%; border: 1px solid #E9EDF7; border-radius: 10px; padding: 9px 12px; }
+        .nt-select { width: 100%; border: 1px solid #E9EDF7; border-radius: 10px; padding: 9px 12px; font-size: 13px; color: #1B2559; background: white; font-family: 'Inter', sans-serif; outline: none; }
+        .nt-select:focus { border-color: #2563EB; }
+        .nt-recipient-toggle { display: flex; gap: 8px; }
+        .nt-recipient-btn { flex: 1; border: 2px solid #E9EDF7; background: white; border-radius: 10px; padding: 8px 10px; font-size: 12.5px; font-weight: 700; color: #707EAE; cursor: pointer; font-family: 'Inter', sans-serif; }
+        .nt-recipient-btn-active { border-color: #F54E25; color: #C2410C; background: #FFF7ED; }
+        .nt-send-btn { align-self: flex-start; }
+        .nt-ai-draft-btn { align-self: flex-start; border: 1px solid #C7D2FE; background: #EEF2FF; color: #3730A3; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; }
+        .nt-ai-draft-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        @media (max-width: 768px) { .desktop-sidebar { display: none !important; } .nt-main { padding: 20px 12px 100px 12px !important; } .nt-send-card { max-width: 100%; } }
       `}</style>
 
       <AdminSidebar isExpanded={isExpanded} onToggleExpanded={() => setIsExpanded(!isExpanded)} />
@@ -162,6 +354,8 @@ export default function NotificationTemplatesPage() {
             {errorMessage}
           </div>
         ) : null}
+
+        <SendNotificationCard />
 
         {loading ? (
           <p style={{ color: '#A3AED0', fontSize: 13 }}>Loading templates...</p>

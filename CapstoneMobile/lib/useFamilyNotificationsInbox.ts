@@ -7,6 +7,7 @@ import {
   FAMILY_NOTIFICATIONS_CHANGED,
 } from './familyNotificationsMobile';
 import { fetchDbFamilyNotifications, markDbFamilyNotificationRead, type DbFamilyNotification } from './familyNotificationsDb';
+import { subscribeToTableChanges } from './realtimeMobile';
 
 export type InboxItem = {
   id: string;
@@ -17,6 +18,7 @@ export type InboxItem = {
   source: 'db' | 'legacy';
   relatedType?: string;
   relatedId?: string;
+  category: string;
 };
 
 /**
@@ -61,6 +63,18 @@ export function useFamilyNotificationsInbox(userId: string) {
     return () => sub.remove();
   }, [reload]);
 
+  // Live-refresh the badge/list as soon as a new notification lands, instead of waiting for the
+  // guardian to reopen the inbox.
+  useEffect(() => {
+    if (!userId.trim()) return undefined;
+    return subscribeToTableChanges(
+      `notifications-${userId}`,
+      'family_notifications',
+      `family_id=eq.${userId}`,
+      () => void reload()
+    );
+  }, [userId, reload]);
+
   const items: InboxItem[] = useMemo(() => {
     const fromDb: InboxItem[] = dbItems.map((n) => ({
       id: `db-${n.id}`,
@@ -71,6 +85,7 @@ export function useFamilyNotificationsInbox(userId: string) {
       source: 'db' as const,
       relatedType: n.relatedType,
       relatedId: n.relatedId,
+      category: n.category,
     }));
     const fromLegacy: InboxItem[] = legacyItems.map((n) => ({
       id: `legacy-${n.id}`,
@@ -79,6 +94,7 @@ export function useFamilyNotificationsInbox(userId: string) {
       createdAt: n.createdAt,
       isRead: n.createdAt <= legacyLastReadAt,
       source: 'legacy' as const,
+      category: 'progress',
     }));
     return [...fromDb, ...fromLegacy].sort((a, b) => b.createdAt - a.createdAt);
   }, [dbItems, legacyItems, legacyLastReadAt]);

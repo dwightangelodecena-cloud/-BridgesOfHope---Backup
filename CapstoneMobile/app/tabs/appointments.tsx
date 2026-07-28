@@ -40,6 +40,12 @@ import { isPastIsoDate } from '../../lib/bookingDates';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
+import { AppointmentNoticeCard } from '../../components/family/AppointmentNoticeCard';
+import { fetchAppointmentNotices, type AppointmentNotice } from '../../lib/appointmentNoticesMobile';
+import { acceptSuggestedMeetingTime, rejectMeetingTime } from '../../lib/admissionMeetingRequestMobile';
+import { confirmPickupMeeting, rejectPickupMeeting, confirmPickupReceived } from '../../lib/dischargePickupMeetingMobile';
+import { fetchDischargedPatientIdentity } from '../../lib/dischargedPatientsMobile';
+import { subscribeToTableChanges } from '../../lib/realtimeMobile';
 
 const WEEKDAY_TO_INDEX: Record<string, number> = {
   sunday: 0,
@@ -156,6 +162,12 @@ export default function AppointmentsScreen() {
     date: '',
     time: '13:00',
   });
+  const [notices, setNotices] = useState<AppointmentNotice[]>([]);
+  const [noticeBusyKey, setNoticeBusyKey] = useState<string | null>(null);
+  const [rejectModal, setRejectModal] = useState<{ notice: AppointmentNotice | null; reason: string }>({
+    notice: null,
+    reason: '',
+  });
   const [form, setForm] = useState({
     patientId: '',
     patientName: '',
@@ -248,6 +260,7 @@ export default function AppointmentsScreen() {
       setFamilyUserId('local-family');
       setPatients([]);
       setRequests(await listVisitationRequestsByFamily('local-family'));
+      setNotices([]);
       return;
     }
     const {
@@ -257,6 +270,7 @@ export default function AppointmentsScreen() {
       setFamilyUserId('');
       setPatients([]);
       setRequests([]);
+      setNotices([]);
       return;
     }
     const display = (user.user_metadata?.full_name as string) || user.email || 'Family User';
@@ -272,8 +286,61 @@ export default function AppointmentsScreen() {
 
     const localRows = await listVisitationRequestsByFamily(user.id);
     const merged = await mergeRequestsFromSupabase(user.id, localRows);
-    setRequests(merged);
+    const discharged = await fetchDischargedPatientIdentity(user.id);
+    setRequests(merged.filter((r) => !discharged.ids.has(String(r.patientId || ''))));
+
+    setNotices(await fetchAppointmentNotices(user.id));
   }, []);
+
+  const noticeKey = (n: AppointmentNotice) => (n.kind === 'pickup_received' ? `received-${n.patientId}` : `${n.type}-${n.id}`);
+
+  const handleConfirmNotice = async (n: AppointmentNotice) => {
+    if (n.kind !== 'meeting') return;
+    setNoticeBusyKey(noticeKey(n));
+    const res = n.type === 'admission' ? await acceptSuggestedMeetingTime(n.id) : await confirmPickupMeeting(n.patientId);
+    setNoticeBusyKey(null);
+    if (!res.ok) {
+      Alert.alert('Could not confirm', res.errorMessage);
+      return;
+    }
+    await loadAll();
+    Alert.alert('Confirmed', `You've confirmed the ${n.type === 'admission' ? 'meeting' : 'pickup'} time for ${n.patientName}.`);
+  };
+
+  const submitRejectNotice = async () => {
+    const n = rejectModal.notice;
+    if (!n || n.kind !== 'meeting') return;
+    if (!rejectModal.reason.trim()) {
+      Alert.alert('Reason required', 'Please tell us why this time doesn’t work.');
+      return;
+    }
+    setNoticeBusyKey(noticeKey(n));
+    const res =
+      n.type === 'admission'
+        ? await rejectMeetingTime(n.id, rejectModal.reason)
+        : await rejectPickupMeeting(n.patientId, rejectModal.reason);
+    setNoticeBusyKey(null);
+    if (!res.ok) {
+      Alert.alert('Could not send', res.errorMessage);
+      return;
+    }
+    setRejectModal({ notice: null, reason: '' });
+    await loadAll();
+    Alert.alert('Sent', 'Bridges of Hope will follow up with a new time.');
+  };
+
+  const handleConfirmReceivedNotice = async (n: AppointmentNotice) => {
+    if (n.kind !== 'pickup_received') return;
+    setNoticeBusyKey(noticeKey(n));
+    const res = await confirmPickupReceived(n.patientId);
+    setNoticeBusyKey(null);
+    if (!res.ok) {
+      Alert.alert('Could not confirm', res.errorMessage);
+      return;
+    }
+    await loadAll();
+    Alert.alert('Thank you', `Confirmed — ${n.patientName} has been picked up.`);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -281,6 +348,28 @@ export default function AppointmentsScreen() {
       void loadAll();
     }, [loadAll, goToCurrentMonth])
   );
+
+  // Live-refresh while Visits is open — e.g. admin schedules/reschedules a pickup, or another
+  // guardian action changes a visitation request — instead of only refetching on tab focus.
+  useEffect(() => {
+    if (!familyUserId) return undefined;
+    const unsubVisitation = subscribeToTableChanges(
+      `visits-visitation-${familyUserId}`,
+      'visitation_requests',
+      `family_id=eq.${familyUserId}`,
+      () => void loadAll()
+    );
+    const unsubPatients = subscribeToTableChanges(
+      `visits-patients-${familyUserId}`,
+      'patients',
+      `family_id=eq.${familyUserId}`,
+      () => void loadAll()
+    );
+    return () => {
+      unsubVisitation();
+      unsubPatients();
+    };
+  }, [familyUserId, loadAll]);
 
     useEffect(() => {
     if (!timeSlots.length) {
@@ -460,6 +549,34 @@ export default function AppointmentsScreen() {
             ))}
           </View>
         </View>
+
+        {notices.length > 0 ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionCardHeader}>
+              <View style={[styles.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                <Ionicons name="notifications" size={19} color="#92400E" />
+              </View>
+              <Text style={styles.sectionCardTitle}>Appointment Notices</Text>
+            </View>
+            <View style={{ marginTop: 12 }}>
+              {notices.map((n) => (
+                <AppointmentNoticeCard
+                  key={noticeKey(n)}
+                  notice={n}
+                  busy={noticeBusyKey === noticeKey(n)}
+                  onConfirm={() => void handleConfirmNotice(n)}
+                  onReject={() => setRejectModal({ notice: n, reason: '' })}
+                  onConfirmReceived={() => void handleConfirmReceivedNotice(n)}
+                  onProposeDifferent={() =>
+                    n.kind === 'meeting' && n.type === 'admission'
+                      ? router.push({ pathname: TAB_ROUTES.admissionMeetingRequest, params: { requestId: n.id } } as never)
+                      : undefined
+                  }
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.sectionCard}>
           <View style={styles.sectionCardHeader}>
@@ -978,6 +1095,52 @@ export default function AppointmentsScreen() {
             })()}
           </Pressable>
         </Pressable>
+      </Modal>
+
+      <Modal
+        visible={Boolean(rejectModal.notice)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRejectModal({ notice: null, reason: '' })}
+      >
+        <View style={styles.counterModalRoot}>
+          <Pressable style={styles.counterBackdrop} onPress={() => setRejectModal({ notice: null, reason: '' })} />
+          <View style={[styles.counterCard, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.counterHandle} />
+            <Text style={styles.counterTitle}>Reject this time</Text>
+            <Text style={styles.counterSub}>
+              For {rejectModal.notice?.patientName}. Let us know why so we can propose another time.
+            </Text>
+            <TextInput
+              style={styles.rejectReasonInput}
+              placeholder="Reason (required)"
+              placeholderTextColor="#94A3B8"
+              value={rejectModal.reason}
+              onChangeText={(v) => setRejectModal((prev) => ({ ...prev, reason: v }))}
+              multiline
+            />
+            <View style={styles.counterFoot}>
+              <Pressable onPress={() => setRejectModal({ notice: null, reason: '' })} style={styles.counterCancelBtn}>
+                <Text style={styles.counterCancelTxt}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void submitRejectNotice()}
+                style={[
+                  styles.primaryBtn,
+                  { flex: 1, marginTop: 0, backgroundColor: '#DC2626' },
+                  rejectModal.notice && noticeBusyKey === noticeKey(rejectModal.notice) && styles.primaryBtnDisabled,
+                ]}
+                disabled={Boolean(rejectModal.notice && noticeBusyKey === noticeKey(rejectModal.notice))}
+              >
+                {rejectModal.notice && noticeBusyKey === noticeKey(rejectModal.notice) ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.primaryBtnTxt}>Send</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <FamilyWebMobileNav active="appointments" />
@@ -1558,4 +1721,16 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 14 },
   detailText: { flex: 1, fontSize: 13.5, color: '#475569', fontWeight: '500', lineHeight: 19 },
   detailLabel: { fontWeight: '800', color: '#1B2559' },
+  rejectReasonInput: {
+    borderWidth: 1.5,
+    borderColor: '#E9EDF7',
+    borderRadius: 14,
+    padding: 14,
+    fontSize: 14,
+    color: '#1B2559',
+    backgroundColor: '#F8FAFC',
+    minHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: 4,
+  },
 });

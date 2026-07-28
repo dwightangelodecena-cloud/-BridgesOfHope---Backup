@@ -13,6 +13,7 @@ import {
   User,
   LogOut,
   MessageSquare,
+  BedDouble,
 } from 'lucide-react';
 import logo from '@/assets/kalingalogo.png';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
@@ -21,6 +22,7 @@ import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 const NAV_ITEMS = [
   { path: '/admin-dashboard', label: 'Dashboard', icon: LayoutGrid },
   { path: '/admin-patient-database', label: 'Patient Management', icon: BookUser },
+  { path: '/admin-ward-management', label: 'Ward & Room Management', icon: BedDouble },
   { path: '/admin-admission-management', label: 'Admission Management', icon: ClipboardList },
   { path: '/admin-discharge-management', label: 'Discharge Management', icon: ArrowRightSquare },
   { path: '/admin-user-management', label: 'User Management', icon: Users },

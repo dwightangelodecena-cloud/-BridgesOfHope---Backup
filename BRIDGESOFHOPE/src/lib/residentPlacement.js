@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 
 export const RISK_LEVEL_OPTIONS = ['Low', 'Moderate', 'High', 'Highly Suicidal'];
-export const BUNK_LEVEL_OPTIONS = ['Bottom', 'Middle', 'Top'];
+export const BUNK_LEVEL_OPTIONS = ['Bottom', 'Middle', 'Upper'];
 export const GENDER_OPTIONS = ['Male', 'Female'];
 
 export function isSupabaseUuid(id) {
@@ -64,8 +64,8 @@ export function validateBedPlacementPolicy({ genderSegment, riskLevel, bunkLevel
   if (!genderSegment) return 'Resident gender is required before saving room assignment.';
   const risk = String(riskLevel || '').trim();
   const bunk = String(bunkLevel || '').trim();
-  if (risk === 'Highly Suicidal' && /^top$/i.test(bunk)) {
-    return 'Policy: highly suicidal residents cannot use the top bunk.';
+  if (risk === 'Highly Suicidal' && /^(top|upper)$/i.test(bunk)) {
+    return 'Policy: highly suicidal residents cannot use the upper bunk.';
   }
   return null;
 }

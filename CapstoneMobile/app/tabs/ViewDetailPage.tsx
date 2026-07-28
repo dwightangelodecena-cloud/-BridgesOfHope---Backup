@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
@@ -77,6 +77,7 @@ function statusChipLabel(status: string): string {
 export default function ViewDetailsPage() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { patientId } = useLocalSearchParams<{ patientId?: string; patientName?: string }>();
   const [showNotifications, setShowNotifications] = useState(false);
   const [familyUserId, setFamilyUserId] = useState('');
   const { notificationItems, setNotificationItems } = useFamilyNotificationsState(familyUserId);
@@ -110,14 +111,17 @@ export default function ViewDetailsPage() {
 
       setFamilyUserId(user.id);
 
-      const { data: pRows, error: pErr } = await supabase
+      const patientsQuery = supabase
         .from('patients')
         .select(
           'id, full_name, admitted_at, progress_percent, clinical_status, primary_concern, family_id, discharged_at'
         )
-        .eq('family_id', user.id)
-        .is('discharged_at', null)
-        .order('admitted_at', { ascending: false });
+        .eq('family_id', user.id);
+      // Deep-linked (e.g. from Patient Archives): load exactly that one resident, discharged or
+      // not. Otherwise: the normal active-only picker, unchanged from before.
+      const { data: pRows, error: pErr } = patientId
+        ? await patientsQuery.eq('id', patientId)
+        : await patientsQuery.is('discharged_at', null).order('admitted_at', { ascending: false });
 
       if (pErr) {
         console.warn('[weekly reports patients]', pErr.message);
@@ -130,6 +134,7 @@ export default function ViewDetailsPage() {
         .map((r) => uiPatientFromRow(r as unknown as PatientRow))
         .filter((x): x is UIPatient => x != null);
       setPatients(list);
+      if (patientId && list.length) setExpandedPatientId(list[0].id);
 
       const ids = (pRows || []).map((r) => r.id).filter(Boolean);
       let byPatient: ReportsByPatient = {};
@@ -158,7 +163,7 @@ export default function ViewDetailsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [patientId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -204,6 +209,10 @@ export default function ViewDetailsPage() {
 
   const closeAndGoHome = () => {
     setExpandedPatientId(null);
+    if (patientId && router.canGoBack()) {
+      router.back();
+      return;
+    }
     router.navigate(TAB_ROUTES.home);
   };
 

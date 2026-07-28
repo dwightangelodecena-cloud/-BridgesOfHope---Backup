@@ -29,6 +29,7 @@ import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
+import { useAdminRealtimeRefresh } from '@/hooks/useAdminRealtimeRefresh';
 import { BRANCH_KEYS, BRANCH_LABEL, formatPhp } from '@/lib/servicePricing';
 import { partitionProfilesForStaffAssignment } from '@/lib/staffAssignmentLists';
 import {
@@ -58,6 +59,13 @@ import {
   persistResidentPlacement,
   validateBedPlacementPolicy,
 } from '@/lib/residentPlacement';
+import {
+  WARD_OPTIONS,
+  fetchRoomsWithOccupancy,
+  wardGenderRestriction,
+  assignPatientToRoom,
+  unassignPatientFromRoom,
+} from '@/lib/roomAssignment';
 import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
 import { verifyAdminApprovalPin } from '@/lib/adminApprovalPin';
 import {
@@ -136,6 +144,7 @@ function isOrphanedAdmissionRow(row) {
 }
 
 const AdmissionManagement = () => {
+  useAdminRealtimeRefresh();
   const navigate = useNavigate();
   const location = useLocation();
   const pendingApproveRowRef = useRef(null);
@@ -155,6 +164,14 @@ const AdmissionManagement = () => {
   const [editRow, setEditRow] = useState(null);
   const [assignStaffLists, setAssignStaffLists] = useState({ nurses: [], programStaff: [] });
   const [assignStaffLoadError, setAssignStaffLoadError] = useState('');
+  const [rooms, setRooms] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      const res = await fetchRoomsWithOccupancy();
+      if (res.ok) setRooms(res.rooms);
+    })();
+  }, []);
 
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
@@ -434,6 +451,24 @@ const AdmissionManagement = () => {
             return;
           }
         }
+
+        const editRoomId = e._editRoomId || '';
+        const selectedRoom = editRoomId ? rooms.find((rm) => rm.id === editRoomId) : null;
+        if (editRoomId && selectedRoom) {
+          const assignRes = await assignPatientToRoom(e.patientId, selectedRoom);
+          if (!assignRes.ok) {
+            setFormError(assignRes.errorMessage);
+            return;
+          }
+        } else if (!editRoomId && e.roomId) {
+          const unassignRes = await unassignPatientFromRoom(e.patientId);
+          if (!unassignRes.ok) {
+            setFormError(unassignRes.errorMessage);
+            return;
+          }
+        }
+        const roomsRes = await fetchRoomsWithOccupancy();
+        if (roomsRes.ok) setRooms(roomsRes.rooms);
       } catch (err) {
         console.error(err);
         setFormError(err?.message || 'Could not save nurse/program to the resident record (same fields as Resident Management).');
@@ -595,6 +630,8 @@ const AdmissionManagement = () => {
         meeting_scheduled_at: new Date().toISOString(),
         meeting_confirmed_by_family: confirmedByFamily,
         status: confirmedByFamily ? 'processing' : 'awaiting_guardian_response',
+        meeting_rejected_at: null,
+        meeting_rejected_reason: null,
       })
       .eq('id', meetingRow.requestId);
     if (error) {
@@ -1032,6 +1069,11 @@ const AdmissionManagement = () => {
                         <td style={{ padding: '9px 10px', fontWeight: 700, color: '#05CD99', whiteSpace: 'nowrap' }}>{formatPhp(r.estimatedCost)}</td>
                         <td style={{ padding: '9px 10px' }}>
                           <span className={`am-pill ${statusPillClass(r.status)}`}>{r.status}</span>
+                          {r.meetingRejectedReason ? (
+                            <div style={{ fontSize: 10, color: '#991B1B', marginTop: 4, fontWeight: 700 }} title={r.meetingRejectedReason}>
+                              Guardian rejected: {r.meetingRejectedReason}
+                            </div>
+                          ) : null}
                         </td>
                         <td style={{ padding: '9px 10px' }}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -1115,6 +1157,7 @@ const AdmissionManagement = () => {
                                   _editIncAdm: r.pricingDetail.includeAdmissionFee,
                                   _editIncMo: r.pricingDetail.includeMonthly,
                                   _editGender: r.patientGender || '',
+                                  _editRoomId: r.roomId || '',
                                   _editRoomCode: r.roomCode || '',
                                   _editRoomNote: r.roomPlacementNote || '',
                                   _editRiskLevel: r.riskLevel || 'Low',
@@ -1344,13 +1387,49 @@ const AdmissionManagement = () => {
                 </select>
               </label>
               <label className="am-modal-field">
-                <span className="am-modal-label">Room code</span>
-                <input
-                  className="am-input"
-                  value={editRow._editRoomCode || ''}
-                  onChange={(e) => setEditRow((p) => ({ ...p, _editRoomCode: e.target.value }))}
-                  placeholder="e.g. Room 203"
-                />
+                <span className="am-modal-label">Room / bed</span>
+                {(() => {
+                  const residentGenderSegment = normalizedRoomSegmentFromGender(editRow._editGender);
+                  return (
+                    <select
+                      className="am-input"
+                      value={editRow._editRoomId || ''}
+                      onChange={(e) => {
+                        const roomId = e.target.value;
+                        const room = rooms.find((rm) => rm.id === roomId);
+                        setEditRow((p) => ({
+                          ...p,
+                          _editRoomId: roomId,
+                          _editRoomCode: room ? room.roomNumber : '',
+                        }));
+                      }}
+                    >
+                      <option value="">Unassigned (no bed)</option>
+                      {WARD_OPTIONS.map((ward) => {
+                        const wardRooms = rooms.filter((r) => {
+                          if (r.ward !== ward) return false;
+                          const restriction = wardGenderRestriction(r.ward);
+                          if (!restriction || !residentGenderSegment) return true;
+                          return restriction === residentGenderSegment;
+                        });
+                        if (wardRooms.length === 0) return null;
+                        return (
+                          <optgroup key={ward} label={ward}>
+                            {wardRooms.map((room) => {
+                              const isCurrent = room.id === editRow._editRoomId;
+                              const full = room.occupants.length >= room.capacity && !isCurrent;
+                              return (
+                                <option key={room.id} value={room.id} disabled={full}>
+                                  {room.roomNumber} ({room.occupants.length}/{room.capacity}{full ? ' — full' : ''})
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                  );
+                })()}
               </label>
               <label className="am-modal-field">
                 <span className="am-modal-label">Risk level</span>
