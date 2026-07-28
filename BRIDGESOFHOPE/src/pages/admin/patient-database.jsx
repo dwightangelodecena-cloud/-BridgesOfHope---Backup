@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, BedDouble, FileText, MessageCircle, LayoutTemplate, Calendar } from 'lucide-react';
+import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, BedDouble, FileText, MessageCircle, LayoutTemplate, Calendar, Sparkles } from 'lucide-react';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { useNavigate, useLocation } from 'react-router-dom';
 import AdminSidebar from '@/components/admin/AdminSidebar';
@@ -36,7 +36,16 @@ import {
   resolveResidentGender,
   displayProgressPercent,
   validateBedPlacementPolicy,
+  formatRoomAssignmentSummary,
 } from '@/lib/residentPlacement';
+import {
+  WARD_OPTIONS,
+  fetchRoomsWithOccupancy,
+  wardGenderRestriction,
+  assignPatientToRoom,
+  unassignPatientFromRoom,
+} from '@/lib/roomAssignment';
+import { generateWeeklyReportDigest } from '@/lib/weeklyReportDigest';
 import BehaviorProgressBoard, {
   emptyBehaviorChecks,
   computeBehaviorBoardProgressPercent,
@@ -161,7 +170,7 @@ function mergeLocalLadderProfilesProgress(patients) {
 /** Editable trajectory while in care. Discharged is derived from `discharged_at` (dashboard discharge approval), not set here. */
 const CLINICAL_STATUS_OPTIONS = ['Improving', 'Stable', 'Declining'];
 const RISK_LEVEL_OPTIONS = ['Low', 'Moderate', 'High', 'Highly Suicidal'];
-const BUNK_LEVEL_OPTIONS = ['Bottom', 'Middle', 'Top'];
+const BUNK_LEVEL_OPTIONS = ['Bottom', 'Middle', 'Upper'];
 const COHORT_FILTER_OPTIONS = [
   { value: 'all', label: 'All records' },
   { value: 'in_care', label: 'Active / in care' },
@@ -259,19 +268,10 @@ const calculateAge = (dateOfBirth) => {
   return age >= 0 ? age : 'N/A';
 };
 
-/** Stable small hash for bed room label until rooms are stored in the DB. */
-const hashPatientId = (id) => {
-  const s = String(id ?? '');
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i) | 0;
-  return Math.abs(h);
-};
-
 const displayBedRoomLabel = (patient) => {
   if (!patient || patient.status === 'Discharged') return '—';
-  if (patient.roomCode) return patient.roomCode;
-  const n = 200 + (hashPatientId(patient.id) % 56);
-  return `Room ${n}`;
+  if (!patient.roomCode) return 'Unassigned';
+  return formatRoomAssignmentSummary(patient);
 };
 
 const normalizeRiskLevel = (raw) => {
@@ -286,7 +286,7 @@ const normalizeBunkLevel = (raw) => {
   const s = String(raw || '').trim().toLowerCase();
   if (s === 'bottom') return 'Bottom';
   if (s === 'middle') return 'Middle';
-  if (s === 'top') return 'Top';
+  if (s === 'top' || s === 'upper') return 'Upper';
   return 'Bottom';
 };
 
@@ -423,6 +423,7 @@ const toUiPatient = (row) => {
     temporaryDischargeExpectedReturn: row.temporary_discharge_expected_return || null,
     stayDays: calculateStayDays(row.admitted_at, row.discharged_at),
     dateOfBirth: row.date_of_birth,
+    roomId: row.room_id || '',
     roomCode: row.room_code || '',
     roomGenderSegment: row.room_gender_segment || '',
     roomPlacementNote: row.room_placement_note || '',
@@ -595,7 +596,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   const [selectedWeeklyVitalsWeek, setSelectedWeeklyVitalsWeek] = useState(null);
   const [weeklyReportModalOpen, setWeeklyReportModalOpen] = useState(false);
   const [weeklyReportModalWeek, setWeeklyReportModalWeek] = useState(null);
+  const [weeklyDigest, setWeeklyDigest] = useState({ loading: false, error: '', text: '' });
   const [roomForm, setRoomForm] = useState({
+    roomId: '',
     roomCode: '',
     roomGenderSegment: '',
     roomPlacementNote: '',
@@ -603,6 +606,16 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     bunkLevel: 'Bottom',
   });
   const [roomSaving, setRoomSaving] = useState(false);
+  const [rooms, setRooms] = useState([]);
+
+  const loadRooms = useCallback(async () => {
+    const res = await fetchRoomsWithOccupancy();
+    if (res.ok) setRooms(res.rooms);
+  }, []);
+
+  useEffect(() => {
+    void loadRooms();
+  }, [loadRooms]);
   const [staffForm, setStaffForm] = useState({ caseLoadManager: '', programStaff: '', medicalStaffNote: '' });
   const [staffSaving, setStaffSaving] = useState(false);
   const [staffAssignmentModalOpen, setStaffAssignmentModalOpen] = useState(false);
@@ -1081,6 +1094,10 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   }, [selectedPatient, behaviorChecklistChecked, recoveryLadderPosition]);
 
   useEffect(() => {
+    setWeeklyDigest({ loading: false, error: '', text: '' });
+  }, [selectedPatient?.id]);
+
+  useEffect(() => {
     if (!selectedPatient?.id) {
       setWeeklyReportsByWeek({});
       return;
@@ -1242,6 +1259,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   useEffect(() => {
     if (!selectedPatient) {
       setRoomForm({
+        roomId: '',
         roomCode: '',
         roomGenderSegment: '',
         roomPlacementNote: '',
@@ -1266,6 +1284,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         || resolveResidentGender(selectedPatient, null);
       const autoSegment = residentGender || normalizedRoomSegmentFromGender(selectedPatient.roomGenderSegment);
       setRoomForm({
+        roomId: selectedPatient.roomId || '',
         roomCode: selectedPatient.roomCode || '',
         roomGenderSegment: autoSegment || selectedPatient.roomGenderSegment || '',
         roomPlacementNote: selectedPatient.roomPlacementNote || '',
@@ -1388,10 +1407,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       setFormError('Gender must be set on the family admission request before saving room assignment.');
       return;
     }
-    if (!roomForm.roomCode.trim()) {
-      setFormError('Room code is required.');
-      return;
-    }
     const policyError = validateBedPlacementPolicy({
       genderSegment: autoSegment,
       riskLevel: roomForm.riskLevel,
@@ -1445,6 +1460,22 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           setFormError(res.errorMessage);
           return;
         }
+
+        const selectedRoom = roomForm.roomId ? rooms.find((r) => r.id === roomForm.roomId) : null;
+        if (roomForm.roomId && selectedRoom) {
+          const assignRes = await assignPatientToRoom(selectedPatient.id, selectedRoom);
+          if (!assignRes.ok) {
+            setFormError(assignRes.errorMessage);
+            return;
+          }
+        } else if (!roomForm.roomId && selectedPatient.roomId) {
+          const unassignRes = await unassignPatientFromRoom(selectedPatient.id);
+          if (!unassignRes.ok) {
+            setFormError(unassignRes.errorMessage);
+            return;
+          }
+        }
+        void loadRooms();
       }
 
       const overrides = loadRoomAssignments();
@@ -1456,6 +1487,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           ? {
               ...p,
               gender: payload.residentGender,
+              roomId: roomForm.roomId || '',
               roomCode: payload.roomCode,
               roomGenderSegment: payload.roomGenderSegment,
               roomPlacementNote: payload.roomPlacementNote,
@@ -1469,6 +1501,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           ? {
               ...prev,
               gender: payload.residentGender,
+              roomId: roomForm.roomId || '',
               roomCode: payload.roomCode,
               roomGenderSegment: payload.roomGenderSegment,
               roomPlacementNote: payload.roomPlacementNote,
@@ -1580,6 +1613,15 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     setWeeklyReportModalWeek(weekNum);
     setWeeklyReportModalOpen(true);
   }, []);
+  const handleGenerateWeeklyDigest = useCallback(async () => {
+    setWeeklyDigest({ loading: true, error: '', text: '' });
+    try {
+      const digest = await generateWeeklyReportDigest(selectedPatient?.name, weeklyReportsByWeek);
+      setWeeklyDigest({ loading: false, error: '', text: digest });
+    } catch (e) {
+      setWeeklyDigest({ loading: false, error: e.message || 'Could not generate summary.', text: '' });
+    }
+  }, [selectedPatient?.name, weeklyReportsByWeek]);
   const weeklyReportModalRow = weeklyReportModalWeek != null ? weeklyReportsByWeek[weeklyReportModalWeek] : null;
   const latestWeeklyReport = useMemo(() => {
     const rows = Object.values(weeklyReportsByWeek || {}).filter(Boolean);
@@ -2461,13 +2503,50 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                             </label>
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8, marginBottom: 8 }}>
-                            <input
-                              type="text"
-                              className="db-field-input"
-                              value={roomForm.roomCode}
-                              onChange={(e) => setRoomForm((prev) => ({ ...prev, roomCode: e.target.value }))}
-                              placeholder="Room code (e.g., Room 203)"
-                            />
+                            {(() => {
+                              const residentGenderSegment = normalizedRoomSegmentFromGender(
+                                roomForm.residentGender || selectedPatient.gender
+                              );
+                              return (
+                                <select
+                                  className="db-field-input"
+                                  value={roomForm.roomId}
+                                  onChange={(e) => {
+                                    const roomId = e.target.value;
+                                    const room = rooms.find((r) => r.id === roomId);
+                                    setRoomForm((prev) => ({
+                                      ...prev,
+                                      roomId,
+                                      roomCode: room ? room.roomNumber : '',
+                                    }));
+                                  }}
+                                >
+                                  <option value="">Unassigned (no bed)</option>
+                                  {WARD_OPTIONS.map((ward) => {
+                                    const wardRooms = rooms.filter((r) => {
+                                      if (r.ward !== ward) return false;
+                                      const restriction = wardGenderRestriction(r.ward);
+                                      if (!restriction || !residentGenderSegment) return true;
+                                      return restriction === residentGenderSegment;
+                                    });
+                                    if (wardRooms.length === 0) return null;
+                                    return (
+                                      <optgroup key={ward} label={ward}>
+                                        {wardRooms.map((room) => {
+                                          const isCurrent = room.id === roomForm.roomId;
+                                          const full = room.occupants.length >= room.capacity && !isCurrent;
+                                          return (
+                                            <option key={room.id} value={room.id} disabled={full}>
+                                              {room.roomNumber} ({room.occupants.length}/{room.capacity}{full ? ' — full' : ''})
+                                            </option>
+                                          );
+                                        })}
+                                      </optgroup>
+                                    );
+                                  })}
+                                </select>
+                              );
+                            })()}
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                             <select
@@ -2489,9 +2568,9 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                               ))}
                             </select>
                           </div>
-                          {normalizeRiskLevel(roomForm.riskLevel) === 'Highly Suicidal' && normalizeBunkLevel(roomForm.bunkLevel) === 'Top' ? (
+                          {normalizeRiskLevel(roomForm.riskLevel) === 'Highly Suicidal' && normalizeBunkLevel(roomForm.bunkLevel) === 'Upper' ? (
                             <p style={{ color: '#B91C1C', fontSize: 11, fontWeight: 700, marginBottom: 8 }}>
-                              Policy warning: Highly suicidal residents cannot use top bunk.
+                              Policy warning: Highly suicidal residents cannot use upper bunk.
                             </p>
                           ) : null}
                           <textarea
@@ -2786,12 +2865,50 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                 <div className="view-program-weekly-tracking-row">
                   <div className="info-card" style={{ padding: '32px', minWidth: 0 }}>
                     {onTemporaryLeave ? <TemporaryDischargeCardBanner patient={selectedPatientCare} variant="large" /> : null}
-                    <div style={{ flexShrink: 0, marginBottom: 20 }}>
-                      <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559' }}>Weekly Progress</h3>
-                      <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, marginBottom: 0 }}>
-                        Only weeks with a submitted nurse report are shown. Click the AI icon on a card for suggestions based on patient context and that week&apos;s filing data.
-                      </p>
+                    <div style={{ flexShrink: 0, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                      <div>
+                        <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559' }}>Weekly Progress</h3>
+                        <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, marginBottom: 0 }}>
+                          Only weeks with a submitted nurse report are shown.
+                        </p>
+                      </div>
+                      {weekNumbersWithReports.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleGenerateWeeklyDigest()}
+                          disabled={weeklyDigest.loading}
+                          style={{
+                            flexShrink: 0,
+                            border: '1px solid #C7D2FE',
+                            background: '#EEF2FF',
+                            color: '#3730A3',
+                            borderRadius: 8,
+                            padding: '7px 12px',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: weeklyDigest.loading ? 'not-allowed' : 'pointer',
+                            opacity: weeklyDigest.loading ? 0.6 : 1,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                          }}
+                        >
+                          <Sparkles size={13} />
+                          {weeklyDigest.loading ? 'Summarizing...' : 'AI summary'}
+                        </button>
+                      ) : null}
                     </div>
+                    {weeklyDigest.error ? (
+                      <p style={{ fontSize: 12, color: '#B91C1C', fontWeight: 600, marginBottom: 12 }}>{weeklyDigest.error}</p>
+                    ) : null}
+                    {weeklyDigest.text ? (
+                      <div style={{ background: '#F8FAFC', border: '1px dashed #C7D2FE', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
+                          AI summary — {weekNumbersWithReports.length} week{weekNumbersWithReports.length === 1 ? '' : 's'}
+                        </p>
+                        <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.5, margin: 0 }}>{weeklyDigest.text}</p>
+                      </div>
+                    ) : null}
                     <div
                       style={{
                         flex: 1,
@@ -2924,17 +3041,55 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
             ) : (
               <>
                 <div className="view-program-weekly-tracking-row">
-                  {/* Weekly Progress / Medical Report — nurse-filed reports; AI insights via sparkle control */}
+                  {/* Weekly Progress / Medical Report — nurse-filed reports; AI digest via generateWeeklyReportDigest */}
                   <div className="info-card" style={{ padding: '32px', minWidth: 0 }}>
                     {onTemporaryLeave ? <TemporaryDischargeCardBanner patient={selectedPatientCare} variant="large" /> : null}
-                    <div style={{ flexShrink: 0, marginBottom: 20 }}>
-                      <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559' }}>{isNurse ? 'Medical Report' : 'Weekly Progress'}</h3>
-                      <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, marginBottom: 0 }}>
-                        {isNurse
-                          ? 'Only weeks with a submitted medical report are shown. Click the AI icon on a card for suggestions based on patient context and that week&apos;s filing data.'
-                          : 'Only weeks with a submitted nurse report are shown. Click the AI icon on a card for suggestions based on patient context and that week&apos;s filing data.'}
-                      </p>
+                    <div style={{ flexShrink: 0, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                      <div>
+                        <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1B2559' }}>{isNurse ? 'Medical Report' : 'Weekly Progress'}</h3>
+                        <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, marginBottom: 0 }}>
+                          {isNurse
+                            ? 'Only weeks with a submitted medical report are shown.'
+                            : 'Only weeks with a submitted nurse report are shown.'}
+                        </p>
+                      </div>
+                      {weekNumbersWithReports.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleGenerateWeeklyDigest()}
+                          disabled={weeklyDigest.loading}
+                          style={{
+                            flexShrink: 0,
+                            border: '1px solid #C7D2FE',
+                            background: '#EEF2FF',
+                            color: '#3730A3',
+                            borderRadius: 8,
+                            padding: '7px 12px',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: weeklyDigest.loading ? 'not-allowed' : 'pointer',
+                            opacity: weeklyDigest.loading ? 0.6 : 1,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                          }}
+                        >
+                          <Sparkles size={13} />
+                          {weeklyDigest.loading ? 'Summarizing...' : 'AI summary'}
+                        </button>
+                      ) : null}
                     </div>
+                    {weeklyDigest.error ? (
+                      <p style={{ fontSize: 12, color: '#B91C1C', fontWeight: 600, marginBottom: 12 }}>{weeklyDigest.error}</p>
+                    ) : null}
+                    {weeklyDigest.text ? (
+                      <div style={{ background: '#F8FAFC', border: '1px dashed #C7D2FE', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
+                          AI summary — {weekNumbersWithReports.length} week{weekNumbersWithReports.length === 1 ? '' : 's'}
+                        </p>
+                        <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.5, margin: 0 }}>{weeklyDigest.text}</p>
+                      </div>
+                    ) : null}
                     <div
                       style={{
                         flex: 1,

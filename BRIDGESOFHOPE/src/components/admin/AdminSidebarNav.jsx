@@ -11,12 +11,14 @@ import {
   FileText,
   User,
   LogOut,
+  BedDouble,
 } from 'lucide-react';
 import { AdminMessagesNavItem } from './AdminMessagesNavItem';
 
 const NAV_ITEMS = [
   { path: '/admin-dashboard', label: 'Dashboard', Icon: LayoutGrid },
   { path: '/admin-patient-database', label: 'Patient Management', Icon: BookUser },
+  { path: '/admin-ward-management', label: 'Ward & Room Management', Icon: BedDouble },
   { path: '/admin-admission-management', label: 'Admission Management', Icon: ClipboardList },
   { path: '/admin-discharge-management', label: 'Discharge Management', Icon: ArrowRightSquare },
   { path: '/admin-user-management', label: 'User Management', Icon: Users },

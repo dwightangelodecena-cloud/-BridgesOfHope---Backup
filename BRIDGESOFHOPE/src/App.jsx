@@ -27,6 +27,7 @@ import UserManagement from '@/pages/admin/user-management';
 import AdmissionManagement from '@/pages/admin/admission-management';
 import DischargeManagement from '@/pages/admin/discharge-management';
 import NotificationTemplatesPage from '@/pages/admin/notification-templates';
+import WardManagement from '@/pages/admin/ward-management';
 import StaffManagement from '@/pages/admin/staff-management';
 import ContentManagement from '@/pages/admin/content-management';
 import AdminProfile from '@/pages/admin/admin-profile';
@@ -62,6 +63,7 @@ const ROUTE_TITLES = {
   '/admin-dashboard': 'Admin dashboard',
   '/patient-database': 'Resident database',
   '/admin-patient-database': 'Admin patient database',
+  '/admin-ward-management': 'Ward & room management',
   '/analytics': 'Analytics',
   '/admin-content-management': 'Content management',
   '/admin-profile': 'Admin profile',
@@ -266,6 +268,14 @@ function App() {
           element={
             <RoleGuard allowedRoles={['admin']}>
               <DischargeManagement />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-ward-management"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <WardManagement />
             </RoleGuard>
           }
         />

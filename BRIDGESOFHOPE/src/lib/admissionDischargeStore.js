@@ -372,6 +372,7 @@ export function buildAdmissionRow(admissionRow, patientRow, override) {
     patientBirthDate: admissionRow.patient_birth_date,
     patientGender: resolveDisplayGender(admissionRow, patientRow),
     roomAssignment: formatRoomAssignmentSummary(patientRow),
+    roomId: patientRow?.room_id || '',
     roomCode: patientRow?.room_code || '',
     roomGenderSegment: patientRow?.room_gender_segment || '',
     roomPlacementNote: patientRow?.room_placement_note || '',

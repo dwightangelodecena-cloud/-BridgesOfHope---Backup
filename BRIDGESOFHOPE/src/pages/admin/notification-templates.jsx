@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { MessageSquare, RefreshCw, Save, Send, Users, User } from 'lucide-react';
+import { MessageSquare, RefreshCw, Save, Send, Users, User, Sparkles } from 'lucide-react';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import {
@@ -10,6 +10,7 @@ import {
   insertFamilyNotificationBroadcast,
   SENDABLE_NOTIFICATION_CATEGORIES,
 } from '@/lib/notificationTemplates';
+import { draftNotificationWithAi } from '@/lib/aiNotificationDraft';
 
 function familyDisplayName(profile) {
   const full = String(profile.full_name || '').trim();
@@ -30,6 +31,8 @@ function SendNotificationCard() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +73,23 @@ function SendNotificationCard() {
     setBody('');
   };
 
+  const isPolish = Boolean(title.trim() || body.trim());
+
+  const handleDraftWithAi = async () => {
+    setDrafting(true);
+    setDraftError('');
+    try {
+      const hint = [title, body].filter(Boolean).join('\n');
+      const draft = await draftNotificationWithAi({ category, hint });
+      setTitle(draft.title);
+      setBody(draft.body);
+    } catch (e) {
+      setDraftError(e.message || 'Could not draft with AI.');
+    } finally {
+      setDrafting(false);
+    }
+  };
+
   return (
     <div className="nt-card nt-send-card">
       <div className="nt-send-head">
@@ -106,10 +126,16 @@ function SendNotificationCard() {
         id="nt-send-body"
         className="nt-body-input"
         rows={3}
-        placeholder="Write the notification content..."
+        placeholder="Write the notification content, or leave blank and let AI draft one..."
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
+
+      <button type="button" className="nt-ai-draft-btn" onClick={handleDraftWithAi} disabled={drafting}>
+        <Sparkles size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
+        {drafting ? 'Drafting...' : isPolish ? 'Polish with AI' : 'Draft with AI'}
+      </button>
+      {draftError ? <p className="nt-error">{draftError}</p> : null}
 
       <span className="nt-field-label">Recipients</span>
       <div className="nt-recipient-toggle">
@@ -299,6 +325,8 @@ export default function NotificationTemplatesPage() {
         .nt-recipient-btn { flex: 1; border: 2px solid #E9EDF7; background: white; border-radius: 10px; padding: 8px 10px; font-size: 12.5px; font-weight: 700; color: #707EAE; cursor: pointer; font-family: 'Inter', sans-serif; }
         .nt-recipient-btn-active { border-color: #F54E25; color: #C2410C; background: #FFF7ED; }
         .nt-send-btn { align-self: flex-start; }
+        .nt-ai-draft-btn { align-self: flex-start; border: 1px solid #C7D2FE; background: #EEF2FF; color: #3730A3; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; }
+        .nt-ai-draft-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         @media (max-width: 768px) { .desktop-sidebar { display: none !important; } .nt-main { padding: 20px 12px 100px 12px !important; } .nt-send-card { max-width: 100%; } }
       `}</style>
 
