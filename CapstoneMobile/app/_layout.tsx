@@ -14,6 +14,7 @@ import {
 } from "@expo-google-fonts/inter";
 import { TermsProvider } from "../contexts/TermsContext";
 import { AppErrorBoundary } from "../components/AppErrorBoundary";
+import { ToastHost } from "../components/ToastHost";
 import { rootStackScreenOptions } from "../lib/navigationConfig";
 import { ensureAuthSessionHealthy } from "../lib/supabase";
 import { applyInterFontDefault } from "../lib/interFont";
@@ -76,6 +77,7 @@ export default function RootLayout() {
   return (
     <AppErrorBoundary>
       <AuthSessionRecovery />
+      <ToastHost />
       <TermsProvider>
         <Stack screenOptions={rootStackScreenOptions}>
         <Stack.Screen name="index" options={fadeScreen} />

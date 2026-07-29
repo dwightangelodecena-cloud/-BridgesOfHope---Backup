@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   TrendingUp,
@@ -22,6 +22,7 @@ import {
 import { computePredictiveInsights } from '@/lib/predictiveAnalytics';
 import { fetchPredictiveFromSupabase } from '@/lib/fetchPredictiveFromSupabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import { showErrorToast } from '@/lib/toastBus';
 
 const RISK_STYLES = {
   low: { bg: '#f0fdf4', border: '#bbf7d0', color: '#15803d', label: 'Low risk' },
@@ -218,6 +219,7 @@ export default function AdminPredictiveAnalytics({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [confidenceOpen, setConfidenceOpen] = useState(true);
+  const lastToastedErrorRef = useRef(null);
 
   const loadFromSupabase = useCallback(async () => {
     setLoading(true);
@@ -225,10 +227,17 @@ export default function AdminPredictiveAnalytics({
     try {
       const data = await fetchPredictiveFromSupabase();
       setLive(data);
+      lastToastedErrorRef.current = null;
     } catch (err) {
-      console.warn('[predictive] Supabase load failed', err?.message || err);
-      setError(err?.message || 'Could not load from Supabase');
+      const message = err?.message || 'Could not load from Supabase';
+      console.warn('[predictive] Supabase load failed', message);
+      setError(message);
       setLive(null);
+      // Only toast once per distinct error, not on every APP_DATA_REFRESH retry while it persists.
+      if (lastToastedErrorRef.current !== message) {
+        lastToastedErrorRef.current = message;
+        showErrorToast(`Predictive analytics couldn't load live data: ${message}`);
+      }
     } finally {
       setLoading(false);
     }

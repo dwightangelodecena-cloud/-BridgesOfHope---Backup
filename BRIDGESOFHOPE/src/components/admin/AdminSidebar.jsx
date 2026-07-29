@@ -18,6 +18,7 @@ import {
 import logo from '@/assets/kalingalogo.png';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
+import { AdminRequestsNavItem } from '@/components/admin/AdminRequestsNavItem';
 import { SidebarLabel } from '@/components/admin/SidebarLabel';
 
 const NAV_ITEMS = [
@@ -135,6 +136,7 @@ export default function AdminSidebar({
               active={isNavActive(pathname, '/admin-messages')}
               onClick={(e) => go(e, '/admin-messages')}
             />
+            <AdminRequestsNavItem />
           </>
         )}
       </div>

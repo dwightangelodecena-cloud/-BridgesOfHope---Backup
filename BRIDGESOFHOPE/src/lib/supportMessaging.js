@@ -1,8 +1,10 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { showErrorToast } from '@/lib/toastBus';
 
 const LOCAL_KEY = 'bh_support_messages_v1';
 const ADMIN_READ_THREADS_KEY = 'bh_support_admin_read_threads_v1';
 export const SUPPORT_MESSAGES_CHANGED = 'bh_support_messages_changed';
+let lastToastedProfileFetchError = null;
 
 const WELCOME_TEXT =
   'Hello! How can we help you today? Reach out anytime — our care team will respond here.';
@@ -159,12 +161,17 @@ async function fetchProfileMapForFamilyIds(familyIds) {
       const chunk = ids.slice(i, i + 100);
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, first_name, last_name, login_email, email, account_type')
+        .select('id, full_name, first_name, last_name, login_email, account_type')
         .in('id', chunk);
       if (error) {
         console.warn('[supportMessaging] profile names', error.message);
+        if (lastToastedProfileFetchError !== error.message) {
+          lastToastedProfileFetchError = error.message;
+          showErrorToast(`Couldn't load guardian names for messages: ${error.message}`);
+        }
         continue;
       }
+      lastToastedProfileFetchError = null;
       for (const row of data || []) {
         map.set(String(row.id), row);
       }
@@ -528,7 +535,7 @@ export async function fetchAdminInboxThreads() {
 
   const { data: profiles, error: profErr } = await supabase
     .from('profiles')
-    .select('id, full_name, first_name, last_name, login_email, email, account_type, role')
+    .select('id, full_name, first_name, last_name, login_email, account_type, role')
     .order('full_name', { ascending: true })
     .limit(5000);
   if (profErr) console.warn('[supportMessaging] inbox profiles', profErr.message);

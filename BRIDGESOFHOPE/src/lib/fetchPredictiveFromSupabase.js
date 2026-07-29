@@ -14,7 +14,7 @@ export function mapPatientRowForPredictive(row) {
     date_of_birth: row.date_of_birth,
     admitted_at: row.admitted_at,
     discharged_at: row.discharged_at,
-    room: row.room || row.room_number || null,
+    room: row.room_code || null,
     case_load_manager: row.case_load_manager,
     program_staff: row.program_staff,
   };
@@ -29,7 +29,7 @@ export async function fetchPredictiveFromSupabase() {
   }
 
   const patientSelect =
-    'id, full_name, primary_concern, clinical_status, gender, date_of_birth, admitted_at, discharged_at, room, case_load_manager, program_staff, created_at';
+    'id, full_name, primary_concern, clinical_status, gender, date_of_birth, admitted_at, discharged_at, room_code, case_load_manager, program_staff, created_at';
 
   const [
     { data: patientRows, error: pErr },

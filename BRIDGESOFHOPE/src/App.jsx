@@ -40,6 +40,7 @@ import kalingaLogo from '@/assets/kalingalogo.png';
 import { RoleGuard } from '@/components/RoleGuard';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
 import CookieConsentBanner from '@/components/CookieConsentBanner';
+import ToastHost from '@/components/ToastHost';
 
 const ROUTE_TITLES = {
   '/': 'Home',
@@ -329,6 +330,7 @@ function App() {
         />
         </Routes>
         <CookieConsentBanner />
+        <ToastHost />
       </Router>
     </AppErrorBoundary>
   );

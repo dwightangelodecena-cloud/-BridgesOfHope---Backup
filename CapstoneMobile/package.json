@@ -11,6 +11,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "typecheck": "tsc --noEmit --ignoreDeprecations 6.0",
     "sync-env": "node ./scripts/sync-web-supabase-env.mjs"
   },
   "dependencies": {

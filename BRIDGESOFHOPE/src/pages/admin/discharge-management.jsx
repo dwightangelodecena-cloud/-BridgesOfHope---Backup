@@ -55,7 +55,8 @@ import {
   markPickupConfirmed,
   schedulePickupMeeting,
 } from '@/lib/dischargePickupMeeting';
-import { fetchNotificationTemplates, renderNotificationTemplate } from '@/lib/notificationTemplates';
+import { fetchNotificationTemplates, renderNotificationTemplate, insertFamilyNotification } from '@/lib/notificationTemplates';
+import { showErrorToast } from '@/lib/toastBus';
 
 const FILTER_OPTIONS = ['All Discharges', ...DISCHARGE_FINAL_STATUSES];
 
@@ -483,6 +484,20 @@ const DischargeManagement = () => {
       if (error) {
         setFormError(error.message || 'Could not mark resident as discharged in the database.');
         return;
+      }
+      if (r.patientFamilyId) {
+        const notifyRes = await insertFamilyNotification({
+          familyId: r.patientFamilyId,
+          templateKey: 'discharge_finalized',
+          vars: { patient_name: r.patientName },
+          relatedType: 'discharge_finalized',
+          relatedId: r.patientId,
+        });
+        if (!notifyRes.ok) {
+          showErrorToast(
+            `Discharge was finalized, but the guardian notification failed to send: ${notifyRes.errorMessage || 'unknown error'}`
+          );
+        }
       }
     }
     updateDischargeRecord(r.id, {

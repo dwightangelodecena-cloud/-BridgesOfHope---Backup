@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { insertFamilyNotification } from '@/lib/notificationTemplates';
+import { showErrorToast } from '@/lib/toastBus';
 
 /** Admin can schedule/reschedule a pickup meeting any time before the resident is actually picked up. */
 export function canCallForPickup(patient) {
@@ -42,13 +43,20 @@ export async function schedulePickupMeeting({ patientId, familyId, patientName, 
   }
 
   if (familyId) {
-    await insertFamilyNotification({
+    const notifyRes = await insertFamilyNotification({
       familyId,
       templateKey: 'discharge_pickup_scheduled',
       vars: { patient_name: patientName, pickup_date: date, pickup_time: time || '' },
       relatedType: 'discharge_pickup',
       relatedId: patientId,
     });
+    // The date/time IS saved at this point — only the guardian notification failed. Surface it
+    // rather than letting admin believe the guardian was told when they weren't.
+    if (!notifyRes.ok) {
+      showErrorToast(
+        `Pickup was scheduled, but the guardian notification failed to send: ${notifyRes.errorMessage || 'unknown error'}`
+      );
+    }
   }
 
   return { ok: true };
