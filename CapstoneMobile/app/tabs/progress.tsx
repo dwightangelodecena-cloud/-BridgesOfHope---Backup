@@ -480,6 +480,46 @@ export default function ProgressScreen() {
                   <Text style={[styles.statusPillTxt, { color: statusColor }]}>{st}</Text>
                 </View>
 
+                {selectedRequest.vitals_recorded_at ? (
+                  <View
+                    style={{
+                      backgroundColor: '#FFF7F4',
+                      borderWidth: 1,
+                      borderColor: '#FFD9CC',
+                      borderRadius: 16,
+                      padding: 14,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                      <Ionicons name="pulse-outline" size={16} color="#C2410C" />
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#9A3412' }}>Medical Assessment</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                      {[
+                        ['Weight', selectedRequest.vitals_weight],
+                        ['Height', selectedRequest.vitals_height],
+                        ['BP', selectedRequest.vitals_bp],
+                        ['PR', selectedRequest.vitals_pr],
+                        ['RR', selectedRequest.vitals_rr],
+                        ['Temperature', selectedRequest.vitals_temperature],
+                        ['BMI', selectedRequest.vitals_bmi],
+                        ['SPO2', selectedRequest.vitals_spo2],
+                      ].map(([label, val]) => (
+                        <View key={String(label)} style={{ minWidth: '22%' }}>
+                          <Text style={{ fontSize: 9.5, fontWeight: '800', color: '#B45309', textTransform: 'uppercase' }}>{String(label)}</Text>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: '#78350F', marginTop: 2 }}>{String(val || '—')}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    {selectedRequest.pre_admission_summary ? (
+                      <Text style={{ fontSize: 12.5, color: '#78350F', lineHeight: 18, marginTop: 12 }}>
+                        {String(selectedRequest.pre_admission_summary)}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
                 {selectedRequest.meeting_date ? (
                   <View style={styles.detailRow}>
                     <Ionicons name="calendar-outline" size={16} color="#64748B" />

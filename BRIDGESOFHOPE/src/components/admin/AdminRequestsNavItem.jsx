@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Bell, X } from 'lucide-react';
-import { useAdminUnreadStaffNotifications } from '@/hooks/useAdminUnreadStaffNotifications';
+import { useUnreadStaffNotifications } from '@/hooks/useAdminUnreadStaffNotifications';
 import { SidebarLabel } from '@/components/admin/SidebarLabel';
 import {
   fetchStaffNotifications,
@@ -9,6 +10,25 @@ import {
   markAllStaffNotificationsRead,
   staffNotificationTargetPath,
 } from '@/lib/staffNotifications';
+
+const DROPDOWN_WIDTH = 320;
+const DROPDOWN_MAX_HEIGHT = 420;
+const VIEWPORT_MARGIN = 12;
+
+// Same fix as StaffNotificationsBell: the admin sidebar (.desktop-sidebar) has
+// overflow:hidden, which clips a position:absolute dropdown no matter which direction it
+// opens. Rendering through a portal at fixed viewport coordinates avoids that entirely.
+function computeDropdownRect(triggerRect) {
+  const openBelow = triggerRect.bottom + DROPDOWN_MAX_HEIGHT + VIEWPORT_MARGIN <= window.innerHeight;
+  const top = openBelow
+    ? triggerRect.bottom + 8
+    : Math.max(VIEWPORT_MARGIN, triggerRect.top - DROPDOWN_MAX_HEIGHT - 8);
+  const left = Math.min(
+    Math.max(VIEWPORT_MARGIN, triggerRect.left),
+    window.innerWidth - DROPDOWN_WIDTH - VIEWPORT_MARGIN
+  );
+  return { top, left };
+}
 
 function timeAgo(iso) {
   const t = new Date(iso).getTime();
@@ -24,22 +44,41 @@ function timeAgo(iso) {
 /** Admin sidebar "Requests" — shared inbox for new guardian-submitted admission/discharge/visitation requests. */
 export function AdminRequestsNavItem({ showLabel = true }) {
   const navigate = useNavigate();
-  const unread = useAdminUnreadStaffNotifications();
+  const unread = useUnreadStaffNotifications();
   const badge = unread > 99 ? '99+' : String(unread);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
+  const [dropdownRect, setDropdownRect] = useState(null);
   const wrapRef = useRef(null);
+  const panelRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
+    if (wrapRef.current) {
+      setDropdownRect(computeDropdownRect(wrapRef.current.getBoundingClientRect()));
+    }
     (async () => {
       setItems(await fetchStaffNotifications());
     })();
     const onDoc = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+      if (
+        wrapRef.current && !wrapRef.current.contains(e.target) &&
+        panelRef.current && !panelRef.current.contains(e.target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const onViewportChange = () => {
+      if (wrapRef.current) setDropdownRect(computeDropdownRect(wrapRef.current.getBoundingClientRect()));
     };
     document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('scroll', onViewportChange, true);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('scroll', onViewportChange, true);
+    };
   }, [open]);
 
   const openItem = async (item) => {
@@ -79,25 +118,26 @@ export function AdminRequestsNavItem({ showLabel = true }) {
         ) : null}
       </div>
 
-      {open ? (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'absolute',
-            left: '100%',
-            bottom: 0,
-            marginLeft: 10,
-            width: 320,
-            maxHeight: 420,
-            overflowY: 'auto',
-            background: '#FFFFFF',
-            border: '1px solid #E9EDF7',
-            borderRadius: 14,
-            boxShadow: '0 20px 50px rgba(15,23,42,0.18)',
-            zIndex: 2000,
-            fontFamily: "'Inter', sans-serif",
-          }}
-        >
+      {open && dropdownRect
+        ? createPortal(
+            <div
+              ref={panelRef}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'fixed',
+                top: dropdownRect.top,
+                left: dropdownRect.left,
+                width: DROPDOWN_WIDTH,
+                maxHeight: DROPDOWN_MAX_HEIGHT,
+                overflowY: 'auto',
+                background: '#FFFFFF',
+                border: '1px solid #E9EDF7',
+                borderRadius: 14,
+                boxShadow: '0 20px 50px rgba(15,23,42,0.18)',
+                zIndex: 999999,
+                fontFamily: "'Inter', sans-serif",
+              }}
+            >
           <div
             style={{
               display: 'flex',
@@ -151,8 +191,10 @@ export function AdminRequestsNavItem({ showLabel = true }) {
               </div>
             ))
           )}
-        </div>
-      ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

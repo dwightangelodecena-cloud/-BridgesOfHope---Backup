@@ -5,8 +5,11 @@ import {
   STAFF_NOTIFICATIONS_CHANGED,
 } from '@/lib/staffNotifications';
 
-/** Unread staff notifications (new admission/discharge/visitation requests) for sidebar badge. */
-export function useAdminUnreadStaffNotifications() {
+/**
+ * Unread staff notifications for a badge — works for admin (shared broadcast), nurse, and program
+ * alike, since RLS (not this query) scopes which rows a given user actually sees.
+ */
+export function useUnreadStaffNotifications() {
   const [count, setCount] = useState(0);
 
   const refresh = useCallback(async () => {

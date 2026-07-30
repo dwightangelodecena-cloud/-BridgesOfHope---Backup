@@ -59,6 +59,12 @@ import {
   partitionProfilesForStaffAssignment,
   profileDisplayNameFromRow,
 } from '@/lib/staffAssignmentLists';
+import { StaffNotificationsBell } from '@/components/StaffNotificationsBell';
+
+function resolveProgramNotificationPath(relatedType) {
+  if (relatedType === 'discharge_request') return '/program-discharge';
+  return null;
+}
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
 const ROOM_ASSIGNMENT_STORAGE_KEY = 'bh_patient_room_assignments_v1';
@@ -2319,20 +2325,25 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               {selectedPatient ? 'Resident Information' : isProgram ? 'Assigned residents' : 'Resident Management'}
             </p>
           </div>
-          {selectedPatient && (
+          {(isProgram || selectedPatient) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-              {onTemporaryLeave ? (
+              {selectedPatient && onTemporaryLeave ? (
                 <ResidentReturnedHeaderButton
                   busy={residentReturnBusy}
                   onClick={() => setShowResidentReturnConfirm(true)}
                 />
               ) : null}
-              <X
-                size={32}
-                color="#1B2559"
-                style={{ cursor: 'pointer', flexShrink: 0 }}
-                onClick={() => setSelectedPatient(null)}
-              />
+              {isProgram ? (
+                <StaffNotificationsBell resolveTargetPath={resolveProgramNotificationPath} onNavigate={navigate} />
+              ) : null}
+              {selectedPatient ? (
+                <X
+                  size={32}
+                  color="#1B2559"
+                  style={{ cursor: 'pointer', flexShrink: 0 }}
+                  onClick={() => setSelectedPatient(null)}
+                />
+              ) : null}
             </div>
           )}
         </div>

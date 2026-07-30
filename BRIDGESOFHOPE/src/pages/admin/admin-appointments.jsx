@@ -95,6 +95,13 @@ export default function AdminAppointmentsPage() {
   const [startTime, setStartTime] = useState('13:00');
   const [endTime, setEndTime] = useState('17:00');
   const [queue, setQueue] = useState(() => listVisitationRequestsAll());
+  /** Admission-meeting rows (from admission_requests), shaped for the calendar/day-modal only —
+   *  kept separate from `queue` so the visitation-only Request Queue list and its
+   *  Approve/Decline/Reschedule actions never see an admission_requests row. */
+  const [admissionMeetingItems, setAdmissionMeetingItems] = useState([]);
+  /** Reschedule picker for a pending admission meeting, opened from the day modal — separate
+   *  from `rescheduleModal` since it writes to admission_requests, not visitation_requests. */
+  const [admissionRescheduleModal, setAdmissionRescheduleModal] = useState({ open: false, row: null, date: '', time: '13:00' });
   /** Modal listing visitations for a calendar day (preferred or confirmed date). */
   const [dayAppointmentsModal, setDayAppointmentsModal] = useState(null);
   const [rescheduleModal, setRescheduleModal] = useState({
@@ -136,6 +143,37 @@ export default function AdminAppointmentsPage() {
       setSelectedDays(Array.isArray(loadedSettings.days) && loadedSettings.days.length ? loadedSettings.days : ['Wednesday', 'Saturday']);
       setStartTime(loadedSettings.startTime || '13:00');
       setEndTime(loadedSettings.endTime || '17:00');
+      if (isSupabaseConfigured()) {
+        const { data: admissionRows, error: admissionError } = await supabase
+          .from('admission_requests')
+          .select('id, patient_name, family_id, guardian_full_name, status, meeting_date, meeting_time, meeting_confirmed_by_family, preferred_meeting_date, preferred_meeting_time, preferred_meeting_note, created_at')
+          .or('meeting_date.not.is.null,preferred_meeting_date.not.is.null');
+        if (!admissionError && admissionRows != null) {
+          setAdmissionMeetingItems(
+            admissionRows.map((r) => {
+              const confirmed = Boolean(r.meeting_confirmed_by_family && r.meeting_date);
+              return {
+                id: `admission-${r.id}`,
+                source: 'admission',
+                requestId: r.id,
+                familyId: r.family_id || '',
+                familyName: r.guardian_full_name || '',
+                patientId: r.id,
+                patientName: r.patient_name || 'Resident',
+                preferredDate: confirmed ? '' : (r.meeting_date || r.preferred_meeting_date || ''),
+                preferredTime: confirmed ? '' : (r.meeting_time || r.preferred_meeting_time || ''),
+                note: r.preferred_meeting_note || '',
+                status: confirmed ? 'Approved' : 'Requested',
+                confirmedDate: confirmed ? r.meeting_date : '',
+                confirmedTime: confirmed ? r.meeting_time : '',
+                adminNote: '',
+                createdAt: r.created_at || '',
+                updatedAt: r.created_at || '',
+              };
+            })
+          );
+        }
+      }
       const localRows = listVisitationRequestsAll();
       if (isSupabaseConfigured()) {
         const { data, error } = await supabase
@@ -364,6 +402,93 @@ export default function AdminAppointmentsPage() {
     }
   };
 
+  /** Accepts the guardian's proposed admission-meeting slot verbatim (mirrors the Approve
+   *  semantics above: no re-confirmation needed since it's the family's own proposed time). */
+  const confirmAdmissionMeeting = async (row) => {
+    if (!row?.requestId) return;
+    const date = row.preferredDate || '';
+    const time = row.preferredTime || '';
+    const { error } = await supabase
+      .from('admission_requests')
+      .update({
+        meeting_date: date || null,
+        meeting_time: time || null,
+        meeting_scheduled_at: new Date().toISOString(),
+        meeting_confirmed_by_family: true,
+        status: 'processing',
+        meeting_rejected_at: null,
+        meeting_rejected_reason: null,
+      })
+      .eq('id', row.requestId);
+    if (error) {
+      console.warn('[admission_requests confirm meeting]', error.message);
+      return;
+    }
+    setAdmissionMeetingItems((prev) => prev.map((item) => (
+      item.requestId === row.requestId
+        ? { ...item, status: 'Approved', confirmedDate: date, confirmedTime: time, preferredDate: '', preferredTime: '' }
+        : item
+    )));
+    setDayAppointmentsModal(null);
+    if (row.familyId) {
+      void insertFamilyNotification({
+        familyId: row.familyId,
+        templateKey: 'admission_meeting_confirmed',
+        vars: { patient_name: row.patientName, meeting_date: date, meeting_time: time },
+        relatedType: 'admission_request',
+        relatedId: row.requestId,
+      });
+    }
+    window.dispatchEvent(new Event(APP_DATA_REFRESH));
+  };
+
+  const openAdmissionReschedule = (row) => {
+    setDayAppointmentsModal(null);
+    setAdmissionRescheduleModal({
+      open: true,
+      row,
+      date: row.preferredDate || todayIso,
+      time: row.preferredTime || '13:00',
+    });
+  };
+
+  /** Admin's own counter-proposal for an admission meeting — the guardian must accept or
+   *  counter-propose again in the app (mirrors the existing awaiting_guardian_response loop). */
+  const submitAdmissionReschedule = async () => {
+    const { row, date, time } = admissionRescheduleModal;
+    if (!row?.requestId || !date) return;
+    const { error } = await supabase
+      .from('admission_requests')
+      .update({
+        meeting_date: date,
+        meeting_time: time || null,
+        meeting_scheduled_at: new Date().toISOString(),
+        meeting_confirmed_by_family: false,
+        status: 'awaiting_guardian_response',
+      })
+      .eq('id', row.requestId);
+    if (error) {
+      console.warn('[admission_requests reschedule meeting]', error.message);
+      return;
+    }
+    setAdmissionMeetingItems((prev) => prev.map((item) => (
+      item.requestId === row.requestId
+        ? { ...item, status: 'Requested', preferredDate: date, preferredTime: time, confirmedDate: '', confirmedTime: '' }
+        : item
+    )));
+    if (row.familyId) {
+      void insertFamilyNotification({
+        familyId: row.familyId,
+        templateKey: 'admission_meeting_unavailable',
+        vars: { patient_name: row.patientName, meeting_date: date, meeting_time: time || '' },
+        relatedType: 'admission_request',
+        relatedId: row.requestId,
+      });
+    }
+    setAdmissionRescheduleModal({ open: false, row: null, date: '', time: '13:00' });
+    window.dispatchEvent(new Event(APP_DATA_REFRESH));
+  };
+
   const decide = (row, action) => {
     if (!row?.id) return;
     const current = queue.find((q) => String(q.id) === String(row.id)) || row;
@@ -457,10 +582,17 @@ export default function AdminAppointmentsPage() {
     '12-25': 'Christmas Day',
     '12-30': 'Rizal Day',
   };
-  const visibleQueue = useMemo(() => queue.filter((row) => row.status !== 'Declined'), [queue]);
+  /** Visitation-only rows (Declined excluded) — feeds the Request Queue list and its
+   *  Approve/Decline/Reschedule actions, which must never run against an admission_requests row. */
+  const visitationOnlyQueue = useMemo(() => queue.filter((row) => row.status !== 'Declined'), [queue]);
+  /** Visitation + admission-meeting rows merged — feeds the calendar board/day-modal only. */
+  const visibleQueue = useMemo(
+    () => [...queue, ...admissionMeetingItems].filter((row) => row.status !== 'Declined'),
+    [queue, admissionMeetingItems]
+  );
   const filteredQueue = selectedCalendarDate
-    ? visibleQueue.filter((row) => visitationCalendarDateKeys(row).includes(selectedCalendarDate))
-    : visibleQueue;
+    ? visitationOnlyQueue.filter((row) => visitationCalendarDateKeys(row).includes(selectedCalendarDate))
+    : visitationOnlyQueue;
 
   /** Calendar board: sidebar search/status/patient filters applied on top of visibleQueue.
    *  Kept separate from filteredQueue/queueToRender below so the existing Request Queue list's
@@ -565,8 +697,8 @@ export default function AdminAppointmentsPage() {
     if (Number.isNaN(d.getTime())) return iso;
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   };
-  const shouldFallbackToAll = Boolean(selectedCalendarDate) && filteredQueue.length === 0 && visibleQueue.length > 0;
-  const queueToRender = shouldFallbackToAll ? visibleQueue : filteredQueue;
+  const shouldFallbackToAll = Boolean(selectedCalendarDate) && filteredQueue.length === 0 && visitationOnlyQueue.length > 0;
+  const queueToRender = shouldFallbackToAll ? visitationOnlyQueue : filteredQueue;
 
   return (
     <div className="family-portal admin-portal-layout ap-outer" style={{display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}>
@@ -1063,6 +1195,17 @@ export default function AdminAppointmentsPage() {
           cursor: pointer;
         }
         .ap-day-modal-btn-reschedule:hover { background: #e0e7ff; }
+        .ap-day-modal-btn-confirm {
+          border: 1px solid #bbf7d0;
+          background: #ecfdf3;
+          color: #166534;
+          font-size: 12px;
+          font-weight: 800;
+          padding: 8px 14px;
+          border-radius: 10px;
+          cursor: pointer;
+        }
+        .ap-day-modal-btn-confirm:hover { background: #dcfce7; }
         .ap-day-modal-body { padding: 12px 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .ap-day-modal-card {
           border: 1px solid #e9edf7;
@@ -1540,6 +1683,63 @@ export default function AdminAppointmentsPage() {
         </div>
       </main>
 
+      {admissionRescheduleModal.open && admissionRescheduleModal.row ? (
+        <div className="ap-day-modal-backdrop" onClick={() => setAdmissionRescheduleModal({ open: false, row: null, date: '', time: '13:00' })}>
+          <div className="ap-day-modal" style={{ maxWidth: 420 }} onClick={(ev) => ev.stopPropagation()}>
+            <div className="ap-day-modal-head">
+              <div>
+                <div className="ap-day-modal-title">Reschedule admission meeting</div>
+                <div className="ap-day-modal-sub">{admissionRescheduleModal.row.patientName || 'Resident'}</div>
+              </div>
+              <button
+                type="button"
+                className="ap-day-modal-close"
+                aria-label="Close"
+                onClick={() => setAdmissionRescheduleModal({ open: false, row: null, date: '', time: '13:00' })}
+              >
+                <ModalCloseGlyph />
+              </button>
+            </div>
+            <div className="ap-day-modal-body">
+              <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
+                Suggest a different time. The family will be notified and can accept it or propose another time.
+              </p>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, fontWeight: 700, color: '#475569' }}>
+                Meeting date
+                <input
+                  type="date"
+                  value={admissionRescheduleModal.date}
+                  min={todayIso}
+                  onChange={(e) => setAdmissionRescheduleModal((prev) => ({ ...prev, date: e.target.value }))}
+                  style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '8px 10px', fontSize: 13, color: '#1B2559' }}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, fontWeight: 700, color: '#475569' }}>
+                Meeting time
+                <input
+                  type="time"
+                  value={admissionRescheduleModal.time}
+                  onChange={(e) => setAdmissionRescheduleModal((prev) => ({ ...prev, time: e.target.value }))}
+                  style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '8px 10px', fontSize: 13, color: '#1B2559' }}
+                />
+              </label>
+            </div>
+            <div className="ap-day-modal-foot">
+              <button
+                type="button"
+                className="ap-day-modal-btn-decline"
+                onClick={() => setAdmissionRescheduleModal({ open: false, row: null, date: '', time: '13:00' })}
+              >
+                Cancel
+              </button>
+              <button type="button" className="ap-day-modal-btn-confirm" onClick={() => void submitAdmissionReschedule()}>
+                Send new time
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {rescheduleModal.open && rescheduleModal.row ? (
         <div className="ap-day-modal-backdrop" onClick={() => setRescheduleModal({ open: false, row: null, date: '', time: '13:00', reasonType: '', otherReason: '' })}>
           <div className="ap-day-modal" onClick={(ev) => ev.stopPropagation()}>
@@ -1760,7 +1960,7 @@ export default function AdminAppointmentsPage() {
           >
             <div className="ap-day-modal-head">
               <div>
-                <div id="ap-day-modal-heading" className="ap-day-modal-title">Visitation appointments</div>
+                <div id="ap-day-modal-heading" className="ap-day-modal-title">Appointments</div>
                 <div className="ap-day-modal-sub">{formatLongCalendarDate(dayAppointmentsModal.iso)}</div>
               </div>
               <button
@@ -1776,7 +1976,8 @@ export default function AdminAppointmentsPage() {
               {dayAppointmentsModal.items.map((row) => {
                 const { label, time } = slotLabelAndTimeForDay(row, dayAppointmentsModal.iso);
                 const st = normalizeVisitationStatus(row.status);
-                const canDayModalAct = st !== 'Declined';
+                const isAdmissionMeeting = row.source === 'admission';
+                const canDayModalAct = st !== 'Declined' && !isAdmissionMeeting;
                 return (
                   <div key={row.id} className="ap-day-modal-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1791,6 +1992,14 @@ export default function AdminAppointmentsPage() {
                       >
                         {st}
                       </span>
+                      {isAdmissionMeeting ? (
+                        <span
+                          className="admin-status-pill"
+                          style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FFD9CC' }}
+                        >
+                          Admission Meeting
+                        </span>
+                      ) : null}
                     </div>
                     <div className="ap-day-modal-meta">
                       {row.familyName ? (
@@ -1873,6 +2082,38 @@ export default function AdminAppointmentsPage() {
                           }}
                         >
                           Reschedule
+                        </button>
+                      </div>
+                    ) : null}
+                    {isAdmissionMeeting && st === 'Requested' ? (
+                      <div className="ap-day-modal-card-actions">
+                        <button
+                          type="button"
+                          className="ap-day-modal-btn-reschedule"
+                          onClick={() => openAdmissionReschedule(row)}
+                        >
+                          Reschedule
+                        </button>
+                        <button
+                          type="button"
+                          className="ap-day-modal-btn-confirm"
+                          onClick={() => void confirmAdmissionMeeting(row)}
+                        >
+                          Confirm
+                        </button>
+                      </div>
+                    ) : null}
+                    {isAdmissionMeeting ? (
+                      <div className="ap-day-modal-card-actions">
+                        <button
+                          type="button"
+                          className="ap-day-modal-btn-reschedule"
+                          onClick={() => {
+                            setDayAppointmentsModal(null);
+                            navigate('/admin-admission-management');
+                          }}
+                        >
+                          View in Admission Management →
                         </button>
                       </div>
                     ) : null}

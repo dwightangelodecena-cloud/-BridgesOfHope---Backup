@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { LayoutGrid, Users, User, LogOut, TrendingUp, TrendingDown, Minus, AlertTriangle, Clock, Heart, ChevronUp, Calendar, FileText } from 'lucide-react';
+import { LayoutGrid, Users, User, LogOut, TrendingUp, TrendingDown, Minus, AlertTriangle, Clock, Heart, ChevronUp, Calendar, FileText, ClipboardCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
+import { StaffNotificationsBell } from '@/components/StaffNotificationsBell';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 function toName(value) {
@@ -380,6 +381,10 @@ export default function NurseDashboardPage() {
             <Users size={22} color="#707EAE" />
             {isExpanded ? <span style={{ color: '#707EAE', fontWeight: 700 }}>Residents</span> : null}
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minHeight: 48, padding: isExpanded ? '0 28px' : 0, justifyContent: isExpanded ? 'flex-start' : 'center', marginBottom: 6, boxSizing: 'border-box' }} onClick={(e) => { e.stopPropagation(); navigate('/nurse-pending-admissions'); }}>
+            <ClipboardCheck size={22} color="#707EAE" />
+            {isExpanded ? <span style={{ color: '#707EAE', fontWeight: 700 }}>Pending Admissions</span> : null}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, minHeight: 48, padding: isExpanded ? '0 28px' : 0, justifyContent: isExpanded ? 'flex-start' : 'center', marginBottom: 6, boxSizing: 'border-box' }} onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}>
             <Calendar size={22} color="#707EAE" />
             {isExpanded ? <span style={{ color: '#707EAE', fontWeight: 700 }}>Calendar</span> : null}
@@ -420,9 +425,12 @@ export default function NurseDashboardPage() {
               <h1 style={{ margin: 0, color: '#fff', fontSize: 24, fontWeight: 900, letterSpacing: '-0.02em' }}>Nurse Dashboard</h1>
               <p style={{ color: 'rgba(255,255,255,0.5)', marginTop: 4, fontSize: 12, margin: '4px 0 0' }}>Assigned residents — real-time clinical metrics</p>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 26, fontWeight: 900, color: '#fff', letterSpacing: '-0.02em' }}>{timeStr}</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>{dateStr}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <StaffNotificationsBell dark resolveTargetPath={() => '/nurse-dashboard'} onNavigate={navigate} />
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 26, fontWeight: 900, color: '#fff', letterSpacing: '-0.02em' }}>{timeStr}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>{dateStr}</div>
+              </div>
             </div>
           </div>
 

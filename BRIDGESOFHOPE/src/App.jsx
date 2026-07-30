@@ -17,6 +17,7 @@ import NurseCalendar from '@/pages/nurse/nurse-calendar';
 import ProgramWeeklyReport from '@/pages/program/weekly-report';
 import ProgramCalendarPage from '@/pages/program/program-calendar';
 import NurseMedicalReportPage from '@/pages/nurse/medical-report';
+import NursePendingAdmissions from '@/pages/nurse/nurse-pending-admissions';
 import NurseProfile from '@/pages/nurse/nurseprofile';
 import NurseChangePass from '@/pages/nurse/nursechangepass';
 import AdminDashboard from '@/pages/admin/admin-dashboard';
@@ -155,6 +156,14 @@ function App() {
           element={
             <RoleGuard allowedRoles={['nurse']}>
               <NurseMedicalReportPage />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/nurse-pending-admissions"
+          element={
+            <RoleGuard allowedRoles={['nurse']}>
+              <NursePendingAdmissions />
             </RoleGuard>
           }
         />

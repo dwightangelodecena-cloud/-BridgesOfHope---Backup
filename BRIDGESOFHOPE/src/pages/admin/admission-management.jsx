@@ -1253,6 +1253,34 @@ const AdmissionManagement = () => {
                   )}
                 </div>
               </div>
+              {viewRow.vitalsRecordedAt && (
+                <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="am-modal-label">Medical Assessment (recorded by nurse {formatDate(viewRow.vitalsRecordedAt)})</span>
+                  <div
+                    className="am-input"
+                    style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 10, background: '#F8FAFC', padding: 14 }}
+                  >
+                    {[
+                      ['Weight', viewRow.vitalsWeight],
+                      ['Height', viewRow.vitalsHeight],
+                      ['BP', viewRow.vitalsBp],
+                      ['PR', viewRow.vitalsPr],
+                      ['RR', viewRow.vitalsRr],
+                      ['Temperature', viewRow.vitalsTemperature],
+                      ['BMI', viewRow.vitalsBmi],
+                      ['SPO2', viewRow.vitalsSpo2],
+                    ].map(([label, val]) => (
+                      <div key={label}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>{label}</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: '#1B2559' }}>{val || '—'}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {viewRow.preAdmissionSummary ? (
+                    <div className="am-input" style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{viewRow.preAdmissionSummary}</div>
+                  ) : null}
+                </div>
+              )}
               <div className="am-modal-field" style={{ gridColumn: '1 / -1' }}>
                 <span className="am-modal-label">Hospital referral</span>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
@@ -1586,8 +1614,8 @@ const AdmissionManagement = () => {
               <button type="button" className="db-action-btn" onClick={() => setMeetingRow(null)}>Cancel</button>
               {hasPendingGuardianProposal(meetingRow) ? (
                 <>
-                  <button type="button" className="db-action-btn" onClick={() => void scheduleMeeting('unavailable')}>Not available — suggest this time instead</button>
-                  <button type="button" className="db-edit-btn" onClick={() => void scheduleMeeting('confirmed')}>Available — confirm this time</button>
+                  <button type="button" className="db-action-btn" onClick={() => void scheduleMeeting('unavailable')}>Reschedule</button>
+                  <button type="button" className="db-edit-btn" onClick={() => void scheduleMeeting('confirmed')}>Confirm</button>
                 </>
               ) : (
                 <button type="button" className="db-edit-btn" onClick={() => void scheduleMeeting('confirmed')}>Send meeting request</button>
