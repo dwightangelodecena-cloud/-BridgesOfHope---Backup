@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LayoutGrid, Users, Calendar, FileText, ClipboardCheck, User, LogOut, X, HeartPulse } from 'lucide-react';
-import logo from '@/assets/kalingalogo.png';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { LayoutGrid, Users, Calendar, FileText, ClipboardCheck, X, HeartPulse } from 'lucide-react';
+import AdminSidebar from '@/components/admin/AdminSidebar';
+import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { insertFamilyNotification } from '@/lib/notificationTemplates';
 import { showErrorToast } from '@/lib/toastBus';
@@ -48,6 +49,7 @@ const formatDate = (iso) => {
 
 export default function NursePendingAdmissions() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
@@ -136,9 +138,12 @@ export default function NursePendingAdmissions() {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F8FAFF', fontFamily: "'DM Sans', 'Segoe UI', sans-serif", overflowX: 'hidden' }}>
+    <div
+      className="family-portal admin-portal-layout"
+      style={{ display: 'flex', minHeight: '100vh', background: '#F8FAFF', fontFamily: "'DM Sans', 'Segoe UI', sans-serif", overflowX: 'hidden', ...familySidebarStyle(isExpanded) }}
+    >
       <style>{`
-        .npa-main { flex: 1; margin-left: ${isExpanded ? 280 : 110}px; padding: 28px; transition: margin-left .3s; box-sizing: border-box; }
+        .npa-main { padding: 28px; box-sizing: border-box; }
         .npa-card { background: #fff; border-radius: 20px; border: 1px solid #E9EDF7; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
         .npa-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .npa-table th { text-align: left; padding: 10px 12px; color: #707EAE; font-weight: 700; border-bottom: 1px solid #F1F5F9; font-size: 12px; }
@@ -156,50 +161,57 @@ export default function NursePendingAdmissions() {
         .npa-field-input { width: 100%; border: 1px solid #E9EDF7; border-radius: 10px; padding: 10px 12px; font-size: 15px; font-weight: 800; color: #1B2559; outline: none; box-sizing: border-box; }
         .npa-field-input:focus { border-color: #F54E25; }
         @media (max-width: 768px) {
-          .npa-main { margin-left: 0 !important; padding: 16px; }
+          .npa-main { padding: 16px; }
           .npa-vitals-grid { grid-template-columns: repeat(2, minmax(0,1fr)) !important; }
         }
       `}</style>
 
-      <aside onClick={() => setIsExpanded((v) => !v)} style={{ width: isExpanded ? 280 : 110, background: '#fff', borderRight: '1px solid #F1F1F1', display: 'flex', flexDirection: 'column', alignItems: 'stretch', padding: '25px 0 0', transition: 'width .3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'fixed', top: 0, left: 0, height: '100vh', overflow: 'hidden', boxSizing: 'border-box' }}>
-        <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginBottom: 28, alignSelf: 'center' }}>
-          <img src={logo} alt="Kalinga" style={{ width: isExpanded ? 120 : 70 }} />
+      <AdminSidebar
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded((v) => !v)}
+        dashboardPath="/nurse-dashboard"
+        brandTagline="Nurse Portal"
+        profilePath="/nurseprofile"
+        profileLabel="Profile"
+      >
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-dashboard' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}
+        >
+          <div className="sidebar-icon-wrap"><LayoutGrid size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Dashboard</span>
         </div>
-        <div style={{ width: '100%', flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minHeight: 48, padding: isExpanded ? '0 28px' : 0, justifyContent: isExpanded ? 'flex-start' : 'center', marginBottom: 6, boxSizing: 'border-box' }} onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}>
-            <LayoutGrid size={22} color="#707EAE" />
-            {isExpanded ? <span style={{ color: '#707EAE', fontWeight: 700 }}>Dashboard</span> : null}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minHeight: 48, padding: isExpanded ? '0 28px' : 0, justifyContent: isExpanded ? 'flex-start' : 'center', marginBottom: 6, boxSizing: 'border-box' }} onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}>
-            <Users size={22} color="#707EAE" />
-            {isExpanded ? <span style={{ color: '#707EAE', fontWeight: 700 }}>Residents</span> : null}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minHeight: 48, padding: isExpanded ? '0 28px' : 0, justifyContent: isExpanded ? 'flex-start' : 'center', marginBottom: 6, boxSizing: 'border-box' }}>
-            <div style={{ background: '#F54E25', color: '#fff', borderRadius: 12, padding: 10, display: 'flex' }}><ClipboardCheck size={22} /></div>
-            {isExpanded ? <span style={{ color: '#F54E25', fontWeight: 700 }}>Pending Admissions</span> : null}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minHeight: 48, padding: isExpanded ? '0 28px' : 0, justifyContent: isExpanded ? 'flex-start' : 'center', marginBottom: 6, boxSizing: 'border-box' }} onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}>
-            <Calendar size={22} color="#707EAE" />
-            {isExpanded ? <span style={{ color: '#707EAE', fontWeight: 700 }}>Calendar</span> : null}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minHeight: 48, padding: isExpanded ? '0 28px' : 0, justifyContent: isExpanded ? 'flex-start' : 'center', marginBottom: 6, boxSizing: 'border-box' }} onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}>
-            <FileText size={22} color="#707EAE" />
-            {isExpanded ? <span style={{ color: '#707EAE', fontWeight: 700 }}>Medical Report</span> : null}
-          </div>
+        <div
+          className={`sidebar-nav-item${pathname === '/patient-database' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}
+        >
+          <div className="sidebar-icon-wrap"><Users size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Residents</span>
         </div>
-        <div style={{ flexShrink: 0, width: '100%', padding: '16px 0 20px', marginTop: 'auto', borderTop: '1px solid #f1f5f9' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minHeight: 48, padding: isExpanded ? '0 28px' : 0, justifyContent: isExpanded ? 'flex-start' : 'center', marginBottom: 6, boxSizing: 'border-box' }} onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
-            <User size={22} color="#707EAE" />
-            {isExpanded ? <span style={{ color: '#707EAE', fontWeight: 700 }}>Profile</span> : null}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minHeight: 48, padding: isExpanded ? '0 28px' : 0, justifyContent: isExpanded ? 'flex-start' : 'center', boxSizing: 'border-box' }} onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" />
-            {isExpanded ? <span style={{ color: '#F54E25', fontWeight: 700 }}>Logout</span> : null}
-          </div>
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-pending-admissions' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-pending-admissions'); }}
+        >
+          <div className="sidebar-icon-wrap"><ClipboardCheck size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Pending Admissions</span>
         </div>
-      </aside>
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-calendar' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}
+        >
+          <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Calendar</span>
+        </div>
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-medical-report' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}
+        >
+          <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Medical Report</span>
+        </div>
+      </AdminSidebar>
 
-      <main className="npa-main">
+      <main className="npa-main admin-sidebar-offset">
         <h1 style={{ fontSize: 26, fontWeight: 900, color: '#0F172A', marginBottom: 4 }}>Pending Admissions</h1>
         <p style={{ fontSize: 13, color: '#64748B', marginBottom: 24 }}>
           Record vital signs and a short eligibility note for each prospective resident before admin decides. This becomes visible to the guardian right away.

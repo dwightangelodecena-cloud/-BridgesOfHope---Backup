@@ -1167,9 +1167,11 @@ const AdmissionManagement = () => {
                             >
                               <Edit2 size={12} /> Edit
                             </button>
-                            <button type="button" className="db-action-btn" onClick={() => handleMoveToDischarge(r)} title="Send to Discharge Management">
-                              <ArrowRightCircle size={12} /> Discharge
-                            </button>
+                            {['approved', 'accepted'].includes(String(r.dbStatus || '').toLowerCase()) ? (
+                              <button type="button" className="db-action-btn" onClick={() => handleMoveToDischarge(r)} title="Send to Discharge Management">
+                                <ArrowRightCircle size={12} /> Discharge
+                              </button>
+                            ) : null}
                             <button type="button" className="db-action-btn" onClick={() => handleArchive(r)}>
                               <Trash2 size={12} /> Archive
                             </button>

@@ -30,6 +30,27 @@ function computeDropdownRect(triggerRect) {
   return { top, left };
 }
 
+const GROUP_ORDER = ['admission_request', 'discharge_request', 'visitation_request'];
+const GROUP_LABELS = {
+  admission_request: 'Admissions',
+  discharge_request: 'Discharges',
+  visitation_request: 'Visitations',
+  other: 'Other',
+};
+
+/** Splits the flat notification list into titled sections (admissions / discharges / visitations). */
+function groupNotifications(items) {
+  const byType = new Map();
+  items.forEach((item) => {
+    const key = GROUP_ORDER.includes(item.related_type) ? item.related_type : 'other';
+    if (!byType.has(key)) byType.set(key, []);
+    byType.get(key).push(item);
+  });
+  return [...GROUP_ORDER, 'other']
+    .filter((key) => byType.has(key))
+    .map((key) => ({ key, label: GROUP_LABELS[key], items: byType.get(key) }));
+}
+
 function timeAgo(iso) {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return '';
@@ -91,7 +112,7 @@ export function AdminRequestsNavItem({ showLabel = true }) {
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
       <div
-        className="sidebar-nav-item"
+        className={`sidebar-nav-item${open ? ' sidebar-nav-active' : ''}`}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);
@@ -174,20 +195,37 @@ export function AdminRequestsNavItem({ showLabel = true }) {
           {items.length === 0 ? (
             <div style={{ padding: 18, fontSize: 12, color: '#94A3B8' }}>No requests yet.</div>
           ) : (
-            items.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => void openItem(item)}
-                style={{
-                  padding: '10px 14px',
-                  borderBottom: '1px solid #F8FAFC',
-                  cursor: 'pointer',
-                  background: item.read_at ? '#FFFFFF' : '#FFF7F4',
-                }}
-              >
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1B2559' }}>{item.title}</div>
-                <div style={{ fontSize: 11.5, color: '#64748B', marginTop: 2 }}>{item.body}</div>
-                <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 4 }}>{timeAgo(item.created_at)}</div>
+            groupNotifications(items).map((group) => (
+              <div key={group.key}>
+                <div
+                  style={{
+                    padding: '8px 14px 6px',
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    color: '#A3AED0',
+                    background: '#F8FAFC',
+                  }}
+                >
+                  {group.label}
+                </div>
+                {group.items.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => void openItem(item)}
+                    style={{
+                      padding: '10px 14px',
+                      borderBottom: '1px solid #F8FAFC',
+                      cursor: 'pointer',
+                      background: item.read_at ? '#FFFFFF' : '#FFF7F4',
+                    }}
+                  >
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1B2559' }}>{item.title}</div>
+                    <div style={{ fontSize: 11.5, color: '#64748B', marginTop: 2 }}>{item.body}</div>
+                    <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 4 }}>{timeAgo(item.created_at)}</div>
+                  </div>
+                ))}
               </div>
             ))
           )}

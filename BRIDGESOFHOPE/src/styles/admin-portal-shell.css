@@ -14,9 +14,21 @@
   z-index: 120;
 }
 
+/* Match the orange gradient rail instead of the family portal's white/blur footer. */
+.family-portal.admin-portal-layout .sidebar-footer {
+  background: #ea3e12;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .family-portal.admin-portal-layout .admin-sidebar-primary {
   flex: 1;
   min-height: 0;
+  /* Ends the scrollable box above the fixed footer (~118px tall: 12px pad + two 48px tiles +
+     10px gap) instead of letting it run the full sidebar height — a native scrollbar renders
+     on top of everything regardless of z-index, so it would otherwise peek out from behind
+     the footer even though the footer's own background is opaque. */
+  margin-bottom: 138px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -62,9 +74,12 @@
   box-shadow: 0 2px 6px rgba(245, 78, 37, 0.35);
 }
 
+/* The active tile background turns white (see .sidebar-nav-active .sidebar-icon-wrap in
+   family-sidebar.css) — forcing the icon to white here made it invisible against that white
+   background. Match the same orange-on-white treatment every other active nav icon gets. */
 .family-portal.admin-portal-layout .sidebar-nav-active .sidebar-icon-wrap.messages-nav-host svg {
-  stroke: #fff !important;
-  color: #fff !important;
+  stroke: #f54e25 !important;
+  color: #f54e25 !important;
 }
 
 @media (max-width: 899px) {

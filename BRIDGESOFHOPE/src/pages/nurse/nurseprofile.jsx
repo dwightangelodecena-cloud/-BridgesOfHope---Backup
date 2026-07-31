@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutGrid, User, LogOut, Users, Calendar, FileText, KeyRound, Eye, EyeOff } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { LayoutGrid, User, LogOut, Users, Calendar, FileText, ClipboardCheck, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import logo from '@/assets/kalingalogo.png';
+import AdminSidebar from '@/components/admin/AdminSidebar';
+import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import { supabase } from '@/lib/supabase';
 import { getPasswordPolicyError, getPasswordStrengthChecks, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
 import { formatAuthError } from '@/lib/authErrors';
@@ -34,6 +36,7 @@ function initialsFromName(name) {
 
 const NurseProfile = () => {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const [accountEmail, setAccountEmail] = useState('');
@@ -136,7 +139,7 @@ const NurseProfile = () => {
   const badgeInitials = initialsFromName(displayName);
 
   return (
-    <div className="app-container">
+    <div className="app-container family-portal admin-portal-layout" style={familySidebarStyle(isExpanded)}>
       <style>{`
         .app-container {
           display: flex;
@@ -148,85 +151,12 @@ const NurseProfile = () => {
           touch-action: manipulation;
         }
 
-        /* SIDEBAR — same animation/structure as weeklyreport.jsx */
-        .desktop-sidebar {
-          width: ${isExpanded ? '280px' : '110px'};
-          background: white;
-          border-right: 1px solid #F1F1F1;
-          display: flex;
-          flex-direction: column;
-          align-items: stretch;
-          padding: 25px 0 0;
-          z-index: 100;
-          transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          cursor: pointer;
-          position: fixed;
-          top: 0;
-          left: 0;
-          height: 100vh;
-          overflow: hidden;
-          box-sizing: border-box;
-        }
-
-        .sidebar-logo-container {
-          display: flex;
-          justify-content: center;
-          width: 100%;
-          margin-bottom: 28px;
-          align-self: center;
-        }
-
-        .sidebar-logo {
-          width: ${isExpanded ? '120px' : '70px'};
-          transition: width 0.3s ease;
-        }
-        .profile-sidebar-nav {
-          width: 100%;
-          flex: 1;
-          min-height: 0;
-          overflow-y: auto;
-          overflow-x: hidden;
-          display: flex;
-          flex-direction: column;
-        }
-        .profile-sidebar-footer {
-          flex-shrink: 0;
-          width: 100%;
-          padding: 16px 0 20px;
-          margin-top: auto;
-          border-top: 1px solid #f1f5f9;
-        }
-
-        .sidebar-nav-item {
-          display: flex;
-          align-items: center;
-          width: 100%;
-          padding: 0 ${isExpanded ? '28px' : '0'};
-          justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 14px;
-          margin-bottom: 6px;
-          min-height: 48px;
-          box-sizing: border-box;
-        }
-
-        .sidebar-label {
-          display: ${isExpanded ? 'block' : 'none'};
-          font-weight: 600;
-          font-size: 15px;
-          color: #A3AED0;
-          line-height: 1.25;
-          white-space: normal;
-          max-width: 210px;
-        }
-
         /* MAIN */
         .main-view {
           flex: 1;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          margin-left: ${isExpanded ? '280px' : '110px'};
-          transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .top-nav {
@@ -375,45 +305,53 @@ const NurseProfile = () => {
         }
       `}</style>
 
-      {/* SIDEBAR — weeklyreport.jsx style with Profile active */}
-      <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container">
-          <img src={logo} alt="Kalinga" className="sidebar-logo" />
-        </div>
-
-        <div className="profile-sidebar-nav">
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}>
-          <LayoutGrid size={22} color="#707EAE" />
+      <AdminSidebar
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+        dashboardPath="/nurse-dashboard"
+        brandTagline="Nurse Portal"
+        profilePath="/nurseprofile"
+        profileLabel="Profile"
+        onLogout={() => void handleLogout()}
+      >
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-dashboard' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}
+        >
+          <div className="sidebar-icon-wrap"><LayoutGrid size={22} color="#707EAE" /></div>
           <span className="sidebar-label">Dashboard</span>
         </div>
-
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}>
-          <Users size={22} color="#707EAE" />
+        <div
+          className={`sidebar-nav-item${pathname === '/patient-database' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}
+        >
+          <div className="sidebar-icon-wrap"><Users size={22} color="#707EAE" /></div>
           <span className="sidebar-label">Residents</span>
         </div>
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}>
-          <Calendar size={22} color="#707EAE" />
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-pending-admissions' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-pending-admissions'); }}
+        >
+          <div className="sidebar-icon-wrap"><ClipboardCheck size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Pending Admissions</span>
+        </div>
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-calendar' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}
+        >
+          <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
           <span className="sidebar-label">Calendar</span>
         </div>
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}>
-          <FileText size={22} color="#707EAE" />
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-medical-report' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}
+        >
+          <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
           <span className="sidebar-label">Medical Report</span>
         </div>
-        </div>
+      </AdminSidebar>
 
-        <div className="profile-sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
-            <User size={22} color="#F54E25" />
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Profile</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); void handleLogout(); }}>
-            <LogOut size={22} color="#F54E25" style={{ cursor: 'pointer' }} />
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
-          </div>
-        </div>
-      </aside>
-
-      <div className="main-view">
+      <div className="main-view admin-sidebar-offset">
 
         {/* DESKTOP TOP NAV */}
         <header className="top-nav">

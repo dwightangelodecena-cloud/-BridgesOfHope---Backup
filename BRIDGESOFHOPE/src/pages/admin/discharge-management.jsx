@@ -1011,14 +1011,15 @@ const DischargeManagement = () => {
                                 <UserCheck size={12} /> {pickupBusyId === r.id ? 'Saving…' : 'Mark Picked Up'}
                               </button>
                             ) : null}
-                            <button
-                              type="button"
-                              className="db-action-btn"
-                              disabled={r.source === 'history' || r.finalStatus === 'Completed' || r.finalStatus === 'Archived'}
-                              onClick={() => void handleFinalize(r)}
-                            >
-                              <CheckCircle size={12} /> Finalize
-                            </button>
+                            {r.source !== 'history' && r.finalStatus !== 'Completed' && r.finalStatus !== 'Archived' ? (
+                              <button
+                                type="button"
+                                className="db-action-btn"
+                                onClick={() => void handleFinalize(r)}
+                              >
+                                <CheckCircle size={12} /> Finalize
+                              </button>
+                            ) : null}
                             <button type="button" className="db-action-btn" disabled={r.source === 'history'} onClick={() => handleArchive(r)}>
                               <Archive size={12} /> Archive
                             </button>

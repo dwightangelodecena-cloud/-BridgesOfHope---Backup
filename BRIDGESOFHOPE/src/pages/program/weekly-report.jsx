@@ -967,6 +967,10 @@ const ProgramWeeklyReport = () => {
           margin-bottom: 6px;
         }
 
+        .form-label-required {
+          color: #F54E25;
+        }
+
         .form-underline-input {
           background: #FCFDFF;
           border: 1px solid #E5ECFF;
@@ -1414,7 +1418,7 @@ const ProgramWeeklyReport = () => {
             {/* Week & Admission Date */}
             <div className="form-grid-2">
               <div className="form-field">
-                <label className="form-label">Week:</label>
+                <label className="form-label">Week: <span className="form-label-required">*</span></label>
                 <input
                   type="text"
                   className="form-underline-input"
@@ -1424,7 +1428,7 @@ const ProgramWeeklyReport = () => {
                 />
               </div>
               <div className="form-field">
-                <label className="form-label">Admission Date:</label>
+                <label className="form-label">Admission Date: <span className="form-label-required">*</span></label>
                 <input
                   type="text"
                   className="form-underline-input"
@@ -1439,7 +1443,7 @@ const ProgramWeeklyReport = () => {
               <div className="section-title">Resident Information</div>
               <div className="section-fields">
                 <div className="form-field">
-                  <label className="form-label">Resident Name:</label>
+                  <label className="form-label">Resident Name: <span className="form-label-required">*</span></label>
                   <input
                     type="text"
                     className="form-underline-input form-underline-input--readonly"
@@ -1450,7 +1454,7 @@ const ProgramWeeklyReport = () => {
                 </div>
                 <div className="form-grid-2">
                   <div className="form-field">
-                    <label className="form-label">Age:</label>
+                    <label className="form-label">Age: <span className="form-label-required">*</span></label>
                     <input
                       type="text"
                       className="form-underline-input form-underline-input--readonly"
@@ -1460,7 +1464,7 @@ const ProgramWeeklyReport = () => {
                     />
                   </div>
                   <div className="form-field">
-                    <label className="form-label">Primary Concern:</label>
+                    <label className="form-label">Primary Concern: <span className="form-label-required">*</span></label>
                     <input
                       type="text"
                       className="form-underline-input form-underline-input--readonly"

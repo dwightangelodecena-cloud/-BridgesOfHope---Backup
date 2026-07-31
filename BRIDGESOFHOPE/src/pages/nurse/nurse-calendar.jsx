@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  LayoutGrid, Users, FileText, User, LogOut,
+  LayoutGrid, Users, FileText, ClipboardCheck,
   Calendar as CalendarIcon, ArrowLeft, ArrowRight,
   Plus, X, ClipboardList, AlertCircle, Stethoscope, Clock,
   CheckCircle2, Trash2,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import logo from '@/assets/kalingalogo.png';
+import { useNavigate, useLocation } from 'react-router-dom';
+import AdminSidebar from '@/components/admin/AdminSidebar';
+import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
   getAgendasForDay,
@@ -35,39 +36,6 @@ function newId() {
   });
 }
 
-/* ── NurseSidebar (100% unchanged) ── */
-function NurseSidebar({ isExpanded, setIsExpanded, navigate, active }) {
-  const item = (reactKey, iconEl, label, path, opts = {}) => {
-    const onClick = (e) => { e.stopPropagation(); navigate(path); };
-    const activeStyle = opts.isActive ? { background:'#F54E25', borderRadius:12, padding:10, display:'flex' } : {};
-    return (
-      <div key={reactKey} style={{ display:'flex', alignItems:'center', gap:14, minHeight:48, padding:isExpanded?'0 28px':0, justifyContent:isExpanded?'flex-start':'center', marginBottom:6, boxSizing:'border-box', cursor:'pointer' }} onClick={onClick}>
-        {opts.isActive ? <div style={activeStyle}>{iconEl}</div> : iconEl}
-        {isExpanded ? <span style={{ color:opts.isActive?'#F54E25':'#707EAE', fontWeight:700 }}>{label}</span> : null}
-      </div>
-    );
-  };
-  return (
-    <aside onClick={() => setIsExpanded(v => !v)} style={{ width:isExpanded?280:110, background:'#fff', borderRight:'1px solid #F1F1F1', display:'flex', flexDirection:'column', alignItems:'stretch', padding:'25px 0 0', transition:'width .3s cubic-bezier(0.4,0,0.2,1)', position:'fixed', top:0, left:0, height:'100vh', overflow:'hidden', boxSizing:'border-box', zIndex:50 }}>
-      <div style={{ width:'100%', display:'flex', justifyContent:'center', marginBottom:28, alignSelf:'center' }}>
-        <img src={logo} alt="Kalinga" style={{ width:isExpanded?120:70 }} />
-      </div>
-      <div style={{ width:'100%', flex:1, minHeight:0, overflowY:'auto', overflowX:'hidden', display:'flex', flexDirection:'column' }}>
-        {item('dash', <LayoutGrid size={22} color={active==='dashboard'?'#FFFFFF':'#707EAE'} />, 'Dashboard', '/nurse-dashboard', { isActive:active==='dashboard' })}
-        {item('res', <Users size={22} color={active==='residents'?'#FFFFFF':'#707EAE'} />, 'Residents', '/patient-database', { isActive:active==='residents' })}
-        {item('cal', <CalendarIcon size={22} color={active==='calendar'?'#FFFFFF':'#707EAE'} />, 'Calendar', '/nurse-calendar', { isActive:active==='calendar' })}
-        {item('med', <FileText size={22} color={active==='medical'?'#FFFFFF':'#707EAE'} />, 'Medical Report', '/nurse-medical-report', { isActive:active==='medical' })}
-      </div>
-      <div style={{ flexShrink:0, width:'100%', padding:'16px 0 20px', marginTop:'auto', borderTop:'1px solid #f1f5f9' }}>
-        {item('prof', <User size={22} color="#707EAE" />, 'Profile', '/nurseprofile', { isActive:false })}
-        <div style={{ display:'flex', alignItems:'center', gap:14, minHeight:48, padding:isExpanded?'0 28px':0, justifyContent:isExpanded?'flex-start':'center', boxSizing:'border-box', cursor:'pointer' }} onClick={e => { e.stopPropagation(); navigate('/login'); }}>
-          <LogOut size={22} color="#F54E25" />
-          {isExpanded ? <span style={{ color:'#F54E25', fontWeight:700 }}>Logout</span> : null}
-        </div>
-      </div>
-    </aside>
-  );
-}
 
 /* ── design-only components ── */
 function AgendaChip({ type }) {
@@ -99,6 +67,7 @@ function SectionTitle({ icon: Icon, children, color = '#F54E25' }) {
 ══════════════════════════════════════════ */
 export default function NurseCalendarPage() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [userId, setUserId] = useState('');
   const [assigned, setAssigned] = useState([]);
@@ -243,7 +212,10 @@ export default function NurseCalendarPage() {
   );
 
   return (
-    <div style={{ display:'flex', minHeight:'100vh', background:'#F0F4FF', fontFamily:"'DM Sans','Segoe UI',sans-serif", overflowX:'hidden' }}>
+    <div
+      className="family-portal admin-portal-layout"
+      style={{ display:'flex', minHeight:'100vh', background:'#F0F4FF', fontFamily:"'DM Sans','Segoe UI',sans-serif", overflowX:'hidden', ...familySidebarStyle(isExpanded) }}
+    >
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
         *, *::before, *::after { box-sizing: border-box; }
@@ -278,10 +250,52 @@ export default function NurseCalendarPage() {
         .kind-btn:hover { transform: translateY(-1px); }
       `}</style>
 
-      {/* ── SIDEBAR (100% unchanged) ── */}
-      <NurseSidebar isExpanded={isExpanded} setIsExpanded={setIsExpanded} navigate={navigate} active="calendar" />
+      <AdminSidebar
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded((v) => !v)}
+        dashboardPath="/nurse-dashboard"
+        brandTagline="Nurse Portal"
+        profilePath="/nurseprofile"
+        profileLabel="Profile"
+      >
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-dashboard' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}
+        >
+          <div className="sidebar-icon-wrap"><LayoutGrid size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Dashboard</span>
+        </div>
+        <div
+          className={`sidebar-nav-item${pathname === '/patient-database' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}
+        >
+          <div className="sidebar-icon-wrap"><Users size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Residents</span>
+        </div>
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-pending-admissions' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-pending-admissions'); }}
+        >
+          <div className="sidebar-icon-wrap"><ClipboardCheck size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Pending Admissions</span>
+        </div>
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-calendar' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}
+        >
+          <div className="sidebar-icon-wrap"><CalendarIcon size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Calendar</span>
+        </div>
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-medical-report' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}
+        >
+          <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Medical Report</span>
+        </div>
+      </AdminSidebar>
 
-      <main style={{ flex:1, marginLeft:isExpanded?280:110, padding:'24px 28px 48px', transition:'margin-left .3s', background:'#F0F4FF', minHeight:'100vh', display:'flex', flexDirection:'column', boxSizing:'border-box' }}>
+      <main className="admin-sidebar-offset" style={{ padding:'24px 28px 48px', background:'#F0F4FF', display:'flex', flexDirection:'column', boxSizing:'border-box' }}>
 
         {/* ── HERO BANNER (matches nurse dashboard style, all content unchanged) ── */}
         <div style={{ background:'linear-gradient(135deg,#1E293B 0%,#1D2D50 60%,#312e81 100%)', borderRadius:22, padding:'24px 28px', marginBottom:20, boxShadow:'0 10px 40px rgba(15,23,42,0.18)', position:'relative', overflow:'hidden' }}>

@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 
 export const RISK_LEVEL_OPTIONS = ['Low', 'Moderate', 'High', 'Highly Suicidal'];
-export const BUNK_LEVEL_OPTIONS = ['Bottom', 'Middle', 'Upper'];
+export const BUNK_LEVEL_OPTIONS = ['Bottom', 'Upper'];
 export const GENDER_OPTIONS = ['Male', 'Female'];
 
 export function isSupabaseUuid(id) {

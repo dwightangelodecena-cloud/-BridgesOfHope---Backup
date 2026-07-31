@@ -176,7 +176,7 @@ function mergeLocalLadderProfilesProgress(patients) {
 /** Editable trajectory while in care. Discharged is derived from `discharged_at` (dashboard discharge approval), not set here. */
 const CLINICAL_STATUS_OPTIONS = ['Improving', 'Stable', 'Declining'];
 const RISK_LEVEL_OPTIONS = ['Low', 'Moderate', 'High', 'Highly Suicidal'];
-const BUNK_LEVEL_OPTIONS = ['Bottom', 'Middle', 'Upper'];
+const BUNK_LEVEL_OPTIONS = ['Bottom', 'Upper'];
 const COHORT_FILTER_OPTIONS = [
   { value: 'all', label: 'All records' },
   { value: 'in_care', label: 'Active / in care' },

@@ -53,6 +53,7 @@ export default function AdminSidebar({
   dashboardPath = '/admin-dashboard',
   brandTagline = 'Admin Portal',
   onPatientNavClick,
+  onLogout,
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -151,7 +152,14 @@ export default function AdminSidebar({
           </div>
           <SidebarLabel>{profileLabel}</SidebarLabel>
         </div>
-        <div className="sidebar-nav-item sidebar-nav-item--logout" onClick={(e) => go(e, '/login')}>
+        <div
+          className="sidebar-nav-item sidebar-nav-item--logout"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onLogout) onLogout(e);
+            else navigate('/login');
+          }}
+        >
           <div className="sidebar-icon-wrap">
             <LogOut size={22} color="#F54E25" />
           </div>

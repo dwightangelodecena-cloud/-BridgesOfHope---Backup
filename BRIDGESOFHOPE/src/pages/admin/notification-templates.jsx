@@ -93,7 +93,7 @@ function SendNotificationCard() {
   return (
     <div className="nt-card nt-send-card">
       <div className="nt-send-head">
-        <Send size={18} />
+        <div className="nt-icon-box"><Send size={20} /></div>
         <div>
           <h2 className="nt-send-title">Send Notification</h2>
           <p className="nt-desc">Compose a promo, clinical concern, progress update, or general announcement and send it now.</p>
@@ -301,7 +301,8 @@ export default function NotificationTemplatesPage() {
         .nt-card-head { display: flex; flex-direction: column; gap: 2px; }
         .nt-title-input { font-size: 14px; font-weight: 800; color: #0F172A; border: none; outline: none; padding: 2px 0; font-family: 'Inter', sans-serif; }
         .nt-title-input:focus { outline: 2px solid #2563EB; border-radius: 4px; }
-        .nt-key { font-size: 11px; color: #A3AED0; font-weight: 600; }
+        .nt-key { font-size: 11px; color: #4A628A; font-weight: 700; background: #F4F7FE; border-radius: 6px; padding: 2px 8px; align-self: flex-start; }
+        .nt-icon-box { width: 40px; height: 40px; flex-shrink: 0; background: #FFF0ED; color: #F54E25; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
         .nt-desc { font-size: 12px; color: #707EAE; margin: 0; }
         .nt-body-input { width: 100%; border: 1px solid #E9EDF7; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #1B2559; outline: none; background: white; font-family: 'Inter', sans-serif; resize: vertical; }
         .nt-body-input:focus { border-color: #2563EB; }
@@ -315,7 +316,7 @@ export default function NotificationTemplatesPage() {
         .nt-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .nt-refresh-btn { border: none; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; background: white; color: #0F766E; border: 2px solid #0F766E; }
         .nt-send-card { max-width: 520px; margin-bottom: 24px; gap: 8px; }
-        .nt-send-head { display: flex; align-items: flex-start; gap: 10px; color: #F54E25; }
+        .nt-send-head { display: flex; align-items: flex-start; gap: 10px; }
         .nt-send-title { font-size: 16px; font-weight: 800; color: #0F172A; margin: 0; }
         .nt-field-label { font-size: 11px; font-weight: 700; color: #707EAE; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 6px; }
         .nt-send-input { width: 100%; border: 1px solid #E9EDF7; border-radius: 10px; padding: 9px 12px; }
@@ -335,8 +336,8 @@ export default function NotificationTemplatesPage() {
       <main className="nt-main admin-sidebar-offset">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <MessageSquare size={26} />
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span className="nt-icon-box"><MessageSquare size={20} /></span>
               Notification Templates
             </h1>
             <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, fontWeight: 500 }}>

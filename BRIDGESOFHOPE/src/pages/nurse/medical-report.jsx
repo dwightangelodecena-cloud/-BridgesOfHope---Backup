@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { LogOut, FileText, ChevronDown, Users, Calendar, LayoutGrid, User, X, Copy } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { LogOut, FileText, ChevronDown, Users, Calendar, LayoutGrid, User, X, Copy, ClipboardCheck } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
+import AdminSidebar from '@/components/admin/AdminSidebar';
+import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import BulletedListFieldInput from '@/components/clinical/BulletedListFieldInput';
 import MedicationTableField from '@/components/clinical/MedicationTableField';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -118,6 +120,7 @@ const SectionTitle = ({ children, required = false }) => (
 /** Nurse medical report filing — same workflow as weekly reports; assigned residents match `program_staff` (nurse). */
 const NurseMedicalReportPage = () => {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [reportBasics, setReportBasics] = useState(INITIAL_BASICS);
@@ -608,7 +611,7 @@ const NurseMedicalReportPage = () => {
   }, [summaryText]);
 
   return (
-    <div className="wr-container">
+    <div className="wr-container family-portal admin-portal-layout" style={familySidebarStyle(isExpanded)}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
@@ -624,83 +627,8 @@ const NurseMedicalReportPage = () => {
           overflow-x: hidden;
         }
 
-        /* ---- SIDEBAR (exact home.jsx) ---- */
-        .desktop-sidebar {
-          width: ${isExpanded ? '280px' : '110px'};
-          background: white;
-          border-right: 1px solid #F1F1F1;
-          display: flex;
-          flex-direction: column;
-          align-items: stretch;
-          padding: 25px 0 0;
-          z-index: 100;
-          transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          cursor: pointer;
-          position: fixed;
-          top: 0;
-          left: 0;
-          height: 100vh;
-          overflow: hidden;
-          box-sizing: border-box;
-        }
-
-        .sidebar-logo-container {
-          display: flex;
-          justify-content: center;
-          width: 100%;
-          margin-bottom: 28px;
-          align-self: center;
-        }
-
-        .wr-sidebar-nav {
-          width: 100%;
-          flex: 1;
-          min-height: 0;
-          overflow-y: auto;
-          overflow-x: hidden;
-          display: flex;
-          flex-direction: column;
-        }
-        .wr-sidebar-footer {
-          flex-shrink: 0;
-          width: 100%;
-          padding: 16px 0 20px;
-          margin-top: auto;
-          border-top: 1px solid #f1f5f9;
-        }
-
-        .sidebar-logo {
-          width: ${isExpanded ? '120px' : '70px'};
-          transition: width 0.3s ease;
-        }
-
-        .sidebar-nav-item {
-          display: flex;
-          align-items: center;
-          width: 100%;
-          padding: 0 ${isExpanded ? '28px' : '0'};
-          justify-content: ${isExpanded ? 'flex-start' : 'center'};
-          gap: 14px;
-          margin-bottom: 6px;
-          min-height: 48px;
-          box-sizing: border-box;
-        }
-
-        .sidebar-label {
-          display: ${isExpanded ? 'block' : 'none'};
-          font-weight: 600;
-          font-size: 15px;
-          color: #A3AED0;
-          line-height: 1.25;
-          white-space: normal;
-          max-width: 210px;
-        }
-
         /* ---- MAIN ---- */
         .wr-main {
-          flex: 1;
-          margin-left: ${isExpanded ? '280px' : '110px'};
-          transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           padding: 28px 34px 36px;
           overflow-y: auto;
           min-height: 100vh;
@@ -1411,44 +1339,50 @@ const NurseMedicalReportPage = () => {
         }
       `}</style>
 
-      {/* DESKTOP SIDEBAR */}
-      <aside className="desktop-sidebar" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="sidebar-logo-container">
-          <img src={logo} alt="Kalinga" className="sidebar-logo" />
-        </div>
-
-        <div className="wr-sidebar-nav">
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}>
-          <LayoutGrid size={22} color="#707EAE" />
+      <AdminSidebar
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+        dashboardPath="/nurse-dashboard"
+        brandTagline="Nurse Portal"
+        profilePath="/nurseprofile"
+        profileLabel="Profile"
+      >
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-dashboard' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-dashboard'); }}
+        >
+          <div className="sidebar-icon-wrap"><LayoutGrid size={22} color="#707EAE" /></div>
           <span className="sidebar-label">Dashboard</span>
         </div>
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}>
-          <Users size={22} color="#707EAE" />
+        <div
+          className={`sidebar-nav-item${pathname === '/patient-database' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/patient-database'); }}
+        >
+          <div className="sidebar-icon-wrap"><Users size={22} color="#707EAE" /></div>
           <span className="sidebar-label">Residents</span>
         </div>
-        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}>
-          <Calendar size={22} color="#707EAE" />
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-pending-admissions' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-pending-admissions'); }}
+        >
+          <div className="sidebar-icon-wrap"><ClipboardCheck size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Pending Admissions</span>
+        </div>
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-calendar' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-calendar'); }}
+        >
+          <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
           <span className="sidebar-label">Calendar</span>
         </div>
-        <div className="sidebar-nav-item" onClick={(e) => e.stopPropagation()}>
-          <div style={{ background: '#F54E25', color: 'white', padding: 12, borderRadius: 12, display: 'flex' }}>
-            <FileText size={22} />
-          </div>
-          <span className="sidebar-label" style={{ color: '#F54E25' }}>Medical Report</span>
+        <div
+          className={`sidebar-nav-item${pathname === '/nurse-medical-report' ? ' sidebar-nav-active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); navigate('/nurse-medical-report'); }}
+        >
+          <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Medical Report</span>
         </div>
-        </div>
-
-        <div className="wr-sidebar-footer">
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/nurseprofile'); }}>
-            <User size={22} color="#707EAE" />
-            <span className="sidebar-label">Profile</span>
-          </div>
-          <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/login'); }}>
-            <LogOut size={22} color="#F54E25" style={{ cursor: 'pointer' }} />
-            <span className="sidebar-label" style={{ color: '#F54E25' }}>Logout</span>
-          </div>
-        </div>
-      </aside>
+      </AdminSidebar>
 
       {/* MOBILE TOP BAR */}
       <div className="mobile-only mobile-top-bar">
@@ -1458,7 +1392,7 @@ const NurseMedicalReportPage = () => {
       </div>
 
       {/* MAIN */}
-      <main className="wr-main">
+      <main className="wr-main admin-sidebar-offset">
 
         {/* Header */}
         <div className="wr-header">

@@ -21,6 +21,7 @@ import {
   Calendar,
   User,
   FileText, MessageCircle,
+  Activity,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AdminSidebar from '@/components/admin/AdminSidebar';
@@ -30,7 +31,7 @@ import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { createStaffAuthUserViaEdgeFunction } from '@/lib/createStaffAuthUser';
-import { getStaffInitialPassword } from '@/lib/staffInitialPassword';
+import { generateStaffInitialPassword } from '@/lib/staffInitialPassword';
 import { sendStaffWelcomeEmailViaEdgeFunction } from '@/lib/sendStaffWelcomeEmail';
 import { deleteStaffAuthUserViaEdgeFunction } from '@/lib/deleteStaffAuthUser';
 import {
@@ -455,6 +456,16 @@ const StaffManagement = () => {
     return sortStaff(byStatus, sortField, sortDirection);
   }, [staff, search, roleFilter, statusFilter, sortField, sortDirection]);
 
+  const staffStats = useMemo(
+    () => ({
+      total: staff.length,
+      nurses: staff.filter((s) => s.roleLabel === 'Nurse').length,
+      program: staff.filter((s) => s.roleLabel === 'Program').length,
+      activeNow: staff.filter((s) => s.presence === 'Active' && !s.suspended).length,
+    }),
+    [staff],
+  );
+
   const saveEdit = async () => {
     if (!editRow) return;
     setSavingId(editRow.id);
@@ -558,7 +569,7 @@ const StaffManagement = () => {
     }
 
     setAddStaffSubmitting(true);
-    const temporaryPassword = getStaffInitialPassword();
+    const temporaryPassword = generateStaffInitialPassword();
     try {
       const userMetadata = {
         account_type: accountType,
@@ -730,12 +741,27 @@ const StaffManagement = () => {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .um-outer { width: 100%; max-width: 100%; overflow-x: hidden; }
         .um-main { flex: 1 1 0; min-height: 100vh; min-width: 0;   padding: 40px; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
-        .um-card { background: white; border: 1px solid #E9EDF7; border-radius: 20px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
+        .um-card { background: white; border: 1px solid #E9EDF7; border-radius: 16px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
         .um-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
         .um-summary-grid--six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
         .um-summary-card { background: white; border: 1px solid #E9EDF7; border-radius: 16px; padding: 20px; }
         .um-summary-label { font-size: 12px; color: #707EAE; font-weight: 600; }
         .um-summary-value { margin-top: 10px; font-size: 28px; font-weight: 800; color: #1B2559; }
+        .metric-cards-container { width: 100%; min-width: 0; box-sizing: border-box; }
+        .metric-card {
+          background: white; border-radius: 16px; padding: 24px; border: 1px solid #E9EDF7;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 16px;
+          flex: 1 1 200px; min-width: 0; max-width: 100%;
+        }
+        .metric-icon-box {
+          width: 48px; height: 48px; background: #FFF0ED; color: #F54E25; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        }
+        .metric-badge {
+          background: #F4F7FE; color: #707EAE; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; height: fit-content;
+        }
+        .metric-value { font-size: 32px; font-weight: 800; color: #1B2559; line-height: 1; margin-bottom: 6px; }
+        .metric-title { font-size: 14px; font-weight: 600; color: #707EAE; margin-bottom: 2px; }
+        .metric-subtitle { font-size: 12px; font-weight: 500; color: #A3AED0; }
         .db-search-input { padding: 10px 12px 10px 36px; border: 1px solid #E9EDF7; border-radius: 12px; font-size: 13px; width: 280px; outline: none; font-family: 'Inter', sans-serif; color: #1B2559; background: white; }
         .db-search-input:focus { border-color: #2563EB; }
         .db-sort-by-wrap { position: relative; }
@@ -783,6 +809,8 @@ const StaffManagement = () => {
           .um-main { width: 100% !important; padding: 20px 12px 100px 12px !important; }
           .um-controls { flex-direction: column !important; align-items: stretch !important; gap: 12px !important; }
           .um-summary-grid, .um-summary-grid--six { grid-template-columns: 1fr !important; }
+          .metric-cards-container { flex-direction: column !important; gap: 12px !important; }
+          .metric-card { width: 100% !important; min-width: unset !important; }
           .db-search-input { width: 100% !important; }
           .um-table-wrap { overflow-x: auto; }
           .um-modal-body { grid-template-columns: 1fr; }
@@ -806,10 +834,57 @@ const StaffManagement = () => {
 
       <main className="um-main admin-sidebar-offset">
         <div style={{ width: '100%', minWidth: 0 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Staff Management</h1>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>Staff Management</h1>
           <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 22, fontWeight: 500 }}>
             Monitor nurses and case load managers in Imus—availability, duty status, and assignments in one place.
           </p>
+
+          <div className="metric-cards-container" style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
+            <div className="metric-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div className="metric-icon-box"><Users size={24} /></div>
+                <span className="metric-badge" style={{ background: '#F4F7FE', color: '#4A628A' }}>Total</span>
+              </div>
+              <div>
+                <div className="metric-value">{staffStats.total}</div>
+                <div className="metric-title">Total staff</div>
+                <div className="metric-subtitle">Nurses &amp; program staff</div>
+              </div>
+            </div>
+            <div className="metric-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div className="metric-icon-box"><Stethoscope size={24} /></div>
+                <span className="metric-badge" style={{ background: '#EEF2FF', color: '#4338CA' }}>Nurses</span>
+              </div>
+              <div>
+                <div className="metric-value">{staffStats.nurses}</div>
+                <div className="metric-title">Nurses</div>
+                <div className="metric-subtitle">Clinical staff</div>
+              </div>
+            </div>
+            <div className="metric-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div className="metric-icon-box"><ClipboardList size={24} /></div>
+                <span className="metric-badge" style={{ background: '#FFF7ED', color: '#C2410C' }}>Program</span>
+              </div>
+              <div>
+                <div className="metric-value">{staffStats.program}</div>
+                <div className="metric-title">Program staff</div>
+                <div className="metric-subtitle">Non-clinical staff</div>
+              </div>
+            </div>
+            <div className="metric-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div className="metric-icon-box"><Activity size={24} /></div>
+                <span className="metric-badge" style={{ background: '#ECFDF3', color: '#166534' }}>Now</span>
+              </div>
+              <div>
+                <div className="metric-value">{staffStats.activeNow}</div>
+                <div className="metric-title">Active now</div>
+                <div className="metric-subtitle">Seen in the last 15 min</div>
+              </div>
+            </div>
+          </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: -10, marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
@@ -968,9 +1043,9 @@ const StaffManagement = () => {
             <div className="um-table-wrap">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, textAlign: 'left' }}>
                 <thead>
-                  <tr style={{ background: '#323D4E', color: 'white' }}>
-                    {['Staff ID', 'Full Name', 'Login email', 'Personal email', 'Role', 'Department', 'Contact', 'Branch', 'Shift', 'Status', 'Availability', 'Actions'].map((col, idx) => (
-                      <th className="um-th" key={col} style={{ padding: '12px 14px', borderRight: idx < 11 ? '1px solid #4B5563' : 'none', whiteSpace: 'nowrap', fontWeight: 500 }}>{col}</th>
+                  <tr style={{ background: '#F4F7FE' }}>
+                    {['Staff ID', 'Full Name', 'Login email', 'Personal email', 'Role', 'Department', 'Contact', 'Branch', 'Shift', 'Status', 'Availability', 'Actions'].map((col) => (
+                      <th className="um-th" key={col} style={{ padding: '12px 14px', whiteSpace: 'nowrap', fontWeight: 700, color: '#4A628A' }}>{col}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1131,8 +1206,8 @@ const StaffManagement = () => {
                 <code style={{ fontSize: 12 }}>VITE_STAFF_EMAIL_ROOT_DOMAIN</code>).{' '}
                 <strong>Shift</strong> is saved as <code style={{ fontSize: 12 }}>Unassigned</code> until you set it in{' '}
                 <strong>Edit staff</strong>. <strong>Employment</strong> is full-time for all.{' '}
-                <strong>Password:</strong> every new staff member gets the <strong>same</strong> organization default
-                password (not a unique one per person). It is emailed to their <strong>personal email</strong> along with
+                <strong>Password:</strong> each new staff member gets a <strong>freshly generated, unique</strong> temporary
+                password (never reused across accounts). It is emailed to their <strong>personal email</strong> along with
                 their login address when Resend is set up.
               </p>
               <label className="um-modal-field">
@@ -1239,10 +1314,9 @@ const StaffManagement = () => {
                   lineHeight: 1.5,
                 }}
               >
-                <strong>Same default password for each staff member.</strong> Each hire receives that shared initial
-                password by email (with their own login email). Resend must be configured for delivery. To change the
-                shared default for the whole site, set <code style={{ fontSize: 12 }}>VITE_STAFF_DEFAULT_INITIAL_PASSWORD</code>{' '}
-                in <code style={{ fontSize: 12 }}>.env</code> (see <code style={{ fontSize: 12 }}>.env.example</code>).
+                <strong>Unique password per staff member.</strong> Each hire receives its own randomly generated initial
+                password by email (with their own login email) — no two accounts share a password. Resend must be
+                configured for delivery.
               </div>
               {addStaffError && (
                 <div style={{ gridColumn: '1 / -1', color: '#b91c1c', fontWeight: 600, fontSize: 13 }}>{addStaffError}</div>

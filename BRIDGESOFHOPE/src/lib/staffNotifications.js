@@ -71,9 +71,12 @@ export function subscribeStaffNotifications(onChange) {
   };
 }
 
-/** Route a related_type to the admin page that handles it. */
+/** Route a related_type to the admin page that handles it.
+ *  admission_request goes to the appointment calendar (not the admission list): a new
+ *  admission request always carries the guardian's proposed first-meeting date/time, and
+ *  that's confirmed/rescheded from the calendar's admission-meeting items, not the list. */
 export function staffNotificationTargetPath(relatedType) {
-  if (relatedType === 'admission_request') return '/admin-admission-management';
+  if (relatedType === 'admission_request') return '/admin-appointments';
   if (relatedType === 'discharge_request') return '/admin-discharge-management';
   if (relatedType === 'visitation_request') return '/admin-appointments';
   return null;

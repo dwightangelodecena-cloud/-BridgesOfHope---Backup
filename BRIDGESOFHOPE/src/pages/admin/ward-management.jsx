@@ -31,7 +31,7 @@ function roomFormFromRoom(room) {
   return { ward: room.ward, roomNumber: room.roomNumber };
 }
 
-const emptyBunkSelection = () => ({ Bottom: '', Middle: '', Upper: '' });
+const emptyBunkSelection = () => ({ Bottom: '', Upper: '' });
 
 export default function WardManagement() {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -241,7 +241,7 @@ export default function WardManagement() {
           <div>
             <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Ward &amp; Room Management</h1>
             <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, fontWeight: 500 }}>
-              Every room has 3 beds (bottom, middle, upper bunk). Facility capacity: {totalCapacityExcluding(null)} / {FACILITY_TOTAL_CAPACITY} beds across all rooms.
+              Every room has 2 beds (bottom, upper bunk). Facility capacity: {totalCapacityExcluding(null)} / {FACILITY_TOTAL_CAPACITY} beds across all rooms.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -373,6 +373,19 @@ export default function WardManagement() {
                       </div>
                     );
                   })}
+
+                  {selectedRoom.occupants.filter((o) => !BUNK_LEVELS.includes(o.bunkLevel)).map((o) => (
+                    <div key={o.id} className="wm-bunk-row" style={{ borderColor: '#FCA5A5' }}>
+                      <p className="wm-bunk-title" style={{ color: '#B91C1C' }}>Needs bunk assignment</p>
+                      <div className="wm-occupant-row">
+                        <span>{o.name}</span>
+                        <button type="button" className="wm-btn wm-btn--danger" disabled={busy} onClick={() => handleUnassign(o.id)}>
+                          Remove
+                        </button>
+                      </div>
+                      <p className="wm-bunk-hint">Counted in this room but has no bottom/upper bunk on file — remove and re-assign to fix.</p>
+                    </div>
+                  ))}
                 </>
               )}
             </div>
@@ -408,7 +421,7 @@ export default function WardManagement() {
                 />
               </div>
               <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>
-                Every room holds exactly {ROOM_CAPACITY} residents: one bottom, one middle, one upper bunk.
+                Every room holds exactly {ROOM_CAPACITY} residents: one bottom, one upper bunk.
               </p>
               {roomFormError ? (
                 <p style={{ color: '#B91C1C', fontSize: 12, fontWeight: 700 }}>{roomFormError}</p>

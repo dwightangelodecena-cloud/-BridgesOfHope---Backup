@@ -6,9 +6,9 @@ export const WARD_OPTIONS = ['Female Ward', 'Male Ward'];
 /** Facility-wide bed capacity — admin is warned before exceeding this across all rooms. */
 export const FACILITY_TOTAL_CAPACITY = 50;
 
-/** Every room is exactly 3 beds: one bottom, one middle, one upper bunk. Not admin-configurable. */
-export const ROOM_CAPACITY = 3;
-export const BUNK_LEVELS = ['Bottom', 'Middle', 'Upper'];
+/** Every room is exactly 2 beds: one bottom, one upper bunk. Not admin-configurable. */
+export const ROOM_CAPACITY = 2;
+export const BUNK_LEVELS = ['Bottom', 'Upper'];
 
 /** Ward a resident's gender is restricted to (both wards are always gender-restricted now). */
 export function wardGenderRestriction(ward) {

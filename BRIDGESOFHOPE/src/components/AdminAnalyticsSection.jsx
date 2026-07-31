@@ -262,7 +262,7 @@ function syncAnalyticsLocalCache(snap) {
     }
 }
 
-export default function AdminAnalyticsSection() {
+export default function AdminAnalyticsSection({ variant = 'full' } = {}) {
     const navigate = useNavigate();
     const [snapshot, setSnapshot] = useState({
         patients: [],
@@ -744,9 +744,11 @@ export default function AdminAnalyticsSection() {
             const idx = Math.min(7, Math.floor(((t - start) / (days * 86400000)) * 8));
             buckets[idx] += 1;
         });
-        const maxV = Math.max(7, ...buckets, 1);
-        const maxY = Math.ceil(maxV * 1.1);
-        return { buckets, maxY };
+        const dataMax = Math.max(...buckets, 0);
+        const rawMax = Math.max(dataMax, 1);
+        const step = Math.max(1, Math.ceil(rawMax / 4));
+        const maxY = Math.max(step * Math.ceil(rawMax / step), step * 3);
+        return { buckets, maxY, step };
     }, [trendCohort]);
 
     const insights = useMemo(() => {
@@ -905,13 +907,11 @@ export default function AdminAnalyticsSection() {
     }, [linePoints]);
 
     const yTicks = useMemo(() => {
-        const m = lineSeries.maxY;
-        const step = Math.max(1, Math.ceil(m / 4));
+        const { maxY, step } = lineSeries;
         const arr = [];
-        for (let v = 0; v <= m; v += step) arr.push(v);
-        if (arr[arr.length - 1] !== m) arr.push(m);
+        for (let v = 0; v <= maxY; v += step) arr.push(v);
         return arr;
-    }, [lineSeries.maxY]);
+    }, [lineSeries]);
 
     const exportCsv = useCallback(() => {
         const esc = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
@@ -1752,12 +1752,19 @@ export default function AdminAnalyticsSection() {
                     position: relative;
                     width: 100%;
                     min-height: 280px;
-                    padding: 16px 10px 46px 52px;
+                    padding: 16px 14px 46px 62px;
                 }
                 .line-chart-frame {
                     position: relative;
                     min-height: 300px;
-                    padding: 16px 14px 52px 56px;
+                    padding: 16px 14px 52px 66px;
+                    flex: 1 1 auto;
+                    display: flex;
+                    flex-direction: column;
+                }
+                .chart-box--admissions-line {
+                    display: flex;
+                    flex-direction: column;
                 }
                 .chart-box--admissions-line .chart-title {
                     font-size: clamp(18px, 1.35vw, 21px);
@@ -1782,7 +1789,39 @@ export default function AdminAnalyticsSection() {
                     color: #475569;
                 }
                 .line-chart-frame .chart-axis-caption--y {
-                    left: 8px;
+                    left: 6px;
+                }
+                .line-chart-y-label {
+                    position: absolute;
+                    left: 0;
+                    width: 34px;
+                    transform: translateY(-50%);
+                    text-align: right;
+                    font-size: 11.5px;
+                    font-weight: 600;
+                    color: #475569;
+                    pointer-events: none;
+                }
+                .line-chart-week-label {
+                    position: absolute;
+                    transform: translate(-50%, -50%);
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: #64748b;
+                    white-space: nowrap;
+                    pointer-events: none;
+                }
+                .line-chart-dot {
+                    position: absolute;
+                    width: 12px;
+                    height: 12px;
+                    margin-left: -6px;
+                    margin-top: -6px;
+                    border-radius: 50%;
+                    background: white;
+                    border: 2.5px solid #F54E25;
+                    box-shadow: 0 2px 4px rgba(245, 78, 37, 0.3);
+                    pointer-events: none;
                 }
 
                 .axis-text {
@@ -1799,10 +1838,10 @@ export default function AdminAnalyticsSection() {
                 }
                 .chart-axis-caption--y {
                     position: absolute;
-                    left: 0;
+                    left: 6px;
                     top: 50%;
-                    transform: translateY(-50%) rotate(-90deg);
-                    transform-origin: center center;
+                    writing-mode: vertical-rl;
+                    transform: translateY(-50%) rotate(180deg);
                     white-space: nowrap;
                 }
                 .pie-chart-wrap {
@@ -1877,7 +1916,12 @@ export default function AdminAnalyticsSection() {
             `}</style>
 
             <section id="admin-analytics" className="dashboard-analytics-embed" aria-label="Analytics">
-                <div className="analytics-print-root" style={{ maxWidth: 'min(1920px, 100%)', margin: '0 auto', width: '100%' }}>
+                <div
+                    className={`analytics-print-root${variant === 'full' ? '' : ' analytics-charts-only-grid'}`}
+                    style={{ maxWidth: 'min(1920px, 100%)', margin: '0 auto', width: '100%' }}
+                >
+                    {variant === 'full' && (
+                    <>
                     <div className="analytics-hero">
                         <div className="analytics-hero-glow analytics-hero-glow--1" aria-hidden="true" />
                         <div className="analytics-hero-glow analytics-hero-glow--2" aria-hidden="true" />
@@ -2255,12 +2299,19 @@ export default function AdminAnalyticsSection() {
                             Formula: each scenario clamps to 0–{BED_CAPACITY} beds. “Net if both clear” = current + pending admissions − pending discharges (same cohort filters as the Occupancy card above).
                         </div>
                     </div>
+                    </>
+                    )}
 
-                    <div className="charts-row">
+                    <div className="charts-row" style={variant === 'full' ? undefined : { gridTemplateColumns: '1fr' }}>
                         <div className="chart-box">
-                            <div className="chart-head">
-                                <div className="chart-title">Patients per Program</div>
-                                <div className="chart-desc">Volume by program cohort</div>
+                            <div className="chart-head chart-head--icon">
+                                <div className="chart-head-icon chart-head-icon--orange">
+                                    <Activity size={20} strokeWidth={2.4} />
+                                </div>
+                                <div>
+                                    <div className="chart-title">Patients per Program</div>
+                                    <div className="chart-desc">Volume by program cohort</div>
+                                </div>
                             </div>
                             <div className="analytics-chart-wrap bar-chart-frame">
                                 <div className="chart-axis-caption chart-axis-caption--y">Number of Patients</div>
@@ -2302,17 +2353,17 @@ export default function AdminAnalyticsSection() {
                                     <line x1="40" y1="150" x2="500" y2="150" stroke="#e2e8f0" strokeWidth="2" />
 
                                     <rect
-                                        x="45"
+                                        x="57.25"
                                         y={150 - barScale(barCounts.drugs)}
-                                        width="65"
+                                        width="78"
                                         height={barScale(barCounts.drugs)}
                                         fill="url(#barGrad)"
-                                        rx="6"
+                                        rx="8"
                                         style={{ cursor: 'pointer', opacity: selectedProgramKey === 'drugs' ? 1 : 0.8 }}
                                         onClick={() => setSelectedProgramKey('drugs')}
                                     />
                                     <text
-                                        x="77.5"
+                                        x="96.25"
                                         y={Math.max(14, 144 - barScale(barCounts.drugs))}
                                         className="axis-text"
                                         textAnchor="middle"
@@ -2323,17 +2374,17 @@ export default function AdminAnalyticsSection() {
                                         {barCounts.drugs}
                                     </text>
                                     <rect
-                                        x="135"
+                                        x="169.75"
                                         y={150 - barScale(barCounts.alcohol)}
-                                        width="65"
+                                        width="78"
                                         height={barScale(barCounts.alcohol)}
                                         fill="url(#barGrad)"
-                                        rx="6"
+                                        rx="8"
                                         style={{ cursor: 'pointer', opacity: selectedProgramKey === 'alcohol' ? 1 : 0.8 }}
                                         onClick={() => setSelectedProgramKey('alcohol')}
                                     />
                                     <text
-                                        x="167.5"
+                                        x="208.75"
                                         y={Math.max(14, 144 - barScale(barCounts.alcohol))}
                                         className="axis-text"
                                         textAnchor="middle"
@@ -2344,17 +2395,17 @@ export default function AdminAnalyticsSection() {
                                         {barCounts.alcohol}
                                     </text>
                                     <rect
-                                        x="225"
+                                        x="282.25"
                                         y={150 - barScale(barCounts.gambling)}
-                                        width="65"
+                                        width="78"
                                         height={barScale(barCounts.gambling)}
                                         fill="url(#barGrad)"
-                                        rx="6"
+                                        rx="8"
                                         style={{ cursor: 'pointer', opacity: selectedProgramKey === 'gambling' ? 1 : 0.8 }}
                                         onClick={() => setSelectedProgramKey('gambling')}
                                     />
                                     <text
-                                        x="257.5"
+                                        x="321.25"
                                         y={Math.max(14, 144 - barScale(barCounts.gambling))}
                                         className="axis-text"
                                         textAnchor="middle"
@@ -2365,17 +2416,17 @@ export default function AdminAnalyticsSection() {
                                         {barCounts.gambling}
                                     </text>
                                     <rect
-                                        x="315"
+                                        x="394.75"
                                         y={150 - barScale(barCounts.mental_health)}
-                                        width="65"
+                                        width="78"
                                         height={barScale(barCounts.mental_health)}
                                         fill="url(#barGrad)"
-                                        rx="6"
+                                        rx="8"
                                         style={{ cursor: 'pointer', opacity: selectedProgramKey === 'mental_health' ? 1 : 0.8 }}
                                         onClick={() => setSelectedProgramKey('mental_health')}
                                     />
                                     <text
-                                        x="347.5"
+                                        x="433.75"
                                         y={Math.max(14, 144 - barScale(barCounts.mental_health))}
                                         className="axis-text"
                                         textAnchor="middle"
@@ -2386,22 +2437,22 @@ export default function AdminAnalyticsSection() {
                                         {barCounts.mental_health}
                                     </text>
 
-                                    <g transform="translate(77.5, 176)">
+                                    <g transform="translate(96.25, 176)">
                                         <text className="axis-text" textAnchor="middle" fontSize="11">
                                             Drugs
                                         </text>
                                     </g>
-                                    <g transform="translate(167.5, 176)">
+                                    <g transform="translate(208.75, 176)">
                                         <text className="axis-text" textAnchor="middle" fontSize="11">
                                             Alcohol
                                         </text>
                                     </g>
-                                    <g transform="translate(257.5, 176)">
+                                    <g transform="translate(321.25, 176)">
                                         <text className="axis-text" textAnchor="middle" fontSize="11">
                                             Gambling
                                         </text>
                                     </g>
-                                    <g transform="translate(347.5, 176)">
+                                    <g transform="translate(433.75, 176)">
                                         <text className="axis-text" textAnchor="middle" fontSize="11">
                                             <tspan x="0" dy="0">Mental</tspan>
                                             <tspan x="0" dy="13">health</tspan>
@@ -2435,6 +2486,7 @@ export default function AdminAnalyticsSection() {
                             </div>
                         </div>
 
+                        {variant === 'full' && (
                         <div className="chart-box" style={{ display: 'flex', flexDirection: 'column' }}>
                             <div className="chart-head">
                                 <div className="chart-title">Request Status Distribution</div>
@@ -2475,12 +2527,18 @@ export default function AdminAnalyticsSection() {
                                 </span>
                             </div>
                         </div>
+                        )}
                     </div>
 
                     <div className="chart-box chart-box--admissions-line">
-                            <div className="chart-head">
-                                <div className="chart-title">Admissions Over Time</div>
-                                <div className="chart-desc">Weekly trend (last 8 weeks), cohort matches filters above</div>
+                            <div className="chart-head chart-head--icon">
+                                <div className="chart-head-icon chart-head-icon--blue">
+                                    <TrendingUp size={20} strokeWidth={2.4} />
+                                </div>
+                                <div>
+                                    <div className="chart-title">Admissions Over Time</div>
+                                    <div className="chart-desc">Weekly trend (last 8 weeks), cohort matches filters above</div>
+                                </div>
                             </div>
                         <div className="analytics-chart-wrap line-chart-frame">
                             <div className="chart-axis-caption chart-axis-caption--y">
@@ -2493,7 +2551,7 @@ export default function AdminAnalyticsSection() {
                                 Date
                             </div>
 
-                            <div className="chart-container-line" style={{ width: '100%', height: '100%', overflow: 'visible', minHeight: 220 }}>
+                            <div className="chart-container-line" style={{ width: '100%', height: '100%', overflow: 'visible', minHeight: 220, flex: '1 1 auto', position: 'relative' }}>
                                 <svg width="100%" height="100%" viewBox="0 0 1000 200" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
                                     <defs>
                                         <linearGradient id="lineAreaGrad" x1="0" y1="0" x2="0" y2="1">
@@ -2502,17 +2560,15 @@ export default function AdminAnalyticsSection() {
                                         </linearGradient>
                                     </defs>
                                     {yTicks.map((val) => (
-                                        <g key={val}>
-                                            <text x="40" y={165 - (lineSeries.maxY > 0 ? (val / lineSeries.maxY) * 120 : 0)} className="axis-text" textAnchor="end">{val}</text>
-                                            <line
-                                                x1="50"
-                                                y1={160 - (lineSeries.maxY > 0 ? (val / lineSeries.maxY) * 120 : 0)}
-                                                x2="980"
-                                                y2={160 - (lineSeries.maxY > 0 ? (val / lineSeries.maxY) * 120 : 0)}
-                                                stroke="#f1f5f9"
-                                                strokeDasharray="4 4"
-                                            />
-                                        </g>
+                                        <line
+                                            key={val}
+                                            x1="50"
+                                            y1={160 - (lineSeries.maxY > 0 ? (val / lineSeries.maxY) * 120 : 0)}
+                                            x2="980"
+                                            y2={160 - (lineSeries.maxY > 0 ? (val / lineSeries.maxY) * 120 : 0)}
+                                            stroke="#f1f5f9"
+                                            strokeDasharray="4 4"
+                                        />
                                     ))}
                                     <line x1="50" y1="160" x2="980" y2="160" stroke="#e2e8f0" strokeWidth="2" />
 
@@ -2529,17 +2585,37 @@ export default function AdminAnalyticsSection() {
                                             filter="drop-shadow(0 2px 6px rgba(245, 78, 37, 0.35))"
                                         />
                                     )}
-
-                                    {linePoints.map((pt, i) => (
-                                        <circle key={i} cx={pt.x} cy={pt.y} r="6" fill="white" stroke="#F54E25" strokeWidth="2.5" />
-                                    ))}
-
-                                    {[1, 2, 3, 4, 5, 6, 7, 8].map((wk, i) => (
-                                        <text key={i} x={50 + i * 128} y="186" className="axis-text axis-text--week" textAnchor="middle">
-                                            Week {wk}
-                                        </text>
-                                    ))}
                                 </svg>
+
+                                {/* Rendered as HTML, not SVG: preserveAspectRatio="none" above scales x/y independently,
+                                    which would turn circular dots and text into ellipses/condensed glyphs. */}
+                                {yTicks.map((val) => (
+                                    <div
+                                        key={val}
+                                        className="line-chart-y-label"
+                                        style={{ top: `${(160 - (lineSeries.maxY > 0 ? (val / lineSeries.maxY) * 120 : 0)) / 2}%` }}
+                                    >
+                                        {val}
+                                    </div>
+                                ))}
+
+                                {[1, 2, 3, 4, 5, 6, 7, 8].map((wk, i) => (
+                                    <div
+                                        key={wk}
+                                        className="line-chart-week-label"
+                                        style={{ left: `${(50 + i * 128) / 10}%`, top: '93%' }}
+                                    >
+                                        Week {wk}
+                                    </div>
+                                ))}
+
+                                {linePoints.map((pt, i) => (
+                                    <div
+                                        key={i}
+                                        className="line-chart-dot"
+                                        style={{ left: `${pt.x / 10}%`, top: `${pt.y / 2}%` }}
+                                    />
+                                ))}
                             </div>
                         </div>
                     </div>

@@ -926,32 +926,7 @@ const AdminDashboard = () => {
         <div className="dashboard-inner">
           <h1 className="dashboard-title-desktop" style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', marginBottom: 32 }}>Dashboard</h1>
 
-          <div className="dashboard-analytics-slot">
-            <DashboardAnalyticsErrorBoundary>
-              <Suspense
-                fallback={(
-                  <div
-                    style={{
-                      padding: 28,
-                      textAlign: 'center',
-                      color: '#64748b',
-                      fontSize: 14,
-                      fontWeight: 600,
-                      border: '1px dashed #e2e8f0',
-                      borderRadius: 16,
-                      background: '#fafafa',
-                    }}
-                  >
-                    Loading analytics…
-                  </div>
-                )}
-              >
-                <AdminAnalyticsSection />
-              </Suspense>
-            </DashboardAnalyticsErrorBoundary>
-          </div>
-
-          <div className="dashboard-three-panels" role="region" aria-label="Dashboard summary" style={{ marginTop: 24 }}>
+          <div className="dashboard-three-panels" role="region" aria-label="Dashboard summary">
             {/* 1 — Admission: all admission-related cards */}
             <section className="dashboard-panel" aria-labelledby="dash-admission-heading">
               <h2 id="dash-admission-heading" className="dashboard-panel-title">Admission</h2>
@@ -1105,6 +1080,31 @@ const AdminDashboard = () => {
 
               </div>
             </section>
+          </div>
+
+          <div className="dashboard-analytics-slot">
+            <DashboardAnalyticsErrorBoundary>
+              <Suspense
+                fallback={(
+                  <div
+                    style={{
+                      padding: 28,
+                      textAlign: 'center',
+                      color: '#64748b',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      border: '1px dashed #e2e8f0',
+                      borderRadius: 16,
+                      background: '#fafafa',
+                    }}
+                  >
+                    Loading analytics…
+                  </div>
+                )}
+              >
+                <AdminAnalyticsSection variant="charts-only" />
+              </Suspense>
+            </DashboardAnalyticsErrorBoundary>
           </div>
 
           {/* Reports */}

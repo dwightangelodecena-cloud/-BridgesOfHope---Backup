@@ -320,6 +320,67 @@
   letter-spacing: -0.02em;
 }
 
+/* ── Chart card headers (icon badge) ── */
+.dashboard-analytics-embed .chart-head--icon {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.dashboard-analytics-embed .chart-head-icon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dashboard-analytics-embed .chart-head-icon--orange {
+  background: linear-gradient(160deg, #fff0ed 0%, #ffe4dc 100%);
+  color: #f54e25;
+  box-shadow: 0 6px 16px rgba(245, 78, 37, 0.18);
+}
+
+.dashboard-analytics-embed .chart-head-icon--blue {
+  background: linear-gradient(160deg, #eff6ff 0%, #dbeafe 100%);
+  color: #1d4ed8;
+  box-shadow: 0 6px 16px rgba(29, 78, 216, 0.16);
+}
+
+/* ── Bar chart: keep proportions tidy instead of stretching into empty space ── */
+.dashboard-analytics-embed .bar-chart-frame {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.dashboard-analytics-embed .bar-chart-frame svg rect {
+  filter: drop-shadow(0 6px 12px rgba(245, 78, 37, 0.22));
+}
+
+.dashboard-analytics-embed .chart-box--admissions-line .line-chart-frame svg circle {
+  filter: drop-shadow(0 2px 4px rgba(245, 78, 37, 0.3));
+}
+
+/* ── Dashboard-embedded "charts-only" mode: pair the two remaining charts on wide screens ── */
+.dashboard-analytics-embed .analytics-charts-only-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: stretch;
+}
+
+.dashboard-analytics-embed .analytics-charts-only-grid .charts-row {
+  height: 100%;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-analytics-embed .analytics-charts-only-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Predictive analytics (nested) ── */
 .dashboard-analytics-embed .predict-section {
   margin-bottom: 18px;
