@@ -642,7 +642,12 @@ export default function PatientDetailsScreen() {
     [patients.length, patientsWithReportsCount]
   );
   const latestWeeklyReportStrip = useMemo(() => {
+    // weeklyReportsByPatient is keyed by every patient the family has ever had (active +
+    // discharged), but "View resident" only knows how to open active residents — so a
+    // discharged resident's report would render a card whose button silently does nothing.
+    const activeIds = new Set(patients.map((p) => String(p.id)));
     return Object.entries(weeklyReportsByPatient || {})
+      .filter(([patientId]) => activeIds.has(patientId))
       .flatMap(([patientId, rows]) =>
         (rows || []).map((row) => ({
           patientId,
@@ -656,7 +661,23 @@ export default function PatientDetailsScreen() {
           new Date(String(b.submittedAt || 0)).getTime() - new Date(String(a.submittedAt || 0)).getTime()
       )
       .slice(0, 4);
-  }, [weeklyReportsByPatient]);
+  }, [weeklyReportsByPatient, patients]);
+
+  /** weeklyReportsByPatient can be keyed by an id that doesn't exactly match patients[].id
+   *  (canonical-id remap, RPC fallback) — fall back to canonical-id and name matching so
+   *  "View resident" still resolves instead of silently doing nothing. */
+  const resolveResidentForReport = useCallback(
+    (patientId: string): PatientListEntry | undefined => {
+      const direct = patients.find((x) => String(x.id) === patientId);
+      if (direct) return direct;
+      const byCanonical = patients.find((x) => canonicalPatientId(x, patientDetailsById) === patientId);
+      if (byCanonical) return byCanonical;
+      const targetName = String(patientDetailsById[patientId]?.full_name || '').trim().toLowerCase();
+      if (!targetName) return undefined;
+      return patients.find((x) => String(x.name || '').trim().toLowerCase() === targetName);
+    },
+    [patients, patientDetailsById]
+  );
 
   const formatResidentDisplayIdFor = useCallback(
     (patientId: string) => {
@@ -965,9 +986,15 @@ export default function PatientDetailsScreen() {
                   <Text style={styles.recentTitle}>Recent Weekly Reports</Text>
                 </View>
                 {latestWeeklyReportStrip.map((item, ridx) => {
-                  const match = patients.find((x) => String(x.id) === item.patientId);
+                  const match = resolveResidentForReport(item.patientId);
                   return (
-                    <View key={`${item.patientId}-${String(item.week)}-${ridx}`} style={styles.recentRow}>
+                    <TouchableOpacity
+                      key={`${item.patientId}-${String(item.week)}-${ridx}`}
+                      style={styles.recentRow}
+                      onPress={() => match && setSelected(match)}
+                      activeOpacity={0.7}
+                      disabled={!match}
+                    >
                       <View style={styles.recentIconChip}>
                         <Ionicons name="document-text-outline" size={18} color="#F54E25" />
                       </View>
@@ -979,15 +1006,10 @@ export default function PatientDetailsScreen() {
                           {formatDate(String(item.submittedAt))} · Nurse: {item.nurseName}
                         </Text>
                       </View>
-                      <TouchableOpacity
-                        style={styles.recentCtaBtn}
-                        onPress={() => match && setSelected(match)}
-                        activeOpacity={0.85}
-                        disabled={!match}
-                      >
+                      <View style={styles.recentCtaBtn} pointerEvents="none">
                         <Text style={styles.recentCtaBtnTxt}>View resident →</Text>
-                      </TouchableOpacity>
-                    </View>
+                      </View>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
