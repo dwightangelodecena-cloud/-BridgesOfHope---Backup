@@ -111,14 +111,12 @@ function ReportFieldCard({
 function ReportStatCard({
   label,
   value,
-  caption,
   icon,
   iconBg,
   iconColor,
 }: {
   label: string;
   value: string | number;
-  caption: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   iconBg: string;
   iconColor: string;
@@ -133,9 +131,6 @@ function ReportStatCard({
       </Text>
       <Text style={styles.rptStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
         {value}
-      </Text>
-      <Text style={styles.rptStatCaption} numberOfLines={2}>
-        {caption}
       </Text>
     </View>
   );
@@ -375,7 +370,6 @@ export default function ReportsScreen() {
           <ReportStatCard
             label="Residents"
             value={patients.length}
-            caption="Total Residents"
             icon="people"
             iconBg="#EEF2FF"
             iconColor="#6366F1"
@@ -383,7 +377,6 @@ export default function ReportsScreen() {
           <ReportStatCard
             label="Total Reports"
             value={totalReportsCount}
-            caption="This Week"
             icon="document-text"
             iconBg="#ECFDF5"
             iconColor="#10B981"
@@ -391,7 +384,6 @@ export default function ReportsScreen() {
           <ReportStatCard
             label="With Reports"
             value={patientsWithReportsCount}
-            caption="Residents"
             icon="checkmark-circle"
             iconBg="#FFF7ED"
             iconColor="#EA580C"
@@ -399,7 +391,6 @@ export default function ReportsScreen() {
           <ReportStatCard
             label="Avg Progress"
             value={`${avgProgress}%`}
-            caption="Average Progress"
             icon="trending-up"
             iconBg="#EEF2FF"
             iconColor="#4F46E5"
@@ -791,6 +782,7 @@ const styles = StyleSheet.create({
   rptStatCard: {
     flex: 1,
     minWidth: 0,
+    alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     borderWidth: 1,
@@ -821,9 +813,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.2,
+    textAlign: 'center',
   },
-  rptStatVal: { fontSize: 19, fontWeight: '900', color: '#0F172A', marginTop: 4, letterSpacing: -0.4 },
-  rptStatCaption: { fontSize: 8.5, fontWeight: '600', color: '#94A3B8', marginTop: 3 },
+  rptStatVal: { fontSize: 19, fontWeight: '900', color: '#0F172A', marginTop: 4, letterSpacing: -0.4, textAlign: 'center' },
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
