@@ -10,6 +10,7 @@ import {
   Modal,
   Pressable,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,6 +30,26 @@ const WEEK_NUMBERS = [1, 2, 3, 4, 5, 6, 7] as const;
 
 /** Two columns default; compact screens switch to one column per row for readability. */
 const WEEK_GRID_ROWS: readonly (readonly number[])[] = [[1, 2], [3, 4], [5, 6], [7]];
+
+const PATIENT_AVATAR_PALETTE = [
+  { bg: '#FFF5F0', color: '#C2410C' },
+  { bg: '#E0E7FF', color: '#4338CA' },
+  { bg: '#F3E8FF', color: '#7E22CE' },
+  { bg: '#DCFCE7', color: '#15803D' },
+] as const;
+
+// Same title treatment as the shared FamilyMobilePageHeader (FamilyHeaderBrand): orange
+// gradient text on web, flat brand orange on native.
+const webGradientTitleStyle =
+  Platform.OS === 'web'
+    ? ({
+        backgroundImage: 'linear-gradient(165deg, #FF8A3D 0%, #F5761E 30%, #F54E25 65%, #EA3E12 100%)',
+        WebkitBackgroundClip: 'text',
+        backgroundClip: 'text',
+        color: 'transparent',
+        WebkitTextFillColor: 'transparent',
+      } as const)
+    : null;
 
 export type NurseWeekRecord = {
   submittedAt: string;
@@ -269,21 +290,33 @@ export default function ViewDetailsPage() {
 
       <View style={styles.header}>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerBrandTitle}>Weekly Reports</Text>
-          <Text style={styles.headerWelcomeLine} numberOfLines={1}>
-            View report history and care updates
+          <Text style={[styles.headerBrandTitle, webGradientTitleStyle]} numberOfLines={1}>
+            Care Updates
           </Text>
+          <View style={styles.headerSubRow}>
+            <Ionicons name="document-text" size={9} color="#F54E25" />
+            <Text style={styles.headerWelcomeLine} numberOfLines={1}>
+              WEEKLY CARE REPORTS
+            </Text>
+          </View>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
-            style={styles.headerCircleBtn}
+            style={[styles.headerCircleBtn, notificationItems.length > 0 ? styles.headerCircleBtnActive : styles.headerCircleBtnIdle]}
             onPress={() => setShowNotifications((v) => !v)}
             accessibilityLabel="Notifications"
           >
-            <Ionicons name="notifications" size={18} color="#FFFFFF" />
+            <Ionicons name="notifications" size={16} color={notificationItems.length > 0 ? '#FFFFFF' : '#64748B'} />
+            {notificationItems.length > 0 ? (
+              <View style={styles.headerNotifBadge}>
+                <Text style={styles.headerNotifBadgeTxt}>
+                  {notificationItems.length > 9 ? '9+' : notificationItems.length}
+                </Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.headerCircleBtn}
+            style={styles.headerAvatarBtn}
             onPress={() => router.navigate(TAB_ROUTES.profile)}
             accessibilityLabel="Profile"
           >
@@ -299,12 +332,6 @@ export default function ViewDetailsPage() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.careSection}>
-          <Text style={styles.careUpdatesTitle}>
-            Care <Text style={styles.careUpdatesOrange}>Updates</Text>
-          </Text>
-          <Text style={styles.careUpdatesSubtitle}>
-            {"Here's an overview of weekly care reports for your patients"}
-          </Text>
           {patients.length > 0 ? (
             <View style={styles.patientCountPill}>
               <Ionicons name="document-text-outline" size={15} color="#F54E25" />
@@ -326,10 +353,11 @@ export default function ViewDetailsPage() {
             No admitted patients yet. When an admission is approved, patients will show here.
           </Text>
         ) : (
-          patients.map((p) => {
+          patients.map((p, idx) => {
             const reportsForPatient = reportsByPatient[String(p.id)] || {};
             const submittedWeekCount = WEEK_NUMBERS.filter((n) => reportsForPatient[String(n)]).length;
             const expanded = expandedPatientId === p.id;
+            const avatar = PATIENT_AVATAR_PALETTE[idx % PATIENT_AVATAR_PALETTE.length];
 
             return (
               <View key={p.id} style={styles.patientBlock}>
@@ -340,8 +368,8 @@ export default function ViewDetailsPage() {
                   accessibilityRole="button"
                   accessibilityState={{ expanded }}
                 >
-                  <View style={styles.patientAvatar}>
-                    <Text style={styles.patientAvatarText}>{patientInitials(p.name)}</Text>
+                  <View style={[styles.patientAvatar, { backgroundColor: avatar.bg, borderColor: avatar.bg }]}>
+                    <Text style={[styles.patientAvatarText, { color: avatar.color }]}>{patientInitials(p.name)}</Text>
                   </View>
                   <View style={styles.patientMain}>
                     <View style={styles.nameRow}>
@@ -398,7 +426,7 @@ export default function ViewDetailsPage() {
                                       {has && rec ? (
                                         <View style={styles.weekBodyLeft}>
                                           <View style={styles.weekReceivedRow}>
-                                            <Ionicons name="checkmark-circle" size={14} color="#EA580C" />
+                                            <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
                                             <Text style={styles.weekDetailText}>
                                               Received {formatNurseReportDate(rec.submittedAt)}
                                             </Text>
@@ -415,12 +443,12 @@ export default function ViewDetailsPage() {
                                       )}
                                     </View>
                                     <TouchableOpacity
-                                      style={styles.weekOpenPill}
+                                      style={[styles.weekOpenPill, has && styles.weekOpenPillDone]}
                                       onPress={() => onWeekOpenPress(has, rec, w)}
                                       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                       activeOpacity={0.85}
                                     >
-                                      <Text style={styles.weekOpenPillText}>Open</Text>
+                                      <Text style={[styles.weekOpenPillText, has && styles.weekOpenPillTextDone]}>Open</Text>
                                     </TouchableOpacity>
                                   </View>
                                 </View>
@@ -458,13 +486,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     minHeight: 56,
-    paddingVertical: 6,
+    paddingVertical: 10,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F1',
     zIndex: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.05,
+        shadowRadius: 14,
+      },
+      android: { elevation: 2 },
+    }),
   },
   headerCenter: {
     flex: 1,
@@ -473,22 +508,56 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerBrandTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '800',
-    color: '#F54E25',
+    color: '#F0851F',
+    letterSpacing: -0.4,
   },
+  headerSubRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
   headerWelcomeLine: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-    marginTop: 2,
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#334155',
+    letterSpacing: 0.4,
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   headerCircleBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  headerCircleBtnIdle: { backgroundColor: '#F1F5F9' },
+  headerCircleBtnActive: {
+    backgroundColor: '#F54E25',
+    shadowColor: '#F54E25',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  headerNotifBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#1A2B4A',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  headerNotifBadgeTxt: { fontSize: 8.5, fontWeight: '900', color: '#FFFFFF' },
+  headerAvatarBtn: {
     width: 34,
     height: 34,
     borderRadius: 17,
@@ -496,10 +565,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#F54E25',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
   },
   headerAvatarText: {
     color: '#FFFFFF',
@@ -562,22 +631,8 @@ const styles = StyleSheet.create({
   },
   careSection: {
     width: '100%',
+    paddingTop: 12,
     paddingBottom: 4,
-  },
-  careUpdatesTitle: {
-    fontSize: isCompactScreen ? 17 : 19,
-    fontWeight: '800',
-    color: '#1B2559',
-  },
-  careUpdatesOrange: {
-    color: '#F54E25',
-  },
-  careUpdatesSubtitle: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#A3AED0',
-    marginTop: 6,
-    marginBottom: 14,
   },
   sectionDivider: {
     height: StyleSheet.hairlineWidth,
@@ -758,11 +813,14 @@ const styles = StyleSheet.create({
   weekCardEmpty: {
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    backgroundColor: '#FAFBFC',
   },
   weekCardDone: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
+    borderColor: '#BBF7D0',
+    borderLeftWidth: 3,
+    borderLeftColor: '#16A34A',
+    backgroundColor: '#F0FDF4',
   },
   weekCardRow: {
     flexDirection: 'row',
@@ -802,10 +860,17 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     alignSelf: 'flex-start',
   },
+  weekOpenPillDone: {
+    backgroundColor: '#16A34A',
+  },
   weekOpenPillText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#334155',
+  },
+  weekOpenPillTextDone: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   weekEmptyMsg: {
     fontSize: 12,
