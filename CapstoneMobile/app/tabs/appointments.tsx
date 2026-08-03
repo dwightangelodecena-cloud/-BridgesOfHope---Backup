@@ -1039,6 +1039,9 @@ export default function AppointmentsScreen() {
               <View>
                 <Text style={styles.selectedDateLabel}>Selected Date</Text>
                 <Text style={styles.selectedDateValue}>{selectedDateLong || '—'}</Text>
+                {selectedDayLabel ? (
+                  <Text style={styles.visitDayLine}>Visit Day: {selectedDayLabel}</Text>
+                ) : null}
               </View>
             </View>
             {form.preferredDate ? (
@@ -1052,9 +1055,6 @@ export default function AppointmentsScreen() {
               </Pressable>
             ) : null}
           </View>
-          {selectedDayLabel ? (
-            <Text style={styles.visitDayLine}>Visit Day: {selectedDayLabel}</Text>
-          ) : null}
 
           <Text style={styles.label}>Preferred Time</Text>
           <View style={styles.slotWrap}>
@@ -1860,7 +1860,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   editDateBtnTxt: { fontSize: 12.5, fontWeight: '800', color: '#4F46E5' },
-  visitDayLine: { marginTop: 10, fontSize: 13, fontWeight: '700', color: '#166534' },
+  visitDayLine: { marginTop: 3, fontSize: 12, fontWeight: '700', color: '#166534' },
   label: {
     fontSize: 14,
     fontWeight: '800',

@@ -46,6 +46,17 @@ const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
 const BG = BH.surface2;
 
+// Native pixel size of assets/images/home-header.png. resizeMode="cover" renders as a
+// non-uniform stretch on web (RNW quirk: falls back to CSS object-fit:fill instead of
+// cover), so instead of relying on it, the image is rendered at its full aspect-correct
+// size (HOME_HERO_IMAGE_HEIGHT) and the shorter banner box crops off the top of it (sky) —
+// a manual "cover, anchored to bottom" that keeps the bridge visible and the artwork
+// undistorted either way.
+const HOME_HERO_NATURAL_W = 1672;
+const HOME_HERO_NATURAL_H = 941;
+const HOME_HERO_IMAGE_HEIGHT = width * (HOME_HERO_NATURAL_H / HOME_HERO_NATURAL_W);
+const HOME_HERO_HEIGHT = HOME_HERO_IMAGE_HEIGHT * 0.95;
+
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
   return parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('') || 'FU';
@@ -132,15 +143,18 @@ function formatRequestDateTime(iso: string): string {
 }
 
 const HERO_CHART_BARS = [34, 48, 42, 58, 52, 72, 66];
+const HERO_CHART_HEIGHT = 92;
 
+// y stored as a fraction of HERO_CHART_HEIGHT (0 = top, 1 = bottom) so the line stays
+// aligned with the bars' percentage heights however tall the chart is drawn.
 const HERO_CHART_POINTS = [
-  { x: 5.7, y: 43.6 },
-  { x: 22.1, y: 34.3 },
-  { x: 38.6, y: 38.3 },
-  { x: 55.0, y: 27.7 },
-  { x: 71.4, y: 31.7 },
-  { x: 87.9, y: 18.5 },
-  { x: 104.3, y: 22.4 },
+  { x: 5.7, y: 0.6606 * HERO_CHART_HEIGHT },
+  { x: 22.1, y: 0.5197 * HERO_CHART_HEIGHT },
+  { x: 38.6, y: 0.5803 * HERO_CHART_HEIGHT },
+  { x: 55.0, y: 0.4197 * HERO_CHART_HEIGHT },
+  { x: 71.4, y: 0.4803 * HERO_CHART_HEIGHT },
+  { x: 87.9, y: 0.2803 * HERO_CHART_HEIGHT },
+  { x: 104.3, y: 0.3394 * HERO_CHART_HEIGHT },
 ];
 
 const HERO_CHART_LINE_HEIGHT = 2;
@@ -647,7 +661,12 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.dashboardHero}>
+        <LinearGradient
+          colors={['#0F172A', '#1E2A4A', '#111C36']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.dashboardHero}
+        >
           <View style={styles.heroBadge}>
             <Ionicons name="bar-chart-outline" size={20} color={BH.brand} />
           </View>
@@ -676,7 +695,7 @@ export default function HomeScreen() {
               <View key={`dot-${i}`} style={[styles.heroChartDot, { left: p.x - 3, top: p.y - 3 }]} />
             ))}
           </View>
-        </View>
+        </LinearGradient>
 
         <View style={styles.statsGrid}>
           {statTiles.map((tile) => (
@@ -1187,6 +1206,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: isCompactScreen ? 14 : 18, paddingTop: 0 },
   heroBanner: {
     marginHorizontal: isCompactScreen ? -14 : -18,
+    height: HOME_HERO_HEIGHT,
     borderBottomLeftRadius: 26,
     borderBottomRightRadius: 26,
     paddingHorizontal: isCompactScreen ? 18 : 24,
@@ -1196,29 +1216,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#0f172a',
     justifyContent: 'center',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.22,
-    shadowRadius: 28,
-    elevation: 8,
-    // Matches home-header.png's exact 1672x836 (2:1) aspect ratio, so the
-    // container's height always derives from its actual rendered width
-    // instead of a fixed minHeight — guarantees the image is shown in full
-    // (bridge included) with zero cropping on any screen size.
-    aspectRatio: 2,
   },
   heroBannerImage: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
     bottom: 0,
+    left: 0,
     width: '100%',
-    height: '100%',
+    height: HOME_HERO_IMAGE_HEIGHT,
   },
   heroInner: { gap: 1, maxWidth: '58%', marginTop: -8 },
   heroKicker: {
-    fontSize: isCompactScreen ? 15 : 17,
+    fontSize: isCompactScreen ? 16 : 18,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: -0.1,
@@ -1229,7 +1237,7 @@ const styles = StyleSheet.create({
   heroTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: -1 },
   heroTitle: {
     flexShrink: 1,
-    fontSize: isCompactScreen ? 20 : 22,
+    fontSize: isCompactScreen ? 22 : 24,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -0.5,
@@ -1241,7 +1249,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   heroSub: {
-    fontSize: 13.5,
+    fontSize: 14.5,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.86)',
     marginTop: 5,
@@ -1307,13 +1315,12 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 14,
     overflow: 'hidden',
-    backgroundColor: '#0F172A',
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.22,
     shadowRadius: 28,
     elevation: 8,
-    minHeight: isCompactScreen ? 150 : 168,
+    minHeight: isCompactScreen ? 168 : 186,
   },
   heroBadge: {
     width: 40,
@@ -1345,7 +1352,7 @@ const styles = StyleSheet.create({
     right: 20,
     bottom: 18,
     width: 110,
-    height: 66,
+    height: HERO_CHART_HEIGHT,
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 5,

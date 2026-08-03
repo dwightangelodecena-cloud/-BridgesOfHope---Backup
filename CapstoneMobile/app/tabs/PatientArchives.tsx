@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
@@ -14,6 +15,27 @@ const C = {
   muted: '#64748B',
   border: '#E2E8F0',
 };
+
+const AVATAR_PALETTE = [
+  { bg: '#E0E7FF', color: '#4338CA' },
+  { bg: '#FFE4D6', color: '#C2410C' },
+  { bg: '#F3E8FF', color: '#7E22CE' },
+  { bg: '#DCFCE7', color: '#15803D' },
+] as const;
+
+// Same title treatment as the shared FamilyMobilePageHeader (FamilyHeaderBrand): orange
+// gradient text on web, flat brand orange on native — keeps this page's header on-theme
+// with Home/Reports/etc. even though it needs its own back-button layout.
+const webGradientTitleStyle =
+  Platform.OS === 'web'
+    ? ({
+        backgroundImage: 'linear-gradient(165deg, #FF8A3D 0%, #F5761E 30%, #F54E25 65%, #EA3E12 100%)',
+        WebkitBackgroundClip: 'text',
+        backgroundClip: 'text',
+        color: 'transparent',
+        WebkitTextFillColor: 'transparent',
+      } as const)
+    : null;
 
 type ArchivedPatient = {
   id: string;
@@ -92,66 +114,116 @@ export default function PatientArchives() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
       <View style={styles.header}>
-        <TouchableOpacity onPress={goBack} style={styles.headerBack} hitSlop={12}>
-          <Ionicons name="arrow-back" size={22} color={C.navy} />
+        <TouchableOpacity onPress={goBack} style={styles.headerBack} hitSlop={12} activeOpacity={0.85}>
+          <Ionicons name="arrow-back" size={19} color={C.navy} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Patient Archives</Text>
-        <View style={{ width: 34 }} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[styles.headerTitle, webGradientTitleStyle]} numberOfLines={1}>Patient Archives</Text>
+          <View style={styles.headerSubRow}>
+            <Ionicons name="archive" size={9} color={C.orange} />
+            <Text style={styles.headerSub} numberOfLines={1}>Archived Records</Text>
+          </View>
+        </View>
+        <LinearGradient
+          colors={['#FF8A5C', '#F54E25']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerBadge}
+        >
+          <Ionicons name="archive" size={18} color="#FFFFFF" />
+          {!loading ? (
+            <View style={styles.headerBadgeCount}>
+              <Text style={styles.headerBadgeCountTxt}>{residents.length}</Text>
+            </View>
+          ) : null}
+        </LinearGradient>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}>
-        <Text style={styles.subtitle}>
-          Discharged residents are kept here for reference. Their weekly reports are still available to view.
-        </Text>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.infoCard}>
+          <View style={styles.infoIconWrap}>
+            <Ionicons name="information-circle" size={18} color={C.orange} />
+          </View>
+          <Text style={styles.infoText}>
+            Discharged residents are kept here for reference. Their weekly reports are still available to view.
+          </Text>
+        </View>
 
         {loading ? (
           <ActivityIndicator color={C.orange} style={{ marginTop: 40 }} />
         ) : residents.length === 0 ? (
           <View style={styles.panel}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="archive-outline" size={26} color="#CBD5E1" />
+            </View>
             <Text style={styles.emptyTitle}>No archived residents</Text>
             <Text style={styles.emptyBody}>Residents appear here once they&apos;ve been discharged.</Text>
           </View>
         ) : (
-          residents.map((p) => (
-            <View key={p.id} style={styles.card}>
-              <View style={styles.cardHead}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarTxt}>{initials(p.name)}</Text>
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.name} numberOfLines={1}>{p.name}</Text>
-                  <View style={styles.dischargedBadge}>
-                    <Ionicons name="exit-outline" size={12} color="#9A3412" />
-                    <Text style={styles.dischargedBadgeTxt}>Discharged {formatDate(p.dischargedAt)}</Text>
+          residents.map((p, idx) => {
+            const avatar = AVATAR_PALETTE[idx % AVATAR_PALETTE.length];
+            const statusLine = [p.status, p.concern].filter(Boolean).join(' · ');
+            return (
+              <LinearGradient
+                key={p.id}
+                colors={['#FFFFFF', '#FFF3EA']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.card}
+              >
+                <View style={styles.cardHead}>
+                  <View style={[styles.avatar, { backgroundColor: avatar.bg }]}>
+                    <Text style={[styles.avatarTxt, { color: avatar.color }]}>{initials(p.name)}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.name} numberOfLines={1}>{p.name}</Text>
+                    <View style={styles.dischargedBadge}>
+                      <Ionicons name="exit-outline" size={12} color="#9A3412" />
+                      <Text style={styles.dischargedBadgeTxt}>Discharged {formatDate(p.dischargedAt)}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-              <View style={styles.metaGrid}>
-                <View style={styles.metaItem}>
-                  <Text style={styles.metaLabel}>Admitted</Text>
-                  <Text style={styles.metaValue}>{formatDate(p.admittedAt)}</Text>
+
+                <View style={styles.metaRows}>
+                  <View style={styles.metaRow}>
+                    <Ionicons name="calendar-outline" size={14} color="#94A3B8" />
+                    <Text style={styles.metaRowText}>
+                      Admitted <Text style={styles.metaRowStrong}>{formatDate(p.admittedAt)}</Text>
+                    </Text>
+                  </View>
+                  <View style={styles.metaRow}>
+                    <Ionicons name="bed-outline" size={14} color="#94A3B8" />
+                    <Text style={styles.metaRowText}>
+                      Room <Text style={styles.metaRowStrong}>{p.room || '—'}</Text>
+                    </Text>
+                  </View>
+                  {statusLine ? (
+                    <View style={styles.metaRow}>
+                      <Ionicons name="pulse-outline" size={14} color="#94A3B8" />
+                      <Text style={styles.metaRowText} numberOfLines={1}>
+                        Final status <Text style={styles.metaRowStrong}>{statusLine}</Text>
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
-                <View style={styles.metaItem}>
-                  <Text style={styles.metaLabel}>Room</Text>
-                  <Text style={styles.metaValue}>{p.room || '—'}</Text>
-                </View>
-                <View style={[styles.metaItem, { flexBasis: '100%' }]}>
-                  <Text style={styles.metaLabel}>Final status / concern</Text>
-                  <Text style={styles.metaValue}>{[p.status, p.concern].filter(Boolean).join(' · ') || '—'}</Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                style={styles.reportsBtn}
-                onPress={() =>
-                  router.push({ pathname: TAB_ROUTES.weeklyReport, params: { patientId: p.id, patientName: p.name } } as never)
-                }
-              >
-                <Ionicons name="document-text-outline" size={15} color={C.orange} />
-                <Text style={styles.reportsBtnTxt}>View weekly reports</Text>
-                <Ionicons name="chevron-forward" size={15} color={C.orange} />
-              </TouchableOpacity>
-            </View>
-          ))
+
+                <TouchableOpacity
+                  style={styles.reportsBtn}
+                  activeOpacity={0.88}
+                  onPress={() =>
+                    router.push({ pathname: TAB_ROUTES.weeklyReport, params: { patientId: p.id, patientName: p.name } } as never)
+                  }
+                >
+                  <Ionicons name="document-text-outline" size={15} color="#FFFFFF" />
+                  <Text style={styles.reportsBtnTxt}>View weekly reports</Text>
+                  <Ionicons name="chevron-forward" size={15} color="#FFFFFF" />
+                </TouchableOpacity>
+              </LinearGradient>
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -163,69 +235,178 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  headerBack: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 16, fontWeight: '800', color: C.navy },
-  scroll: { paddingHorizontal: 16, paddingTop: 8 },
-  subtitle: { fontSize: 12.5, color: C.muted, lineHeight: 18, marginBottom: 14 },
-  panel: {
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingTop: 6,
+    paddingBottom: 18,
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(233,237,247,0.85)',
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.06,
+        shadowRadius: 18,
+      },
+      android: { elevation: 3 },
+    }),
   },
-  emptyTitle: { fontSize: 16, fontWeight: '800', color: C.navy, marginBottom: 8 },
-  emptyBody: { fontSize: 13, color: C.muted, lineHeight: 19 },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(233, 237, 247, 0.9)',
-    padding: 16,
-    marginBottom: 12,
-  },
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+  headerBack: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  avatarTxt: { fontSize: 13, fontWeight: '800', color: C.navy },
-  name: { fontSize: 15, fontWeight: '800', color: C.navy },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#F0851F', letterSpacing: -0.4 },
+  headerSubRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  headerSub: { fontSize: 10.5, fontWeight: '700', color: '#334155', letterSpacing: 0.4, textTransform: 'uppercase' },
+  headerBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    position: 'relative',
+    ...Platform.select({
+      ios: {
+        shadowColor: C.orange,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+  headerBadgeCount: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: C.navy,
+    borderWidth: 2,
+    borderColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  headerBadgeCountTxt: { fontSize: 9.5, fontWeight: '900', color: '#FFFFFF' },
+  scroll: { paddingHorizontal: 16, paddingTop: 8 },
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#FFF7F4',
+    borderWidth: 1,
+    borderColor: '#FFE1D3',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+  },
+  infoIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  infoText: { flex: 1, fontSize: 12.5, color: '#7C4A32', lineHeight: 18, fontWeight: '600' },
+  panel: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 28,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(233,237,247,0.85)',
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: C.navy, marginBottom: 6 },
+  emptyBody: { fontSize: 13, color: C.muted, lineHeight: 19, textAlign: 'center' },
+  card: {
+    borderRadius: 18,
+    borderLeftWidth: 4,
+    borderLeftColor: C.orange,
+    borderWidth: 1,
+    borderColor: 'rgba(233, 237, 247, 0.9)',
+    padding: 16,
+    marginBottom: 14,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.06,
+        shadowRadius: 14,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  avatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  avatarTxt: { fontSize: 14, fontWeight: '900' },
+  name: { fontSize: 15.5, fontWeight: '800', color: C.navy },
   dischargedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     alignSelf: 'flex-start',
-    backgroundColor: '#FFF7ED',
+    backgroundColor: '#FFF1E8',
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    marginTop: 4,
+    marginTop: 5,
   },
   dischargedBadgeTxt: { fontSize: 10.5, fontWeight: '800', color: '#9A3412' },
-  metaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 14 },
-  metaItem: { flexBasis: '45%' },
-  metaLabel: { fontSize: 10.5, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.3 },
-  metaValue: { fontSize: 13, fontWeight: '700', color: C.navy, marginTop: 2 },
+  metaRows: {
+    gap: 8,
+    marginBottom: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  metaRowText: { flex: 1, fontSize: 12.5, color: '#64748B', fontWeight: '600' },
+  metaRowStrong: { color: C.navy, fontWeight: '800' },
   reportsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#FFF7F4',
-    borderWidth: 1,
-    borderColor: '#FFD9CC',
+    backgroundColor: C.orange,
     borderRadius: 12,
-    paddingVertical: 11,
+    paddingVertical: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: C.orange,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.24,
+        shadowRadius: 10,
+      },
+      android: { elevation: 3 },
+    }),
   },
-  reportsBtnTxt: { fontSize: 13, fontWeight: '800', color: C.orange },
+  reportsBtnTxt: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
 });
