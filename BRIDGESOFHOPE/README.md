@@ -2,6 +2,9 @@
 
 Admin web app for patient management and admissions/discharge workflows.
 
+> Part of the [BridgesOfHope monorepo](../README.md) — see also [PRD](../docs/PRD.md) and
+> [Architecture](../docs/ARCHITECTURE.md).
+
 ## 1) Install and run
 
 ```bash
