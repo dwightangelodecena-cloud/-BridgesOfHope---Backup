@@ -1,4 +1,7 @@
-# Welcome to your Expo app 👋
+# Bridges of Hope (Mobile)
+
+> Part of the [BridgesOfHope monorepo](../README.md) — see also [PRD](../docs/PRD.md) and
+> [Architecture](../docs/ARCHITECTURE.md).
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 

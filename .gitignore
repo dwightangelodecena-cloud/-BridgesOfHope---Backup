@@ -22,5 +22,9 @@ Thumbs.db
 .vscode/
 *.log
 
+# Local AI tool configs — machine-specific, never commit
+.claude/
+.cursor/
+
 # Temp
 _tmp_pdf_extract/
