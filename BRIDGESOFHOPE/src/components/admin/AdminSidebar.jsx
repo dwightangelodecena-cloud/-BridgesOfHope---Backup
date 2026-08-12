@@ -14,6 +14,7 @@ import {
   LogOut,
   MessageSquare,
   BedDouble,
+  Megaphone,
 } from 'lucide-react';
 import logo from '@/assets/kalingalogo.png';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { path: '/admin-content-management', label: 'Content management', icon: LayoutTemplate },
   { path: '/admin-appointments', label: 'Appointments', icon: Calendar },
   { path: '/admin-notification-templates', label: 'Notification Templates', icon: MessageSquare },
+  { path: '/admin-announcements', label: 'Announcements', icon: Megaphone },
   { path: '/admin-reports', label: 'Printable reports', icon: FileText },
 ];
 

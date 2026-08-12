@@ -41,6 +41,7 @@ import {
 } from '../../lib/visitationAppointmentsMobile';
 import { BH, SHADOW } from '../../theme/tokens';
 import { subscribeToTableChanges } from '../../lib/realtimeMobile';
+import { AnnouncementPopup } from '../../components/family/AnnouncementPopup';
 
 const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
@@ -499,6 +500,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: BG }]}>
+      <AnnouncementPopup />
       <FamilyMobilePageHeader onBrandPress={scrollToTop} />
 
       <ScrollView

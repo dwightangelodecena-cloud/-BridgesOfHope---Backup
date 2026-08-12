@@ -28,6 +28,7 @@ import UserManagement from '@/pages/admin/user-management';
 import AdmissionManagement from '@/pages/admin/admission-management';
 import DischargeManagement from '@/pages/admin/discharge-management';
 import NotificationTemplatesPage from '@/pages/admin/notification-templates';
+import AdminAnnouncementsPage from '@/pages/admin/admin-announcements';
 import WardManagement from '@/pages/admin/ward-management';
 import StaffManagement from '@/pages/admin/staff-management';
 import ContentManagement from '@/pages/admin/content-management';
@@ -71,6 +72,7 @@ const ROUTE_TITLES = {
   '/admin-profile': 'Admin profile',
   '/admin-appointments': 'Admin appointments',
   '/admin-notification-templates': 'Notification templates',
+  '/admin-announcements': 'Announcements',
   '/admin-reports': 'Printable reports',
   '/admin-messages': 'Messages',
 };
@@ -302,6 +304,14 @@ function App() {
           element={
             <RoleGuard allowedRoles={['admin']}>
               <NotificationTemplatesPage />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-announcements"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <AdminAnnouncementsPage />
             </RoleGuard>
           }
         />
