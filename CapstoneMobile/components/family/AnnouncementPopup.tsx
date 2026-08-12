@@ -122,7 +122,7 @@ export function AnnouncementPopup() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.55)' },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(15,23,42,0.55)' },
   card: {
     width: CARD_WIDTH,
     borderRadius: RADIUS['2xl'],
