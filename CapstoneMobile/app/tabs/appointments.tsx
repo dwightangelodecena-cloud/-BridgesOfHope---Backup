@@ -44,7 +44,11 @@ import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { AppointmentNoticeCard } from '../../components/family/AppointmentNoticeCard';
 import { fetchAppointmentNotices, type AppointmentNotice } from '../../lib/appointmentNoticesMobile';
-import { acceptSuggestedMeetingTime, rejectMeetingTime } from '../../lib/admissionMeetingRequestMobile';
+import {
+  acceptSuggestedMeetingTime,
+  rejectMeetingTime,
+  fetchAdmissionMeetingAppointments,
+} from '../../lib/admissionMeetingRequestMobile';
 import { confirmPickupMeeting, rejectPickupMeeting, confirmPickupReceived } from '../../lib/dischargePickupMeetingMobile';
 import { fetchDischargedPatientIdentity } from '../../lib/dischargedPatientsMobile';
 import { subscribeToTableChanges } from '../../lib/realtimeMobile';
@@ -423,7 +427,11 @@ export default function AppointmentsScreen() {
     const localRows = await listVisitationRequestsByFamily(user.id);
     const merged = await mergeRequestsFromSupabase(user.id, localRows);
     const discharged = await fetchDischargedPatientIdentity(user.id);
-    setRequests(merged.filter((r) => !discharged.ids.has(String(r.patientId || ''))));
+    const admissionMeetings = await fetchAdmissionMeetingAppointments(user.id);
+    setRequests([
+      ...merged.filter((r) => !discharged.ids.has(String(r.patientId || ''))),
+      ...admissionMeetings,
+    ]);
 
     setNotices(await fetchAppointmentNotices(user.id));
   }, []);
@@ -2082,7 +2090,7 @@ const styles = StyleSheet.create({
   },
   detailCancelBtnTxt: { color: '#B91C1C', fontWeight: '800', fontSize: 13 },
   counterModalRoot: { flex: 1, justifyContent: 'flex-end' },
-  counterBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.4)' },
+  counterBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(15,23,42,0.4)' },
   counterCard: {
     width: '100%',
     backgroundColor: '#FFFFFF',

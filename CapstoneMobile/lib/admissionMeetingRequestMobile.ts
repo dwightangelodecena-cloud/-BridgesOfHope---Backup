@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import type { VisitationRequestRow } from './visitationAppointmentsMobile';
 
 export type AdmissionMeetingRow = {
   id: string;
@@ -100,6 +101,45 @@ export async function acceptSuggestedMeetingTime(requestId: string) {
   return updateRequest(requestId, {
     meeting_confirmed_by_family: true,
     status: 'processing',
+  });
+}
+
+/**
+ * Admission meetings shaped as `VisitationRequestRow`s so they merge straight into the
+ * Appointments tab's existing list/counts/calendar — mirrors the same merge the admin web
+ * calendar already does server-side (`admin-appointments.jsx`'s `admissionMeetingItems`).
+ * Without this, a confirmed admission meeting has no persistent home in the Appointments tab —
+ * it only ever showed as a transient notice while awaiting the guardian's response.
+ */
+export async function fetchAdmissionMeetingAppointments(familyId: string): Promise<VisitationRequestRow[]> {
+  if (!isSupabaseConfigured() || !familyId) return [];
+  const { data, error } = await supabase
+    .from('admission_requests')
+    .select(
+      'id, patient_name, status, meeting_date, meeting_time, meeting_confirmed_by_family, preferred_meeting_date, preferred_meeting_time, preferred_meeting_note, created_at'
+    )
+    .eq('family_id', familyId)
+    .or('meeting_date.not.is.null,preferred_meeting_date.not.is.null');
+  if (error || !data) return [];
+
+  return data.map((r): VisitationRequestRow => {
+    const confirmed = Boolean(r.meeting_confirmed_by_family && r.meeting_date);
+    return {
+      id: `admission-${r.id}`,
+      familyId,
+      familyName: '',
+      patientId: '',
+      patientName: String(r.patient_name || ''),
+      preferredDate: confirmed ? '' : String(r.meeting_date || r.preferred_meeting_date || ''),
+      preferredTime: confirmed ? '' : String(r.meeting_time || r.preferred_meeting_time || ''),
+      note: String(r.preferred_meeting_note || ''),
+      status: confirmed ? 'Approved' : 'Requested',
+      confirmedDate: confirmed ? String(r.meeting_date || '') : '',
+      confirmedTime: confirmed ? String(r.meeting_time || '') : '',
+      adminNote: '',
+      createdAt: String(r.created_at || ''),
+      updatedAt: String(r.created_at || ''),
+    };
   });
 }
 

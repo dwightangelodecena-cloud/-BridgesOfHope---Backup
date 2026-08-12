@@ -3,6 +3,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { LogBox } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {
   useFonts,
   Inter_400Regular,
@@ -75,24 +76,26 @@ export default function RootLayout() {
   }
 
   return (
-    <AppErrorBoundary>
-      <AuthSessionRecovery />
-      <ToastHost />
-      <TermsProvider>
-        <Stack screenOptions={rootStackScreenOptions}>
-        <Stack.Screen name="index" options={fadeScreen} />
-        <Stack.Screen name="login" options={fadeScreen} />
-        <Stack.Screen name="consent" options={fadeScreen} />
-        <Stack.Screen name="informed-consent" options={fadeScreen} />
-        <Stack.Screen name="signup" options={fadeScreen} />
-        <Stack.Screen name="forget" options={fadeScreen} />
-        <Stack.Screen name="verification" options={fadeScreen} />
-        <Stack.Screen name="newpassword" options={fadeScreen} />
-        <Stack.Screen name="privacypolicy" options={fadeScreen} />
-        <Stack.Screen name="terms" options={fadeScreen} />
-        <Stack.Screen name="notification" options={fadeScreen} />
-        </Stack>
-      </TermsProvider>
-    </AppErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppErrorBoundary>
+        <AuthSessionRecovery />
+        <ToastHost />
+        <TermsProvider>
+          <Stack screenOptions={rootStackScreenOptions}>
+          <Stack.Screen name="index" options={fadeScreen} />
+          <Stack.Screen name="login" options={fadeScreen} />
+          <Stack.Screen name="consent" options={fadeScreen} />
+          <Stack.Screen name="informed-consent" options={fadeScreen} />
+          <Stack.Screen name="signup" options={fadeScreen} />
+          <Stack.Screen name="forget" options={fadeScreen} />
+          <Stack.Screen name="verification" options={fadeScreen} />
+          <Stack.Screen name="newpassword" options={fadeScreen} />
+          <Stack.Screen name="privacypolicy" options={fadeScreen} />
+          <Stack.Screen name="terms" options={fadeScreen} />
+          <Stack.Screen name="notification" options={fadeScreen} />
+          </Stack>
+        </TermsProvider>
+      </AppErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

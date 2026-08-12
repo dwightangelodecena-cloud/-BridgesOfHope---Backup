@@ -217,7 +217,7 @@ export default function VerificationScreen() {
 
       <KeyboardAvoidingView
         style={styles.sheetWrap}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={0}
       >
         <View style={styles.sheet}>
@@ -565,6 +565,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
+    ...Platform.select({
+      web: {},
+      default: {
+        shadowColor: C.orange,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        elevation: 0,
+      },
+    }),
   },
   codeBoxFocused: {
     borderColor: C.orange,
@@ -572,8 +582,6 @@ const styles = StyleSheet.create({
     ...Platform.select({
       web: { boxShadow: "0 0 0 3px rgba(245, 78, 37, 0.12)" },
       default: {
-        shadowColor: C.orange,
-        shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.2,
         shadowRadius: 6,
         elevation: 2,

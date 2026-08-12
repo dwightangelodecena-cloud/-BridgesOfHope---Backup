@@ -1,3 +1,4 @@
+import { File } from 'expo-file-system';
 import { supabase } from './supabase';
 
 const BUCKET = 'admission-documents';
@@ -48,12 +49,11 @@ export async function uploadAdmissionDocumentsMobile(
     }
     const path = `${userId}/${requestId}/${Date.now()}-${safeFileName(file.name)}`;
     try {
-      const response = await fetch(file.uri);
-      const blob = await response.blob();
-      if (blob.size > MAX_BYTES) {
+      const source = new File(file.uri);
+      if (source.size > MAX_BYTES) {
         return { ok: false, errorMessage: `${file.name} exceeds 10 MB.` };
       }
-      const arrayBuffer = await blob.arrayBuffer();
+      const arrayBuffer = await source.arrayBuffer();
       const { error } = await supabase.storage.from(BUCKET).upload(path, arrayBuffer, {
         contentType: mime,
         upsert: false,

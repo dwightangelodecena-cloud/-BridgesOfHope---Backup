@@ -163,7 +163,13 @@ export function FamilyMobilePageHeader({
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.notifyBtn, notif.unreadCount > 0 && styles.notifyBtnActiveShadow]}
-              onPress={() => setNotifDropdownOpen(true)}
+              onPress={() => {
+                setNotifDropdownOpen((prev) => {
+                  if (prev) return false;
+                  void notif.reload();
+                  return true;
+                });
+              }}
               accessibilityRole="button"
               accessibilityLabel={
                 notif.unreadCount > 0
@@ -326,7 +332,7 @@ const styles = StyleSheet.create({
     }),
   },
   notifRoot: { flex: 1 },
-  notifBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' },
+  notifBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'transparent' },
   notifPanel: {
     position: 'absolute',
     width: Math.min(320, 340),

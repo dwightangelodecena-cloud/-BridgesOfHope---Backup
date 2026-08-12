@@ -35,7 +35,7 @@ const C = {
 
 type Props = {
   document: LegalDocument;
-  onConfirmRead: () => void;
+  onConfirmRead: () => void | Promise<void>;
   confirmLabel: string;
   backFallback?: Href;
 };
@@ -60,7 +60,9 @@ export function LegalDocumentScreen({
     const progress = Math.min(100, Math.round((contentOffset.y / maxScroll) * 100));
     setScrollProgress(progress);
 
-    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - SCROLL_END_THRESHOLD) {
+    const reachedEnd =
+      layoutMeasurement.height + contentOffset.y >= contentSize.height - SCROLL_END_THRESHOLD;
+    if (reachedEnd || progress >= 98) {
       setScrolledToEnd(true);
     }
   };
@@ -78,8 +80,8 @@ export function LegalDocumentScreen({
     }
   };
 
-  const handleConfirm = () => {
-    onConfirmRead();
+  const handleConfirm = async () => {
+    await onConfirmRead();
     goBackOrReplace(router, backFallback);
   };
 
@@ -201,7 +203,7 @@ export function LegalDocumentScreen({
 
           <View style={[styles.footerBar, { paddingBottom: insets.bottom + 12 }]}>
             <ScalePressable
-              onPress={handleConfirm}
+              onPress={() => void handleConfirm()}
               disabled={!scrolledToEnd}
               style={[styles.ctaWrap, !scrolledToEnd && styles.ctaDisabled]}
               accessibilityRole="button"

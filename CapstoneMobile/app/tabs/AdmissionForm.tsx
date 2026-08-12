@@ -560,7 +560,7 @@ export default function AdmissionForm() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+        automaticallyAdjustKeyboardInsets
       >
           {saveBanner ? (
             <View style={styles.saveBanner}>
@@ -712,7 +712,7 @@ export default function AdmissionForm() {
             />
           </View>
 
-          <View style={styles.termsCard}>
+          <View style={styles.termsAgreementCard}>
             <TouchableOpacity
               style={styles.termsRow}
               onPress={() => setField('agreeToTerms', !formData.agreeToTerms)}
@@ -1301,7 +1301,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   notifModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.25)',
   },
   notificationsDropdown: {
@@ -1596,7 +1596,7 @@ const styles = StyleSheet.create({
     color: C.muted,
     fontWeight: '500',
   },
-  termsCard: {
+  termsAgreementCard: {
     backgroundColor: '#FAFBFC',
     borderRadius: 14,
     borderWidth: 1,
@@ -1696,7 +1696,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   dateIosBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   dateIosSheet: {
@@ -1805,7 +1805,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheetModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(11, 21, 40, 0.45)',
   },
   reasonSheet: {

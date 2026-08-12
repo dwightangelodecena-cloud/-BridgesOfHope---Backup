@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
+import { File } from 'expo-file-system';
 import { isSupabaseConfigured, supabase } from './supabase';
 
 const URL_PREFIX = 'bh_family_avatar_url_v1:';
@@ -77,21 +78,17 @@ export async function uploadFamilyProfileAvatarToCloudMobile(
     throw new Error('Sign in to upload a profile photo.');
   }
 
-  const response = await fetch(localUri);
-  const blob = await response.blob();
-  if (blob.size > 5_242_880) {
+  const source = new File(localUri);
+  if (source.size > 5_242_880) {
     throw new Error('Image is too large. Please use a photo under 5 MB.');
   }
 
-  const mime = blob.type || 'image/jpeg';
-  if (!mime.startsWith('image/')) {
-    throw new Error('Please choose an image file.');
-  }
-  const extFromMime = mime.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
-  const ext = ALLOWED_EXT.has(extFromMime) ? extFromMime : 'jpg';
+  const extFromUri = source.extension.replace('.', '').toLowerCase().replace('jpeg', 'jpg') || 'jpg';
+  const ext = ALLOWED_EXT.has(extFromUri) ? extFromUri : 'jpg';
+  const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
   const path = `${userId}/avatar.${ext}`;
 
-  const arrayBuffer = await blob.arrayBuffer();
+  const arrayBuffer = await source.arrayBuffer();
   const { error } = await supabase.storage.from(BUCKET).upload(path, arrayBuffer, {
     contentType: mime,
     upsert: true,

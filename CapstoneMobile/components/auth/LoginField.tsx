@@ -119,12 +119,20 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     minHeight: 54,
     paddingRight: 14,
+    ...Platform.select({
+      web: {},
+      default: {
+        shadowColor: C.orange,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        elevation: 0,
+      },
+    }),
   },
   rowFocused: Platform.select({
     web: {},
     default: {
-      shadowColor: C.orange,
-      shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.14,
       shadowRadius: 10,
       elevation: 2,

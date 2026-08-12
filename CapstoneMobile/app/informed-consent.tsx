@@ -9,8 +9,8 @@ export default function InformedConsentScreen() {
       document={INFORMED_CONSENT}
       confirmLabel="I have read the Informed Consent Form"
       backFallback="/consent"
-      onConfirmRead={() => {
-        void AsyncStorage.setItem(INFORMED_CONSENT_READ_KEY, new Date().toISOString());
+      onConfirmRead={async () => {
+        await AsyncStorage.setItem(INFORMED_CONSENT_READ_KEY, new Date().toISOString());
       }}
     />
   );
