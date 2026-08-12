@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
   rowSnippet: { fontSize: 12.5, color: BH.textMuted, marginTop: 3, lineHeight: 17 },
   unreadDot: { width: 7, height: 7, borderRadius: 4, marginLeft: 'auto', flexShrink: 0 },
   detailRoot: { flex: 1, justifyContent: 'flex-end' },
-  detailBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.4)' },
+  detailBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(15,23,42,0.4)' },
   detailCard: {
     backgroundColor: BH.surface,
     borderRadius: RADIUS['2xl'] - 4,

@@ -156,7 +156,7 @@ export default function NewPasswordScreen() {
 
       <KeyboardAvoidingView
         style={styles.sheetWrap}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={0}
       >
         <View style={styles.sheet}>
@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
   footerMetaText: { fontSize: 11, color: C.muted, fontWeight: "500" },
   footerDot: { fontSize: 11, color: "#CBD5E1" },
   modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(11, 21, 40, 0.55)",
     alignItems: "center",
     justifyContent: "center",

@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   value: { flex: 1, fontSize: 15, fontWeight: '500', color: '#1A2B4A' },
   placeholderTxt: { color: '#94A3B8', fontWeight: '400' },
   sheetRoot: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.35)' },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(15,23,42,0.35)' },
   sheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 8 },
   sheetHeader: {
     flexDirection: 'row',

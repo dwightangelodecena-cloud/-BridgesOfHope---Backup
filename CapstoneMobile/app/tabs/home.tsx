@@ -1183,7 +1183,7 @@ const styles = StyleSheet.create({
   },
   headerAvatarText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
   notifModalRoot: { flex: 1 },
-  notifModalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.25)' },
+  notifModalBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.25)' },
   notificationsDropdown: {
     position: 'absolute',
     width: Math.min(340, width - 32),

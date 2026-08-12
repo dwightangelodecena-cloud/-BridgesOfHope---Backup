@@ -730,7 +730,7 @@ const styles = StyleSheet.create({
   },
   avatarTxt: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
   notifRoot: { flex: 1 },
-  notifBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.25)' },
+  notifBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.25)' },
   notifPanel: {
     position: 'absolute',
     width: 300,

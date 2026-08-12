@@ -9,7 +9,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { psgcNameMatchesQuery, sortPsgcOptionsForDisplay } from '../lib/psgcApi';
@@ -90,7 +89,7 @@ export function PsgcSearchableSelect({
       {errorText ? <Text style={styles.error}>{errorText}</Text> : null}
 
       <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalRoot}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
@@ -171,7 +170,7 @@ const styles = StyleSheet.create({
   helper: { fontSize: 12, color: '#94A3B8', marginTop: 4 },
   error: { fontSize: 12, color: '#E53935', marginTop: 4 },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 16,

@@ -8,7 +8,6 @@ import {
   Image,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
   useWindowDimensions,
   type TextInputProps,
   type StyleProp,
@@ -72,7 +71,7 @@ export function AuthMobileShell({
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         keyboardVerticalOffset={insets.top}
       >
         <ScrollView

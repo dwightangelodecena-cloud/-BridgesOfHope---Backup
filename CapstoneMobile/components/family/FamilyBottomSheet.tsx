@@ -114,7 +114,7 @@ export function FamilyBottomSheet({
     <Modal visible={modalVisible} animationType="none" transparent onRequestClose={handleClose}>
       <KeyboardAvoidingView
         style={styles.modalRoot}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         keyboardVerticalOffset={insets.top}
       >
         <Pressable
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
     ...Platform.select({
       web: {

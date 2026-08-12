@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CapstoneMobile",
+    "name": "Kalinga",
     "slug": "CapstoneMobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,7 +9,8 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.CapstoneMobile"
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
@@ -47,6 +48,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": false
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f0f3a293-32f1-4281-a4bf-966c73f044f2"
+      }
+    },
+    "owner": "dwight00900"
   }
 }

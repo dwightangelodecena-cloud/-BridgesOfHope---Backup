@@ -177,7 +177,7 @@ export default function SignupScreen() {
       if (!ok || cancelled) return;
       psgcCodesRef.current = {
         provinceCode: saved.provinceCode!,
-        provinceKind: saved.provinceKind || "province",
+        provinceKind: (saved.provinceKind as "province" | "region") || "province",
         cityCode: saved.cityCode || "",
         barangayCode: saved.barangayCode || "",
       };
@@ -451,7 +451,7 @@ export default function SignupScreen() {
 
       <KeyboardAvoidingView
         style={styles.sheetWrap}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={0}
       >
         <View style={styles.sheet}>
@@ -1283,7 +1283,7 @@ const styles = StyleSheet.create({
   footerDot: { fontSize: 11, color: "#CBD5E1" },
   modalRoot: { flex: 1, justifyContent: "flex-end" },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(11, 21, 40, 0.45)",
   },
   modalSheet: {
