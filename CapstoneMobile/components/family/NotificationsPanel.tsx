@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Modal, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Modal, ActivityIndicator, Platform, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { useFamilyNotificationsInbox, type InboxItem } from '../../lib/useFamilyNotificationsInbox';
+import { fetchAnnouncementById, type DbAnnouncement } from '../../lib/announcementsDb';
+import { AnnouncementCardView } from './AnnouncementCard';
 import { BH, RADIUS, SHADOW } from '../../theme/tokens';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const DETAIL_CARD_WIDTH = SCREEN_WIDTH - 32;
 
 function relativeTime(ts: number): string {
   const diffMs = Date.now() - ts;
@@ -68,11 +73,35 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
   const insets = useSafeAreaInsets();
   const inbox = useFamilyNotificationsInbox(userId);
   const [openItem, setOpenItem] = useState<InboxItem | null>(null);
+  const [announcementDetail, setAnnouncementDetail] = useState<DbAnnouncement | null>(null);
+  const [announcementLoading, setAnnouncementLoading] = useState(false);
+  const isAnnouncement = openItem?.relatedType === 'announcement';
 
   useEffect(() => {
     void inbox.markAllLegacyRead();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Tapping a promo notification linked to a still-active announcement shows the real premium
+  // card (image + pill + caption) instead of the plain title/body text. If the announcement has
+  // since expired or been removed, RLS returns nothing and the plain text view is used instead.
+  useEffect(() => {
+    if (!openItem || openItem.relatedType !== 'announcement' || !openItem.relatedId) {
+      setAnnouncementDetail(null);
+      setAnnouncementLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setAnnouncementLoading(true);
+    fetchAnnouncementById(openItem.relatedId).then((row) => {
+      if (cancelled) return;
+      setAnnouncementDetail(row);
+      setAnnouncementLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openItem]);
 
   const openDetail = (item: InboxItem) => {
     setOpenItem(item);
@@ -155,6 +184,31 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
       <Modal visible={Boolean(openItem)} transparent animationType="fade" onRequestClose={() => setOpenItem(null)}>
         <View style={styles.detailRoot}>
           <Pressable style={styles.detailBackdrop} onPress={() => setOpenItem(null)} />
+          {isAnnouncement ? (
+            <View style={[styles.detailCard, styles.detailCardMedia, { marginBottom: insets.bottom + 24 }]}>
+              <Pressable style={styles.detailCloseFloating} onPress={() => setOpenItem(null)} hitSlop={10}>
+                <Ionicons name="close" size={18} color="#FFFFFF" />
+              </Pressable>
+              {announcementLoading ? (
+                <ActivityIndicator color={BH.brand} style={{ marginVertical: 48 }} />
+              ) : announcementDetail ? (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <AnnouncementCardView
+                    title={announcementDetail.title}
+                    caption={announcementDetail.caption}
+                    imageUrl={announcementDetail.imageUrl}
+                    cardWidth={DETAIL_CARD_WIDTH}
+                  />
+                  <View style={{ height: 22 }} />
+                </ScrollView>
+              ) : (
+                <View style={{ padding: 20 }}>
+                  <Text style={styles.detailTitle}>{openItem?.title}</Text>
+                  <Text style={[styles.detailBody, { marginTop: 8 }]}>{openItem?.body}</Text>
+                </View>
+              )}
+            </View>
+          ) : (
           <View style={[styles.detailCard, { marginBottom: insets.bottom + 24 }]}>
             <View style={styles.detailHead}>
               <View style={[styles.detailAvatar, { backgroundColor: openItem ? getNotifVisual(openItem).accent : BH.brand }]}>
@@ -188,6 +242,7 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
               </Pressable>
             ) : null}
           </View>
+          )}
         </View>
       </Modal>
     </View>
@@ -261,6 +316,19 @@ const styles = StyleSheet.create({
     padding: 20,
     maxHeight: '70%',
     ...SHADOW.lg,
+  },
+  detailCardMedia: { padding: 0, overflow: 'hidden' },
+  detailCloseFloating: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    zIndex: 2,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   detailHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
   detailAvatar: {

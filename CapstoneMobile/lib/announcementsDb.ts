@@ -33,3 +33,21 @@ export async function fetchActiveAnnouncements(): Promise<DbAnnouncement[]> {
   if (error || !data) return [];
   return (data as Record<string, unknown>[]).map(mapRow);
 }
+
+/**
+ * A single announcement by id, for the Notifications detail view — tapping a promo
+ * notification shows the actual premium card instead of plain text. Same RLS as the active
+ * list applies, so this only resolves while the announcement is still published and within
+ * its show_from/hide_after window; once it expires or is deleted this returns null and the
+ * caller falls back to the notification's own stored title/body text.
+ */
+export async function fetchAnnouncementById(id: string): Promise<DbAnnouncement | null> {
+  if (!isSupabaseConfigured() || !id) return null;
+  const { data, error } = await supabase
+    .from('announcements')
+    .select('id, title, caption, image_url, created_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapRow(data as Record<string, unknown>);
+}

@@ -22,19 +22,44 @@ import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { AdminRequestsNavItem } from '@/components/admin/AdminRequestsNavItem';
 import { SidebarLabel } from '@/components/admin/SidebarLabel';
 
-const NAV_ITEMS = [
-  { path: '/admin-dashboard', label: 'Dashboard', icon: LayoutGrid },
-  { path: '/admin-patient-database', label: 'Patient Management', icon: BookUser },
-  { path: '/admin-ward-management', label: 'Ward & Room Management', icon: BedDouble },
-  { path: '/admin-admission-management', label: 'Admission Management', icon: ClipboardList },
-  { path: '/admin-discharge-management', label: 'Discharge Management', icon: ArrowRightSquare },
-  { path: '/admin-user-management', label: 'User Management', icon: Users },
-  { path: '/admin-staff-management', label: 'Staff Management', icon: Stethoscope },
-  { path: '/admin-content-management', label: 'Content management', icon: LayoutTemplate },
-  { path: '/admin-appointments', label: 'Appointments', icon: Calendar },
-  { path: '/admin-notification-templates', label: 'Notification Templates', icon: MessageSquare },
-  { path: '/admin-announcements', label: 'Announcements', icon: Megaphone },
-  { path: '/admin-reports', label: 'Printable reports', icon: FileText },
+const NAV_SECTIONS = [
+  {
+    label: null,
+    items: [{ path: '/admin-dashboard', label: 'Dashboard', icon: LayoutGrid }],
+  },
+  {
+    label: 'Care Operations',
+    items: [
+      { path: '/admin-patient-database', label: 'Patient Management', icon: BookUser },
+      { path: '/admin-ward-management', label: 'Ward & Room Management', icon: BedDouble },
+      { path: '/admin-admission-management', label: 'Admission Management', icon: ClipboardList },
+      { path: '/admin-discharge-management', label: 'Discharge Management', icon: ArrowRightSquare },
+      { path: '/admin-appointments', label: 'Appointments', icon: Calendar },
+    ],
+  },
+  {
+    label: 'People',
+    items: [
+      { path: '/admin-user-management', label: 'User Management', icon: Users },
+      { path: '/admin-staff-management', label: 'Staff Management', icon: Stethoscope },
+    ],
+  },
+  {
+    label: 'Communications',
+    items: [
+      { special: 'messages' },
+      { special: 'requests' },
+      { path: '/admin-notification-templates', label: 'Notification Templates', icon: MessageSquare },
+      { path: '/admin-announcements', label: 'Announcements', icon: Megaphone },
+    ],
+  },
+  {
+    label: 'Content & Reports',
+    items: [
+      { path: '/admin-content-management', label: 'Content management', icon: LayoutTemplate },
+      { path: '/admin-reports', label: 'Printable reports', icon: FileText },
+    ],
+  },
 ];
 
 export const ADMIN_SIDEBAR_WIDTH = { collapsed: 110, expanded: 292 };
@@ -113,33 +138,46 @@ export default function AdminSidebar({
       <div className="sidebar-primary admin-sidebar-primary">
         {children ?? (
           <>
-            {NAV_ITEMS.map(({ path, label, icon: Icon }) => {
-              const active = isNavActive(pathname, path);
-              const handleClick =
-                path === '/admin-patient-database' && onPatientNavClick
-                  ? (e) => {
-                      e.stopPropagation();
-                      onPatientNavClick(e);
-                    }
-                  : (e) => go(e, path);
-              return (
-                <div
-                  key={path}
-                  className={`sidebar-nav-item${active ? ' sidebar-nav-active' : ''}`}
-                  onClick={handleClick}
-                >
-                  <div className="sidebar-icon-wrap">
-                    <Icon size={22} color="#707EAE" />
-                  </div>
-                  <SidebarLabel>{label}</SidebarLabel>
-                </div>
-              );
-            })}
-            <AdminMessagesNavItem
-              active={isNavActive(pathname, '/admin-messages')}
-              onClick={(e) => go(e, '/admin-messages')}
-            />
-            <AdminRequestsNavItem />
+            {NAV_SECTIONS.map((section, sectionIndex) => (
+              <div className="sidebar-section" key={section.label || `section-${sectionIndex}`}>
+                {section.label ? <span className="sidebar-section-label">{section.label}</span> : null}
+                {section.items.map((item) => {
+                  if (item.special === 'messages') {
+                    return (
+                      <AdminMessagesNavItem
+                        key="messages"
+                        active={isNavActive(pathname, '/admin-messages')}
+                        onClick={(e) => go(e, '/admin-messages')}
+                      />
+                    );
+                  }
+                  if (item.special === 'requests') {
+                    return <AdminRequestsNavItem key="requests" />;
+                  }
+                  const { path, label, icon: Icon } = item;
+                  const active = isNavActive(pathname, path);
+                  const handleClick =
+                    path === '/admin-patient-database' && onPatientNavClick
+                      ? (e) => {
+                          e.stopPropagation();
+                          onPatientNavClick(e);
+                        }
+                      : (e) => go(e, path);
+                  return (
+                    <div
+                      key={path}
+                      className={`sidebar-nav-item${active ? ' sidebar-nav-active' : ''}`}
+                      onClick={handleClick}
+                    >
+                      <div className="sidebar-icon-wrap">
+                        <Icon size={22} color="#707EAE" />
+                      </div>
+                      <SidebarLabel>{label}</SidebarLabel>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </>
         )}
       </div>

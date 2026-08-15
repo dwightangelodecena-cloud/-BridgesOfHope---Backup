@@ -113,7 +113,7 @@ export async function fetchNotifiableFamilyProfiles() {
  * progress updates, or general announcements — sent either to one guardian or to every guardian.
  * @returns {{ ok: true, sent: number } | { ok: false, errorMessage: string }}
  */
-export async function insertFamilyNotificationBroadcast({ toAll, familyId, category, title, body }) {
+export async function insertFamilyNotificationBroadcast({ toAll, familyId, category, title, body, relatedType, relatedId }) {
   if (!title?.trim() || !body?.trim()) {
     return { ok: false, errorMessage: 'Title and message are required.' };
   }
@@ -135,8 +135,8 @@ export async function insertFamilyNotificationBroadcast({ toAll, familyId, categ
     template_key: null,
     title: title.trim(),
     body: body.trim(),
-    related_type: null,
-    related_id: null,
+    related_type: relatedType || null,
+    related_id: relatedId || null,
     category: category || 'general',
   }));
   const { error } = await supabase.from('family_notifications').insert(rows);
