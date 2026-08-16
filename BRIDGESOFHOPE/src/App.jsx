@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { Analytics as VercelAnalytics } from '@vercel/analytics/react';
 
 // Component Imports
 import LandingPage from '@/landingpage'; // Using @ for src/
@@ -360,6 +361,7 @@ function App() {
         </Routes>
         <CookieConsentBanner />
         <ToastHost />
+        <VercelAnalytics />
       </Router>
     </AppErrorBoundary>
   );
