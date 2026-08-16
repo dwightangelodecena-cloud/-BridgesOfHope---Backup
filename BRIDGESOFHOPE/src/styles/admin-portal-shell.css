@@ -14,8 +14,19 @@
   z-index: 120;
 }
 
-/* Match the orange gradient rail instead of the family portal's white/blur footer. */
+/* Match the orange gradient rail instead of the family portal's white/blur footer. The base
+   rule pins this with position:fixed + a hand-tuned margin-bottom reserved on the scrollable
+   nav above it — fragile, since every footer resize needs that margin re-tuned to match (it
+   fell out of sync here once the grouped sections made the nav content taller). Put it back in
+   normal flex flow for admin instead: paired with flex:1 + min-height:0 + overflow-y:auto on
+   the nav below, it then always sits at the bottom of the fixed-height aside with zero magic
+   numbers, and the nav scrolls its own overflow independently without ever needing to reserve
+   space for it. */
 .family-portal.admin-portal-layout .sidebar-footer {
+  position: static;
+  width: 100%;
+  flex-shrink: 0;
+  padding-bottom: 20px;
   background: #ea3e12;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -24,11 +35,6 @@
 .family-portal.admin-portal-layout .admin-sidebar-primary {
   flex: 1;
   min-height: 0;
-  /* Ends the scrollable box above the fixed footer (~118px tall: 12px pad + two 48px tiles +
-     10px gap) instead of letting it run the full sidebar height — a native scrollbar renders
-     on top of everything regardless of z-index, so it would otherwise peek out from behind
-     the footer even though the footer's own background is opaque. */
-  margin-bottom: 138px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -84,27 +90,46 @@
 
 /* Compact nav sizing — scoped to the admin sidebar only (the family portal's own sidebar keeps
    its original, larger sizing). With grouped sections added on top of 12+ items, the original
-   item size read as too tall/cluttered once headers and divider gaps stacked up. */
+   item size read as too tall/cluttered once headers and divider gaps stacked up. !important
+   throughout: some admin pages (e.g. admin-appointments, admin-reports) were still rendering
+   the old, larger sizing despite matching selectors/specificity here — forcing these wins
+   outright regardless of whatever's causing that. */
 .family-portal.admin-portal-layout .sidebar-nav-item {
-  min-height: 40px;
-  margin-bottom: 6px;
-  gap: 12px;
-  border-radius: 12px;
+  min-height: 40px !important;
+  margin-bottom: 6px !important;
+  gap: 12px !important;
+  border-radius: 12px !important;
 }
 
 .family-portal.admin-portal-layout .sidebar-icon-wrap {
-  padding: 9px;
-  border-radius: 10px;
+  padding: 9px !important;
+  border-radius: 10px !important;
+  width: 40px !important;
+  height: 40px !important;
+  box-sizing: border-box !important;
 }
 
 .family-portal.admin-portal-layout .sidebar-section + .sidebar-section {
-  margin-top: 2px;
-  padding-top: 8px;
+  margin-top: 2px !important;
+  padding-top: 8px !important;
 }
 
 .family-portal.admin-portal-layout .sidebar-section-label {
-  font-size: 10px;
-  padding: 0 28px 4px;
+  font-size: 10px !important;
+  padding: 0 28px 4px !important;
+}
+
+.family-portal.admin-portal-layout .sidebar-footer {
+  padding-top: 8px !important;
+}
+
+.family-portal.admin-portal-layout .sidebar-footer .sidebar-icon-wrap {
+  width: 40px !important;
+  height: 40px !important;
+}
+
+.family-portal.admin-portal-layout .sidebar-footer .sidebar-nav-item + .sidebar-nav-item {
+  margin-top: 6px !important;
 }
 
 @media (max-width: 899px) {
