@@ -1,7 +1,9 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowRightSquare, Users, X, RefreshCw } from 'lucide-react';
+import { ArrowRightSquare, Users, X, RefreshCw, Calendar as CalendarIcon, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { ProgramSidebar, ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
+import AdminSidebar from '@/components/admin/AdminSidebar';
+import { ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
+import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { uiDischargeRequestFromRow } from '@/lib/dbMappers';
@@ -240,20 +242,37 @@ export default function ProgramDischargeManagement() {
   }, [identityNames.length]);
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F0F4FF', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      <ProgramSidebar
+    <div className="family-portal admin-portal-layout" style={{ display: 'flex', minHeight: '100vh', background: '#F0F4FF', fontFamily: "'Plus Jakarta Sans', sans-serif", ...familySidebarStyle(isExpanded) }}>
+      {/* SIDEBAR — shared AdminSidebar, same as nurse/admin portals */}
+      <AdminSidebar
         isExpanded={isExpanded}
-        setIsExpanded={setIsExpanded}
-        navigate={navigate}
-        active="discharge"
-      />
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+        dashboardPath="/program"
+        brandTagline="Program Portal"
+        showProfile={false}
+      >
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program'); }}>
+          <div className="sidebar-icon-wrap"><Users size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Assigned residents</span>
+        </div>
+        <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => e.stopPropagation()}>
+          <div className="sidebar-icon-wrap"><ArrowRightSquare size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Discharge management</span>
+        </div>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program-calendar'); }}>
+          <div className="sidebar-icon-wrap"><CalendarIcon size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Calendar</span>
+        </div>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program-weekly-report'); }}>
+          <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Weekly Report</span>
+        </div>
+      </AdminSidebar>
 
       <main
+        className="admin-sidebar-offset"
         style={{
-          flex: 1,
-          marginLeft: isExpanded ? 280 : 110,
           padding: '24px 28px 48px',
-          transition: 'margin-left .3s',
           minHeight: '100vh',
           boxSizing: 'border-box',
         }}

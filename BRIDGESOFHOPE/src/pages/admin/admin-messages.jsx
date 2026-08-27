@@ -4,8 +4,6 @@ import {
   Send,
   Search,
 } from 'lucide-react';
-import AdminSidebar from '@/components/admin/AdminSidebar';
-import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import {
   fetchAdminInboxThreads,
@@ -39,8 +37,21 @@ function displayInitials(name) {
   return (parts[0]?.[0] || 'F').toUpperCase();
 }
 
-export default function AdminMessagesPage() {
-  const [isExpanded, setIsExpanded] = useState(false);
+/**
+ * Content-only — the outer sidebar/shell now lives in the Communications workspace
+ * (communications.jsx), which mounts this as its "Messages" tab. Everything below is untouched
+ * original logic.
+ *
+ * Unlike the other extracted tabs, this one keeps a wrapper carrying the
+ * `admin-messages-shell` class (without `am-outer`) because admin-messages.css's rules are all
+ * scoped to that ancestor class, not inline — dropping the wrapper entirely would silently lose
+ * all of this tab's styling. It's a fixed-height chat layout (inbox + chat panel scroll
+ * independently), so both this wrapper and `.am-main` get an explicit `height: 100%` instead of
+ * the stylesheet's own `100vh` — the Communications workspace gives this tab's slot a definite
+ * height to fill (see communications.jsx), and everything below is flex/percentage-based from
+ * there, so it sizes correctly nested one level deeper than before.
+ */
+export function AdminMessagesContent() {
   const [threads, setThreads] = useState([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [threadsError, setThreadsError] = useState(null);
@@ -183,17 +194,11 @@ export default function AdminMessagesPage() {
   };
 
   return (
-    <div className="family-portal admin-portal-layout admin-messages-shell am-outer" style={familySidebarStyle(isExpanded)}>
-      <AdminSidebar
-        isExpanded={isExpanded}
-        onToggleExpanded={() => setIsExpanded(!isExpanded)}
-      />
-
-      <main className="am-main admin-sidebar-offset">
+    <div className="admin-messages-shell" style={{ height: '100%' }}>
+      <main className="am-main" style={{ height: '100%' }}>
         <header className="am-main-header">
           <div className="am-page-head">
             <div>
-              <h1>Messages</h1>
               <p>Chat with users — messages sent here appear in their support chat on web and mobile.</p>
               {threadsError ? (
                 <p className="am-alert am-alert--error">{threadsError}</p>

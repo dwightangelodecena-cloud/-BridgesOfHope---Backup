@@ -24,10 +24,8 @@ import {
   Activity,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import AdminSidebar from '@/components/admin/AdminSidebar';
-import { familySidebarStyle } from '@/lib/familySidebarStyle';
-import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import logoBH from '@/assets/kalingalogo.png';
+import { RowActionsMenu } from '@/components/admin/RowActionsMenu';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { createStaffAuthUserViaEdgeFunction } from '@/lib/createStaffAuthUser';
@@ -323,9 +321,10 @@ const sortStaff = (rows, field, direction) => {
 
 const AVAILABILITY_OPTIONS = ['Available', 'Busy', 'Assigned', 'Unavailable'];
 
-const StaffManagement = () => {
+/** Content-only — the outer sidebar/shell now lives in the People workspace (people.jsx),
+ * which mounts this as its "Staff" tab. Everything below is untouched original logic. */
+export function StaffManagementContent() {
   const navigate = useNavigate();
-  const [isExpanded, setIsExpanded] = useState(false);
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
@@ -735,7 +734,7 @@ const StaffManagement = () => {
   };
 
   return (
-    <div className="family-portal admin-portal-layout um-outer" style={{display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}>
+    <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -821,21 +820,15 @@ const StaffManagement = () => {
         }
       `}</style>
 
-      <AdminSidebar
-        isExpanded={isExpanded}
-        onToggleExpanded={() => setIsExpanded(!isExpanded)}
-      />
-
-<div className="db-mobile-only db-mobile-top-bar">
+      <div className="db-mobile-only db-mobile-top-bar">
         <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
         <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>Staff</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>AD</div>
       </div>
 
-      <main className="um-main admin-sidebar-offset">
+      <div className="um-main">
         <div style={{ width: '100%', minWidth: 0 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>Staff Management</h1>
-          <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 22, fontWeight: 500 }}>
+          <p style={{ fontSize: 13, color: '#707EAE', marginTop: 0, marginBottom: 22, fontWeight: 500 }}>
             Monitor nurses and case load managers in Imus—availability, duty status, and assignments in one place.
           </p>
 
@@ -1092,26 +1085,26 @@ const StaffManagement = () => {
                             <button type="button" className="db-edit-btn" onClick={() => setEditRow({ ...s })}>
                               <Edit2 size={13} /> Edit
                             </button>
-                            <button
-                              type="button"
-                              className="db-action-btn"
-                              onClick={() => {
-                                const m = loadMetaMap()[s.id];
-                                setStatusAvailDraft(m?.availability != null ? m.availability : '__default__');
-                                setStatusModal(s);
-                              }}
-                            >
-                              Status
-                            </button>
-                            <button
-                              type="button"
-                              className="db-action-btn"
-                              style={{ background: '#FEF2F2', color: '#991B1B' }}
-                              disabled={deletingId === s.id}
-                              onClick={() => setDeleteConfirmModal(s)}
-                            >
-                              <Trash2 size={13} /> {deletingId === s.id ? 'Deleting...' : 'Delete'}
-                            </button>
+                            <RowActionsMenu
+                              actions={[
+                                {
+                                  label: 'Status',
+                                  icon: <Activity size={14} />,
+                                  onClick: () => {
+                                    const m = loadMetaMap()[s.id];
+                                    setStatusAvailDraft(m?.availability != null ? m.availability : '__default__');
+                                    setStatusModal(s);
+                                  },
+                                },
+                                {
+                                  label: deletingId === s.id ? 'Deleting...' : 'Delete',
+                                  icon: <Trash2 size={14} />,
+                                  disabled: deletingId === s.id,
+                                  danger: true,
+                                  onClick: () => setDeleteConfirmModal(s),
+                                },
+                              ]}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -1121,7 +1114,7 @@ const StaffManagement = () => {
             </div>
           </div>
         </div>
-      </main>
+      </div>
 
       <div className="db-mobile-only db-mobile-bottom-nav">
         <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}>
@@ -1632,8 +1625,6 @@ const StaffManagement = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
-};
-
-export default StaffManagement;
+}

@@ -133,19 +133,21 @@
   border: 1px solid rgba(245, 78, 37, 0.14);
 }
 
+/* Sized/spaced to match the page-header convention every other admin page uses (28px/800
+   weight title, 13px/500 weight muted subtitle with an 8px gap above it). */
 .admin-reports-shell .rp-hero h1 {
-  margin: 0 0 10px;
-  font-size: clamp(28px, 2.8vw, 36px);
-  font-weight: 900;
-  letter-spacing: -0.03em;
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
   color: #0f172a;
-  line-height: 1.12;
+  line-height: 1.2;
 }
 
 .admin-reports-shell .rp-hero-desc {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.55;
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
   color: var(--rp-navy-muted);
 }
 
@@ -165,6 +167,38 @@
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.75);
   border: 1px solid #e8edf5;
+}
+
+.admin-reports-shell .rp-month-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 14px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+
+.admin-reports-shell .rp-month-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.admin-reports-shell .rp-month-select {
+  border: none;
+  background: transparent;
+  color: var(--rp-navy);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 5px 4px;
+  cursor: pointer;
+  outline: none;
 }
 
 .admin-reports-shell .rp-refresh {
@@ -358,6 +392,20 @@
   color: #64748b;
   line-height: 1.5;
   flex: 1;
+}
+
+/* Shown on the three month-aware cards when a specific month is picked above, so it's clear
+   which cards the picker actually affects. */
+.admin-reports-shell .rp-card-month-pill {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(245, 78, 37, 0.1);
+  border: 1px solid rgba(245, 78, 37, 0.18);
+  color: #c2410c;
+  flex-shrink: 0;
 }
 
 .admin-reports-shell .rp-export {

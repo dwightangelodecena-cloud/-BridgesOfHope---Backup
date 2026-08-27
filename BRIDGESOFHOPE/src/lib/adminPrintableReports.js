@@ -178,6 +178,69 @@ function formatShortDateTime(iso) {
   }
 }
 
+/**
+ * Turns a "YYYY-MM" value (from the reports page's month dropdown) into a concrete range plus a
+ * human label, for the three report generators that filter by a real per-row date (Census,
+ * Admission/Discharge Decisions, Decline Reasons). Occupancy, Weekly Compliance, and Guardian
+ * Weekly Consolidated intentionally ignore this — they're live-snapshot/latest-state reports,
+ * not historical ranges, so a past month wouldn't mean anything for them.
+ * @param {string} value "YYYY-MM", or falsy for "all time" (no filter)
+ * @returns {{ start: Date, endExclusive: Date, label: string } | null}
+ */
+export function monthRangeFromValue(value) {
+  if (!value) return null;
+  const [y, m] = String(value).split('-').map((v) => parseInt(v, 10));
+  if (!y || !m) return null;
+  const start = new Date(y, m - 1, 1);
+  const endExclusive = new Date(y, m, 1);
+  const label = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  return { start, endExclusive, label };
+}
+
+/**
+ * Only the months that actually have data for at least one of the three month-aware reports
+ * (Census, Admission/Discharge Decisions, Decline Reasons) — a patient admitted/discharged, or a
+ * request decided, in that month — instead of a blanket list of the last N months regardless of
+ * whether anything happened. Newest first.
+ * @param {Awaited<ReturnType<loadAdminReportsSnapshot>>} snapshot
+ * @returns {{ value: string, label: string }[]}
+ */
+export function monthsWithReportData(snapshot) {
+  const months = new Set();
+  const add = (iso) => {
+    if (!iso) return;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return;
+    months.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  for (const p of snapshot?.patients || []) {
+    add(p.admitted_at);
+    add(p.discharged_at);
+  }
+  for (const r of snapshot?.admissionRequests || []) {
+    add(rowDecisionTimestamp(r));
+  }
+  for (const r of snapshot?.dischargeRequests || []) {
+    add(rowDecisionTimestamp(r));
+  }
+
+  return [...months]
+    .sort((a, b) => (a < b ? 1 : -1))
+    .map((value) => {
+      const [y, m] = value.split('-').map((v) => parseInt(v, 10));
+      const label = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      return { value, label };
+    });
+}
+
+function monthFileStamp(monthRange) {
+  if (!monthRange) return reportFileDateStamp();
+  const y = monthRange.start.getFullYear();
+  const m = String(monthRange.start.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
 export function reportFileDateStamp(d = new Date()) {
   const x = new Date(d);
   const y = x.getFullYear();
@@ -440,24 +503,47 @@ function finalizePdf(doc, filename) {
   doc.save(filename);
 }
 
-/** @param {Awaited<ReturnType<loadAdminReportsSnapshot>>} snapshot */
-export function downloadPatientCensusPdf(snapshot) {
-  const rows = (snapshot.patients || []).map((p) => {
-    const cohort = p.discharged_at || p.status === 'Discharged' ? 'Discharged' : 'Active';
-    return [
-      p.name || '—',
-      cohort,
-      roomBedLabel(p),
-      assignedStaffLine(p),
-      formatShortDate(p.admitted_at),
-      formatShortDate(p.discharged_at),
-    ];
-  });
+/** A patient counts as part of a month's census if their stay overlapped that month at all —
+ * admitted before the month ended, and not discharged before the month began. */
+function patientOverlapsMonth(p, monthRange) {
+  if (!monthRange) return true;
+  const admitted = p.admitted_at ? new Date(p.admitted_at).getTime() : null;
+  if (admitted == null || Number.isNaN(admitted) || admitted >= monthRange.endExclusive.getTime()) return false;
+  const discharged = p.discharged_at ? new Date(p.discharged_at).getTime() : null;
+  if (discharged != null && !Number.isNaN(discharged) && discharged < monthRange.start.getTime()) return false;
+  return true;
+}
+
+/**
+ * @param {Awaited<ReturnType<loadAdminReportsSnapshot>>} snapshot
+ * @param {{ start: Date, endExclusive: Date, label: string } | null} [monthRange] from
+ *   monthRangeFromValue() — omit/null for all-time (every patient, current behavior).
+ */
+export function downloadPatientCensusPdf(snapshot, monthRange = null) {
+  const rows = (snapshot.patients || [])
+    .filter((p) => patientOverlapsMonth(p, monthRange))
+    .map((p) => {
+      const cohort = p.discharged_at || p.status === 'Discharged' ? 'Discharged' : 'Active';
+      return [
+        p.name || '—',
+        cohort,
+        roomBedLabel(p),
+        assignedStaffLine(p),
+        formatShortDate(p.admitted_at),
+        formatShortDate(p.discharged_at),
+      ];
+    });
   rows.sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { sensitivity: 'base' }));
 
   const doc = newPdfDoc('Resident Census Report');
   doc.setFontSize(9);
-  doc.text('Active and discharged patients with room/bed assignment and assigned staff (as recorded).', 40, 68);
+  doc.text(
+    monthRange
+      ? `Residents whose stay overlapped ${monthRange.label}, with room/bed assignment and assigned staff (as recorded).`
+      : 'Active and discharged patients with room/bed assignment and assigned staff (as recorded).',
+    40,
+    68
+  );
 
   autoTable(doc, {
     startY: 80,
@@ -467,14 +553,31 @@ export function downloadPatientCensusPdf(snapshot) {
     headStyles: { fillColor: [245, 78, 37], textColor: 255 },
   });
 
-  finalizePdf(doc, `patient-census-${reportFileDateStamp()}.pdf`);
+  finalizePdf(doc, `patient-census-${monthFileStamp(monthRange)}.pdf`);
 }
 
-/** @param {Awaited<ReturnType<loadAdminReportsSnapshot>>} snapshot */
-export function downloadAdmissionDischargeDecisionsPdf(snapshot) {
+function rowDecisionTimestamp(r) {
+  return r.decided_at || r.updated_at || r.created_at;
+}
+
+function inMonthRange(iso, monthRange) {
+  if (!monthRange) return true;
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return false;
+  return t >= monthRange.start.getTime() && t < monthRange.endExclusive.getTime();
+}
+
+/**
+ * @param {Awaited<ReturnType<loadAdminReportsSnapshot>>} snapshot
+ * @param {{ start: Date, endExclusive: Date, label: string } | null} [monthRange] from
+ *   monthRangeFromValue() — omit/null for all-time (every decision, current behavior).
+ */
+export function downloadAdmissionDischargeDecisionsPdf(snapshot, monthRange = null) {
   const body = [];
 
   for (const r of snapshot.admissionRequests || []) {
+    if (!inMonthRange(rowDecisionTimestamp(r), monthRange)) continue;
     const st = String(r.status || '').toLowerCase();
     const reason =
       st === 'declined'
@@ -484,12 +587,13 @@ export function downloadAdmissionDischargeDecisionsPdf(snapshot) {
       'Admission',
       patientNameFromAdmissionRow(r),
       st || '—',
-      formatShortDateTime(r.decided_at || r.updated_at || r.created_at),
+      formatShortDateTime(rowDecisionTimestamp(r)),
       reason,
     ]);
   }
 
   for (const r of snapshot.dischargeRequests || []) {
+    if (!inMonthRange(rowDecisionTimestamp(r), monthRange)) continue;
     const st = String(r.status || '').toLowerCase();
     const reason =
       st === 'declined'
@@ -501,7 +605,7 @@ export function downloadAdmissionDischargeDecisionsPdf(snapshot) {
       'Discharge',
       patientNameFromDischargeRow(r),
       st || '—',
-      formatShortDateTime(r.decided_at || r.updated_at || r.created_at),
+      formatShortDateTime(rowDecisionTimestamp(r)),
       reason,
     ]);
   }
@@ -515,18 +619,24 @@ export function downloadAdmissionDischargeDecisionsPdf(snapshot) {
 
   const doc = newPdfDoc('Admission / Discharge Decisions Report');
   doc.setFontSize(9);
-  doc.text('Request decisions with status and reasons or notes where available.', 40, 68);
+  doc.text(
+    monthRange
+      ? `Request decisions made in ${monthRange.label}, with status and reasons or notes where available.`
+      : 'Request decisions with status and reasons or notes where available.',
+    40,
+    68
+  );
 
   autoTable(doc, {
     startY: 80,
     head: [['Type', 'Resident', 'Status', 'Decided / updated', 'Reason / notes']],
-    body,
+    body: body.length ? body : [['—', monthRange ? `No decisions in ${monthRange.label}` : 'No decisions in the current snapshot', '—', '—', '—']],
     styles: { fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [245, 78, 37], textColor: 255 },
     columnStyles: { 4: { cellWidth: 200 } },
   });
 
-  finalizePdf(doc, `admission-discharge-decisions-${reportFileDateStamp()}.pdf`);
+  finalizePdf(doc, `admission-discharge-decisions-${monthFileStamp(monthRange)}.pdf`);
 }
 
 /** @param {Awaited<ReturnType<loadAdminReportsSnapshot>>} snapshot */
@@ -633,8 +743,12 @@ function normalizeDeclineReasonLabel(raw) {
   return s.length > 120 ? `${s.slice(0, 117)}…` : s;
 }
 
-/** @param {Awaited<ReturnType<loadAdminReportsSnapshot>>} snapshot */
-export function downloadDeclineReasonsPdf(snapshot) {
+/**
+ * @param {Awaited<ReturnType<loadAdminReportsSnapshot>>} snapshot
+ * @param {{ start: Date, endExclusive: Date, label: string } | null} [monthRange] from
+ *   monthRangeFromValue() — omit/null for all-time (every decline ever, current behavior).
+ */
+export function downloadDeclineReasonsPdf(snapshot, monthRange = null) {
   const counts = new Map();
 
   const bump = (label) => {
@@ -644,12 +758,14 @@ export function downloadDeclineReasonsPdf(snapshot) {
 
   for (const r of snapshot.admissionRequests || []) {
     if (String(r.status || '').toLowerCase() !== 'declined') continue;
+    if (!inMonthRange(rowDecisionTimestamp(r), monthRange)) continue;
     const note = decisionNoteFromRow(r);
     bump(note || r.reason_for_admission || r.reason || '(No reason recorded)');
   }
 
   for (const r of snapshot.dischargeRequests || []) {
     if (String(r.status || '').toLowerCase() !== 'declined') continue;
+    if (!inMonthRange(rowDecisionTimestamp(r), monthRange)) continue;
     const note = decisionNoteFromRow(r);
     bump(note || [r.reason_category, r.reason_details].filter(Boolean).join(' — ') || '(No reason recorded)');
   }
@@ -660,18 +776,24 @@ export function downloadDeclineReasonsPdf(snapshot) {
 
   const doc = newPdfDoc('Decline Reasons Report');
   doc.setFontSize(9);
-  doc.text('Aggregated decline reasons from admission and discharge requests (declined status only).', 40, 68);
+  doc.text(
+    monthRange
+      ? `Aggregated decline reasons from admission and discharge requests declined in ${monthRange.label}.`
+      : 'Aggregated decline reasons from admission and discharge requests (declined status only).',
+    40,
+    68
+  );
 
   autoTable(doc, {
     startY: 80,
     head: [['Reason / notes (grouped)', 'Count']],
-    body: rows.length ? rows : [['No declined requests in the current snapshot', '0']],
+    body: rows.length ? rows : [[monthRange ? `No declined requests in ${monthRange.label}` : 'No declined requests in the current snapshot', '0']],
     styles: { fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [245, 78, 37], textColor: 255 },
     columnStyles: { 0: { cellWidth: 420 } },
   });
 
-  finalizePdf(doc, `decline-reasons-${reportFileDateStamp()}.pdf`);
+  finalizePdf(doc, `decline-reasons-${monthFileStamp(monthRange)}.pdf`);
 }
 
 /** @param {Awaited<ReturnType<loadAdminReportsSnapshot>>} snapshot */

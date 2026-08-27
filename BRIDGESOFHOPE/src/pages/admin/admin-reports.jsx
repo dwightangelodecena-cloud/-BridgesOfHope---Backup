@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   LayoutGrid,
   BookUser,
@@ -27,6 +27,8 @@ import {
   downloadDeclineReasonsPdf,
   downloadGuardianWeeklyConsolidatedPdf,
   saveGuardianWeeklyConsolidatedDraft,
+  monthRangeFromValue,
+  monthsWithReportData,
   REPORTS_BED_CAPACITY,
 } from '@/lib/adminPrintableReports';
 import '@/styles/admin-reports.css';
@@ -39,7 +41,8 @@ const REPORT_CARDS = [
     category: 'Census',
     accent: 'navy',
     Icon: Users,
-    action: (snap) => downloadPatientCensusPdf(snap),
+    monthAware: true,
+    action: (snap, monthRange) => downloadPatientCensusPdf(snap, monthRange),
   },
   {
     id: 'decisions',
@@ -48,12 +51,13 @@ const REPORT_CARDS = [
     category: 'Workflow',
     accent: 'orange',
     Icon: ClipboardList,
-    action: (snap) => downloadAdmissionDischargeDecisionsPdf(snap),
+    monthAware: true,
+    action: (snap, monthRange) => downloadAdmissionDischargeDecisionsPdf(snap, monthRange),
   },
   {
     id: 'occupancy',
     title: 'Occupancy',
-    description: `Capacity (${REPORTS_BED_CAPACITY} beds), occupancy %, and available beds.`,
+    description: `Capacity (${REPORTS_BED_CAPACITY} beds), occupancy %, and available beds. Always current — not affected by the month below.`,
     category: 'Operations',
     accent: 'indigo',
     Icon: BarChart3,
@@ -62,7 +66,7 @@ const REPORT_CARDS = [
   {
     id: 'compliance',
     title: 'Weekly compliance',
-    description: 'Nurse weekly reports: submitted vs expected for the current calendar week.',
+    description: 'Nurse weekly reports: submitted vs expected for the current calendar week. Always current — not affected by the month below.',
     category: 'Clinical',
     accent: 'teal',
     Icon: Calendar,
@@ -75,12 +79,13 @@ const REPORT_CARDS = [
     category: 'Analytics',
     accent: 'amber',
     Icon: ArrowRightSquare,
-    action: (snap) => downloadDeclineReasonsPdf(snap),
+    monthAware: true,
+    action: (snap, monthRange) => downloadDeclineReasonsPdf(snap, monthRange),
   },
   {
     id: 'guardian_consolidated',
     title: 'Guardian weekly consolidated',
-    description: 'Latest weekly filing plus CLM, Program, and Medical context per patient.',
+    description: 'Latest weekly filing plus CLM, Program, and Medical context per patient. Always current — not affected by the month below.',
     category: 'Guardian',
     accent: 'rose',
     Icon: FileText,
@@ -95,6 +100,7 @@ export default function AdminReportsPage() {
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState(null);
   const [exportingId, setExportingId] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [consolidationForm, setConsolidationForm] = useState({
@@ -167,13 +173,17 @@ export default function AdminReportsPage() {
     }
     setExportingId(card.id);
     try {
-      card.action(snapshot);
+      card.action(snapshot, card.monthAware ? monthRangeFromValue(activeMonth) : null);
     } finally {
       setExportingId(null);
     }
   };
 
   const dataSourceLabel = snapshot?.source === 'supabase' ? 'Database' : 'Local snapshot';
+  const monthOptions = useMemo(() => monthsWithReportData(snapshot), [snapshot]);
+  // Falls back to "All time" if the picked month no longer has an entry (e.g. right after a
+  // reload changes what data exists) instead of leaving a stale value selected.
+  const activeMonth = monthOptions.some((m) => m.value === selectedMonth) ? selectedMonth : '';
 
   const selectedPatient = (snapshot?.patients || []).find((p) => String(p.id) === String(selectedPatientId)) || null;
 
@@ -221,6 +231,20 @@ export default function AdminReportsPage() {
               <span className="rp-source-badge">
                 {loading ? 'Loading…' : `Source: ${dataSourceLabel}${isSupabaseConfigured() ? '' : ' (Supabase not configured)'}`}
               </span>
+              <label className="rp-month-field" htmlFor="rp-month-select">
+                <span className="rp-month-label">Report month</span>
+                <select
+                  id="rp-month-select"
+                  className="rp-month-select"
+                  value={activeMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                >
+                  <option value="">All time</option>
+                  {monthOptions.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </label>
               <button type="button" className="rp-refresh" onClick={() => void reload()} disabled={loading}>
                 <RefreshCw size={16} className={loading ? 'rp-refresh-icon--spin' : undefined} />
                 Refresh data
@@ -234,6 +258,7 @@ export default function AdminReportsPage() {
         <div className="rp-grid">
           {REPORT_CARDS.map((card) => {
             const { Icon } = card;
+            const monthLabel = card.monthAware ? monthRangeFromValue(activeMonth)?.label : null;
             return (
               <article key={card.id} className={`rp-card rp-card--accent-${card.accent}`}>
                 <div className="rp-card-top">
@@ -244,6 +269,7 @@ export default function AdminReportsPage() {
                 </div>
                 <h2>{card.title}</h2>
                 <p>{card.description}</p>
+                {monthLabel ? <span className="rp-card-month-pill">{monthLabel}</span> : null}
                 <button
                   type="button"
                   className="rp-export"

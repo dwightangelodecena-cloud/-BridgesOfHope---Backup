@@ -949,17 +949,17 @@ const NurseMedicalReportPage = () => {
 
         .form-underline-input--readonly,
         .form-textarea--readonly {
-          background: #F4F7FE;
-          border-color: #E9EDF7;
-          color: #475569;
+          background: #F1F5F9;
+          border-color: #E2E8F0;
+          color: #94A3B8;
           cursor: not-allowed;
         }
 
         .form-underline-input--readonly:focus,
         .form-textarea--readonly:focus {
-          border-color: #E9EDF7;
+          border-color: #E2E8F0;
           box-shadow: none;
-          background: #F4F7FE;
+          background: #F1F5F9;
         }
 
         .wr-nurse-only-note {
@@ -978,6 +978,25 @@ const NurseMedicalReportPage = () => {
           border-radius: 16px;
           background: linear-gradient(180deg, #FFFFFF 0%, #FBFCFF 100%);
           box-shadow: 0 6px 18px rgba(15,23,42,0.03);
+        }
+
+        /* Whole-card faded treatment for sections pulled from the resident record — not just the
+           individual inputs inside them, the entire card reads as locked/unavailable, the way a
+           disabled panel does elsewhere in the app. */
+        .form-section--readonly {
+          background: #F1F5F9;
+          border-color: #E2E8F0;
+          box-shadow: none;
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .form-section--readonly .section-title {
+          color: #64748B;
+        }
+
+        .form-section--readonly .section-title::before {
+          background: #94A3B8;
         }
 
         .section-title {
@@ -1512,8 +1531,8 @@ const NurseMedicalReportPage = () => {
               </div>
             </div>
 
-            {/* Resident Information */}
-            <div className="form-section">
+            {/* Resident Information — pulled from the resident record, not editable here */}
+            <div className="form-section form-section--readonly">
               <SectionTitle>Resident Information</SectionTitle>
               <div className="section-fields">
                 <div className="form-field">

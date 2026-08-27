@@ -64,11 +64,20 @@ export default function BulletedListFieldInput({
 
   if (readOnly) {
     return (
-      <div className="bulleted-list-field bulleted-list-field--readonly">
+      <div
+        className="bulleted-list-field bulleted-list-field--readonly"
+        style={{
+          background: '#F1F5F9',
+          border: '1px solid #E2E8F0',
+          borderRadius: 10,
+          padding: '10px 12px',
+          cursor: 'not-allowed',
+        }}
+      >
         <BulletedListDisplay
           value={value}
           emptyText={emptyText}
-          style={{ fontSize: 14, fontWeight: 600, color: '#475569', lineHeight: 1.5 }}
+          style={{ fontSize: 14, fontWeight: 600, color: '#94A3B8', lineHeight: 1.5 }}
         />
       </div>
     );

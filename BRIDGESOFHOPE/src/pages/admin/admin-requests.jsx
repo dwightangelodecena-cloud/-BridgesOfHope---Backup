@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CheckCheck } from 'lucide-react';
-import AdminSidebar from '@/components/admin/AdminSidebar';
-import { familySidebarStyle } from '@/lib/familySidebarStyle';
+import { CheckCheck } from 'lucide-react';
 import {
   fetchStaffNotifications,
   markStaffNotificationRead,
@@ -43,9 +41,11 @@ function timeAgo(iso) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export default function AdminRequestsPage() {
+/** Content-only — the outer sidebar/shell now lives in the Communications workspace
+ * (communications.jsx), which mounts this as its "Requests" tab. Everything below is untouched
+ * original logic. */
+export function AdminRequestsContent() {
   const navigate = useNavigate();
-  const [isExpanded, setIsExpanded] = useState(false);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -82,15 +82,8 @@ export default function AdminRequestsPage() {
   };
 
   return (
-    <div
-      className="family-portal admin-portal-layout req-outer"
-      style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}
-    >
+    <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-        * { box-sizing: border-box; }
-        .req-outer { width: 100%; overflow-x: clip; }
-        .req-main { flex: 0 0 auto; min-height: 100vh; padding: 24px; }
         .req-icon-box { width: 40px; height: 40px; flex-shrink: 0; background: #FFF0ED; color: #F54E25; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
         .req-mark-btn { border: 1px solid #E2E8F0; background: white; color: #1B2559; border-radius: 10px; padding: 9px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; display: inline-flex; align-items: center; gap: 6px; }
         .req-mark-btn:hover { border-color: #CBD5E1; }
@@ -103,56 +96,47 @@ export default function AdminRequestsPage() {
         .req-card-body { font-size: 12.5px; color: #64748B; margin-top: 3px; line-height: 1.5; }
         .req-card-time { font-size: 11px; color: #94A3B8; font-weight: 600; margin-top: 6px; }
         .req-card-dot { width: 8px; height: 8px; border-radius: 999px; background: #F54E25; flex-shrink: 0; margin-top: 5px; }
-        @media (max-width: 899px) { .desktop-sidebar { display: none !important; } .req-main { padding: 20px 12px 100px 12px !important; } }
       `}</style>
 
-      <AdminSidebar isExpanded={isExpanded} onToggleExpanded={() => setIsExpanded(!isExpanded)} />
-
-      <main className="req-main admin-sidebar-offset">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
-          <div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span className="req-icon-box"><Bell size={20} /></span>
-              Requests
-            </h1>
-            <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, fontWeight: 500 }}>
-              New guardian-submitted admission, discharge, and visitation requests.
-            </p>
-          </div>
-          {unreadCount > 0 ? (
-            <button type="button" className="req-mark-btn" onClick={handleMarkAllRead}>
-              <CheckCheck size={14} />
-              Mark all read
-            </button>
-          ) : null}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <p style={{ fontSize: 13, color: '#707EAE', marginTop: 0, fontWeight: 500 }}>
+            New guardian-submitted admission, discharge, and visitation requests.
+          </p>
         </div>
+        {unreadCount > 0 ? (
+          <button type="button" className="req-mark-btn" onClick={handleMarkAllRead}>
+            <CheckCheck size={14} />
+            Mark all read
+          </button>
+        ) : null}
+      </div>
 
-        {loading ? (
-          <p style={{ color: '#A3AED0', fontSize: 13 }}>Loading requests...</p>
-        ) : items.length === 0 ? (
-          <p style={{ color: '#A3AED0', fontSize: 13 }}>No requests yet.</p>
-        ) : (
-          groups.map((group) => (
-            <div key={group.key} className="req-group">
-              <div className="req-group-label">{group.label}</div>
-              {group.items.map((item) => (
-                <div
-                  key={item.id}
-                  className={`req-card${item.read_at ? '' : ' req-card-unread'}`}
-                  onClick={() => void openItem(item)}
-                >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div className="req-card-title">{item.title}</div>
-                    <div className="req-card-body">{item.body}</div>
-                    <div className="req-card-time">{timeAgo(item.created_at)}</div>
-                  </div>
-                  {!item.read_at ? <span className="req-card-dot" aria-hidden="true" /> : null}
+      {loading ? (
+        <p style={{ color: '#A3AED0', fontSize: 13 }}>Loading requests...</p>
+      ) : items.length === 0 ? (
+        <p style={{ color: '#A3AED0', fontSize: 13 }}>No requests yet.</p>
+      ) : (
+        groups.map((group) => (
+          <div key={group.key} className="req-group">
+            <div className="req-group-label">{group.label}</div>
+            {group.items.map((item) => (
+              <div
+                key={item.id}
+                className={`req-card${item.read_at ? '' : ' req-card-unread'}`}
+                onClick={() => void openItem(item)}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="req-card-title">{item.title}</div>
+                  <div className="req-card-body">{item.body}</div>
+                  <div className="req-card-time">{timeAgo(item.created_at)}</div>
                 </div>
-              ))}
-            </div>
-          ))
-        )}
-      </main>
-    </div>
+                {!item.read_at ? <span className="req-card-dot" aria-hidden="true" /> : null}
+              </div>
+            ))}
+          </div>
+        ))
+      )}
+    </>
   );
 }

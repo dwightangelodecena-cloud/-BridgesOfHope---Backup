@@ -84,18 +84,20 @@
   color: var(--am-orange);
 }
 
+/* Sized/spaced to match the page-header convention every other admin page uses (28px/800
+   weight title, 13px/500 weight muted subtitle with an 8px gap above it). */
 .admin-messages-shell .am-page-head h1 {
-  margin: 0 0 6px;
-  font-size: clamp(26px, 2.4vw, 32px);
-  font-weight: 900;
-  letter-spacing: -0.03em;
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
   color: #0f172a;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 .admin-messages-shell .am-page-head p {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1.5;
   color: var(--am-navy-muted);
   max-width: 52ch;

@@ -239,7 +239,7 @@ export default function WardManagement() {
       <main className="wm-main admin-sidebar-offset">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Ward &amp; Room Management</h1>
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>Ward &amp; Room Management</h1>
             <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, fontWeight: 500 }}>
               Every room has 2 beds (bottom, upper bunk). Facility capacity: {totalCapacityExcluding(null)} / {FACILITY_TOTAL_CAPACITY} beds across all rooms.
             </p>

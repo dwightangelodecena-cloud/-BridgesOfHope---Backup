@@ -22,9 +22,6 @@ import {
   FileText, MessageCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import AdminSidebar from '@/components/admin/AdminSidebar';
-import { familySidebarStyle } from '@/lib/familySidebarStyle';
-import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
@@ -250,9 +247,10 @@ function UsersStatusChart({ active, inactive, archived, total }) {
   );
 }
 
-const UserManagement = () => {
+/** Content-only — the outer sidebar/shell now lives in the People workspace (people.jsx),
+ * which mounts this as its "Users" tab. Everything below is untouched original logic. */
+export function UserManagementContent() {
   const navigate = useNavigate();
-  const [isExpanded, setIsExpanded] = useState(false);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
@@ -484,7 +482,7 @@ const UserManagement = () => {
   };
 
   return (
-    <div className="family-portal admin-portal-layout um-outer" style={{display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}>
+    <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -594,21 +592,15 @@ const UserManagement = () => {
         }
       `}</style>
 
-      <AdminSidebar
-        isExpanded={isExpanded}
-        onToggleExpanded={() => setIsExpanded(!isExpanded)}
-      />
-
-<div className="db-mobile-only db-mobile-top-bar">
+      <div className="db-mobile-only db-mobile-top-bar">
         <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
         <span style={{ fontSize: 16, fontWeight: 800, color: '#F54E25' }}>Users</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>AD</div>
       </div>
 
-      <main className="um-main admin-sidebar-offset">
+      <div className="um-main">
         <div style={{ width: '100%' }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Customer / User Management</h1>
-          <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 22, fontWeight: 500 }}>
+          <p style={{ fontSize: 13, color: '#707EAE', marginTop: 0, marginBottom: 22, fontWeight: 500 }}>
             View-only directory: simple IDs, presence status, and account actions. Names and contact details are hidden.
           </p>
 
@@ -778,7 +770,7 @@ const UserManagement = () => {
             </div>
           </div>
         </div>
-      </main>
+      </div>
 
       <div className="db-mobile-only db-mobile-bottom-nav">
         <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}>
@@ -866,9 +858,7 @@ const UserManagement = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
-};
-
-export default UserManagement;
+}
 

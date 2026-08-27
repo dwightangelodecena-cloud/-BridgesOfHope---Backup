@@ -491,10 +491,10 @@ function ContentManagement() {
         <header className="cm-topbar">
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', minWidth: 0 }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 16, color: '#1B2559', lineHeight: 1.25 }}>Content management</div>
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+              <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', margin: 0, lineHeight: 1.2 }}>Content Management</h1>
+              <p style={{ fontSize: 13, color: '#707EAE', fontWeight: 500, marginTop: 8, marginBottom: 0 }}>
                 CMS · Home page · Save syncs to Supabase and local storage
-              </div>
+              </p>
               <div
                 style={{
                   display: 'flex',
