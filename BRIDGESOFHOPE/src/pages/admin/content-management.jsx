@@ -24,6 +24,7 @@ import {
   User,
   FileText, MessageCircle,
   Construction,
+  Bed,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AdminSidebar from '@/components/admin/AdminSidebar';
@@ -44,6 +45,14 @@ import {
   DEFAULT_CMS_MAINTENANCE_MESSAGE,
   setCmsMaintenanceRemote,
 } from '@/lib/cmsMaintenance';
+import {
+  loadFacilitySettings,
+  saveMergedFacilitySettings,
+  mergeFacilitySettings,
+  pullFacilitySettingsFromSupabase,
+  pushFacilitySettingsToSupabase,
+  FACILITY_SETTINGS_EVENT,
+} from '@/lib/facilitySettings';
 import { buildCustomBlock } from '@/lib/customBlockFactory';
 import { SortableRow, SortableVerticalList } from '@/components/admin/CmsSortable';
 import CustomBlocksVisualEditor from '@/components/admin/CustomBlocksVisualEditor';
@@ -63,6 +72,7 @@ const TABS = [
   { id: 'faq', label: 'FAQ' },
   { id: 'footer', label: 'CTA & footer' },
   { id: 'elements', label: 'Elements' },
+  { id: 'facility', label: 'Facility' },
 ];
 
 const SECTION_TAB_ORDER = ['hero', 'problem', 'services', 'proof', 'testimonials', 'about', 'faq', 'footer'];
@@ -74,6 +84,7 @@ const EDITOR_RAIL = [
   { id: 'design', tab: 'theme', label: 'Site design', title: 'Colors & type', Icon: Palette },
   { id: 'sections', tab: null, label: 'Sections', title: 'Hero, FAQ, …', Icon: PanelLeft },
   { id: 'menu', tab: 'nav', label: 'Menu', title: 'Navigation', Icon: Menu },
+  { id: 'facility', tab: 'facility', label: 'Facility', title: 'Admin Dashboard cards', Icon: Bed },
 ];
 
 function tabToRailId(tab) {
@@ -81,6 +92,7 @@ function tabToRailId(tab) {
   if (tab === 'theme') return 'design';
   if (tab === 'nav') return 'menu';
   if (tab === 'elements') return 'blocks';
+  if (tab === 'facility') return 'facility';
   if (SECTION_TAB_ORDER.includes(tab)) return 'sections';
   return 'design';
 }
@@ -95,6 +107,9 @@ function drawerHintLine(activeRailId, tab, setTab) {
   }
   if (activeRailId === 'menu') {
     return 'Section IDs should match anchors on the page (e.g. services, faq).';
+  }
+  if (activeRailId === 'facility') {
+    return 'Sets the total bed capacity and card labels on the internal Admin Dashboard’s Facility panel. Preview it via the "Admin dashboard" toggle above the preview pane. Live counts (patients, staff) always come from real data.';
   }
   if (activeRailId === 'sections') {
     const t = SECTION_TABS.find((x) => x.id === tab);
@@ -207,6 +222,7 @@ function ContentManagement() {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [content, setContent] = useState(() => loadSiteContent());
+  const [facility, setFacility] = useState(() => loadFacilitySettings());
   const [tab, setTab] = useState('order');
   const [propsPanelOpen, setPropsPanelOpen] = useState(true);
   const [savedMsg, setSavedMsg] = useState('');
@@ -228,6 +244,28 @@ function ContentManagement() {
     window.addEventListener(SITE_CONTENT_EVENT, sync);
     return () => window.removeEventListener(SITE_CONTENT_EVENT, sync);
   }, [sync]);
+
+  const syncFacility = useCallback(() => {
+    setFacility(loadFacilitySettings());
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener(FACILITY_SETTINGS_EVENT, syncFacility);
+    return () => window.removeEventListener(FACILITY_SETTINGS_EVENT, syncFacility);
+  }, [syncFacility]);
+
+  /** Hydrate the Facility tab from Supabase when a row exists. */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const remote = await pullFacilitySettingsFromSupabase();
+      if (cancelled || !remote) return;
+      setFacility(saveMergedFacilitySettings(remote));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /** Stop wheel/trackpad scroll from chaining to the document (which moved the preview iframe). Desktop only so narrow layouts can still scroll the page if needed. */
   useEffect(() => {
@@ -284,6 +322,15 @@ function ContentManagement() {
       saveMergedSiteContent(content);
       const merged = loadSiteContent();
       const remote = await pushSiteContentToSupabase(merged);
+
+      const mergedFacility = saveMergedFacilitySettings(facility);
+      const facilityRemote = await pushFacilitySettingsToSupabase(mergedFacility);
+      if (!facilityRemote.ok && !facilityRemote.skipped) {
+        setErr(facilityRemote.error || 'Facility settings failed to sync to Supabase. Saved locally only.');
+        setSavedMsg('');
+        return;
+      }
+
       if (remote.skipped) {
         setSavedMsg('Saved locally. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env for cloud sync.');
       } else if (!remote.ok) {
@@ -309,6 +356,21 @@ function ContentManagement() {
 
   const set = (path, value) => {
     setContent((prev) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      const parts = path.split('.');
+      let cur = next;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const p = parts[i];
+        if (cur[p] == null) cur[p] = {};
+        cur = cur[p];
+      }
+      cur[parts[parts.length - 1]] = value;
+      return next;
+    });
+  };
+
+  const setFacilityField = (path, value) => {
+    setFacility((prev) => {
       const next = JSON.parse(JSON.stringify(prev));
       const parts = path.split('.');
       let cur = next;
@@ -459,6 +521,9 @@ function ContentManagement() {
         .cm-drawer-head { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; }
         .cm-drawer-select { width: 100%; margin-top: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid #E9EDF7; font-size: 13px; font-weight: 600; color: #1B2559; font-family: inherit; background: #fff; cursor: pointer; }
         .cm-preview-toolbar { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #64748b; }
+        .cm-preview-toggle { display: flex; align-items: center; background: #E9EDF7; border-radius: 8px; padding: 2px; gap: 2px; }
+        .cm-preview-toggle-btn { border: none; background: transparent; color: #64748b; font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+        .cm-preview-toggle-btn--active { background: #fff; color: #1B2559; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12); }
         .cm-preview-frame { flex: 1; min-height: 0; position: relative; background: #e2e8f0; }
         .cm-preview-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; display: block; }
         .cm-card { background: white; border: 1px solid #E9EDF7; border-radius: 14px; padding: 18px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06); }
@@ -585,7 +650,7 @@ function ContentManagement() {
             )}
             <CustomBlocksVisualEditor
               splitLayout
-              livePreviewSlot={<LandingLivePreview content={content} onSectionSelect={handlePreviewSectionSelect} />}
+              livePreviewSlot={<LandingLivePreview content={content} facilitySettings={facility} onSectionSelect={handlePreviewSectionSelect} />}
               customSections={customSections}
               patchCustomBlock={patchCustomBlock}
               insertCustomBlockAt={insertCustomBlockAt}
@@ -1335,6 +1400,62 @@ function ContentManagement() {
             </div>
           )}
 
+          {tab === 'facility' && (
+            <div>
+              <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 14px', lineHeight: 1.5 }}>
+                Controls the internal Admin Dashboard's Facility panel — total bed capacity and the
+                card titles/subtitles shown there. Switch the preview to "Admin dashboard" (top right)
+                to see changes live. Actual counts (patients, staff, occupancy %) always come from real data.
+              </p>
+              <div style={FIELD}>
+                <label style={LABEL}>Total bed capacity</label>
+                <input
+                  style={INPUT}
+                  type="number"
+                  min={1}
+                  value={facility.bedCapacity}
+                  onChange={(e) => {
+                    const n = Number.parseInt(e.target.value, 10);
+                    setFacilityField('bedCapacity', Number.isFinite(n) && n > 0 ? n : facility.bedCapacity);
+                  }}
+                />
+              </div>
+              <h4 style={{ marginBottom: 10 }}>Dashboard cards</h4>
+              {[
+                { key: 'availableBeds', label: 'Available beds card', hasSubtitle: true },
+                { key: 'staff', label: 'Staff card', hasSubtitle: true },
+                { key: 'occupancy', label: 'Hospital occupancy card', hasSubtitle: false },
+                { key: 'avgStay', label: 'Average days stayed card', hasSubtitle: true },
+              ].map(({ key, label, hasSubtitle }) => (
+                <div key={key} style={{ border: '1px solid #EEF2FF', borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                  <label style={LABEL}>{label}</label>
+                  <input
+                    style={{ ...INPUT, marginBottom: hasSubtitle ? 8 : 0 }}
+                    placeholder="Title"
+                    value={facility.cards?.[key]?.title ?? ''}
+                    onChange={(e) => setFacilityField(`cards.${key}.title`, e.target.value)}
+                  />
+                  {hasSubtitle && (
+                    <input
+                      style={INPUT}
+                      placeholder="Subtitle"
+                      value={facility.cards?.[key]?.subtitle ?? ''}
+                      onChange={(e) => setFacilityField(`cards.${key}.subtitle`, e.target.value)}
+                    />
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                className="cm-btn cm-btn-ghost"
+                style={{ marginTop: 4 }}
+                onClick={() => setFacility(mergeFacilitySettings({}))}
+              >
+                <RotateCcw size={14} /> Reset facility settings to defaults
+              </button>
+            </div>
+          )}
+
               </div>
             </div>
           </div>
@@ -1348,7 +1469,7 @@ function ContentManagement() {
               {propsPanelOpen ? <ChevronRight size={22} strokeWidth={2} /> : <ChevronLeft size={22} strokeWidth={2} />}
             </button>
             <div className="cm-preview-column">
-              <LandingLivePreview content={content} onSectionSelect={handlePreviewSectionSelect} />
+              <LandingLivePreview content={content} facilitySettings={facility} onSectionSelect={handlePreviewSectionSelect} />
             </div>
           </div>
           )}

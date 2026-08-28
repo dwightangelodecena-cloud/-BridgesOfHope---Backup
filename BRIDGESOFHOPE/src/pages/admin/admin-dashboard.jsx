@@ -19,6 +19,13 @@ import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
 import { dischargeTypeLabel, isTemporaryDischargeRequest } from '@/lib/dischargeRequestTypes';
 import { approveFamilyDischargeRequest } from '@/lib/dischargeRequestWorkflow';
 import { loadAdminReportsSnapshot, buildAdmissionsPerWeekRows, buildPossibleDischargeRows } from '@/lib/adminPrintableReports';
+import {
+  loadFacilitySettings,
+  saveMergedFacilitySettings,
+  pullFacilitySettingsFromSupabase,
+  FACILITY_SETTINGS_EVENT,
+  DEFAULT_FACILITY_SETTINGS,
+} from '@/lib/facilitySettings';
 
 const AdminAnalyticsSection = lazy(() =>
   import('@/components/AdminAnalyticsSection').catch((err) => {
@@ -105,6 +112,8 @@ const AdminDashboard = () => {
   });
   const [staffCount, setStaffCount] = useState(0);
   const [averageStayDays, setAverageStayDays] = useState(0);
+  /** Total bed capacity & Facility-panel card labels — editable from the CMS's Facility tab. */
+  const [facilitySettings, setFacilitySettings] = useState(() => loadFacilitySettings());
 
   const computeStayDays = (admittedAt, dischargedAt) => {
     const a = new Date(admittedAt || 0).getTime();
@@ -282,6 +291,24 @@ const AdminDashboard = () => {
   }, []);
 
   useEffect(() => {
+    const syncFacilitySettings = () => setFacilitySettings(loadFacilitySettings());
+    window.addEventListener('storage', syncFacilitySettings);
+    window.addEventListener(FACILITY_SETTINGS_EVENT, syncFacilitySettings);
+    let cancelled = false;
+    (async () => {
+      const remote = await pullFacilitySettingsFromSupabase();
+      if (!cancelled && remote) {
+        setFacilitySettings(saveMergedFacilitySettings(remote));
+      }
+    })();
+    return () => {
+      cancelled = true;
+      window.removeEventListener('storage', syncFacilitySettings);
+      window.removeEventListener(FACILITY_SETTINGS_EVENT, syncFacilitySettings);
+    };
+  }, []);
+
+  useEffect(() => {
     if (location.hash !== '#admin-analytics') return;
     const id = window.setTimeout(() => {
       document.getElementById('admin-analytics')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -354,8 +381,10 @@ const AdminDashboard = () => {
 
   // Computed metrics
   const totalPatients = patients.length;
-  const availableBeds = 50 - totalPatients;
-  const occupancyPerc = Math.round((totalPatients / 50) * 100);
+  const bedCapacity = facilitySettings.bedCapacity || DEFAULT_FACILITY_SETTINGS.bedCapacity;
+  const availableBeds = bedCapacity - totalPatients;
+  const occupancyPerc = Math.round((totalPatients / bedCapacity) * 100);
+  const facilityCards = facilitySettings.cards || DEFAULT_FACILITY_SETTINGS.cards;
 
   const resetDecisionForm = () => {
     setDecisionNote('');
@@ -1035,8 +1064,8 @@ const AdminDashboard = () => {
                   </div>
                   <div>
                     <div className="metric-value">{availableBeds}</div>
-                    <div className="metric-title">Available beds</div>
-                    <div className="metric-subtitle">Ready for admission</div>
+                    <div className="metric-title">{facilityCards.availableBeds?.title || 'Available beds'}</div>
+                    <div className="metric-subtitle">{facilityCards.availableBeds?.subtitle || 'Ready for admission'}</div>
                   </div>
                 </div>
 
@@ -1047,8 +1076,8 @@ const AdminDashboard = () => {
                   </div>
                   <div>
                     <div className="metric-value">{staffCount}</div>
-                    <div className="metric-title">Staff</div>
-                    <div className="metric-subtitle">Admins, nurses &amp; clinic staff</div>
+                    <div className="metric-title">{facilityCards.staff?.title || 'Staff'}</div>
+                    <div className="metric-subtitle">{facilityCards.staff?.subtitle || 'Admins, nurses & clinic staff'}</div>
                   </div>
                 </div>
 
@@ -1058,8 +1087,8 @@ const AdminDashboard = () => {
                     <span className="metric-badge">{occupancyPerc}%</span>
                   </div>
                   <div>
-                    <div className="metric-value">{totalPatients}/50</div>
-                    <div className="metric-title">Hospital occupancy</div>
+                    <div className="metric-value">{totalPatients}/{bedCapacity}</div>
+                    <div className="metric-title">{facilityCards.occupancy?.title || 'Hospital occupancy'}</div>
                     <div style={{ width: '100%', height: 6, background: '#E9EDF7', borderRadius: 99, marginTop: 8, overflow: 'hidden' }}>
                       <div style={{ width: `${occupancyPerc}%`, height: '100%', background: '#F54E25', borderRadius: 99 }} />
                     </div>
@@ -1073,8 +1102,8 @@ const AdminDashboard = () => {
                   </div>
                   <div>
                     <div className="metric-value">{averageStayDays}</div>
-                    <div className="metric-title">Average days stayed</div>
-                    <div className="metric-subtitle">Includes active + discharged</div>
+                    <div className="metric-title">{facilityCards.avgStay?.title || 'Average days stayed'}</div>
+                    <div className="metric-subtitle">{facilityCards.avgStay?.subtitle || 'Includes active + discharged'}</div>
                   </div>
                 </div>
 
