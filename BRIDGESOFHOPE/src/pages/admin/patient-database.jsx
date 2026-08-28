@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ArrowRightSquare, Stethoscope, BedDouble, FileText, MessageCircle, LayoutTemplate, Calendar, Sparkles } from 'lucide-react';
+import { LayoutGrid, BookUser, LogOut, Search, Filter, User, X, ChevronDown, Users, ClipboardList, ClipboardCheck, ArrowRightSquare, Stethoscope, BedDouble, FileText, MessageCircle, LayoutTemplate, Calendar, Sparkles } from 'lucide-react';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { useNavigate, useLocation } from 'react-router-dom';
 import AdminSidebar from '@/components/admin/AdminSidebar';
@@ -2317,6 +2317,13 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
             <div className="sidebar-icon-wrap"><Users size={22} color="#707EAE" /></div>
             <span className="sidebar-label">Residents</span>
+          </div>
+          <div
+            className={`sidebar-nav-item${pathname === '/nurse-pending-admissions' ? ' sidebar-nav-active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); navigate('/nurse-pending-admissions'); }}
+          >
+            <div className="sidebar-icon-wrap"><ClipboardCheck size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Pending Admissions</span>
           </div>
           <div
             className={`sidebar-nav-item${pathname === '/nurse-calendar' ? ' sidebar-nav-active' : ''}`}
