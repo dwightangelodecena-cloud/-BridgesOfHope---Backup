@@ -376,7 +376,7 @@ export default function LoginScreen() {
             <LoginField
               label="Email or contact number"
               icon="mail-outline"
-              placeholder="you@email.com or 09XXXXXXXXX"
+              placeholder="Email or phone number"
               value={loginIdentifier}
               error={!!error}
               showClear
@@ -400,7 +400,7 @@ export default function LoginScreen() {
             <LoginField
               label="Password"
               icon="lock-closed-outline"
-              placeholder="Your password"
+              placeholder="Enter your password"
               value={password}
               error={!!error}
               secureTextEntry={hidePassword}
