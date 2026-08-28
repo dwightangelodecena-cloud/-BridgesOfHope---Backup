@@ -48,7 +48,6 @@ const INITIAL_REPORT_DETAILS = {
   ongoingMedicalConcern: '',
   upcomingProcedureDescription: '',
   upcomingProcedureDate: '',
-  weeklySummary: '',
 };
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
@@ -283,6 +282,10 @@ const ProgramWeeklyReport = () => {
   const [weekDailyReportsError, setWeekDailyReportsError] = useState('');
   const [aiDrafting, setAiDrafting] = useState(false);
   const [aiDraftError, setAiDraftError] = useState('');
+  // Reference-only: never merged into the weekly report's own fields or saved anywhere.
+  // Daily reports stay their own separate records ("files in a folder") — the weekly
+  // report is written independently by staff.
+  const [aiDraftText, setAiDraftText] = useState('');
 
   const activeWeekNumber = useMemo(() => {
     const m = String(reportBasics.weekLabel || '').match(/(\d+)/);
@@ -551,7 +554,7 @@ const ProgramWeeklyReport = () => {
     setAiDrafting(true);
     try {
       const draft = await draftWeeklyReportFromDailyReports(reportBasics.patientName, activeWeekNumber, weekDailyReports);
-      setReportDetails((prev) => ({ ...prev, weeklySummary: draft }));
+      setAiDraftText(draft);
     } catch (err) {
       setAiDraftError(err?.message || 'Could not generate a draft.');
     } finally {
@@ -633,7 +636,6 @@ const ProgramWeeklyReport = () => {
       return Number.isFinite(raw) ? raw : null;
     })();
     const summaryText = [
-      reportDetails.weeklySummary && reportDetails.weeklySummary.trim(),
       formatMedicationTableNoteSection('Current medications', reportDetails.currentMedications),
       reportDetails.interventionMedication && `Medication intervention: ${reportDetails.interventionMedication}`,
       formatBulletedListNoteSection('Ongoing medical concern', reportDetails.ongoingMedicalConcern),
@@ -2050,20 +2052,23 @@ const ProgramWeeklyReport = () => {
               />
             </div>
 
-            {/* Weekly Summary — staff-authored, optionally drafted from this week's daily reports */}
+            {/* This week's daily reports stay their own separate records (not merged into
+                the weekly report). The optional AI draft below is reference-only — it is
+                never saved and never included in what gets submitted. */}
             <div className="form-section">
               <div className="wr-section-title-row">
-                <div className="section-title">Weekly Summary</div>
+                <div className="section-title">This Week&rsquo;s Daily Reports</div>
                 <button
                   type="button"
                   className="btn-inline-action"
                   onClick={handleAiDraftClick}
                   disabled={aiDrafting || !activeReportPatientId}
-                  title="Draft a summary from this week's daily reports"
+                  title="Draft a reference summary from this week's daily reports"
                 >
                   {aiDrafting ? 'Drafting…' : 'AI summary'}
                 </button>
               </div>
+              <p className="wr-nurse-only-note">Reference only — these stay separate from the weekly report and are not merged into it.</p>
 
               {weekDailyReportsLoading ? (
                 <p className="wr-daily-entries-empty">Loading this week&rsquo;s daily reports…</p>
@@ -2084,13 +2089,27 @@ const ProgramWeeklyReport = () => {
 
               {aiDraftError ? <p className="wr-save-feedback wr-save-feedback--error">{aiDraftError}</p> : null}
 
-              <textarea
-                className="form-textarea"
-                style={{ height: 150 }}
-                placeholder="Write (or generate with AI summary) this week's overall progress narrative for review before submitting..."
-                value={reportDetails.weeklySummary}
-                onChange={(e) => setReportDetails((prev) => ({ ...prev, weeklySummary: e.target.value }))}
-              />
+              {aiDraftText ? (
+                <div>
+                  <p className="wr-nurse-only-note" style={{ marginTop: 10, marginBottom: 6 }}>
+                    AI draft (reference only — not saved, not part of this report):
+                  </p>
+                  <div
+                    style={{
+                      border: '1px dashed #CBD5E1',
+                      borderRadius: 10,
+                      padding: '10px 12px',
+                      background: '#F8FAFC',
+                      color: '#334155',
+                      fontSize: 12.5,
+                      lineHeight: 1.5,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    {aiDraftText}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {/* Upcoming Medical Procedure */}

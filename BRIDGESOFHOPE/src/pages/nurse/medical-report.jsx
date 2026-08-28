@@ -38,7 +38,6 @@ const INITIAL_REPORT_DETAILS = {
   dietaryRestrictions: '',
   foodAllergies: '',
   ongoingMedicalConcern: '',
-  weeklySummaryNotes: '',
 };
 
 const INITIAL_DAILY_REPORT_FORM = {
@@ -169,6 +168,10 @@ const NurseMedicalReportPage = () => {
 
   const [aiDraftLoading, setAiDraftLoading] = useState(false);
   const [aiDraftError, setAiDraftError] = useState('');
+  // Reference-only: never merged into the weekly report's own fields or saved anywhere.
+  // Daily reports stay their own separate records ("files in a folder") — the weekly
+  // report is written independently by the nurse.
+  const [aiDraftText, setAiDraftText] = useState('');
 
   useEffect(() => {
     const loadIdentity = async () => {
@@ -401,7 +404,7 @@ const NurseMedicalReportPage = () => {
         weekNum,
         weekDailyReports
       );
-      setReportDetails((prev) => ({ ...prev, weeklySummaryNotes: draft }));
+      setAiDraftText(draft);
     } catch (e) {
       setAiDraftError(e?.message || 'Could not generate an AI summary draft.');
     } finally {
@@ -518,7 +521,6 @@ const NurseMedicalReportPage = () => {
       return Number.isFinite(raw) ? raw : null;
     })();
     const summaryText = [
-      reportDetails.weeklySummaryNotes && reportDetails.weeklySummaryNotes.trim(),
       formatMedicationTableNoteSection('Current medications', reportDetails.currentMedications),
       formatBulletedListNoteSection('Ongoing medical concern', reportDetails.ongoingMedicalConcern),
     ]
@@ -708,10 +710,6 @@ const NurseMedicalReportPage = () => {
       vitals.temperature.trim() && `Temperature ${vitals.temperature.trim()}°F`,
     ].filter(Boolean);
     if (vitalsParts.length) lines.push('', 'Vitals:', vitalsParts.join(' | '));
-
-    if (reportDetails.weeklySummaryNotes.trim()) {
-      lines.push('', 'Weekly Summary:', reportDetails.weeklySummaryNotes.trim());
-    }
 
     const medsBlock = formatMedicationTableNoteSection('Current Medications', reportDetails.currentMedications);
     if (medsBlock) lines.push('', medsBlock);
@@ -2001,12 +1999,13 @@ const NurseMedicalReportPage = () => {
               </div>
             </div>
 
-            {/* Weekly Summary Draft — shows this week's daily_reports and can pre-fill a
-                Groq-drafted narrative into the summary/notes below for the nurse to edit. */}
+            {/* This week's daily reports stay their own separate records (not merged into
+                the weekly report). The optional AI draft below is reference-only — it is
+                never saved and never included in what gets submitted. */}
             <div className="form-section">
-              <SectionTitle>Weekly Summary Draft</SectionTitle>
+              <SectionTitle>This Week&apos;s Daily Reports</SectionTitle>
               <p style={{ marginBottom: 12, color: '#64748B', fontSize: 12, lineHeight: 1.4 }}>
-                Review this week&apos;s daily reports, then optionally draft a starting summary with AI — always review and edit before submitting.
+                Reference only — these stay separate from the weekly report below and are not merged into it.
               </p>
 
               {weekDailyReportsLoading ? (
@@ -2037,21 +2036,32 @@ const NurseMedicalReportPage = () => {
                   className="btn-summary"
                   disabled={aiDraftLoading || weekDailyReports.length === 0}
                   onClick={handleGenerateAiDraft}
-                  title={weekDailyReports.length === 0 ? 'Log at least one daily report this week to draft a summary' : 'Draft a starting summary from this week’s daily reports'}
+                  title={weekDailyReports.length === 0 ? 'Log at least one daily report this week to draft a summary' : 'Draft a reference summary from this week’s daily reports'}
                 >
                   {aiDraftLoading ? 'Generating…' : 'Generate AI Summary'}
                 </button>
                 {aiDraftError ? <span style={{ fontSize: 12, fontWeight: 700, color: '#991B1B' }}>{aiDraftError}</span> : null}
               </div>
 
-              <FormLabel style={{ marginBottom: 8 }}>Summary / Notes (draft — review before submitting):</FormLabel>
-              <textarea
-                className="form-textarea"
-                style={{ height: 140 }}
-                value={reportDetails.weeklySummaryNotes}
-                onChange={(e) => setReportDetails((prev) => ({ ...prev, weeklySummaryNotes: e.target.value }))}
-                placeholder="AI-drafted or manually written weekly summary…"
-              />
+              {aiDraftText ? (
+                <div>
+                  <FormLabel style={{ marginBottom: 8 }}>AI draft (reference only — not saved, not part of this report):</FormLabel>
+                  <div
+                    style={{
+                      border: '1px dashed #CBD5E1',
+                      borderRadius: 10,
+                      padding: '10px 12px',
+                      background: '#F8FAFC',
+                      color: '#334155',
+                      fontSize: 12.5,
+                      lineHeight: 1.5,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    {aiDraftText}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {/* Ongoing Medical Concern */}
