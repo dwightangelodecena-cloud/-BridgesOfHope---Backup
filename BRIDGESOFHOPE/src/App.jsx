@@ -24,18 +24,14 @@ import AdminDashboard from '@/pages/admin/admin-dashboard';
 import PatientDatabasePage from './pages/nurse/patient-database';
 import { AdminPatientDatabaseGate } from '@/pages/admin/patient-database';
 import Analytics from './pages/admin/analytics';
-import UserManagement from '@/pages/admin/user-management';
-import AdmissionManagement from '@/pages/admin/admission-management';
-import DischargeManagement from '@/pages/admin/discharge-management';
-import NotificationTemplatesPage from '@/pages/admin/notification-templates';
-import AdminAnnouncementsPage from '@/pages/admin/admin-announcements';
+import PeopleWorkspace from '@/pages/admin/people';
+import PatientCareWorkspace from '@/pages/admin/patient-care';
+import CommunicationsWorkspace from '@/pages/admin/communications';
 import WardManagement from '@/pages/admin/ward-management';
-import StaffManagement from '@/pages/admin/staff-management';
 import ContentManagement from '@/pages/admin/content-management';
 import AdminProfile from '@/pages/admin/admin-profile';
 import AdminAppointmentsPage from '@/pages/admin/admin-appointments';
 import AdminReportsPage from '@/pages/admin/admin-reports';
-import AdminMessagesPage from '@/pages/admin/admin-messages';
 import ProgramPage from '@/pages/program/program';
 import ProgramDischargeManagement from '@/pages/program/program-discharge';
 import kalingaLogo from '@/assets/kalingalogo.png';
@@ -75,6 +71,7 @@ const ROUTE_TITLES = {
   '/admin-announcements': 'Announcements',
   '/admin-reports': 'Printable reports',
   '/admin-messages': 'Messages',
+  '/admin-requests': 'Requests',
 };
 
 function getPageTitle(pathname) {
@@ -255,7 +252,7 @@ function App() {
           path="/admin-user-management"
           element={
             <RoleGuard allowedRoles={['admin']}>
-              <UserManagement />
+              <PeopleWorkspace />
             </RoleGuard>
           }
         />
@@ -263,7 +260,7 @@ function App() {
           path="/admin-staff-management"
           element={
             <RoleGuard allowedRoles={['admin']}>
-              <StaffManagement />
+              <PeopleWorkspace />
             </RoleGuard>
           }
         />
@@ -271,7 +268,7 @@ function App() {
           path="/admin-admission-management"
           element={
             <RoleGuard allowedRoles={['admin']}>
-              <AdmissionManagement />
+              <PatientCareWorkspace />
             </RoleGuard>
           }
         />
@@ -279,7 +276,7 @@ function App() {
           path="/admin-discharge-management"
           element={
             <RoleGuard allowedRoles={['admin']}>
-              <DischargeManagement />
+              <PatientCareWorkspace />
             </RoleGuard>
           }
         />
@@ -302,16 +299,16 @@ function App() {
         <Route
           path="/admin-notification-templates"
           element={
-            <RoleGuard allowedRoles={['admin']}>
-              <NotificationTemplatesPage />
+            <RoleGuard allowedRoles={['admin', 'staff']}>
+              <CommunicationsWorkspace />
             </RoleGuard>
           }
         />
         <Route
           path="/admin-announcements"
           element={
-            <RoleGuard allowedRoles={['admin']}>
-              <AdminAnnouncementsPage />
+            <RoleGuard allowedRoles={['admin', 'staff']}>
+              <CommunicationsWorkspace />
             </RoleGuard>
           }
         />
@@ -343,7 +340,15 @@ function App() {
           path="/admin-messages"
           element={
             <RoleGuard allowedRoles={['admin', 'staff']}>
-              <AdminMessagesPage />
+              <CommunicationsWorkspace />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin-requests"
+          element={
+            <RoleGuard allowedRoles={['admin', 'staff']}>
+              <CommunicationsWorkspace />
             </RoleGuard>
           }
         />

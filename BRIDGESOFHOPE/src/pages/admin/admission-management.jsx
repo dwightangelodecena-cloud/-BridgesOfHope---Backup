@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  CheckCircle,
   Stethoscope,
   LayoutTemplate,
   Calendar,
@@ -24,8 +25,6 @@ import {
   FileText, MessageCircle, ScanLine,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import AdminSidebar from '@/components/admin/AdminSidebar';
-import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
@@ -83,6 +82,7 @@ import {
   renderNotificationTemplate,
 } from '@/lib/notificationTemplates';
 import { AdmissionAttachedFilesList } from '@/components/admin/AdmissionAttachedFilesList';
+import { RowActionsMenu } from '@/components/admin/RowActionsMenu';
 import { resolveAdmissionDocumentsForView } from '@/lib/admissionDocumentAccess';
 import {
   REFERRAL_SUMMARY_FIELDS,
@@ -133,6 +133,7 @@ function sortRows(rows, sortId) {
   return cp;
 }
 
+
 /** Built UI row with no linked patient (stale after patients table was cleared). */
 function isOrphanedAdmissionRow(row) {
   const st = String(row?.dbStatus || '').toLowerCase();
@@ -143,12 +144,14 @@ function isOrphanedAdmissionRow(row) {
   return false;
 }
 
-const AdmissionManagement = () => {
+/** Content-only — the outer sidebar/shell now lives in the Patient Care workspace
+ * (patient-care.jsx), which mounts this as its "Admissions" tab. Everything below is untouched
+ * original logic. */
+export function AdmissionManagementContent() {
   useAdminRealtimeRefresh();
   const navigate = useNavigate();
   const location = useLocation();
   const pendingApproveRowRef = useRef(null);
-  const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [formError, setFormError] = useState('');
@@ -770,7 +773,7 @@ const AdmissionManagement = () => {
   };
 
   return (
-    <div className="family-portal admin-portal-layout am-outer" style={{display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}>
+    <>
       <TwoFactorApproveModal
         open={twoFAModalOpen}
         onClose={handle2FAModalClose}
@@ -883,21 +886,15 @@ const AdmissionManagement = () => {
         }
       `}</style>
 
-      <AdminSidebar
-        isExpanded={isExpanded}
-        onToggleExpanded={() => setIsExpanded(!isExpanded)}
-      />
-
-<div className="db-mobile-only db-mobile-top-bar">
+      <div className="db-mobile-only db-mobile-top-bar">
         <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
         <span style={{ fontSize: 15, fontWeight: 800, color: '#F54E25' }}>Admissions</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>AD</div>
       </div>
 
-      <main className="am-main admin-sidebar-offset">
+      <div className="am-main">
         <div style={{ width: '100%' }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Admission Management</h1>
-          <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 20, fontWeight: 500 }}>
+          <p style={{ fontSize: 13, color: '#707EAE', marginTop: 0, marginBottom: 20, fontWeight: 500 }}>
             Active and incoming patient admissions. Costs use fees from Services (admission fee + Imus monthly rate).
           </p>
 
@@ -1076,70 +1073,7 @@ const AdmissionManagement = () => {
                           ) : null}
                         </td>
                         <td style={{ padding: '9px 10px' }}>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            {isSupabaseConfigured() && canScheduleMeeting(r) && (
-                              <button
-                                type="button"
-                                className="db-action-btn"
-                                title={hasPendingGuardianProposal(r) ? 'Review the date/time the family proposed' : 'Schedule family meeting before approval'}
-                                onClick={() => {
-                                  setMeetingRow(r);
-                                  setMeetingDate(r.preferredMeetingDate || '');
-                                  setMeetingTime(r.preferredMeetingTime || '09:00');
-                                }}
-                              >
-                                {hasPendingGuardianProposal(r) ? 'Review Proposed Time' : 'Call for Meeting'}
-                              </button>
-                            )}
-                            {isSupabaseConfigured() && canMarkMeetingComplete(r) && (
-                              <button
-                                type="button"
-                                className="db-action-btn"
-                                onClick={() => void markMeetingComplete(r, true)}
-                              >
-                                Meeting Done
-                              </button>
-                            )}
-                            {isSupabaseConfigured() && String(r.dbStatus || '').toLowerCase() === 'in_review' && (
-                              <button
-                                type="button"
-                                className="db-action-btn"
-                                onClick={() => {
-                                  setDocNotesRow({ ...r, _markDocsComplete: false });
-                                  setDocNotesText(r.requiredDocumentNotes || '');
-                                }}
-                              >
-                                Request Docs
-                              </button>
-                            )}
-                            {isSupabaseConfigured() && String(r.dbStatus || '').toLowerCase() === 'in_review' && (
-                              <button
-                                type="button"
-                                className="db-action-btn"
-                                onClick={() => {
-                                  setDocNotesRow({ ...r, _markDocsComplete: true });
-                                  setDocNotesText('');
-                                }}
-                              >
-                                Docs Complete
-                              </button>
-                            )}
-                            {isSupabaseConfigured() && canApproveAdmission(r) && (
-                              <button
-                                type="button"
-                                className="db-edit-btn"
-                                title="Approve in Supabase and create patient record"
-                                disabled={approvingId === r.requestId}
-                                onClick={() => openApprove2FA(r)}
-                              >
-                                {approvingId === r.requestId ? '…' : 'Accept'}
-                              </button>
-                            )}
-                            {isSupabaseConfigured() && !['approved', 'accepted', 'declined', 'rejected'].includes(String(r.dbStatus || '').toLowerCase()) && (
-                              <button type="button" className="db-action-btn" onClick={() => void rejectAdmission(r)}>
-                                Reject
-                              </button>
-                            )}
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                             <button type="button" className="db-view-btn" onClick={() => void openAdmissionView(r)}>
                               <Eye size={12} /> View
                             </button>
@@ -1167,19 +1101,76 @@ const AdmissionManagement = () => {
                             >
                               <Edit2 size={12} /> Edit
                             </button>
-                            {['approved', 'accepted'].includes(String(r.dbStatus || '').toLowerCase()) ? (
-                              <button type="button" className="db-action-btn" onClick={() => handleMoveToDischarge(r)} title="Send to Discharge Management">
-                                <ArrowRightCircle size={12} /> Discharge
+                            {isSupabaseConfigured() && canApproveAdmission(r) && (
+                              <button
+                                type="button"
+                                className="db-edit-btn"
+                                title="Approve in Supabase and create patient record"
+                                disabled={approvingId === r.requestId}
+                                onClick={() => openApprove2FA(r)}
+                              >
+                                {approvingId === r.requestId ? '…' : 'Accept'}
                               </button>
-                            ) : null}
-                            <button type="button" className="db-action-btn" onClick={() => handleArchive(r)}>
-                              <Trash2 size={12} /> Archive
-                            </button>
-                            {isSupabaseConfigured() && isOrphanedAdmissionRow(r) ? (
-                              <button type="button" className="db-action-btn" onClick={() => void handleDeleteAdmission(r)} title="Delete admission request from Supabase">
-                                Delete
-                              </button>
-                            ) : null}
+                            )}
+                            <RowActionsMenu
+                              actions={[
+                                isSupabaseConfigured() && canScheduleMeeting(r) && {
+                                  label: hasPendingGuardianProposal(r) ? 'Review Proposed Time' : 'Call for Meeting',
+                                  title: hasPendingGuardianProposal(r) ? 'Review the date/time the family proposed' : 'Schedule family meeting before approval',
+                                  icon: <Calendar size={14} />,
+                                  onClick: () => {
+                                    setMeetingRow(r);
+                                    setMeetingDate(r.preferredMeetingDate || '');
+                                    setMeetingTime(r.preferredMeetingTime || '09:00');
+                                  },
+                                },
+                                isSupabaseConfigured() && canMarkMeetingComplete(r) && {
+                                  label: 'Meeting Done',
+                                  icon: <CheckCircle size={14} />,
+                                  onClick: () => void markMeetingComplete(r, true),
+                                },
+                                isSupabaseConfigured() && String(r.dbStatus || '').toLowerCase() === 'in_review' && {
+                                  label: 'Request Docs',
+                                  icon: <FileText size={14} />,
+                                  onClick: () => {
+                                    setDocNotesRow({ ...r, _markDocsComplete: false });
+                                    setDocNotesText(r.requiredDocumentNotes || '');
+                                  },
+                                },
+                                isSupabaseConfigured() && String(r.dbStatus || '').toLowerCase() === 'in_review' && {
+                                  label: 'Docs Complete',
+                                  icon: <CheckCircle size={14} />,
+                                  onClick: () => {
+                                    setDocNotesRow({ ...r, _markDocsComplete: true });
+                                    setDocNotesText('');
+                                  },
+                                },
+                                ['approved', 'accepted'].includes(String(r.dbStatus || '').toLowerCase()) && {
+                                  label: 'Discharge',
+                                  title: 'Send to Discharge Management',
+                                  icon: <ArrowRightCircle size={14} />,
+                                  onClick: () => handleMoveToDischarge(r),
+                                },
+                                isSupabaseConfigured() && !['approved', 'accepted', 'declined', 'rejected'].includes(String(r.dbStatus || '').toLowerCase()) && {
+                                  label: 'Reject',
+                                  icon: <X size={14} />,
+                                  danger: true,
+                                  onClick: () => void rejectAdmission(r),
+                                },
+                                {
+                                  label: 'Archive',
+                                  icon: <Trash2 size={14} />,
+                                  onClick: () => handleArchive(r),
+                                },
+                                isSupabaseConfigured() && isOrphanedAdmissionRow(r) && {
+                                  label: 'Delete',
+                                  title: 'Delete admission request from Supabase',
+                                  icon: <Trash2 size={14} />,
+                                  danger: true,
+                                  onClick: () => void handleDeleteAdmission(r),
+                                },
+                              ]}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -1205,7 +1196,7 @@ const AdmissionManagement = () => {
             )}
           </div>
         </div>
-      </main>
+      </div>
 
       <div className="db-mobile-only db-mobile-bottom-nav">
         <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}><LayoutGrid size={18} color="#A3AED0" /><span>Home</span></div>
@@ -1656,9 +1647,6 @@ const AdmissionManagement = () => {
           </div>
         </div>
       )}
-
-    </div>
+    </>
   );
-};
-
-export default AdmissionManagement;
+}

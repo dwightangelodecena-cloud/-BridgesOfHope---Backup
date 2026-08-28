@@ -4,37 +4,70 @@ import {
   LayoutGrid,
   BookUser,
   ClipboardList,
-  ArrowRightSquare,
   Users,
-  Stethoscope,
   LayoutTemplate,
   Calendar,
   FileText,
   User,
   LogOut,
-  MessageSquare,
   BedDouble,
-  Megaphone,
 } from 'lucide-react';
 import logo from '@/assets/kalingalogo.png';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
-import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
-import { AdminRequestsNavItem } from '@/components/admin/AdminRequestsNavItem';
+import { AdminCommunicationsNavItem } from '@/components/admin/AdminCommunicationsNavItem';
 import { SidebarLabel } from '@/components/admin/SidebarLabel';
 
-const NAV_ITEMS = [
-  { path: '/admin-dashboard', label: 'Dashboard', icon: LayoutGrid },
-  { path: '/admin-patient-database', label: 'Patient Management', icon: BookUser },
-  { path: '/admin-ward-management', label: 'Ward & Room Management', icon: BedDouble },
-  { path: '/admin-admission-management', label: 'Admission Management', icon: ClipboardList },
-  { path: '/admin-discharge-management', label: 'Discharge Management', icon: ArrowRightSquare },
-  { path: '/admin-user-management', label: 'User Management', icon: Users },
-  { path: '/admin-staff-management', label: 'Staff Management', icon: Stethoscope },
-  { path: '/admin-content-management', label: 'Content management', icon: LayoutTemplate },
-  { path: '/admin-appointments', label: 'Appointments', icon: Calendar },
-  { path: '/admin-notification-templates', label: 'Notification Templates', icon: MessageSquare },
-  { path: '/admin-announcements', label: 'Announcements', icon: Megaphone },
-  { path: '/admin-reports', label: 'Printable reports', icon: FileText },
+const NAV_SECTIONS = [
+  {
+    label: null,
+    items: [{ path: '/admin-dashboard', label: 'Dashboard', icon: LayoutGrid }],
+  },
+  {
+    label: 'Care Operations',
+    items: [
+      { path: '/admin-patient-database', label: 'Patients', icon: BookUser },
+      {
+        path: '/admin-admission-management',
+        label: 'Patient Care',
+        icon: ClipboardList,
+        // Combined workspace (patient-care.jsx) — active on either of its tabs' routes.
+        activePaths: ['/admin-admission-management', '/admin-discharge-management'],
+      },
+      { path: '/admin-ward-management', label: 'Wards & Rooms', icon: BedDouble },
+      { path: '/admin-appointments', label: 'Appointments', icon: Calendar },
+    ],
+  },
+  {
+    label: 'People',
+    items: [
+      {
+        path: '/admin-user-management',
+        label: 'People',
+        icon: Users,
+        // Combined workspace (people.jsx) — active on either of its tabs' routes.
+        activePaths: ['/admin-user-management', '/admin-staff-management'],
+      },
+    ],
+  },
+  {
+    label: 'Communications',
+    items: [
+      {
+        path: '/admin-messages',
+        label: 'Communications',
+        special: 'communications',
+        // Combined workspace (communications.jsx) — active on any of its four tabs' routes.
+        activePaths: ['/admin-messages', '/admin-requests', '/admin-notification-templates', '/admin-announcements'],
+      },
+    ],
+  },
+  {
+    label: 'Content & Reports',
+    items: [
+      { path: '/admin-content-management', label: 'Content', icon: LayoutTemplate },
+      { path: '/admin-reports', label: 'Reports', icon: FileText },
+    ],
+  },
 ];
 
 export const ADMIN_SIDEBAR_WIDTH = { collapsed: 110, expanded: 292 };
@@ -56,6 +89,7 @@ export default function AdminSidebar({
   brandTagline = 'Admin Portal',
   onPatientNavClick,
   onLogout,
+  showProfile = true,
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -113,47 +147,60 @@ export default function AdminSidebar({
       <div className="sidebar-primary admin-sidebar-primary">
         {children ?? (
           <>
-            {NAV_ITEMS.map(({ path, label, icon: Icon }) => {
-              const active = isNavActive(pathname, path);
-              const handleClick =
-                path === '/admin-patient-database' && onPatientNavClick
-                  ? (e) => {
-                      e.stopPropagation();
-                      onPatientNavClick(e);
-                    }
-                  : (e) => go(e, path);
-              return (
-                <div
-                  key={path}
-                  className={`sidebar-nav-item${active ? ' sidebar-nav-active' : ''}`}
-                  onClick={handleClick}
-                >
-                  <div className="sidebar-icon-wrap">
-                    <Icon size={22} color="#707EAE" />
-                  </div>
-                  <SidebarLabel>{label}</SidebarLabel>
-                </div>
-              );
-            })}
-            <AdminMessagesNavItem
-              active={isNavActive(pathname, '/admin-messages')}
-              onClick={(e) => go(e, '/admin-messages')}
-            />
-            <AdminRequestsNavItem />
+            {NAV_SECTIONS.map((section, sectionIndex) => (
+              <div className="sidebar-section" key={section.label || `section-${sectionIndex}`}>
+                {section.label ? <span className="sidebar-section-label">{section.label}</span> : null}
+                {section.items.map((item) => {
+                  if (item.special === 'communications') {
+                    const active = item.activePaths.some((p) => isNavActive(pathname, p));
+                    return (
+                      <AdminCommunicationsNavItem
+                        key="communications"
+                        active={active}
+                        onClick={(e) => go(e, item.path)}
+                      />
+                    );
+                  }
+                  const { path, label, icon: Icon, activePaths } = item;
+                  const active = (activePaths || [path]).some((p) => isNavActive(pathname, p));
+                  const handleClick =
+                    path === '/admin-patient-database' && onPatientNavClick
+                      ? (e) => {
+                          e.stopPropagation();
+                          onPatientNavClick(e);
+                        }
+                      : (e) => go(e, path);
+                  return (
+                    <div
+                      key={path}
+                      className={`sidebar-nav-item${active ? ' sidebar-nav-active' : ''}`}
+                      onClick={handleClick}
+                    >
+                      <div className="sidebar-icon-wrap">
+                        <Icon size={22} color="#707EAE" />
+                      </div>
+                      <SidebarLabel>{label}</SidebarLabel>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </>
         )}
       </div>
 
       <div className="sidebar-footer">
-        <div
-          className={`sidebar-nav-item${profileActive ? ' sidebar-nav-active' : ''}`}
-          onClick={(e) => go(e, profilePath)}
-        >
-          <div className="sidebar-icon-wrap">
-            <User size={22} color="#707EAE" />
+        {showProfile ? (
+          <div
+            className={`sidebar-nav-item${profileActive ? ' sidebar-nav-active' : ''}`}
+            onClick={(e) => go(e, profilePath)}
+          >
+            <div className="sidebar-icon-wrap">
+              <User size={22} color="#707EAE" />
+            </div>
+            <SidebarLabel>{profileLabel}</SidebarLabel>
           </div>
-          <SidebarLabel>{profileLabel}</SidebarLabel>
-        </div>
+        ) : null}
         <div
           className="sidebar-nav-item sidebar-nav-item--logout"
           onClick={(e) => {

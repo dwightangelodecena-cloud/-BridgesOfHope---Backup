@@ -27,9 +27,8 @@ import {
   BookUser,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import AdminSidebar from '@/components/admin/AdminSidebar';
-import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import logoBH from '@/assets/kalingalogo.png';
+import { RowActionsMenu } from '@/components/admin/RowActionsMenu';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 import { useAdminRealtimeRefresh } from '@/hooks/useAdminRealtimeRefresh';
@@ -199,10 +198,12 @@ function sortDischargeRows(rows, sortId) {
   return cp;
 }
 
-const DischargeManagement = () => {
+/** Content-only — the outer sidebar/shell now lives in the Patient Care workspace
+ * (patient-care.jsx), which mounts this as its "Discharges" tab. Everything below is untouched
+ * original logic. */
+export function DischargeManagementContent() {
   useAdminRealtimeRefresh();
   const navigate = useNavigate();
-  const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [formError, setFormError] = useState('');
@@ -665,7 +666,7 @@ const DischargeManagement = () => {
   };
 
   return (
-    <div className="family-portal admin-portal-layout dm-outer" style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}>
+    <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -729,7 +730,7 @@ const DischargeManagement = () => {
         }
         .db-sort-by-option:hover:not(.db-sort-by-option--active) { background: #f1f5f9; }
         .db-sort-by-option--active { background: #2563EB; color: white; }
-        .db-view-btn, .db-edit-btn, .db-action-btn { border: none; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; display: inline-flex; align-items: center; gap: 4px; }
+        .db-view-btn, .db-edit-btn, .db-action-btn, .db-readmit-btn { border: none; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; display: inline-flex; align-items: center; gap: 4px; }
         .db-view-btn { background: #1B2559; color: white; }
         .db-edit-btn { background: #F54E25; color: white; }
         .db-readmit-btn { background: #059669; color: white; }
@@ -778,21 +779,15 @@ const DischargeManagement = () => {
         }
       `}</style>
 
-      <AdminSidebar
-        isExpanded={isExpanded}
-        onToggleExpanded={() => setIsExpanded(!isExpanded)}
-      />
-
       <div className="db-mobile-only db-mobile-top-bar">
         <img src={logoBH} alt="Kalinga" style={{ height: 32 }} />
         <span style={{ fontSize: 15, fontWeight: 800, color: '#F54E25' }}>Discharge</span>
         <div style={{ width: 36, height: 36, background: '#F54E25', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>AD</div>
       </div>
 
-      <main className="dm-main admin-sidebar-offset">
+      <div className="dm-main">
         <div style={{ width: '100%' }} className="dm-print-area">
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#000' }}>Discharge Management</h1>
-          <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, marginBottom: 20, fontWeight: 500 }}>
+          <p style={{ fontSize: 13, color: '#707EAE', marginTop: 0, marginBottom: 20, fontWeight: 500 }}>
             Ready-for-discharge and completed discharges. Totals use the same fee structure as Services (admission + Imus monthly rate).
           </p>
 
@@ -961,7 +956,7 @@ const DischargeManagement = () => {
                         </td>
                         <td style={{ padding: '9px 10px', fontWeight: 700, color: '#05CD99' }}>{formatPhp(r.totalCost)}</td>
                         <td style={{ padding: '9px 10px' }}>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                             <button
                               type="button"
                               className="db-view-btn"
@@ -980,59 +975,46 @@ const DischargeManagement = () => {
                             >
                               <Edit2 size={12} /> Edit
                             </button>
-                            {r.source !== 'history' && canCallForPickup(rowAsPatient(r)) ? (
-                              <button
-                                type="button"
-                                className="db-action-btn"
-                                disabled={pickupBusyId === r.id}
-                                onClick={() => openPickupModal(r)}
-                              >
-                                <Calendar size={12} /> {r.pickupMeetingDate ? 'Reschedule Pickup' : 'Call for Pickup'}
-                              </button>
-                            ) : null}
-                            {r.source !== 'history' && isAwaitingFamilyPickupConfirmation(rowAsPatient(r)) ? (
-                              <button
-                                type="button"
-                                className="db-action-btn"
-                                disabled={pickupBusyId === r.id}
-                                title="Mark confirmed after the guardian confirms by phone/in person, without resending the notification"
-                                onClick={() => void handleMarkConfirmed(r)}
-                              >
-                                <UserCheck size={12} /> {pickupBusyId === r.id ? 'Saving…' : 'Mark Confirmed'}
-                              </button>
-                            ) : null}
-                            {r.source !== 'history' && canMarkPickedUp(rowAsPatient(r)) ? (
-                              <button
-                                type="button"
-                                className="db-action-btn"
-                                disabled={pickupBusyId === r.id}
-                                onClick={() => void handleMarkPickedUp(r)}
-                              >
-                                <UserCheck size={12} /> {pickupBusyId === r.id ? 'Saving…' : 'Mark Picked Up'}
-                              </button>
-                            ) : null}
-                            {r.source !== 'history' && r.finalStatus !== 'Completed' && r.finalStatus !== 'Archived' ? (
-                              <button
-                                type="button"
-                                className="db-action-btn"
-                                onClick={() => void handleFinalize(r)}
-                              >
-                                <CheckCircle size={12} /> Finalize
-                              </button>
-                            ) : null}
-                            <button type="button" className="db-action-btn" disabled={r.source === 'history'} onClick={() => handleArchive(r)}>
-                              <Archive size={12} /> Archive
-                            </button>
-                            {isDischargeRowReadmitEligible(r) ? (
-                              <button
-                                type="button"
-                                className="db-readmit-btn"
-                                disabled={readmitBusyId === r.id}
-                                onClick={() => void handleReadmit(r)}
-                              >
-                                <UserPlus size={12} /> {readmitBusyId === r.id ? 'Re-admitting…' : 'Re-admit'}
-                              </button>
-                            ) : null}
+                            <RowActionsMenu
+                              actions={[
+                                r.source !== 'history' && canCallForPickup(rowAsPatient(r)) && {
+                                  label: r.pickupMeetingDate ? 'Reschedule Pickup' : 'Call for Pickup',
+                                  icon: <Calendar size={14} />,
+                                  disabled: pickupBusyId === r.id,
+                                  onClick: () => openPickupModal(r),
+                                },
+                                r.source !== 'history' && isAwaitingFamilyPickupConfirmation(rowAsPatient(r)) && {
+                                  label: pickupBusyId === r.id ? 'Saving…' : 'Mark Confirmed',
+                                  icon: <UserCheck size={14} />,
+                                  disabled: pickupBusyId === r.id,
+                                  title: 'Mark confirmed after the guardian confirms by phone/in person, without resending the notification',
+                                  onClick: () => void handleMarkConfirmed(r),
+                                },
+                                r.source !== 'history' && canMarkPickedUp(rowAsPatient(r)) && {
+                                  label: pickupBusyId === r.id ? 'Saving…' : 'Mark Picked Up',
+                                  icon: <UserCheck size={14} />,
+                                  disabled: pickupBusyId === r.id,
+                                  onClick: () => void handleMarkPickedUp(r),
+                                },
+                                r.source !== 'history' && r.finalStatus !== 'Completed' && r.finalStatus !== 'Archived' && {
+                                  label: 'Finalize',
+                                  icon: <CheckCircle size={14} />,
+                                  onClick: () => void handleFinalize(r),
+                                },
+                                {
+                                  label: 'Archive',
+                                  icon: <Archive size={14} />,
+                                  disabled: r.source === 'history',
+                                  onClick: () => handleArchive(r),
+                                },
+                                isDischargeRowReadmitEligible(r) && {
+                                  label: readmitBusyId === r.id ? 'Re-admitting…' : 'Re-admit',
+                                  icon: <UserPlus size={14} />,
+                                  disabled: readmitBusyId === r.id,
+                                  onClick: () => void handleReadmit(r),
+                                },
+                              ]}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -1058,7 +1040,7 @@ const DischargeManagement = () => {
             )}
           </div>
         </div>
-      </main>
+      </div>
 
       <div className="db-mobile-only db-mobile-bottom-nav">
         <div className="mob-nav-item" onClick={() => navigate('/admin-dashboard')}><LayoutGrid size={18} color="#A3AED0" /><span>Home</span></div>
@@ -1420,8 +1402,6 @@ const DischargeManagement = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
-};
-
-export default DischargeManagement;
+}

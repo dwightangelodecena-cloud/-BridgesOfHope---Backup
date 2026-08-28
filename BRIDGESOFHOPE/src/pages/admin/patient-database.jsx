@@ -54,7 +54,6 @@ import BulletedListDisplay from '@/components/clinical/BulletedListDisplay';
 import MedicationTableDisplay from '@/components/clinical/MedicationTableDisplay';
 import { formatBulletedListNoteSection, bulletedListHasContent } from '@/lib/bulletedListField';
 import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
-import { ProgramSidebar, ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
 import {
   partitionProfilesForStaffAssignment,
   profileDisplayNameFromRow,
@@ -1962,7 +1961,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           box-shadow: 0 4px 12px rgba(0,0,0,0.02);
         }
         .view-top-clinical-scroll {
-          max-height: 88px;
+          max-height: 130px;
           overflow-y: auto;
           -webkit-overflow-scrolling: touch;
           font-variant-numeric: tabular-nums;
@@ -2102,9 +2101,8 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           .view-card2-status-row { flex-wrap: wrap !important; row-gap: 14px !important; column-gap: 8px !important; }
           .view-card2-status-row > div { flex: 1 1 calc(50% - 8px) !important; min-width: 120px !important; }
           .view-top-vitals-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-          .view-top-clinical-scroll { max-height: 108px !important; }
-          .view-vitals-row { flex-wrap: wrap !important; gap: 12px !important; }
-          .view-vitals-row > div { min-width: 45% !important; margin-bottom: 8px !important; }
+          .view-vitals-row-primary { grid-template-columns: 1fr !important; }
+          .view-top-clinical-scroll { max-height: 150px !important; }
           .view-weeks-row-scroll {
             flex-wrap: nowrap !important;
             overflow-x: auto !important;
@@ -2202,13 +2200,39 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
 
       {/* SIDEBAR */}
       {isProgram ? (
-        <ProgramSidebar
+        <AdminSidebar
           isExpanded={isExpanded}
-          setIsExpanded={setIsExpanded}
-          navigate={navigate}
-          active="residents"
-          onResidentsActivate={() => setSelectedPatient(null)}
-        />
+          onToggleExpanded={() => setIsExpanded(!isExpanded)}
+          dashboardPath="/program"
+          brandTagline="Program Portal"
+          showProfile={false}
+        >
+          <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => { e.stopPropagation(); setSelectedPatient(null); }}>
+            <div className="sidebar-icon-wrap"><Users size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Assigned residents</span>
+          </div>
+          <div
+            className={`sidebar-nav-item${pathname === '/program-discharge' ? ' sidebar-nav-active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); navigate('/program-discharge'); }}
+          >
+            <div className="sidebar-icon-wrap"><ArrowRightSquare size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Discharge management</span>
+          </div>
+          <div
+            className={`sidebar-nav-item${pathname === '/program-calendar' ? ' sidebar-nav-active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); navigate('/program-calendar'); }}
+          >
+            <div className="sidebar-icon-wrap"><Calendar size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Calendar</span>
+          </div>
+          <div
+            className={`sidebar-nav-item${pathname === '/program-weekly-report' ? ' sidebar-nav-active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); navigate('/program-weekly-report'); }}
+          >
+            <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
+            <span className="sidebar-label">Weekly Report</span>
+          </div>
+        </AdminSidebar>
       ) : isNurse ? (
         <AdminSidebar
           isExpanded={isExpanded}
@@ -2310,20 +2334,24 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         {/* Header Section */}
         <div style={{ marginBottom: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1B2559', marginBottom: 4 }}>
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>
               {isProgram ? 'Assigned residents' : staffLimited ? 'Resident records' : 'Resident Management'}
             </h1>
-            <p
-              onClick={() => selectedPatient && setSelectedPatient(null)}
-              style={{
-                fontSize: 13,
-                color: selectedPatient ? '#4361EE' : '#A3AED0',
-                fontWeight: 600,
-                cursor: selectedPatient ? 'pointer' : 'default',
-              }}
-            >
-              {selectedPatient ? 'Resident Information' : isProgram ? 'Assigned residents' : 'Resident Management'}
-            </p>
+            {selectedPatient ? (
+              // "Back to list" breadcrumb — only meaningful once actually drilled into a
+              // resident's detail view. Showing it at rest just repeated the title above
+              // verbatim, so it's hidden until there's somewhere to navigate back to.
+              <p
+                onClick={() => setSelectedPatient(null)}
+                style={{ fontSize: 13, color: '#4361EE', fontWeight: 600, cursor: 'pointer', marginTop: 8 }}
+              >
+                ← Resident Information
+              </p>
+            ) : (
+              <p style={{ fontSize: 13, color: '#707EAE', fontWeight: 500, marginTop: 8 }}>
+                Active and discharged residents, care team, and progress tracking.
+              </p>
+            )}
           </div>
           {(isProgram || selectedPatient) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
@@ -2435,11 +2463,17 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                           <span
                             style={{
                               ...trajectoryStyle,
-                              padding: '6px 14px',
-                              borderRadius: '20px',
+                              padding: '6px 12px',
+                              // A pill-shaped radius only looks right on single-line text — this
+                              // badge can hold a long combined label (e.g. "Temporarily
+                              // discharged · Day off 3 Days") that wraps to two lines in narrow
+                              // columns, where a big radius made it look like a warped blob.
+                              borderRadius: '10px',
                               fontSize: 13,
                               fontWeight: 800,
+                              lineHeight: 1.35,
                               display: 'inline-block',
+                              textAlign: 'center',
                             }}
                           >
                             {trajectoryLabel}
@@ -2747,10 +2781,12 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                   </div>
                 ) : null}
               </div>
+            </div>
 
-              {/* Card 3: Vitals + weekly clinical notes — compact; long text scrolls inside cells */}
-              <div className="info-card view-top-clinical-card" style={{ flex: '1 1 0', minWidth: 0, padding: '18px 20px', display: 'flex', flexDirection: 'column' }}>
-                {onTemporaryLeave ? <TemporaryDischargeCardBanner patient={selectedPatientCare} variant="compact" /> : null}
+            {/* Card 3: Vitals + weekly clinical notes — full-width so vitals labels and the
+                medications table have room to breathe instead of squeezing into a 1/3-width column */}
+            <div className="info-card view-top-clinical-card" style={{ minWidth: 0, padding: '20px 24px', display: 'flex', flexDirection: 'column' }}>
+              {onTemporaryLeave ? <TemporaryDischargeCardBanner patient={selectedPatientCare} variant="compact" /> : null}
                 {(() => {
                   const fieldLabelStyle = {
                     color: '#64748b',
@@ -2760,13 +2796,29 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                     textTransform: 'uppercase',
                     letterSpacing: '0.045em',
                   };
+                  const sectionHeaderStyle = {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 7,
+                    fontSize: 12.5,
+                    fontWeight: 800,
+                    color: '#1B2559',
+                    marginBottom: 12,
+                  };
+                  const tileStyle = {
+                    minWidth: 0,
+                    background: '#F8FAFC',
+                    border: '1px solid #EEF2F7',
+                    borderRadius: 12,
+                    padding: '10px 12px',
+                  };
                   const vitalCell = (label, value) => (
-                    <div style={{ minWidth: 0 }}>
+                    <div style={tileStyle}>
                       <p style={fieldLabelStyle}>{label}</p>
                       <p
                         style={{
-                          fontSize: 13,
-                          fontWeight: 700,
+                          fontSize: 14,
+                          fontWeight: 800,
                           color: String(value || '').trim() ? '#1B2559' : '#94a3b8',
                           lineHeight: 1.35,
                         }}
@@ -2779,7 +2831,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                     const text = formatVitalValue(value);
                     const has = String(value ?? '').trim() !== '';
                     return (
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={medications ? { minWidth: 0 } : tileStyle}>
                         <p style={fieldLabelStyle}>{label}</p>
                         <div
                           className="view-top-clinical-scroll"
@@ -2805,14 +2857,18 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                   };
                   return (
                     <>
+                      <p style={sectionHeaderStyle}>
+                        <Stethoscope size={15} color="#F54E25" />
+                        Vitals
+                      </p>
                       <div
                         className="view-top-vitals-grid"
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-                          gap: '8px 10px',
-                          paddingBottom: 10,
-                          marginBottom: 10,
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                          gap: '10px 12px',
+                          paddingBottom: 18,
+                          marginBottom: 18,
                           borderBottom: '1px solid #F4F7FE',
                         }}
                       >
@@ -2825,50 +2881,42 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                         {vitalCell('BMI', latestVitals.bmi)}
                         {vitalCell('SPO2', latestVitals.spo2)}
                       </div>
+                      <p style={sectionHeaderStyle}>
+                        <ClipboardList size={15} color="#F54E25" />
+                        Weekly Clinical Notes
+                      </p>
+                      {/* Medications table needs real width to avoid wrapping its own column
+                          headers, so it gets a wider share of the row than the plain-text notes. */}
                       <div
-                        className="view-vitals-row"
+                        className="view-vitals-row view-vitals-row-primary"
                         style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          gap: 10,
-                          marginBottom: 10,
-                          alignItems: 'flex-start',
+                          display: 'grid',
+                          gridTemplateColumns: 'minmax(320px, 1.3fr) minmax(230px, 1fr)',
+                          gap: 16,
+                          marginBottom: 16,
                         }}
                       >
                         {clinicalCell('Current medications', weeklyClinicalSnapshot.currentMedications, { medications: true })}
                         {clinicalCell('Nurse Notes', weeklyClinicalSnapshot.nurseNotes)}
                       </div>
+                      {/* Short-answer fields grouped together in their own even row instead of
+                          leaving one item stranded alone under a wider neighbor. */}
                       <div
-                        className="view-vitals-row"
+                        className="view-vitals-row view-vitals-row-secondary"
                         style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          gap: 10,
-                          marginBottom: 10,
-                          alignItems: 'flex-start',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                          gap: 16,
                         }}
                       >
                         {clinicalCell('Dietary restrictions', weeklyClinicalSnapshot.dietaryRestrictions, { bulleted: true })}
                         {clinicalCell('Ongoing medical concern', weeklyClinicalSnapshot.ongoingMedicalConcern, { bulleted: true })}
-                      </div>
-                      <div
-                        className="view-vitals-row"
-                        style={{
-                          borderTop: '1px solid #F4F7FE',
-                          paddingTop: 10,
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          gap: 10,
-                          alignItems: 'flex-start',
-                        }}
-                      >
                         {clinicalCell('Behavior', weeklyClinicalSnapshot.behavior)}
                         {clinicalCell('Recommendations', weeklyClinicalSnapshot.recommendations)}
                       </div>
                     </>
                   );
                 })()}
-              </div>
             </div>
 
             {isProgram ? (
@@ -3551,16 +3599,28 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                padding: '3px 8px',
+                                gap: 5,
+                                padding: '4px 10px',
                                 borderRadius: 999,
                                 fontSize: 10,
                                 fontWeight: 800,
                                 letterSpacing: '0.02em',
+                                whiteSpace: 'nowrap',
                                 background: patient.progressUpdatedAt ? '#DCFCE7' : '#FEF3C7',
                                 color: patient.progressUpdatedAt ? '#166534' : '#92400E',
                                 border: `1px solid ${patient.progressUpdatedAt ? '#BBF7D0' : '#FDE68A'}`,
                               }}
                             >
+                              <span
+                                aria-hidden="true"
+                                style={{
+                                  width: 5,
+                                  height: 5,
+                                  borderRadius: '50%',
+                                  flexShrink: 0,
+                                  background: patient.progressUpdatedAt ? '#22C55E' : '#D97706',
+                                }}
+                              />
                               {patient.progressUpdatedAt ? 'Governance updated' : 'Governance pending'}
                             </span>
                           </div>
@@ -3579,11 +3639,39 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       </main>
 
       {/* MOBILE BOTTOM NAV */}
-      {isProgram ? (
-        <ProgramMobileBottomNav navigate={navigate} active="residents" />
-      ) : (
       <div className="db-mobile-only db-mobile-bottom-nav">
-        {isNurse ? (
+        {isProgram ? (
+          <>
+            <div className="mob-nav-item active" onClick={() => setSelectedPatient(null)}>
+              <div style={{ background: '#F54E25', padding: 10, borderRadius: 10, display: 'flex' }}>
+                <Users size={20} color="white" />
+              </div>
+              <span style={{ color: '#F54E25' }}>Residents</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/program-discharge')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <ArrowRightSquare size={20} color="#A3AED0" />
+              </div>
+              <span>Discharge</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/program-calendar')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <Calendar size={20} color="#A3AED0" />
+              </div>
+              <span>Calendar</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/program-weekly-report')}>
+              <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
+                <FileText size={20} color="#A3AED0" />
+              </div>
+              <span>Weekly</span>
+            </div>
+            <div className="mob-nav-item" onClick={() => navigate('/login')}>
+              <LogOut size={22} color="#F54E25" />
+              <span style={{ color: '#F54E25' }}>Logout</span>
+            </div>
+          </>
+        ) : isNurse ? (
           <>
             <div className="mob-nav-item" onClick={() => navigate('/nurse-dashboard')}>
               <div style={{ padding: 10, borderRadius: 10, display: 'flex' }}>
@@ -3684,7 +3772,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
           </>
         )}
       </div>
-      )}
 
       {weeklyReportModalOpen &&
         createPortal(

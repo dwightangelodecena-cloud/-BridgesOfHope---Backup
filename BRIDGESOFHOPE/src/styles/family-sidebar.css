@@ -540,6 +540,36 @@
   width: 100%;
 }
 
+.family-portal .sidebar-section {
+  width: 100%;
+}
+
+.family-portal .sidebar-section + .sidebar-section {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+/* Fades out in sync with item labels when the sidebar collapses to icon-only width — unlike
+   item labels it isn't sized with the item-label max-width var (that's calibrated for text
+   sitting beside a 44px icon), so a longer heading like "Content & Reports" never clips. */
+.family-portal .sidebar-section-label {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 0 28px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: var(--family-sidebar-label-opacity, 0);
+  transition: opacity calc(var(--family-sidebar-duration) * 0.65) var(--family-sidebar-ease);
+}
+
 .family-portal .sidebar-footer {
   /* Pinned to the viewport directly (not absolute-within-the-aside) so it's always visible
      regardless of how tall the scrollable nav list above it gets — no reserved-padding height

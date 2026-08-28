@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Megaphone, Plus, Pencil, Trash2, X, ImagePlus } from 'lucide-react';
-import AdminSidebar from '@/components/admin/AdminSidebar';
-import { familySidebarStyle } from '@/lib/familySidebarStyle';
+import { Plus, Pencil, Trash2, X, ImagePlus } from 'lucide-react';
 import CmsImageField from '@/components/admin/CmsImageField';
 import {
   fetchAnnouncements,
@@ -248,8 +246,10 @@ function AnnouncementComposerModal({ initial, onClose, onSaved }) {
   );
 }
 
-export default function AdminAnnouncementsPage() {
-  const [isExpanded, setIsExpanded] = useState(false);
+/** Content-only — the outer sidebar/shell now lives in the Communications workspace
+ * (communications.jsx), which mounts this as its "Announcements" tab. Everything below is
+ * untouched original logic. */
+export function AdminAnnouncementsContent() {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -321,15 +321,8 @@ export default function AdminAnnouncementsPage() {
   };
 
   return (
-    <div
-      className="family-portal admin-portal-layout an-outer"
-      style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}
-    >
+    <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-        * { box-sizing: border-box; }
-        .an-outer { width: 100%; overflow-x: clip; }
-        .an-main { flex: 0 0 auto; min-height: 100vh; padding: 24px; }
         .an-icon-box { width: 40px; height: 40px; flex-shrink: 0; background: #FFF0ED; color: #F54E25; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
         .an-new-btn { border: none; border-radius: 10px; padding: 10px 16px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; background: #F54E25; color: white; display: inline-flex; align-items: center; gap: 6px; }
         .an-error-banner { background: #FEF2F2; border: 1px solid #FECACA; color: #B91C1C; border-radius: 12px; padding: 10px 14px; font-size: 13px; font-weight: 600; margin-bottom: 16px; }
@@ -387,20 +380,13 @@ export default function AdminAnnouncementsPage() {
         .an-preview-dot { width: 6px; height: 6px; border-radius: 999px; background: #E2E8F0; }
         .an-preview-dot-active { background: #F54E25; width: 16px; }
 
-        @media (max-width: 899px) { .desktop-sidebar { display: none !important; } .an-main { padding: 20px 12px 100px 12px !important; } }
         @media (max-width: 720px) { .an-modal-body { flex-direction: column; } }
       `}</style>
 
-      <AdminSidebar isExpanded={isExpanded} onToggleExpanded={() => setIsExpanded(!isExpanded)} />
-
-      <main className="an-main admin-sidebar-offset">
+      <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span className="an-icon-box"><Megaphone size={20} /></span>
-              Announcements
-            </h1>
-            <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, fontWeight: 500 }}>
+            <p style={{ fontSize: 13, color: '#707EAE', marginTop: 0, fontWeight: 500 }}>
               Promotional announcements shown as a popup on the family mobile app. Audience is always Family / Mobile App users.
             </p>
           </div>
@@ -454,11 +440,11 @@ export default function AdminAnnouncementsPage() {
             })}
           </div>
         )}
-      </main>
+      </div>
 
       {composerOpen ? (
         <AnnouncementComposerModal initial={editingRow} onClose={closeComposer} onSaved={handleSaved} />
       ) : null}
-    </div>
+    </>
   );
 }

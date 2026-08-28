@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FileText, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { FileText, ChevronDown, Users, ArrowRightSquare, Calendar as CalendarIcon, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
-import { ProgramSidebar, ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
+import AdminSidebar from '@/components/admin/AdminSidebar';
+import { ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
+import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import BulletedListFieldInput from '@/components/clinical/BulletedListFieldInput';
 import MedicationTableField from '@/components/clinical/MedicationTableField';
 import { appendActivityFeed } from '@/lib/activityFeed';
@@ -244,6 +246,7 @@ const ProgramWeeklyReport = () => {
   const [reportBasics, setReportBasics] = useState(INITIAL_BASICS);
   const [admittedPatients, setAdmittedPatients] = useState([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
   const [expandedPatientId, setExpandedPatientId] = useState(null);
   const [activeReportPatientId, setActiveReportPatientId] = useState(null);
   const [vitals, setVitals] = useState(INITIAL_VITALS);
@@ -368,11 +371,21 @@ const ProgramWeeklyReport = () => {
     const onDown = (e) => {
       if (pickerRef.current && !pickerRef.current.contains(e.target)) {
         setPickerOpen(false);
+        setPickerSearch('');
       }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [pickerOpen]);
+
+  const filteredAdmittedPatients = useMemo(() => {
+    const q = pickerSearch.trim().toLowerCase();
+    if (!q) return admittedPatients;
+    return admittedPatients.filter((p) => {
+      const haystack = `${p.name || ''} ${p.reason || ''}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [admittedPatients, pickerSearch]);
 
   const togglePatientWeeks = (id, e) => {
     e.stopPropagation();
@@ -400,6 +413,7 @@ const ProgramWeeklyReport = () => {
     };
     setReportDetails(defaultDetails);
     setPickerOpen(false);
+    setPickerSearch('');
     setExpandedPatientId(null);
 
     void (async () => {
@@ -651,7 +665,7 @@ const ProgramWeeklyReport = () => {
   }, [activeReportPatientId, admittedPatients, reportBasics.patientName, reportBasics.weekLabel, navigate, reportDetails, vitals, staffSignatureName, staffSignatureDate]);
 
   return (
-    <div className="wr-container">
+    <div className="wr-container family-portal admin-portal-layout" style={familySidebarStyle(isExpanded)}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
@@ -680,8 +694,8 @@ const ProgramWeeklyReport = () => {
         /* ---- MAIN ---- */
         .wr-main {
           flex: 1;
-          margin-left: ${isExpanded ? '280px' : '110px'};
-          transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          margin-left: var(--family-sidebar-w, 110px);
+          transition: margin-left var(--family-sidebar-duration, 0.42s) var(--family-sidebar-ease, cubic-bezier(0.22, 1, 0.36, 1));
           padding: 28px 34px 36px;
           overflow-y: auto;
           min-height: 100vh;
@@ -795,6 +809,43 @@ const ProgramWeeklyReport = () => {
           letter-spacing: 0.04em;
           color: #A3AED0;
           padding: 8px 10px 6px;
+        }
+
+        .wr-patient-search {
+          position: relative;
+          margin: 0 2px 10px;
+        }
+
+        .wr-patient-search input {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 9px 12px 9px 34px;
+          border: 1px solid #E5ECFF;
+          border-radius: 10px;
+          font-size: 13px;
+          font-weight: 600;
+          font-family: 'Inter', sans-serif;
+          color: #1B2559;
+          background: #FCFDFF;
+          outline: none;
+          transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+        }
+
+        .wr-patient-search input::placeholder { color: #A3AED0; font-weight: 400; }
+
+        .wr-patient-search input:focus {
+          border-color: #8EA2FF;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+          background: #FFFFFF;
+        }
+
+        .wr-patient-search svg {
+          position: absolute;
+          left: 11px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #A3AED0;
+          pointer-events: none;
         }
 
         .wr-patient-block {
@@ -994,17 +1045,17 @@ const ProgramWeeklyReport = () => {
 
         .form-underline-input--readonly,
         .form-textarea--readonly {
-          background: #F4F7FE;
-          border-color: #E9EDF7;
-          color: #475569;
+          background: #F1F5F9;
+          border-color: #E2E8F0;
+          color: #94A3B8;
           cursor: not-allowed;
         }
 
         .form-underline-input--readonly:focus,
         .form-textarea--readonly:focus {
-          border-color: #E9EDF7;
+          border-color: #E2E8F0;
           box-shadow: none;
-          background: #F4F7FE;
+          background: #F1F5F9;
         }
 
         .wr-nurse-only-note {
@@ -1023,6 +1074,25 @@ const ProgramWeeklyReport = () => {
           border-radius: 16px;
           background: linear-gradient(180deg, #FFFFFF 0%, #FBFCFF 100%);
           box-shadow: 0 6px 18px rgba(15,23,42,0.03);
+        }
+
+        /* Whole-card faded treatment for sections the nurse fills and program staff can only
+           review — not just the individual inputs inside them, the entire card reads as
+           locked/unavailable, the way a disabled panel does elsewhere in the app. */
+        .form-section--readonly {
+          background: #F1F5F9;
+          border-color: #E2E8F0;
+          box-shadow: none;
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .form-section--readonly .section-title {
+          color: #64748B;
+        }
+
+        .form-section--readonly .section-title::before {
+          background: #94A3B8;
         }
 
         .section-title {
@@ -1303,12 +1373,31 @@ const ProgramWeeklyReport = () => {
         }
       `}</style>
 
-      <ProgramSidebar
+      {/* SIDEBAR — shared AdminSidebar, same as nurse/admin portals */}
+      <AdminSidebar
         isExpanded={isExpanded}
-        setIsExpanded={setIsExpanded}
-        navigate={navigate}
-        active="weekly"
-      />
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+        dashboardPath="/program"
+        brandTagline="Program Portal"
+        showProfile={false}
+      >
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program'); }}>
+          <div className="sidebar-icon-wrap"><Users size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Assigned residents</span>
+        </div>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program-discharge'); }}>
+          <div className="sidebar-icon-wrap"><ArrowRightSquare size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Discharge management</span>
+        </div>
+        <div className="sidebar-nav-item" onClick={(e) => { e.stopPropagation(); navigate('/program-calendar'); }}>
+          <div className="sidebar-icon-wrap"><CalendarIcon size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Calendar</span>
+        </div>
+        <div className="sidebar-nav-item sidebar-nav-active" onClick={(e) => e.stopPropagation()}>
+          <div className="sidebar-icon-wrap"><FileText size={22} color="#707EAE" /></div>
+          <span className="sidebar-label">Weekly Report</span>
+        </div>
+      </AdminSidebar>
 
 
       {/* MOBILE TOP BAR */}
@@ -1334,6 +1423,7 @@ const ProgramWeeklyReport = () => {
               onClick={(e) => {
                 e.stopPropagation();
                 setPickerOpen((v) => !v);
+                setPickerSearch('');
               }}
             >
               <FileText size={18} color="#FFFFFF" />
@@ -1346,6 +1436,7 @@ const ProgramWeeklyReport = () => {
               onClick={(e) => {
                 e.stopPropagation();
                 setPickerOpen((v) => !v);
+                setPickerSearch('');
               }}
             >
               <FileText size={18} color="#F54E25" />
@@ -1360,7 +1451,23 @@ const ProgramWeeklyReport = () => {
                     No admitted patients yet. After the admin approves an admission, the patient will appear here.
                   </div>
                 ) : (
-                  admittedPatients.map((p) => (
+                  <>
+                    <div className="wr-patient-search">
+                      <Search size={15} />
+                      <input
+                        type="text"
+                        placeholder="Search residents..."
+                        value={pickerSearch}
+                        onChange={(e) => setPickerSearch(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    {filteredAdmittedPatients.length === 0 ? (
+                      <div className="wr-picker-empty">
+                        No residents match “{pickerSearch}”.
+                      </div>
+                    ) : (
+                  filteredAdmittedPatients.map((p) => (
                     <div key={p.id} className="wr-patient-block">
                       <button
                         type="button"
@@ -1403,6 +1510,8 @@ const ProgramWeeklyReport = () => {
                       )}
                     </div>
                   ))
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -1438,8 +1547,8 @@ const ProgramWeeklyReport = () => {
               </div>
             </div>
 
-            {/* Resident Information */}
-            <div className="form-section">
+            {/* Resident Information — pulled from the resident record, not editable here */}
+            <div className="form-section form-section--readonly">
               <div className="section-title">Resident Information</div>
               <div className="section-fields">
                 <div className="form-field">
@@ -1478,19 +1587,29 @@ const ProgramWeeklyReport = () => {
             </div>
 
             {/* Current Medications */}
-            <div className="form-section">
+            <div className="form-section form-section--readonly">
               <div className="section-title">Current Medications</div>
               <p className="wr-nurse-only-note">Filled by the assigned nurse. Program staff can review but not edit.</p>
-              <MedicationTableField
-                value={reportDetails.currentMedications}
-                onChange={() => {}}
-                readOnly
-                emptyText="Not recorded by nurse yet."
-              />
+              <div
+                style={{
+                  background: '#F1F5F9',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: 10,
+                  padding: 10,
+                  cursor: 'not-allowed',
+                }}
+              >
+                <MedicationTableField
+                  value={reportDetails.currentMedications}
+                  onChange={() => {}}
+                  readOnly
+                  emptyText="Not recorded by nurse yet."
+                />
+              </div>
             </div>
 
             {/* BMI / Weight / Vital Signs */}
-            <div className="form-section" style={{ background: 'linear-gradient(180deg, #F8FAFF 0%, #F4F7FF 100%)' }}>
+            <div className="form-section form-section--readonly">
               <div className="section-title" style={{ marginBottom: 8 }}>BMI / Weight / Vital Signs</div>
               <p className="wr-nurse-only-note" style={{ marginBottom: 16 }}>
                 Filled by the assigned nurse. Program staff can review but not edit.
@@ -1592,7 +1711,7 @@ const ProgramWeeklyReport = () => {
             </div>
 
             {/* Diet Restrictions */}
-            <div className="form-section">
+            <div className="form-section form-section--readonly">
               <div className="section-title">Diet Restrictions</div>
               <p className="wr-nurse-only-note">Filled by the assigned nurse. Program staff can review but not edit.</p>
               <div className="section-fields">
@@ -1634,7 +1753,7 @@ const ProgramWeeklyReport = () => {
             </div>
 
             {/* Ongoing Medical Concern */}
-            <div className="form-section">
+            <div className="form-section form-section--readonly">
               <div className="section-title">Ongoing Medical Concern</div>
               <p className="wr-nurse-only-note">Filled by the assigned nurse. Program staff can review but not edit.</p>
               <BulletedListFieldInput

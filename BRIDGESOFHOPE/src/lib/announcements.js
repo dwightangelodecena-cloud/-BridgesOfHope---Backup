@@ -114,6 +114,8 @@ export async function checkAndSendDueAnnouncementNotifications() {
       category: 'promo',
       title: row.title,
       body: row.caption?.trim() || row.title,
+      relatedType: 'announcement',
+      relatedId: row.id,
     });
     if (res.ok) {
       await supabase.from('announcements').update({ notified_at: new Date().toISOString() }).eq('id', row.id);

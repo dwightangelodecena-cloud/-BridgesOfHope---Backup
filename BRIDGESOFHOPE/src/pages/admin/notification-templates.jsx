@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { MessageSquare, RefreshCw, Save, Send, Users, User, Sparkles } from 'lucide-react';
-import AdminSidebar from '@/components/admin/AdminSidebar';
-import { familySidebarStyle } from '@/lib/familySidebarStyle';
+import { RefreshCw, Save, Send, Users, User, Sparkles } from 'lucide-react';
 import {
   fetchNotificationTemplates,
   updateNotificationTemplate,
@@ -253,8 +251,10 @@ function TemplateCard({ template, onSaved }) {
   );
 }
 
-export default function NotificationTemplatesPage() {
-  const [isExpanded, setIsExpanded] = useState(false);
+/** Content-only — the outer sidebar/shell now lives in the Communications workspace
+ * (communications.jsx), which mounts this as its "Notifications" tab. Everything below is
+ * untouched original logic. */
+export function NotificationTemplatesContent() {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -287,15 +287,8 @@ export default function NotificationTemplatesPage() {
   };
 
   return (
-    <div
-      className="family-portal admin-portal-layout nt-outer"
-      style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FD', fontFamily: "'Inter', sans-serif", color: '#1B2559', ...familySidebarStyle(isExpanded) }}
-    >
+    <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-        * { box-sizing: border-box; }
-        .nt-outer { width: 100%; overflow-x: clip; }
-        .nt-main { flex: 0 0 auto; min-height: 100vh; padding: 24px; }
         .nt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
         .nt-card { background: white; border: 1px solid #E9EDF7; border-radius: 16px; padding: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 10px; }
         .nt-card-head { display: flex; flex-direction: column; gap: 2px; }
@@ -328,19 +321,13 @@ export default function NotificationTemplatesPage() {
         .nt-send-btn { align-self: flex-start; }
         .nt-ai-draft-btn { align-self: flex-start; border: 1px solid #C7D2FE; background: #EEF2FF; color: #3730A3; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; }
         .nt-ai-draft-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        @media (max-width: 768px) { .desktop-sidebar { display: none !important; } .nt-main { padding: 20px 12px 100px 12px !important; } .nt-send-card { max-width: 100%; } }
+        @media (max-width: 768px) { .nt-send-card { max-width: 100%; } }
       `}</style>
 
-      <AdminSidebar isExpanded={isExpanded} onToggleExpanded={() => setIsExpanded(!isExpanded)} />
-
-      <main className="nt-main admin-sidebar-offset">
+      <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span className="nt-icon-box"><MessageSquare size={20} /></span>
-              Notification Templates
-            </h1>
-            <p style={{ fontSize: 13, color: '#707EAE', marginTop: 8, fontWeight: 500 }}>
+            <p style={{ fontSize: 13, color: '#707EAE', marginTop: 0, fontWeight: 500 }}>
               Wording sent to guardians for admission and visitation events. Edit the text below — placeholders in {'{{curly braces}}'} are filled in automatically.
             </p>
           </div>
@@ -369,7 +356,7 @@ export default function NotificationTemplatesPage() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </>
   );
 }

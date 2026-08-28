@@ -32,7 +32,10 @@ export default function MedicationTableDisplay({
   }
 
   return (
-    <div className="med-table-display-wrap" style={{ overflowX: 'auto' }}>
+    <div
+      className="med-table-display-wrap"
+      style={{ overflowX: 'auto', border: '1px solid #E2E8F0', borderRadius: 10 }}
+    >
       <style>{`
         .med-table-display {
           width: 100%;
@@ -42,30 +45,37 @@ export default function MedicationTableDisplay({
         }
         .med-table-display th,
         .med-table-display td {
-          border: 1px solid #CBD5E1;
+          border: none;
+          border-bottom: 1px solid #EEF2F7;
           padding: ${compact ? '8px 10px' : '10px 12px'};
           text-align: left;
           vertical-align: top;
         }
+        .med-table-display tbody tr:last-child td { border-bottom: none; }
         .med-table-display th {
           background: #F8FAFC;
+          border-bottom: 1px solid #E2E8F0;
           font-size: 10px;
           font-weight: 800;
           text-transform: uppercase;
           letter-spacing: 0.04em;
           color: #475569;
+          white-space: nowrap;
         }
         .med-table-display td {
           font-weight: 600;
           background: #fff;
         }
+        .med-table-display tbody tr:nth-child(even) td {
+          background: #FAFBFD;
+        }
       `}</style>
       <table className="med-table-display">
         <thead>
           <tr>
-            <th>Medicine Intake</th>
+            <th>Medicine</th>
             <th>Dosage</th>
-            <th>Interval hours</th>
+            <th>Interval</th>
           </tr>
         </thead>
         <tbody>
