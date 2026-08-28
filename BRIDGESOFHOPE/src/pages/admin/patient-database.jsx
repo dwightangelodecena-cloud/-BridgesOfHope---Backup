@@ -55,9 +55,10 @@ import MedicationTableDisplay from '@/components/clinical/MedicationTableDisplay
 import { formatBulletedListNoteSection, bulletedListHasContent } from '@/lib/bulletedListField';
 import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
 import {
-  partitionProfilesForStaffAssignment,
+  partitionProfilesForStaffAssignmentWithIds,
   profileDisplayNameFromRow,
 } from '@/lib/staffAssignmentLists';
+import { computeActiveCaseloadCounts, rankCandidatesByWorkload } from '@/lib/staffWorkload';
 import { StaffNotificationsBell } from '@/components/StaffNotificationsBell';
 
 function resolveProgramNotificationPath(relatedType) {
@@ -437,6 +438,14 @@ const toUiPatient = (row) => {
     caseLoadManager: row.case_load_manager || '',
     programStaff: row.program_staff || '',
     medicalStaffNote: row.medical_staff_note || '',
+    assignedNurseId: row.assigned_nurse_id || null,
+    assignedProgramStaffId: row.assigned_program_staff_id || null,
+    nurseAssignedAt: row.nurse_assigned_at || null,
+    programStaffAssignedAt: row.program_staff_assigned_at || null,
+    // raw snake_case mirrors so computeActiveCaseloadCounts() can consume this array directly
+    assigned_nurse_id: row.assigned_nurse_id || null,
+    assigned_program_staff_id: row.assigned_program_staff_id || null,
+    discharged_at: row.discharged_at || null,
     medicalHistory: row.medical_history || '',
     progressUpdatedBy: row.progress_updated_by || row.status_updated_by || '',
     progressUpdatedAt: row.progress_updated_at || row.status_updated_at || '',
@@ -624,7 +633,8 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   const [staffForm, setStaffForm] = useState({ caseLoadManager: '', programStaff: '', medicalStaffNote: '' });
   const [staffSaving, setStaffSaving] = useState(false);
   const [staffAssignmentModalOpen, setStaffAssignmentModalOpen] = useState(false);
-  const [staffDirectory, setStaffDirectory] = useState({ caseLoadManagers: [], programStaff: [] });
+  /** Candidates for the assignment modal: { nurses: {id,name}[], programStaff: {id,name}[] }. */
+  const [staffCandidates, setStaffCandidates] = useState({ nurses: [], programStaff: [] });
   const [nurseIdentityNames, setNurseIdentityNames] = useState([]);
   const [behaviorChecklistChecked, setBehaviorChecklistChecked] = useState({});
   const [recoveryLadderPosition, setRecoveryLadderPosition] = useState(1);
@@ -907,6 +917,17 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       window.removeEventListener('storage', onRefresh);
       window.removeEventListener(APP_DATA_REFRESH, onRefresh);
     };
+  }, []);
+
+  /**
+   * Auto-unassignment has no dedicated cron in this project, so it runs as a lazy sweep
+   * whenever staff have this page open — fire-and-forget, safe to call repeatedly.
+   */
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    supabase.rpc('bh_sweep_stale_assignments').then(({ error }) => {
+      if (error) console.warn('[patient-db] bh_sweep_stale_assignments:', error.message);
+    });
   }, []);
 
   useEffect(() => {
@@ -1356,6 +1377,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         const raw = localStorage.getItem(LOCAL_STAFF_DIRECTORY_KEY);
         const list = raw ? JSON.parse(raw) : [];
         return (Array.isArray(list) ? list : []).map((row) => ({
+          id: row?.id || row?.profileId || row?.profile_id || null,
           full_name: profileDisplayNameFromRow(row),
           name: row?.name,
           first_name: row?.first_name,
@@ -1382,11 +1404,8 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         }
       }
       if (cancelled) return;
-      const { nurses, programStaff } = partitionProfilesForStaffAssignment(profiles);
-      setStaffDirectory({
-        caseLoadManagers: programStaff,
-        programStaff: nurses,
-      });
+      // { nurses, programStaff }: candidates for the Nurse / Program dropdowns, each { id, name }.
+      setStaffCandidates(partitionProfilesForStaffAssignmentWithIds(profiles));
     })();
 
     return () => {
@@ -1394,15 +1413,19 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     };
   }, []);
 
-  const clmOptions = useMemo(
-    () => [...(staffDirectory.caseLoadManagers || [])].sort((a, b) => a.localeCompare(b)),
-    [staffDirectory.caseLoadManagers],
-  );
+  /** Deterministic, non-AI recommendation: fewest current active (non-discharged) residents first. */
+  const nurseRanked = useMemo(() => {
+    const counts = computeActiveCaseloadCounts(patients, 'assigned_nurse_id');
+    return rankCandidatesByWorkload(staffCandidates.nurses, counts);
+  }, [patients, staffCandidates.nurses]);
 
-  const nurseOptions = useMemo(
-    () => [...(staffDirectory.programStaff || [])].sort((a, b) => a.localeCompare(b)),
-    [staffDirectory.programStaff],
-  );
+  const programRanked = useMemo(() => {
+    const counts = computeActiveCaseloadCounts(patients, 'assigned_program_staff_id');
+    return rankCandidatesByWorkload(staffCandidates.programStaff, counts);
+  }, [patients, staffCandidates.programStaff]);
+
+  const clmOptions = useMemo(() => programRanked.map((c) => c.name), [programRanked]);
+  const nurseOptions = useMemo(() => nurseRanked.map((c) => c.name), [nurseRanked]);
 
   const saveRoomAssignment = async () => {
     if (!selectedPatient?.id || isLimited) return;
@@ -1565,22 +1588,44 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
     }
     setFormError('');
     setStaffSaving(true);
+
+    // Resolve the profile id behind each chosen name (names remain the source of truth
+    // written to program_staff / case_load_manager, for back-compat with existing
+    // name-based nurse/program filters elsewhere in the app).
+    const nurseMatch = nurseRanked.find((c) => c.name === programStaff);
+    const programMatch = programRanked.find((c) => c.name === caseLoadManager);
+    const nextNurseId = nurseMatch?.id || null;
+    const nextProgramStaffId = programMatch?.id || null;
+
+    const prevNurseId = selectedPatient.assignedNurseId || null;
+    const prevProgramStaffId = selectedPatient.assignedProgramStaffId || null;
+    const nurseIdChanged = Boolean(nextNurseId) && nextNurseId !== prevNurseId;
+    const programStaffIdChanged = Boolean(nextProgramStaffId) && nextProgramStaffId !== prevProgramStaffId;
+    const nowIso = new Date().toISOString();
+    const nextNurseAssignedAt = nurseIdChanged ? nowIso : (selectedPatient.nurseAssignedAt || null);
+    const nextProgramStaffAssignedAt = programStaffIdChanged ? nowIso : (selectedPatient.programStaffAssignedAt || null);
+
     const payload = {
       caseLoadManager,
       programStaff,
       medicalStaffNote,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowIso,
     };
 
     try {
       if (isSupabaseConfigured() && isSupabasePatientId(selectedPatient.id)) {
+        const dbPatch = {
+          case_load_manager: payload.caseLoadManager,
+          program_staff: payload.programStaff,
+          medical_staff_note: payload.medicalStaffNote || null,
+          assigned_nurse_id: nextNurseId,
+          assigned_program_staff_id: nextProgramStaffId,
+        };
+        if (nurseIdChanged) dbPatch.nurse_assigned_at = nowIso;
+        if (programStaffIdChanged) dbPatch.program_staff_assigned_at = nowIso;
         const { error } = await supabase
           .from('patients')
-          .update({
-            case_load_manager: payload.caseLoadManager,
-            program_staff: payload.programStaff,
-            medical_staff_note: payload.medicalStaffNote || null,
-          })
+          .update(dbPatch)
           .eq('id', selectedPatient.id);
         if (error) {
           throw new Error(`Staff assignment database update failed: ${error.message}`);
@@ -1594,14 +1639,34 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       setPatients((prev) => {
         const next = prev.map((p) => (
           String(p.id) === String(selectedPatient.id)
-            ? { ...p, caseLoadManager, programStaff, medicalStaffNote }
+            ? {
+                ...p,
+                caseLoadManager,
+                programStaff,
+                medicalStaffNote,
+                assignedNurseId: nextNurseId,
+                assignedProgramStaffId: nextProgramStaffId,
+                assigned_nurse_id: nextNurseId,
+                assigned_program_staff_id: nextProgramStaffId,
+                nurseAssignedAt: nextNurseAssignedAt,
+                programStaffAssignedAt: nextProgramStaffAssignedAt,
+              }
             : p
         ));
         syncPatientsLocalCache(next);
         return next;
       });
       setSelectedPatient((prev) => (prev
-        ? { ...prev, caseLoadManager, programStaff, medicalStaffNote }
+        ? {
+            ...prev,
+            caseLoadManager,
+            programStaff,
+            medicalStaffNote,
+            assignedNurseId: nextNurseId,
+            assignedProgramStaffId: nextProgramStaffId,
+            nurseAssignedAt: nextNurseAssignedAt,
+            programStaffAssignedAt: nextProgramStaffAssignedAt,
+          }
         : prev));
       refreshAppData();
       setStaffAssignmentModalOpen(false);
@@ -2728,10 +2793,15 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                             {staffForm.caseLoadManager && !clmOptions.includes(staffForm.caseLoadManager) ? (
                               <option value={staffForm.caseLoadManager}>{staffForm.caseLoadManager} (saved)</option>
                             ) : null}
-                            {clmOptions.map((name) => (
-                              <option key={`clm_${name}`} value={name}>{name}</option>
+                            {programRanked.map((c) => (
+                              <option key={`clm_${c.name}`} value={c.name}>
+                                {c.name} — {c.activeCount} active{c.recommended ? ' (Recommended)' : ''}
+                              </option>
                             ))}
                           </select>
+                          <p style={{ color: '#A3AED0', fontSize: 10, margin: '4px 0 0' }}>
+                            Sorted by current active caseload, lowest first.
+                          </p>
                         </div>
                         <div style={{ minWidth: 0 }}>
                           <label htmlFor="staff-modal-nurse" style={{ display: 'block', color: '#A3AED0', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
@@ -2747,10 +2817,15 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                             {staffForm.programStaff && !nurseOptions.includes(staffForm.programStaff) ? (
                               <option value={staffForm.programStaff}>{staffForm.programStaff} (saved)</option>
                             ) : null}
-                            {nurseOptions.map((name) => (
-                              <option key={`nurse_${name}`} value={name}>{name}</option>
+                            {nurseRanked.map((c) => (
+                              <option key={`nurse_${c.name}`} value={c.name}>
+                                {c.name} — {c.activeCount} active{c.recommended ? ' (Recommended)' : ''}
+                              </option>
                             ))}
                           </select>
+                          <p style={{ color: '#A3AED0', fontSize: 10, margin: '4px 0 0' }}>
+                            Sorted by current active caseload, lowest first.
+                          </p>
                         </div>
                       </div>
                       <input

@@ -42,10 +42,12 @@ export const profileDisplayNameFromRow = (row) => {
 };
 
 /**
- * @returns {{ nurses: string[], programStaff: string[] }}
+ * Shared partition core: buckets profiles into nurse / program-staff candidates,
+ * deduplicated by display name, each candidate carrying its profile id.
+ * @returns {{ nurses: {id: string|null, name: string}[], programStaff: {id: string|null, name: string}[] }}
  * programStaff = program / case-load role; nurses = nurse role.
  */
-export const partitionProfilesForStaffAssignment = (profiles) => {
+export const partitionProfilesForStaffAssignmentWithIds = (profiles) => {
   const nurses = [];
   const programStaff = [];
   const seenN = new Set();
@@ -69,22 +71,37 @@ export const partitionProfilesForStaffAssignment = (profiles) => {
         || dept.includes('case load')
       );
 
+    const id = row?.id ?? row?.profileId ?? row?.profile_id ?? null;
+
     if (isNurse) {
       if (!seenN.has(name)) {
         seenN.add(name);
-        nurses.push(name);
+        nurses.push({ id, name });
       }
     } else if (isProgramSide) {
       if (!seenP.has(name)) {
         seenP.add(name);
-        programStaff.push(name);
+        programStaff.push({ id, name });
       }
     }
   });
 
-  nurses.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  programStaff.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  nurses.sort(byName);
+  programStaff.sort(byName);
   return { nurses, programStaff };
+};
+
+/**
+ * @returns {{ nurses: string[], programStaff: string[] }}
+ * programStaff = program / case-load role; nurses = nurse role.
+ */
+export const partitionProfilesForStaffAssignment = (profiles) => {
+  const { nurses, programStaff } = partitionProfilesForStaffAssignmentWithIds(profiles);
+  return {
+    nurses: nurses.map((c) => c.name),
+    programStaff: programStaff.map((c) => c.name),
+  };
 };
 
 /** patients.case_load_manager — program / case-load staff (not the nurse). */

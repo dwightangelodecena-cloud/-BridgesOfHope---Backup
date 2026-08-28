@@ -290,6 +290,17 @@ const AdminDashboard = () => {
     };
   }, []);
 
+  /**
+   * Auto-unassignment has no dedicated cron in this project, so it runs as a lazy sweep
+   * whenever an admin has the dashboard open — fire-and-forget, safe to call repeatedly.
+   */
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    supabase.rpc('bh_sweep_stale_assignments').then(({ error }) => {
+      if (error) console.warn('[dashboard] bh_sweep_stale_assignments:', error.message);
+    });
+  }, []);
+
   useEffect(() => {
     const syncFacilitySettings = () => setFacilitySettings(loadFacilitySettings());
     window.addEventListener('storage', syncFacilitySettings);

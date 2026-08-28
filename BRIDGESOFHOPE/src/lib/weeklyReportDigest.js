@@ -96,3 +96,83 @@ export async function generateWeeklyReportDigest(patientName, weeklyReportsByWee
   }
   return parseDigestJson(content);
 }
+
+const DAILY_DRAFT_SYSTEM_PROMPT =
+  'You help a nurse/program staffer draft their weekly patient report from the daily notes they already ' +
+  'wrote this week. Write a plain-language draft summary, 3-6 sentences, covering only what the daily notes ' +
+  'actually say — do not invent facts, and do not assume every day of the week happened if it is not present. ' +
+  'This is a DRAFT for a human to review and edit before submitting, not a final report. ' +
+  'Return ONLY valid JSON with one key: "draft" (the narrative string).';
+
+function formatDailyReportLine(row) {
+  const parts = [`${row.report_date}:`];
+  const push = (label, value) => {
+    const v = value == null ? '' : String(value).trim();
+    if (v) parts.push(`${label} - ${v}`);
+  };
+  push('Observations', row.observations);
+  push('Assessment', row.assessment);
+  push('Follow-up', row.follow_up);
+  push('Notes', row.notes);
+  return parts.join(' ');
+}
+
+/**
+ * Drafts a weekly-report narrative from only the daily reports that actually exist for that
+ * week (partial weeks are expected — no day is assumed). The nurse/program staffer reviews
+ * and edits the draft before saving; nothing is submitted automatically.
+ * @param {string} patientName
+ * @param {number|string} weekNumber
+ * @param {Array<{report_date: string, observations?: string, assessment?: string, follow_up?: string, notes?: string}>} dailyReportRows
+ * @returns {Promise<string>}
+ */
+export async function draftWeeklyReportFromDailyReports(patientName, weekNumber, dailyReportRows) {
+  const rows = (dailyReportRows || [])
+    .filter((r) => r && r.report_date)
+    .sort((a, b) => String(a.report_date).localeCompare(String(b.report_date)));
+  if (rows.length === 0) {
+    throw new Error('No daily reports logged for this week yet — add at least one before drafting a summary.');
+  }
+  const body = rows.map(formatDailyReportLine).join('\n');
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${groqApiKey()}`,
+    },
+    body: JSON.stringify({
+      model: textModel(),
+      temperature: 0.2,
+      max_tokens: 400,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: DAILY_DRAFT_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: `Resident: ${patientName || 'Unknown'}\nWeek ${weekNumber}\nDaily notes logged (${rows.length} of 7 days):\n${body}`,
+        },
+      ],
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = json?.error?.message || res.statusText || 'Groq request failed';
+    throw new Error(msg);
+  }
+  const content = json?.choices?.[0]?.message?.content;
+  if (!content || typeof content !== 'string') {
+    throw new Error('No draft returned from Groq.');
+  }
+  const text = String(content || '').trim();
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  const payload = jsonMatch ? jsonMatch[0] : text;
+  let parsed;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    throw new Error('Groq returned an unreadable draft. Try again.');
+  }
+  const draft = String(parsed.draft || '').trim();
+  if (!draft) throw new Error('Groq did not return a draft. Try again.');
+  return draft;
+}

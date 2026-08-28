@@ -12,6 +12,13 @@ import { formatBulletedListNoteSection } from '@/lib/bulletedListField';
 import { formatMedicationTableNoteSection } from '@/lib/medicationTableField';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
+import {
+  fetchDailyReportsForRange,
+  fetchAllDailyReportsForPatient,
+  upsertDailyReport,
+  weekDateRange,
+} from '@/lib/dailyReports';
+import { draftWeeklyReportFromDailyReports } from '@/lib/weeklyReportDigest';
 
 const INITIAL_BASICS = {
   weekLabel: '',
@@ -41,6 +48,7 @@ const INITIAL_REPORT_DETAILS = {
   ongoingMedicalConcern: '',
   upcomingProcedureDescription: '',
   upcomingProcedureDate: '',
+  weeklySummary: '',
 };
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
@@ -255,7 +263,31 @@ const ProgramWeeklyReport = () => {
   const [staffIdentityNames, setStaffIdentityNames] = useState([]);
   const [staffSignatureName, setStaffSignatureName] = useState('');
   const [staffSignatureDate, setStaffSignatureDate] = useState(() => new Date().toLocaleDateString('en-US'));
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [activePatientAdmittedAtIso, setActivePatientAdmittedAtIso] = useState(null);
   const pickerRef = useRef(null);
+
+  // ---- Daily Report quick-entry (program staff, today only) ----
+  const [dailyObservations, setDailyObservations] = useState('');
+  const [dailyAssessment, setDailyAssessment] = useState('');
+  const [dailyFollowUp, setDailyFollowUp] = useState('');
+  const [dailyNotes, setDailyNotes] = useState('');
+  const [dailySaving, setDailySaving] = useState(false);
+  const [dailySaveMessage, setDailySaveMessage] = useState('');
+  const [dailySaveError, setDailySaveError] = useState('');
+  const [dailyReportsRefreshKey, setDailyReportsRefreshKey] = useState(0);
+
+  // ---- This week's daily reports + AI draft button ----
+  const [weekDailyReports, setWeekDailyReports] = useState([]);
+  const [weekDailyReportsLoading, setWeekDailyReportsLoading] = useState(false);
+  const [weekDailyReportsError, setWeekDailyReportsError] = useState('');
+  const [aiDrafting, setAiDrafting] = useState(false);
+  const [aiDraftError, setAiDraftError] = useState('');
+
+  const activeWeekNumber = useMemo(() => {
+    const m = String(reportBasics.weekLabel || '').match(/(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  }, [reportBasics.weekLabel]);
 
   useEffect(() => {
     const loadIdentity = async () => {
@@ -270,6 +302,7 @@ const ProgramWeeklyReport = () => {
         setStaffIdentityNames([]);
         return;
       }
+      setCurrentUserId(user.id);
       const { data: profile } = await supabase
         .from('profiles')
         .select('full_name')
@@ -378,6 +411,38 @@ const ProgramWeeklyReport = () => {
     return () => document.removeEventListener('mousedown', onDown);
   }, [pickerOpen]);
 
+  /** Loads THIS WEEK's daily_reports for the selected resident, so only days that actually
+   *  have an entry are shown/fed into the AI draft — never assume all 7 days exist. */
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!activeReportPatientId || !isSupabaseConfigured()) {
+        setWeekDailyReports([]);
+        setWeekDailyReportsError('');
+        return;
+      }
+      setWeekDailyReportsLoading(true);
+      setWeekDailyReportsError('');
+      const admittedIso = activePatientAdmittedAtIso ? String(activePatientAdmittedAtIso).slice(0, 10) : null;
+      const range = admittedIso && activeWeekNumber ? weekDateRange(admittedIso, activeWeekNumber) : null;
+      const result = range
+        ? await fetchDailyReportsForRange(activeReportPatientId, range.from, range.to)
+        : await fetchAllDailyReportsForPatient(activeReportPatientId);
+      if (cancelled) return;
+      setWeekDailyReportsLoading(false);
+      if (!result.ok) {
+        setWeekDailyReportsError(result.errorMessage || 'Could not load daily reports.');
+        setWeekDailyReports([]);
+        return;
+      }
+      setWeekDailyReports(result.rows || []);
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeReportPatientId, activeWeekNumber, activePatientAdmittedAtIso, dailyReportsRefreshKey]);
+
   const filteredAdmittedPatients = useMemo(() => {
     const q = pickerSearch.trim().toLowerCase();
     if (!q) return admittedPatients;
@@ -396,6 +461,10 @@ const ProgramWeeklyReport = () => {
     const seq = ++hydrateSeqRef.current;
     setSubmitError('');
     setActiveReportPatientId(patient.id);
+    setActivePatientAdmittedAtIso(patient.raw?.admitted_at || patient.raw?.admissionDate || null);
+    setDailySaveMessage('');
+    setDailySaveError('');
+    setAiDraftError('');
     setReportBasics((prev) => ({
       ...prev,
       weekLabel: `Week ${weekNum}`,
@@ -439,6 +508,55 @@ const ProgramWeeklyReport = () => {
       }
       return next;
     });
+  };
+
+  const handleSaveDailyReport = async () => {
+    setDailySaveMessage('');
+    setDailySaveError('');
+    if (!activeReportPatientId) {
+      setDailySaveError('Select a resident and week first.');
+      return;
+    }
+    if (!isSupabaseConfigured()) {
+      setDailySaveError('Daily reports require Supabase to be configured.');
+      return;
+    }
+    if (!currentUserId) {
+      setDailySaveError('Could not identify your staff account. Please sign in again.');
+      return;
+    }
+    setDailySaving(true);
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const result = await upsertDailyReport({
+      patientId: activeReportPatientId,
+      reportDate: todayIso,
+      authorId: currentUserId,
+      authorRole: 'program',
+      observations: dailyObservations,
+      assessment: dailyAssessment,
+      followUp: dailyFollowUp,
+      notes: dailyNotes,
+    });
+    setDailySaving(false);
+    if (!result.ok) {
+      setDailySaveError(result.errorMessage || 'Could not save daily report.');
+      return;
+    }
+    setDailySaveMessage('Daily report saved.');
+    setDailyReportsRefreshKey((k) => k + 1);
+  };
+
+  const handleAiDraftClick = async () => {
+    setAiDraftError('');
+    setAiDrafting(true);
+    try {
+      const draft = await draftWeeklyReportFromDailyReports(reportBasics.patientName, activeWeekNumber, weekDailyReports);
+      setReportDetails((prev) => ({ ...prev, weeklySummary: draft }));
+    } catch (err) {
+      setAiDraftError(err?.message || 'Could not generate a draft.');
+    } finally {
+      setAiDrafting(false);
+    }
   };
 
   const mirrorWeeklyReportToLocal = (patientId, weekNum, entry) => {
@@ -515,6 +633,7 @@ const ProgramWeeklyReport = () => {
       return Number.isFinite(raw) ? raw : null;
     })();
     const summaryText = [
+      reportDetails.weeklySummary && reportDetails.weeklySummary.trim(),
       formatMedicationTableNoteSection('Current medications', reportDetails.currentMedications),
       reportDetails.interventionMedication && `Medication intervention: ${reportDetails.interventionMedication}`,
       formatBulletedListNoteSection('Ongoing medical concern', reportDetails.ongoingMedicalConcern),
@@ -657,6 +776,24 @@ const ProgramWeeklyReport = () => {
         `Weekly care report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`,
         { familyId: patientRow?.family_id ?? null }
       );
+
+      // Notify the family so it shows up in their mobile inbox. Fire-and-forget: never block
+      // the save flow or fail the weekly report save if this insert errors.
+      if (patientRow?.family_id) {
+        supabase
+          .from('family_notifications')
+          .insert({
+            family_id: patientRow.family_id,
+            title: 'New weekly report available',
+            body: `A new weekly report for ${pname} (Week ${weekNum}) has been added.`,
+            related_type: 'weekly_report',
+            related_id: String(patientId),
+            category: 'progress',
+          })
+          .then(({ error: notifError }) => {
+            if (notifError) console.warn('[family_notifications insert]', notifError.message);
+          });
+      }
     }
 
     setSubmitError('');
@@ -1224,6 +1361,86 @@ const ProgramWeeklyReport = () => {
 
         .wr-header-btn { margin-right: 40px; }
 
+        /* ---- DAILY REPORT / AI DRAFT ---- */
+        .wr-section-title-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 14px;
+        }
+
+        .wr-section-title-row .section-title { margin-bottom: 0; }
+
+        .btn-inline-action {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #FFF0EB;
+          color: #F54E25;
+          border: 1px solid #FFD9CC;
+          border-radius: 10px;
+          padding: 8px 14px;
+          font-size: 12px;
+          font-weight: 800;
+          cursor: pointer;
+          font-family: 'Inter', sans-serif;
+          transition: background 0.15s, transform 0.15s;
+          white-space: nowrap;
+        }
+
+        .btn-inline-action:hover:not(:disabled) { background: #FFE2D6; }
+        .btn-inline-action:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .wr-daily-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .wr-daily-grid .form-textarea { height: 90px; }
+
+        .wr-save-feedback {
+          margin-top: 10px;
+          font-size: 12px;
+          font-weight: 700;
+          line-height: 1.4;
+        }
+
+        .wr-save-feedback--ok { color: #15803D; }
+        .wr-save-feedback--error { color: #991B1B; }
+
+        .wr-daily-entries-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-bottom: 14px;
+        }
+
+        .wr-daily-entry-row {
+          border: 1px solid #E9EDF7;
+          background: #FAFBFF;
+          border-radius: 10px;
+          padding: 10px 12px;
+          font-size: 12px;
+          color: #334155;
+          line-height: 1.5;
+        }
+
+        .wr-daily-entry-date {
+          font-weight: 800;
+          color: #1B2559;
+          margin-right: 6px;
+        }
+
+        .wr-daily-entries-empty {
+          font-size: 12px;
+          color: #94A3B8;
+          font-weight: 600;
+          margin-bottom: 14px;
+        }
+
         /* ---- MOBILE ---- */
         .mobile-only { display: none; }
 
@@ -1310,6 +1527,11 @@ const ProgramWeeklyReport = () => {
             gap: 24px;
             margin-bottom: 28px;
           }
+
+          .wr-daily-grid { grid-template-columns: 1fr; gap: 20px; }
+
+          .wr-section-title-row { align-items: stretch; }
+          .btn-inline-action { width: 100%; justify-content: center; }
 
           .form-section { margin-bottom: 28px; }
           .section-fields { gap: 24px; }
@@ -1521,6 +1743,66 @@ const ProgramWeeklyReport = () => {
         {/* Paper */}
         <div className="wr-paper">
           <div className="wr-paper-title">Weekly Report</div>
+
+          {/* Today's Daily Report — quick entry, separate save action from the weekly form below */}
+          <div className="form-section">
+            <div className="section-title">
+              Today&rsquo;s Daily Report — {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            </div>
+            <div className="wr-daily-grid">
+              <div className="form-field">
+                <label className="form-label">Observations:</label>
+                <textarea
+                  className="form-textarea"
+                  placeholder="What did you observe today?"
+                  value={dailyObservations}
+                  onChange={(e) => setDailyObservations(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label className="form-label">Assessment:</label>
+                <textarea
+                  className="form-textarea"
+                  placeholder="Your assessment of today..."
+                  value={dailyAssessment}
+                  onChange={(e) => setDailyAssessment(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label className="form-label">Follow-up:</label>
+                <textarea
+                  className="form-textarea"
+                  placeholder="Any follow-up needed..."
+                  value={dailyFollowUp}
+                  onChange={(e) => setDailyFollowUp(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label className="form-label">Notes:</label>
+                <textarea
+                  className="form-textarea"
+                  placeholder="Additional notes..."
+                  value={dailyNotes}
+                  onChange={(e) => setDailyNotes(e.target.value)}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn-inline-action"
+                onClick={handleSaveDailyReport}
+                disabled={dailySaving || !activeReportPatientId}
+              >
+                {dailySaving ? 'Saving…' : 'Save Daily Report'}
+              </button>
+              {!activeReportPatientId ? (
+                <span className="wr-daily-entries-empty" style={{ marginBottom: 0 }}>Select a resident and week above first.</span>
+              ) : null}
+              {dailySaveMessage ? <span className="wr-save-feedback wr-save-feedback--ok">{dailySaveMessage}</span> : null}
+              {dailySaveError ? <span className="wr-save-feedback wr-save-feedback--error">{dailySaveError}</span> : null}
+            </div>
+          </div>
 
           <form onSubmit={(e) => { e.preventDefault(); setShowConfirm(true); }}>
 
@@ -1765,6 +2047,49 @@ const ProgramWeeklyReport = () => {
                 addLabel="Add concern"
                 readOnly
                 emptyText="Not recorded by nurse yet."
+              />
+            </div>
+
+            {/* Weekly Summary — staff-authored, optionally drafted from this week's daily reports */}
+            <div className="form-section">
+              <div className="wr-section-title-row">
+                <div className="section-title">Weekly Summary</div>
+                <button
+                  type="button"
+                  className="btn-inline-action"
+                  onClick={handleAiDraftClick}
+                  disabled={aiDrafting || !activeReportPatientId}
+                  title="Draft a summary from this week's daily reports"
+                >
+                  {aiDrafting ? 'Drafting…' : 'AI summary'}
+                </button>
+              </div>
+
+              {weekDailyReportsLoading ? (
+                <p className="wr-daily-entries-empty">Loading this week&rsquo;s daily reports…</p>
+              ) : weekDailyReportsError ? (
+                <p className="wr-save-feedback wr-save-feedback--error">{weekDailyReportsError}</p>
+              ) : weekDailyReports.length === 0 ? (
+                <p className="wr-daily-entries-empty">No daily reports logged for this week yet.</p>
+              ) : (
+                <div className="wr-daily-entries-list">
+                  {weekDailyReports.map((r) => (
+                    <div key={`${r.report_date}-${r.author_id}`} className="wr-daily-entry-row">
+                      <span className="wr-daily-entry-date">{r.report_date}</span>
+                      {[r.observations, r.assessment, r.follow_up, r.notes].filter(Boolean).join(' · ') || 'No details logged.'}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {aiDraftError ? <p className="wr-save-feedback wr-save-feedback--error">{aiDraftError}</p> : null}
+
+              <textarea
+                className="form-textarea"
+                style={{ height: 150 }}
+                placeholder="Write (or generate with AI summary) this week's overall progress narrative for review before submitting..."
+                value={reportDetails.weeklySummary}
+                onChange={(e) => setReportDetails((prev) => ({ ...prev, weeklySummary: e.target.value }))}
               />
             </div>
 
