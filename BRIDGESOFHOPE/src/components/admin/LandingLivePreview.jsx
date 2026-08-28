@@ -9,11 +9,13 @@ import { mergeFacilitySettings, FACILITY_SETTINGS_STORAGE_KEY, FACILITY_SETTINGS
  * (kept in sync with the Facility tab's draft state).
  * Writes merged JSON to the same localStorage key the target page reads, then
  * notifies the iframe window so its React tree reloads from storage.
+ *
+ * `mode` is controlled by the parent (mirrors the active CMS tab) so the editor
+ * drawer and the preview never fall out of sync with each other.
  */
-export default function LandingLivePreview({ content, facilitySettings, onSectionSelect, onIframeRef }) {
+export default function LandingLivePreview({ content, facilitySettings, mode = 'home', onModeChange, onSectionSelect, onIframeRef }) {
   const iframeRef = useRef(null);
   const [reloadToken, setReloadToken] = useState(0);
-  const [mode, setMode] = useState('home'); // 'home' | 'dashboard'
 
   const setIframeRef = useCallback(
     (node) => {
@@ -88,7 +90,7 @@ export default function LandingLivePreview({ content, facilitySettings, onSectio
               role="tab"
               aria-selected={mode === 'home'}
               className={`cm-preview-toggle-btn${mode === 'home' ? ' cm-preview-toggle-btn--active' : ''}`}
-              onClick={() => setMode('home')}
+              onClick={() => onModeChange?.('home')}
             >
               Home
             </button>
@@ -97,7 +99,7 @@ export default function LandingLivePreview({ content, facilitySettings, onSectio
               role="tab"
               aria-selected={mode === 'dashboard'}
               className={`cm-preview-toggle-btn${mode === 'dashboard' ? ' cm-preview-toggle-btn--active' : ''}`}
-              onClick={() => setMode('dashboard')}
+              onClick={() => onModeChange?.('dashboard')}
             >
               Admin dashboard
             </button>

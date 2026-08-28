@@ -452,6 +452,24 @@ function ContentManagement() {
     [selectRail]
   );
 
+  /**
+   * Preview target mirrors the active tab (Facility <-> Admin dashboard, everything
+   * else <-> Home) so the editor drawer and the preview iframe never fall out of sync.
+   */
+  const previewMode = tab === 'facility' ? 'dashboard' : 'home';
+
+  const handlePreviewModeChange = useCallback(
+    (nextMode) => {
+      setPropsPanelOpen(true);
+      if (nextMode === 'dashboard') {
+        setTab('facility');
+      } else {
+        setTab((prev) => (prev === 'facility' ? 'order' : prev));
+      }
+    },
+    []
+  );
+
   return (
     <div
       className="family-portal admin-portal-layout cm-outer"
@@ -650,7 +668,7 @@ function ContentManagement() {
             )}
             <CustomBlocksVisualEditor
               splitLayout
-              livePreviewSlot={<LandingLivePreview content={content} facilitySettings={facility} onSectionSelect={handlePreviewSectionSelect} />}
+              livePreviewSlot={<LandingLivePreview content={content} facilitySettings={facility} mode={previewMode} onModeChange={handlePreviewModeChange} onSectionSelect={handlePreviewSectionSelect} />}
               customSections={customSections}
               patchCustomBlock={patchCustomBlock}
               insertCustomBlockAt={insertCustomBlockAt}
@@ -1469,7 +1487,7 @@ function ContentManagement() {
               {propsPanelOpen ? <ChevronRight size={22} strokeWidth={2} /> : <ChevronLeft size={22} strokeWidth={2} />}
             </button>
             <div className="cm-preview-column">
-              <LandingLivePreview content={content} facilitySettings={facility} onSectionSelect={handlePreviewSectionSelect} />
+              <LandingLivePreview content={content} facilitySettings={facility} mode={previewMode} onModeChange={handlePreviewModeChange} onSectionSelect={handlePreviewSectionSelect} />
             </div>
           </div>
           )}
