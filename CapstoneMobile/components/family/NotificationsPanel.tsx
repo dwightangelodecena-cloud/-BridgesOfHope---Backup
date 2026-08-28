@@ -85,8 +85,14 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
     if (item.relatedType === 'visitation_request' || item.relatedType === 'discharge_pickup') {
       router.navigate(TAB_ROUTES.appointments as never);
     } else if (item.relatedType === 'admission_request') {
+      // "admission_request" covers both meeting-scheduling notifications and document-request
+      // notifications — they need different destinations. Title text is the only signal
+      // available (category is a coarse 'admission' bucket for both), matching the same
+      // heuristic getNotifVisual already uses to tell them apart for icon selection.
+      const t = item.title.toLowerCase();
+      const needsDocs = t.includes('documents needed') || t.includes('missing documents');
       router.push({
-        pathname: TAB_ROUTES.admissionMeetingRequest,
+        pathname: needsDocs ? TAB_ROUTES.progress : TAB_ROUTES.admissionMeetingRequest,
         params: item.relatedId ? { requestId: item.relatedId } : {},
       } as never);
     }

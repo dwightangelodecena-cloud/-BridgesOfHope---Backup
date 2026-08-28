@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Pressable,
   ActivityIndicator,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -212,6 +213,18 @@ function ReportFieldCard({
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  // Live viewport width, not the module-level snapshot `width` used for static styles below —
+  // on Android, Dimensions.get('window') read at bundle-eval time can be stale relative to the
+  // final settled layout width (e.g. while edge-to-edge insets are still resolving), which would
+  // otherwise permanently lock the hero image's computed height to the wrong aspect ratio for
+  // the real screen width, misaligning it against the container (which always renders at the
+  // true current width via '100%').
+  const { width: liveWidth } = useWindowDimensions();
+  const heroImageHeight = useMemo(
+    () => liveWidth * (HOME_HERO_NATURAL_H / HOME_HERO_NATURAL_W),
+    [liveWidth]
+  );
+  const heroHeight = heroImageHeight * 0.95;
   const { scrollRef, scrollToTop } = useFamilyPageScroll();
   const router = useRouter();
   const { displayName } = useFamilyUserMobile();
@@ -508,10 +521,10 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.heroBanner}>
+        <View style={[styles.heroBanner, { height: heroHeight }]}>
           <Image
             source={require('../../assets/images/home-header.png')}
-            style={styles.heroBannerImage}
+            style={[styles.heroBannerImage, { height: heroImageHeight }]}
             resizeMode="cover"
           />
           <View style={styles.heroInner}>

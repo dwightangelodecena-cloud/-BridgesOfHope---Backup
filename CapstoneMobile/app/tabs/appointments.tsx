@@ -147,7 +147,10 @@ function useCalendarGridLayout() {
   const { width: screenWidth } = useWindowDimensions();
   return useMemo(() => {
     const inner = Math.max(0, screenWidth - CAL_HORIZONTAL_PAD);
-    const cell = Math.max(38, Math.floor((inner - CAL_GAP * 6) / 7));
+    // Derived purely from `inner` (no artificial minimum) so gridWidth can never exceed the
+    // space actually available — a hard floor here caused the grid to overflow its container
+    // on common ~360px-wide Android screens.
+    const cell = Math.max(1, Math.floor((inner - CAL_GAP * 6) / 7));
     const gridWidth = cell * 7 + CAL_GAP * 6;
     return { cell, gridWidth, gap: CAL_GAP };
   }, [screenWidth]);
@@ -358,7 +361,6 @@ export default function AppointmentsScreen() {
   const selectedDayLabel = form.preferredDate ? formatVisitationWeekdayLong(form.preferredDate) : '';
   const selectedDateLong = form.preferredDate
     ? new Date(`${form.preferredDate}T12:00:00`).toLocaleDateString('en-US', {
-        weekday: 'long',
         month: 'long',
         day: 'numeric',
         year: 'numeric',
@@ -1046,7 +1048,9 @@ export default function AppointmentsScreen() {
               </View>
               <View>
                 <Text style={styles.selectedDateLabel}>Selected Date</Text>
-                <Text style={styles.selectedDateValue}>{selectedDateLong || '—'}</Text>
+                <Text style={styles.selectedDateValue} numberOfLines={1} ellipsizeMode="tail">
+                  {selectedDateLong || '—'}
+                </Text>
                 {selectedDayLabel ? (
                   <Text style={styles.visitDayLine}>Visit Day: {selectedDayLabel}</Text>
                 ) : null}
@@ -1866,6 +1870,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
+    flexShrink: 0,
   },
   editDateBtnTxt: { fontSize: 12.5, fontWeight: '800', color: '#4F46E5' },
   visitDayLine: { marginTop: 3, fontSize: 12, fontWeight: '700', color: '#166534' },

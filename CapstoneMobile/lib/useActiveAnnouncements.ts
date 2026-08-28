@@ -27,6 +27,7 @@ async function loadSeenIds(userId: string): Promise<Set<string>> {
 export function useActiveAnnouncements(userId: string) {
   const [items, setItems] = useState<DbAnnouncement[]>([]);
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
+  const [seenIdsLoaded, setSeenIdsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
@@ -43,11 +44,16 @@ export function useActiveAnnouncements(userId: string) {
   useEffect(() => {
     if (!userId.trim()) {
       setSeenIds(new Set());
+      setSeenIdsLoaded(true);
       return;
     }
     let mounted = true;
+    setSeenIdsLoaded(false);
     loadSeenIds(userId).then((ids) => {
-      if (mounted) setSeenIds(ids);
+      if (mounted) {
+        setSeenIds(ids);
+        setSeenIdsLoaded(true);
+      }
     });
     return () => {
       mounted = false;
@@ -81,5 +87,10 @@ export function useActiveAnnouncements(userId: string) {
     [userId]
   );
 
-  return { unseen, loading, dismiss };
+  // Gate on seenIdsLoaded, not just loading: items can arrive before the async AsyncStorage
+  // read resolves, and until it does, seenIds is an empty placeholder — so an already-dismissed
+  // announcement would briefly count as unseen, flash open, then vanish the instant the real
+  // seen-ids load and filter it back out.
+  const ready = seenIdsLoaded;
+  return { unseen: ready ? unseen : [], loading, dismiss, ready };
 }
