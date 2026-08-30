@@ -1,18 +1,44 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { LogOut, FileText, ChevronDown, Users, Calendar, LayoutGrid, User, X, Copy, ClipboardCheck } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { LogOut, FileText, ChevronLeft, ChevronDown, Users, Calendar, LayoutGrid, User, X, Copy, ClipboardCheck } from 'lucide-react';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import logo from '@/assets/kalingalogo.png';
 import AdminSidebar from '@/components/admin/AdminSidebar';
+import ReportPatientDashboard from '@/components/reports/ReportPatientDashboard';
+import PatientReportFolders from '@/components/reports/PatientReportFolders';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import BulletedListFieldInput from '@/components/clinical/BulletedListFieldInput';
 import MedicationTableField from '@/components/clinical/MedicationTableField';
+import CompiledDailyReportsList from '@/components/clinical/CompiledDailyReportsList';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { formatBulletedListNoteSection, bulletedListHasContent } from '@/lib/bulletedListField';
 import { formatMedicationTableNoteSection, medicationTableHasContent } from '@/lib/medicationTableField';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH } from '@/lib/appDataRefresh';
-import { fetchDailyReportsForRange, fetchAllDailyReportsForPatient, upsertDailyReport, weekDateRange } from '@/lib/dailyReports';
-import { draftWeeklyReportFromDailyReports } from '@/lib/weeklyReportDigest';
+import {
+  fetchDailyReportsForRange,
+  fetchDailyReportsForPatients,
+  fetchDailyReportsForWeek,
+  upsertDailyReport,
+  weekDateRange,
+  weekDateList,
+  snapshotDailyReports,
+} from '@/lib/dailyReports';
+
+/** {maxWeek, addWeeklyTarget:{week,mode}, currentWorkingWeek} from a patient's weekly_reports rows. */
+function deriveWeekPlan(weeklyRows) {
+  const nums = (weeklyRows || []).map((r) => Number(r.week_number)).filter((n) => Number.isFinite(n) && n > 0);
+  const maxWeek = nums.length ? Math.max(...nums) : 0;
+  const maxRow = (weeklyRows || []).find((r) => Number(r.week_number) === maxWeek) || null;
+  const concludedNums = (weeklyRows || [])
+    .filter((r) => r.concluded_at)
+    .map((r) => Number(r.week_number))
+    .filter((n) => Number.isFinite(n));
+  const maxConcluded = concludedNums.length ? Math.max(...concludedNums) : 0;
+  const addWeeklyTarget = maxRow && !maxRow.concluded_at
+    ? { week: maxWeek, mode: 'open-draft' }
+    : { week: maxWeek + 1, mode: 'new' };
+  return { maxWeek, addWeeklyTarget, currentWorkingWeek: maxConcluded + 1 };
+}
 
 const INITIAL_BASICS = {
   weekLabel: '',
@@ -48,16 +74,6 @@ const INITIAL_DAILY_REPORT_FORM = {
 };
 
 const WEEKLY_REPORTS_STORAGE_KEY = 'bh_nurse_weekly_reports';
-
-const patientInitials = (name) => {
-  if (!name || !String(name).trim()) return '?';
-  return String(name)
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0].toUpperCase())
-    .join('');
-};
 
 const asText = (v) => (v == null ? '' : String(v));
 
@@ -130,12 +146,32 @@ const SectionTitle = ({ children, required = false }) => (
 const NurseMedicalReportPage = () => {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // View is derived from the URL: dashboard → folders → daily/weekly form.
+  const urlPatient = searchParams.get('patient') || '';
+  const urlWeek = Number(searchParams.get('week')) || null;
+  const urlForm = searchParams.get('form') || '';
+  const view = !urlPatient
+    ? 'dashboard'
+    : urlWeek && urlForm === 'daily'
+      ? 'daily-form'
+      : urlWeek && urlForm === 'weekly'
+        ? 'weekly-form'
+        : 'folders';
+
+  const goDashboard = () => setSearchParams({});
+  const goFolders = (pid) => setSearchParams({ patient: pid || urlPatient });
+  const goForm = (pid, week, form) => setSearchParams({ patient: pid || urlPatient, week: String(week), form });
+  const activeWeekNumber = urlWeek;
+
   const [isExpanded, setIsExpanded] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [concludeConfirm, setConcludeConfirm] = useState(false);
+  const [concluding, setConcluding] = useState(false);
   const [reportBasics, setReportBasics] = useState(INITIAL_BASICS);
   const [admittedPatients, setAdmittedPatients] = useState([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [expandedPatientId, setExpandedPatientId] = useState(null);
+  const [statsByPatient, setStatsByPatient] = useState({});
   const [activeReportPatientId, setActiveReportPatientId] = useState(null);
   const [vitals, setVitals] = useState(INITIAL_VITALS);
   const [reportDetails, setReportDetails] = useState(INITIAL_REPORT_DETAILS);
@@ -146,7 +182,6 @@ const NurseMedicalReportPage = () => {
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [summaryText, setSummaryText] = useState('');
   const [summaryCopied, setSummaryCopied] = useState(false);
-  const pickerRef = useRef(null);
 
   const [currentUserId, setCurrentUserId] = useState(null);
 
@@ -155,23 +190,21 @@ const NurseMedicalReportPage = () => {
   const [previousReportsLoading, setPreviousReportsLoading] = useState(false);
   const [previousReportsError, setPreviousReportsError] = useState('');
   const [previousReportsExpanded, setPreviousReportsExpanded] = useState(false);
+  const [weeklyRefreshTick, setWeeklyRefreshTick] = useState(0);
+  // Daily-report row counts per week for the folder view.
+  const [patientDailyRows, setPatientDailyRows] = useState([]);
 
-  // Daily Report quick-entry (per-day notes, separate from the weekly upsert).
+  // Daily Report entry (per-day notes) — the internal source records the weekly report is
+  // compiled from. Date is selectable within the chosen week (defaults to today).
   const [dailyReportForm, setDailyReportForm] = useState(INITIAL_DAILY_REPORT_FORM);
+  const [dailyReportDate, setDailyReportDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dailyReportSaveState, setDailyReportSaveState] = useState({ loading: false, error: '', ok: false });
 
-  // This week's daily reports, used both for display and as AI-summary source material.
+  // This week's daily reports — shown on the Daily tab and compiled into the weekly report on Conclude.
   const [weekDailyReports, setWeekDailyReports] = useState([]);
   const [weekDailyReportsLoading, setWeekDailyReportsLoading] = useState(false);
   const [weekDailyReportsError, setWeekDailyReportsError] = useState('');
   const [weekDailyReportsRefreshTick, setWeekDailyReportsRefreshTick] = useState(0);
-
-  const [aiDraftLoading, setAiDraftLoading] = useState(false);
-  const [aiDraftError, setAiDraftError] = useState('');
-  // Reference-only: never merged into the weekly report's own fields or saved anywhere.
-  // Daily reports stay their own separate records ("files in a folder") — the weekly
-  // report is written independently by the nurse.
-  const [aiDraftText, setAiDraftText] = useState('');
 
   useEffect(() => {
     const loadIdentity = async () => {
@@ -284,16 +317,95 @@ const NurseMedicalReportPage = () => {
     };
   }, [nurseIdentityNames]);
 
+  // Sync the selected resident + week from the URL into the form state. Re-hydrate the
+  // read-only basics + vitals only when the patient/week actually changes (not on every
+  // background admittedPatients refresh, which would clobber in-progress vitals edits).
+  const hydratedKeyRef = useRef('');
+  const prefilledKeyRef = useRef('');
   useEffect(() => {
-    if (!pickerOpen) return;
-    const onDown = (e) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
-        setPickerOpen(false);
+    setActiveReportPatientId(urlPatient || null);
+    const patient = admittedPatients.find((x) => String(x.id) === String(urlPatient));
+    const key = `${urlPatient}|${urlWeek || ''}`;
+    if (!urlPatient) {
+      hydratedKeyRef.current = '';
+      setReportBasics(INITIAL_BASICS);
+      return;
+    }
+    if (hydratedKeyRef.current === key && patient) return;
+    if (!patient && hydratedKeyRef.current.startsWith(`${urlPatient}|`)) {
+      // patient list still resolving after a refresh — keep what we have
+      return;
+    }
+    hydratedKeyRef.current = key;
+    prefilledKeyRef.current = '';
+    setReportBasics((prev) => ({
+      ...prev,
+      weekLabel: urlWeek ? `Week ${urlWeek}` : '',
+      admissionDate: patient?.date || '',
+      patientName: patient?.name || '',
+      age: patient?.age || prev.age || '',
+      primaryConcern: patient?.reason || '',
+    }));
+    if (patient) {
+      setVitals(deriveVitalsFromPatient(patient.raw || {}));
+      setReportDetails(INITIAL_REPORT_DETAILS);
+      setNurseSignatureDate(new Date().toLocaleDateString('en-US'));
+      setConcludeConfirm(false);
+      setDailyReportForm(INITIAL_DAILY_REPORT_FORM);
+    }
+  }, [urlPatient, urlWeek, admittedPatients]);
+
+  // Dashboard card stats: weekly + daily report counts per assigned patient.
+  useEffect(() => {
+    if (view !== 'dashboard' || !isSupabaseConfigured() || admittedPatients.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const ids = admittedPatients.map((p) => p.id).filter(Boolean);
+      const { data: wkRows } = await supabase
+        .from('weekly_reports')
+        .select('patient_id, week_number, concluded_at')
+        .in('patient_id', ids);
+      const dailyByPatient = await fetchDailyReportsForPatients(ids);
+      if (cancelled) return;
+      const stats = {};
+      for (const p of admittedPatients) {
+        const wk = (wkRows || []).filter((r) => String(r.patient_id) === String(p.id));
+        const daily = dailyByPatient[p.id] || [];
+        const admittedIso = p.raw?.admitted_at ? String(p.raw.admitted_at).slice(0, 10) : null;
+        let weeksElapsed = 0;
+        if (admittedIso) {
+          const days = Math.floor((Date.now() - new Date(`${admittedIso}T00:00:00`).getTime()) / 86400000);
+          weeksElapsed = Math.max(1, Math.floor(days / 7) + 1);
+        }
+        stats[p.id] = {
+          weeklyCount: wk.length,
+          concludedCount: wk.filter((r) => r.concluded_at).length,
+          dailyCount: daily.length,
+          weeksElapsed,
+        };
       }
+      setStatsByPatient(stats);
+    })();
+    return () => {
+      cancelled = true;
     };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [pickerOpen]);
+  }, [view, admittedPatients, weeklyRefreshTick]);
+
+  // All daily-report rows for the selected patient (folder-view week counts).
+  useEffect(() => {
+    if (!activeReportPatientId || !isSupabaseConfigured()) {
+      setPatientDailyRows([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const byPatient = await fetchDailyReportsForPatients([activeReportPatientId]);
+      if (!cancelled) setPatientDailyRows(byPatient[activeReportPatientId] || []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeReportPatientId, weeklyRefreshTick, weekDailyReportsRefreshTick]);
 
   // Continuity of care: load every prior weekly_reports row for the selected resident so a
   // reassigned nurse can see what previous nurses (possibly a different nurse_name) recorded.
@@ -307,11 +419,18 @@ const NurseMedicalReportPage = () => {
     setPreviousReportsLoading(true);
     setPreviousReportsError('');
     (async () => {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('weekly_reports')
-        .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent')
+        .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent, concluded_at, compiled_daily_reports, current_medications, dietary_restrictions, food_allergies, ongoing_medical_concern, vitals_weight, vitals_height, vitals_bmi, vitals_bp, vitals_pr, vitals_rr, vitals_spo2, vitals_temperature')
         .eq('patient_id', activeReportPatientId)
         .order('week_number', { ascending: true });
+      if (error && /column .* does not exist/i.test(String(error.message || ''))) {
+        ({ data, error } = await supabase
+          .from('weekly_reports')
+          .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent')
+          .eq('patient_id', activeReportPatientId)
+          .order('week_number', { ascending: true }));
+      }
       if (cancelled) return;
       if (error) {
         setPreviousReportsError(error.message || 'Could not load previous reports.');
@@ -324,12 +443,12 @@ const NurseMedicalReportPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeReportPatientId]);
+  }, [activeReportPatientId, weeklyRefreshTick]);
 
-  // Load this week's daily_reports for the selected resident — used for display and as the
-  // source material for the AI weekly-summary draft. Only days that actually have entries show.
+  // Load the selected week's daily_reports (by explicit week_number) — shown on the form and
+  // compiled into the weekly report on Conclude.
   useEffect(() => {
-    if (!activeReportPatientId || !isSupabaseConfigured()) {
+    if (!activeReportPatientId || !activeWeekNumber || !isSupabaseConfigured()) {
       setWeekDailyReports([]);
       setWeekDailyReportsError('');
       return;
@@ -338,31 +457,114 @@ const NurseMedicalReportPage = () => {
     setWeekDailyReportsLoading(true);
     setWeekDailyReportsError('');
     (async () => {
-      const weekMatch = String(reportBasics.weekLabel || '').match(/(\d+)/);
-      const weekNum = weekMatch ? parseInt(weekMatch[1], 10) : null;
-      const patient = admittedPatients.find((x) => String(x.id) === String(activeReportPatientId));
-      const rawAdmission = patient?.raw?.admitted_at || patient?.raw?.admissionDate || null;
-      const range = rawAdmission && weekNum ? weekDateRange(String(rawAdmission).slice(0, 10), weekNum) : null;
-
-      const result = range
-        ? await fetchDailyReportsForRange(activeReportPatientId, range.from, range.to)
-        : await fetchAllDailyReportsForPatient(activeReportPatientId);
-
+      let result = await fetchDailyReportsForWeek(activeReportPatientId, activeWeekNumber);
+      // Fallback for un-migrated rows (week_number still null): use the admission-date window.
+      if (result.ok && result.rows.length === 0) {
+        const patient = admittedPatients.find((x) => String(x.id) === String(activeReportPatientId));
+        const rawAdmission = patient?.raw?.admitted_at || patient?.raw?.admissionDate || null;
+        const range = rawAdmission ? weekDateRange(String(rawAdmission).slice(0, 10), activeWeekNumber) : null;
+        if (range) result = await fetchDailyReportsForRange(activeReportPatientId, range.from, range.to);
+      }
       if (cancelled) return;
       if (!result.ok) {
         setWeekDailyReportsError(result.errorMessage || 'Could not load daily reports.');
         setWeekDailyReports([]);
       } else {
-        // No admission-date/week mapping available — fall back to the most recent entries
-        // rather than assuming a full week exists.
-        setWeekDailyReports(range ? result.rows : result.rows.slice(-10));
+        setWeekDailyReports(result.rows);
       }
       setWeekDailyReportsLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [activeReportPatientId, reportBasics.weekLabel, admittedPatients, weekDailyReportsRefreshTick]);
+  }, [activeReportPatientId, activeWeekNumber, admittedPatients, weekDailyReportsRefreshTick]);
+
+  const activePatientAdmissionIso = useMemo(() => {
+    const patient = admittedPatients.find((x) => String(x.id) === String(activeReportPatientId));
+    const raw = patient?.raw?.admitted_at || patient?.raw?.admissionDate || null;
+    return raw ? String(raw).slice(0, 10) : null;
+  }, [admittedPatients, activeReportPatientId]);
+
+  const weekDateOptions = useMemo(
+    () => weekDateList(activePatientAdmissionIso, activeWeekNumber),
+    [activePatientAdmissionIso, activeWeekNumber]
+  );
+
+  const currentWeekReport = useMemo(
+    () => previousReports.find((r) => Number(r.week_number) === Number(activeWeekNumber)) || null,
+    [previousReports, activeWeekNumber]
+  );
+  const currentWeekConcludedAt = currentWeekReport?.concluded_at || null;
+
+  const weekPlan = useMemo(() => deriveWeekPlan(previousReports), [previousReports]);
+
+  const dailyCountsByWeek = useMemo(() => {
+    const m = {};
+    for (const r of patientDailyRows) {
+      const n = Number(r.week_number);
+      if (Number.isFinite(n)) m[n] = (m[n] || 0) + 1;
+    }
+    return m;
+  }, [patientDailyRows]);
+
+  const dashboardPatients = useMemo(
+    () =>
+      admittedPatients.map((p) => ({
+        id: p.id,
+        name: p.name,
+        primaryConcern: p.reason,
+        progressPercent: p.raw?.progress_percent ?? p.raw?.progress ?? 0,
+        admittedIso: p.raw?.admitted_at || null,
+      })),
+    [admittedPatients]
+  );
+
+  // Re-open a saved weekly report (draft or concluded) with its fields prefilled, so editing
+  // and re-saving does not blank the existing row. Runs once per patient|week.
+  useEffect(() => {
+    if (view !== 'weekly-form' || !currentWeekReport) return;
+    const key = `${urlPatient}|${activeWeekNumber}`;
+    if (prefilledKeyRef.current === key) return;
+    prefilledKeyRef.current = key;
+    const r = currentWeekReport;
+    setReportDetails((prev) => ({
+      ...prev,
+      currentMedications: r.current_medications || prev.currentMedications,
+      dietaryRestrictions: r.dietary_restrictions || prev.dietaryRestrictions,
+      foodAllergies: r.food_allergies || prev.foodAllergies,
+      ongoingMedicalConcern: r.ongoing_medical_concern || r.behavior_observation || prev.ongoingMedicalConcern,
+    }));
+    setVitals((prev) => ({
+      weight: r.vitals_weight || prev.weight,
+      height: r.vitals_height || prev.height,
+      bmi: r.vitals_bmi || prev.bmi,
+      bp: r.vitals_bp || prev.bp,
+      pr: r.vitals_pr || prev.pr,
+      rr: r.vitals_rr || prev.rr,
+      spo2: r.vitals_spo2 || prev.spo2,
+      temperature: r.vitals_temperature || prev.temperature,
+    }));
+  }, [view, currentWeekReport, urlPatient, activeWeekNumber]);
+
+  // Effective daily-report date: keep it inside the selected week, defaulting to today when it fits.
+  const effectiveDailyDate = useMemo(() => {
+    if (weekDateOptions.length === 0) return dailyReportDate;
+    if (weekDateOptions.includes(dailyReportDate)) return dailyReportDate;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    return weekDateOptions.includes(todayIso) ? todayIso : weekDateOptions[weekDateOptions.length - 1];
+  }, [weekDateOptions, dailyReportDate]);
+
+  const handleEditDailyRow = useCallback((row) => {
+    if (!row) return;
+    setDailyReportDate(row.report_date);
+    setDailyReportForm({
+      observations: row.observations || '',
+      assessment: row.assessment || '',
+      followUp: row.follow_up || '',
+      notes: row.notes || '',
+    });
+    setDailyReportSaveState({ loading: false, error: '', ok: false });
+  }, []);
 
   const handleSaveDailyReport = useCallback(async () => {
     if (!activeReportPatientId) {
@@ -374,12 +576,13 @@ const NurseMedicalReportPage = () => {
       return;
     }
     setDailyReportSaveState({ loading: true, error: '', ok: false });
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const reportDate = effectiveDailyDate || new Date().toISOString().slice(0, 10);
     const result = await upsertDailyReport({
       patientId: activeReportPatientId,
-      reportDate: todayIso,
+      reportDate,
       authorId: currentUserId,
       authorRole: 'nurse',
+      weekNumber: activeWeekNumber,
       observations: dailyReportForm.observations,
       assessment: dailyReportForm.assessment,
       followUp: dailyReportForm.followUp,
@@ -391,51 +594,7 @@ const NurseMedicalReportPage = () => {
     }
     setDailyReportSaveState({ loading: false, error: '', ok: true });
     setWeekDailyReportsRefreshTick((t) => t + 1);
-  }, [activeReportPatientId, currentUserId, dailyReportForm]);
-
-  const handleGenerateAiDraft = useCallback(async () => {
-    setAiDraftError('');
-    setAiDraftLoading(true);
-    try {
-      const weekMatch = String(reportBasics.weekLabel || '').match(/(\d+)/);
-      const weekNum = weekMatch ? weekMatch[1] : '1';
-      const draft = await draftWeeklyReportFromDailyReports(
-        reportBasics.patientName || 'Resident',
-        weekNum,
-        weekDailyReports
-      );
-      setAiDraftText(draft);
-    } catch (e) {
-      setAiDraftError(e?.message || 'Could not generate an AI summary draft.');
-    } finally {
-      setAiDraftLoading(false);
-    }
-  }, [reportBasics.weekLabel, reportBasics.patientName, weekDailyReports]);
-
-  const togglePatientWeeks = (id, e) => {
-    e.stopPropagation();
-    setExpandedPatientId((prev) => (prev === id ? null : id));
-  };
-
-  const applyPatientAndWeek = (patient, weekNum) => {
-    setSubmitError('');
-    setActiveReportPatientId(patient.id);
-    setReportBasics((prev) => ({
-      ...prev,
-      weekLabel: `Week ${weekNum}`,
-      admissionDate: patient.date || '',
-      patientName: patient.name || '',
-      age: patient.age || prev.age || '',
-      primaryConcern: patient.reason || patient.primaryConcern || '',
-    }));
-    setVitals(deriveVitalsFromPatient(patient.raw || {}));
-    setNurseSignatureDate(new Date().toLocaleDateString('en-US'));
-    setDailyReportForm(INITIAL_DAILY_REPORT_FORM);
-    setDailyReportSaveState({ loading: false, error: '', ok: false });
-    setAiDraftError('');
-    setPickerOpen(false);
-    setExpandedPatientId(null);
-  };
+  }, [activeReportPatientId, currentUserId, dailyReportForm, effectiveDailyDate, activeWeekNumber]);
 
   const handleVitalsFieldChange = (field, value) => {
     setVitals((prev) => {
@@ -483,9 +642,11 @@ const NurseMedicalReportPage = () => {
     }
   };
 
-  const persistWeeklyReport = useCallback(async () => {
+  const persistWeeklyReport = useCallback(async ({ conclude = false } = {}) => {
     const weekMatch = String(reportBasics.weekLabel || '').match(/(\d+)/);
     const weekNum = weekMatch ? weekMatch[1] : null;
+    const concludedAtIso = conclude ? new Date().toISOString() : null;
+    const compiledDaily = conclude ? snapshotDailyReports(weekDailyReports) : null;
 
     let patientId = activeReportPatientId;
     if (!patientId && reportBasics.patientName) {
@@ -507,9 +668,11 @@ const NurseMedicalReportPage = () => {
 
     if (patientId == null || !weekNum) {
       setShowConfirm(false);
+      setConcludeConfirm(false);
       setSubmitError('Select resident and week first before submitting.');
       return;
     }
+    if (conclude) setConcluding(true);
 
     const nurseNameSigned = nurseSignatureName.trim();
     const reportDateField = nurseSignatureDate.trim();
@@ -534,8 +697,18 @@ const NurseMedicalReportPage = () => {
     ]
       .filter(Boolean)
       .join('\n');
+    const existingLocalConcludedAt = (() => {
+      try {
+        const all = JSON.parse(localStorage.getItem(WEEKLY_REPORTS_STORAGE_KEY) || '{}');
+        return all?.[String(patientId)]?.[String(weekNum)]?.concludedAt || null;
+      } catch {
+        return null;
+      }
+    })();
     const localEntry = {
       submittedAt,
+      concludedAt: concludedAtIso || existingLocalConcludedAt,
+      compiledDailyReports: compiledDaily || undefined,
       patientName: reportBasics.patientName,
       nurseName: nurseNameSigned,
       reportDate: reportDateField,
@@ -565,13 +738,19 @@ const NurseMedicalReportPage = () => {
         window.dispatchEvent(new Event('storage'));
         window.dispatchEvent(new Event(APP_DATA_REFRESH));
         await appendActivityFeed(
-          `Medical report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`
+          conclude
+            ? `Weekly report concluded for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`
+            : `Medical report draft saved for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`
         );
       } catch {
         /* ignore */
       }
       setShowConfirm(false);
-      navigate('/patient-database');
+      setConcludeConfirm(false);
+      setConcluding(false);
+      setSubmitError('');
+      setWeeklyRefreshTick((t) => t + 1);
+      setSearchParams({ patient: String(patientId) });
       return;
     }
 
@@ -613,15 +792,26 @@ const NurseMedicalReportPage = () => {
       vitals_spo2: vitals.spo2 || null,
       vitals_temperature: vitals.temperature || null,
     };
-    let { error } = await supabase.from('weekly_reports').upsert(enrichedPayload, { onConflict: 'patient_id,week_number' });
+    const concludeCols = conclude
+      ? { concluded_at: concludedAtIso, concluded_by: user?.id ?? null, compiled_daily_reports: compiledDaily }
+      : {};
+    let { error } = await supabase
+      .from('weekly_reports')
+      .upsert({ ...enrichedPayload, ...concludeCols }, { onConflict: 'patient_id,week_number' });
     if (error && /column .* does not exist/i.test(String(error.message || ''))) {
-      ({ error } = await supabase.from('weekly_reports').upsert(basePayload, { onConflict: 'patient_id,week_number' }));
+      // conclude columns not migrated yet — retry without them, then without the payload columns
+      ({ error } = await supabase.from('weekly_reports').upsert(enrichedPayload, { onConflict: 'patient_id,week_number' }));
+      if (error && /column .* does not exist/i.test(String(error.message || ''))) {
+        ({ error } = await supabase.from('weekly_reports').upsert(basePayload, { onConflict: 'patient_id,week_number' }));
+      }
     }
 
     if (error) {
       console.warn('[weekly_reports upsert]', error.message);
       setSubmitError(`Failed to save medical report: ${error.message}`);
       setShowConfirm(false);
+      setConcludeConfirm(false);
+      setConcluding(false);
       return;
     } else {
       // Always mirror weekly report vitals locally so admin view can render latest values
@@ -654,15 +844,24 @@ const NurseMedicalReportPage = () => {
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new Event(APP_DATA_REFRESH));
       await appendActivityFeed(
-        `Medical report filed for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`,
+        conclude
+          ? `Weekly report concluded for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`
+          : `Medical report draft saved for ${pname} (${reportBasics.weekLabel || `week ${weekNum}`}).`,
         { familyId: patientRow?.family_id ?? null }
       );
     }
 
     setSubmitError('');
     setShowConfirm(false);
-    navigate('/patient-database');
-  }, [activeReportPatientId, admittedPatients, reportBasics.patientName, reportBasics.weekLabel, navigate, reportDetails, vitals, nurseSignatureName, nurseSignatureDate]);
+    setConcludeConfirm(false);
+    setConcluding(false);
+    setWeeklyRefreshTick((t) => t + 1);
+    setSearchParams({ patient: String(patientId) });
+  }, [activeReportPatientId, admittedPatients, reportBasics.patientName, reportBasics.weekLabel, setSearchParams, reportDetails, vitals, nurseSignatureName, nurseSignatureDate, weekDailyReports]);
+
+  const handleConcludeWeek = useCallback(() => {
+    void persistWeeklyReport({ conclude: true });
+  }, [persistWeeklyReport]);
 
   const isReportComplete = useMemo(() => Boolean(
     reportBasics.weekLabel.trim() &&
@@ -1572,96 +1771,218 @@ const NurseMedicalReportPage = () => {
         {/* Header */}
         <div className="wr-header">
           <div>
-            <h1>Medical Report</h1>
-            <p>File weekly medical documentation for assigned residents</p>
+            <h1>Medical Reports</h1>
+            <p>
+              {view === 'dashboard'
+                ? 'Your assigned residents and their report folders'
+                : view === 'folders'
+                  ? reportBasics.patientName || 'Resident'
+                  : `${reportBasics.patientName || 'Resident'} · ${reportBasics.weekLabel || ''} ${view === 'daily-form' ? 'Daily Report' : 'Weekly Report'}`}
+            </p>
           </div>
-          <div ref={pickerRef} className="wr-picker-wrap">
+          {view !== 'dashboard' ? (
             <button
               type="button"
               className="wr-header-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setPickerOpen((v) => !v);
-              }}
+              style={{ display: 'inline-flex', marginRight: 0 }}
+              onClick={() => (view === 'folders' ? goDashboard() : goFolders(urlPatient))}
             >
-              <FileText size={18} color="#FFFFFF" />
-              Select resident and week
-              <ChevronDown size={16} style={{ transform: pickerOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.2s' }} />
+              <ChevronLeft size={16} color="#FFFFFF" />
+              {view === 'folders' ? 'All patients' : 'Back to folders'}
             </button>
-            <button
-              type="button"
-              className="wr-patient-picker-btn mobile-only"
-              onClick={(e) => {
-                e.stopPropagation();
-                setPickerOpen((v) => !v);
-              }}
-            >
-              <FileText size={18} color="#F54E25" />
-              Select patient and week
-              <ChevronDown size={16} style={{ transform: pickerOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.2s' }} />
-            </button>
-            {pickerOpen && (
-              <div className="wr-patient-picker" role="listbox" aria-label="Admitted patients">
-                <div className="wr-patient-picker-title">Admitted patients</div>
-                {admittedPatients.length === 0 ? (
-                  <div className="wr-picker-empty">
-                    No admitted patients yet. After the admin approves an admission, the patient will appear here.
-                  </div>
-                ) : (
-                  admittedPatients.map((p) => (
-                    <div key={p.id} className="wr-patient-block">
-                      <button
-                        type="button"
-                        className="wr-patient-row-header"
-                        onClick={(e) => togglePatientWeeks(p.id, e)}
-                        aria-expanded={expandedPatientId === p.id}
-                      >
-                        <div className="wr-patient-avatar">{patientInitials(p.name)}</div>
-                        <div className="wr-patient-info-text">
-                          <div className="wr-patient-name">{p.name || 'Resident'}</div>
-                          <div className="wr-patient-meta">
-                            Admitted {p.date || '—'}
-                            {p.reason ? ` · ${p.reason}` : ''}
-                            {p.progress != null && p.progress !== '' ? ` · Progress ${p.progress}%` : ''}
-                          </div>
-                        </div>
-                        <ChevronDown size={18} className={`wr-patient-chevron${expandedPatientId === p.id ? ' open' : ''}`} />
-                      </button>
-                      {expandedPatientId === p.id && (
-                        <div className="wr-weeks-panel">
-                          <div className="wr-weeks-label">Medical reports by week — tap a week to load the form</div>
-                          <div className="wr-weeks-grid">
-                            {[1, 2, 3, 4, 5, 6, 7].map((w) => (
-                              <button
-                                key={w}
-                                type="button"
-                                className="wr-week-chip"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  applyPatientAndWeek(p, w);
-                                }}
-                              >
-                                Week {w}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
+          ) : null}
         </div>
 
         {/* Paper */}
         <div className="wr-paper">
-          <div className="wr-paper-title">Medical Report</div>
+          {view === 'dashboard' && (
+            <ReportPatientDashboard
+              title="Assigned residents"
+              subtitle="Search a resident, then open their report folders."
+              patients={dashboardPatients}
+              statsByPatient={statsByPatient}
+              loading={isSupabaseConfigured() && admittedPatients.length === 0 && nurseIdentityNames.length === 0}
+              onOpenPatient={(id) => goFolders(id)}
+            />
+          )}
+
+          {view === 'folders' && (
+            <PatientReportFolders
+              patient={{ name: reportBasics.patientName, primaryConcern: reportBasics.primaryConcern }}
+              weeklyRows={previousReports}
+              dailyCountsByWeek={dailyCountsByWeek}
+              addWeeklyTarget={weekPlan.addWeeklyTarget}
+              currentWorkingWeek={weekPlan.currentWorkingWeek}
+              loading={previousReportsLoading}
+              onBack={goDashboard}
+              onOpenWeek={(n) => goForm(urlPatient, n, 'weekly')}
+              onAddDaily={(w) => goForm(urlPatient, w || weekPlan.currentWorkingWeek, 'daily')}
+              onAddWeekly={() => goForm(urlPatient, weekPlan.addWeeklyTarget.week, 'weekly')}
+            />
+          )}
+
+          {view === 'daily-form' && (
+            <div className="form-section" style={{ background: 'linear-gradient(180deg, #FFFDF9 0%, #FFF7EF 100%)' }}>
+              <SectionTitle>{reportBasics.weekLabel ? `${reportBasics.weekLabel} — Daily Report` : 'Daily Report'}</SectionTitle>
+              <p style={{ marginBottom: 14, color: '#64748B', fontSize: 12, lineHeight: 1.4 }}>
+                Internal per-day notes for {reportBasics.patientName || 'the selected resident'}. These are
+                the source records the Weekly Report is compiled from — they are never shown to families
+                or admins on their own.
+              </p>
+              {!activeReportPatientId ? (
+                <p style={{ fontSize: 12, color: '#64748B' }}>No resident selected.</p>
+              ) : (
+                <>
+                  <div className="form-field" style={{ maxWidth: 260, marginBottom: 16 }}>
+                    <FormLabel>Report date:</FormLabel>
+                    {weekDateOptions.length > 0 ? (
+                      <select
+                        className="form-underline-input"
+                        value={effectiveDailyDate}
+                        onChange={(e) => setDailyReportDate(e.target.value)}
+                      >
+                        {weekDateOptions.map((iso) => (
+                          <option key={iso} value={iso}>
+                            {new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="date"
+                        className="form-underline-input"
+                        value={effectiveDailyDate}
+                        onChange={(e) => setDailyReportDate(e.target.value)}
+                      />
+                    )}
+                  </div>
+                  <div className="section-fields">
+                    <div className="form-grid-2" style={{ marginBottom: 0 }}>
+                      <div className="form-field">
+                        <FormLabel>Observations:</FormLabel>
+                        <textarea
+                          className="form-textarea"
+                          style={{ height: 76 }}
+                          value={dailyReportForm.observations}
+                          onChange={(e) => setDailyReportForm((prev) => ({ ...prev, observations: e.target.value }))}
+                          placeholder="What did you observe?"
+                        />
+                      </div>
+                      <div className="form-field">
+                        <FormLabel>Assessment:</FormLabel>
+                        <textarea
+                          className="form-textarea"
+                          style={{ height: 76 }}
+                          value={dailyReportForm.assessment}
+                          onChange={(e) => setDailyReportForm((prev) => ({ ...prev, assessment: e.target.value }))}
+                          placeholder="Clinical assessment"
+                        />
+                      </div>
+                    </div>
+                    <div className="form-grid-2" style={{ marginBottom: 0 }}>
+                      <div className="form-field">
+                        <FormLabel>Follow-up:</FormLabel>
+                        <textarea
+                          className="form-textarea"
+                          style={{ height: 76 }}
+                          value={dailyReportForm.followUp}
+                          onChange={(e) => setDailyReportForm((prev) => ({ ...prev, followUp: e.target.value }))}
+                          placeholder="Follow-up needed"
+                        />
+                      </div>
+                      <div className="form-field">
+                        <FormLabel>Notes:</FormLabel>
+                        <textarea
+                          className="form-textarea"
+                          style={{ height: 76 }}
+                          value={dailyReportForm.notes}
+                          onChange={(e) => setDailyReportForm((prev) => ({ ...prev, notes: e.target.value }))}
+                          placeholder="Additional notes"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
+                    <button
+                      type="button"
+                      className="btn-summary"
+                      disabled={!activeReportPatientId || dailyReportSaveState.loading}
+                      onClick={handleSaveDailyReport}
+                    >
+                      {dailyReportSaveState.loading ? 'Saving…' : 'Save Daily Report'}
+                    </button>
+                    {dailyReportSaveState.ok ? (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#15803D' }}>Saved.</span>
+                    ) : null}
+                    {dailyReportSaveState.error ? (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#991B1B' }}>{dailyReportSaveState.error}</span>
+                    ) : null}
+                  </div>
+
+                  <div style={{ marginTop: 20 }}>
+                    <FormLabel style={{ marginBottom: 8 }}>
+                      Daily reports for {reportBasics.weekLabel || 'this week'}
+                    </FormLabel>
+                    {weekDailyReportsLoading ? (
+                      <p style={{ fontSize: 12, color: '#64748B' }}>Loading this week&apos;s daily reports…</p>
+                    ) : weekDailyReportsError ? (
+                      <p style={{ fontSize: 12, color: '#991B1B', fontWeight: 600 }}>{weekDailyReportsError}</p>
+                    ) : weekDailyReports.length === 0 ? (
+                      <p style={{ fontSize: 12, color: '#64748B' }}>No daily reports logged for this week yet.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {weekDailyReports.map((r) => (
+                          <div
+                            key={`${r.report_date}-${r.author_id}`}
+                            style={{ border: '1px solid #E9EDF7', borderRadius: 10, padding: '10px 12px', background: '#FAFBFF' }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <span style={{ fontSize: 12, fontWeight: 800, color: '#1B2559' }}>
+                                {r.report_date}
+                                {r.author_role ? ` · ${r.author_role}` : ''}
+                              </span>
+                              {r.author_id === currentUserId ? (
+                                <button
+                                  type="button"
+                                  className="confirm-btn-cancel"
+                                  style={{ padding: '4px 12px', fontSize: 11 }}
+                                  onClick={() => handleEditDailyRow(r)}
+                                >
+                                  Edit
+                                </button>
+                              ) : null}
+                            </div>
+                            <div style={{ fontSize: 12.5, color: '#2B3674', lineHeight: 1.5 }}>
+                              {[r.observations, r.assessment, r.follow_up, r.notes].filter((v) => v && String(v).trim()).join(' · ') || '—'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {view === 'weekly-form' && (
+          <>
+          <div className="wr-paper-title" style={{ marginTop: 4 }}>
+            {reportBasics.weekLabel || 'Weekly Report'}
+            {currentWeekConcludedAt ? ' — concluded' : ''}
+          </div>
           <p className="wr-required-note">
             Fields marked with <RequiredMark /> are required.
           </p>
-
+          <div style={{ marginBottom: 16 }}>
+            <button
+              type="button"
+              className="btn-summary"
+              onClick={() => goForm(urlPatient, activeWeekNumber, 'daily')}
+            >
+              + Add Daily Report for {reportBasics.weekLabel || 'this week'}
+            </button>
+          </div>
           {/* Continuity of care: read-only history of every prior week's weekly_reports row for
               this resident, so a reassigned nurse can see what previous nurses recorded. */}
           <div className="form-section">
@@ -1747,25 +2068,26 @@ const NurseMedicalReportPage = () => {
 
           <form onSubmit={(e) => { e.preventDefault(); setShowConfirm(true); }}>
 
-            {/* Week & Admission Date */}
+            {/* Week & Admission Date — week is assigned automatically from the folder view */}
             <div className="form-grid-2">
               <div className="form-field">
                 <FormLabel required>Week:</FormLabel>
                 <input
                   type="text"
-                  className="form-underline-input"
-                  placeholder="Select week above"
+                  className="form-underline-input form-underline-input--readonly"
                   value={reportBasics.weekLabel}
-                  onChange={(e) => setReportBasics((prev) => ({ ...prev, weekLabel: e.target.value }))}
+                  readOnly
+                  aria-readonly="true"
                 />
               </div>
               <div className="form-field">
                 <FormLabel>Admission Date:</FormLabel>
                 <input
                   type="text"
-                  className="form-underline-input"
+                  className="form-underline-input form-underline-input--readonly"
                   value={reportBasics.admissionDate}
-                  onChange={(e) => setReportBasics((prev) => ({ ...prev, admissionDate: e.target.value }))}
+                  readOnly
+                  aria-readonly="true"
                 />
               </div>
             </div>
@@ -1809,75 +2131,42 @@ const NurseMedicalReportPage = () => {
               </div>
             </div>
 
-            {/* Daily Report quick-entry — a granular per-day note, saved separately from the
-                weekly upsert above via daily_reports (one row per patient/date/author). */}
-            <div className="form-section" style={{ background: 'linear-gradient(180deg, #FFFDF9 0%, #FFF7EF 100%)' }}>
-              <SectionTitle>Today&apos;s Daily Report</SectionTitle>
-              <p style={{ marginBottom: 14, color: '#64748B', fontSize: 12, lineHeight: 1.4 }}>
-                Quick per-day notes for {reportBasics.patientName || 'the selected resident'} — dated {new Date().toLocaleDateString('en-US')}. Saved independently of the weekly report below.
+            {/* Compiled Daily Reports — verbatim preview of what "Conclude Weekly Report" will
+                snapshot into this week's report. */}
+            <div className="form-section">
+              <SectionTitle>Compiled Daily Reports{reportBasics.weekLabel ? ` — ${reportBasics.weekLabel}` : ''}</SectionTitle>
+              <div style={{ marginBottom: 12 }}>
+                {currentWeekConcludedAt ? (
+                  <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 800, color: '#15803D', background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 999, padding: '3px 10px' }}>
+                    Concluded {new Date(currentWeekConcludedAt).toLocaleDateString('en-US')} · visible to family
+                  </span>
+                ) : (
+                  <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 800, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 999, padding: '3px 10px' }}>
+                    Draft · not yet visible to family
+                  </span>
+                )}
+              </div>
+              <p style={{ marginBottom: 12, color: '#64748B', fontSize: 12, lineHeight: 1.4 }}>
+                The daily reports below are compiled verbatim into the Weekly Report when you conclude the week.
+                You do not need all 7 days.
               </p>
-              <div className="section-fields">
-                <div className="form-grid-2" style={{ marginBottom: 0 }}>
-                  <div className="form-field">
-                    <FormLabel>Observations:</FormLabel>
-                    <textarea
-                      className="form-textarea"
-                      style={{ height: 76 }}
-                      value={dailyReportForm.observations}
-                      onChange={(e) => setDailyReportForm((prev) => ({ ...prev, observations: e.target.value }))}
-                      placeholder="What did you observe today?"
-                    />
-                  </div>
-                  <div className="form-field">
-                    <FormLabel>Assessment:</FormLabel>
-                    <textarea
-                      className="form-textarea"
-                      style={{ height: 76 }}
-                      value={dailyReportForm.assessment}
-                      onChange={(e) => setDailyReportForm((prev) => ({ ...prev, assessment: e.target.value }))}
-                      placeholder="Clinical assessment"
-                    />
-                  </div>
-                </div>
-                <div className="form-grid-2" style={{ marginBottom: 0 }}>
-                  <div className="form-field">
-                    <FormLabel>Follow-up:</FormLabel>
-                    <textarea
-                      className="form-textarea"
-                      style={{ height: 76 }}
-                      value={dailyReportForm.followUp}
-                      onChange={(e) => setDailyReportForm((prev) => ({ ...prev, followUp: e.target.value }))}
-                      placeholder="Follow-up needed"
-                    />
-                  </div>
-                  <div className="form-field">
-                    <FormLabel>Notes:</FormLabel>
-                    <textarea
-                      className="form-textarea"
-                      style={{ height: 76 }}
-                      value={dailyReportForm.notes}
-                      onChange={(e) => setDailyReportForm((prev) => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Additional notes"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
-                <button
-                  type="button"
-                  className="btn-summary"
-                  disabled={!activeReportPatientId || dailyReportSaveState.loading}
-                  onClick={handleSaveDailyReport}
-                >
-                  {dailyReportSaveState.loading ? 'Saving…' : 'Save Daily Report'}
-                </button>
-                {dailyReportSaveState.ok ? (
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#15803D' }}>Saved.</span>
-                ) : null}
-                {dailyReportSaveState.error ? (
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#991B1B' }}>{dailyReportSaveState.error}</span>
-                ) : null}
-              </div>
+              {weekDailyReportsLoading ? (
+                <p style={{ fontSize: 12, color: '#64748B' }}>Loading this week&apos;s daily reports…</p>
+              ) : weekDailyReportsError ? (
+                <p style={{ fontSize: 12, color: '#991B1B', fontWeight: 600 }}>{weekDailyReportsError}</p>
+              ) : (
+                <CompiledDailyReportsList
+                  entries={weekDailyReports.map((r) => ({
+                    report_date: r.report_date,
+                    author_role: r.author_role,
+                    observations: r.observations,
+                    assessment: r.assessment,
+                    follow_up: r.follow_up,
+                    notes: r.notes,
+                  }))}
+                  emptyText="No daily reports logged for this week yet — add them on the Daily Reports tab."
+                />
+              )}
             </div>
 
             {/* Current Medications */}
@@ -1999,71 +2288,6 @@ const NurseMedicalReportPage = () => {
               </div>
             </div>
 
-            {/* This week's daily reports stay their own separate records (not merged into
-                the weekly report). The optional AI draft below is reference-only — it is
-                never saved and never included in what gets submitted. */}
-            <div className="form-section">
-              <SectionTitle>This Week&apos;s Daily Reports</SectionTitle>
-              <p style={{ marginBottom: 12, color: '#64748B', fontSize: 12, lineHeight: 1.4 }}>
-                Reference only — these stay separate from the weekly report below and are not merged into it.
-              </p>
-
-              {weekDailyReportsLoading ? (
-                <p style={{ fontSize: 12, color: '#64748B', marginBottom: 14 }}>Loading this week&apos;s daily reports…</p>
-              ) : weekDailyReportsError ? (
-                <p style={{ fontSize: 12, color: '#991B1B', fontWeight: 600, marginBottom: 14 }}>{weekDailyReportsError}</p>
-              ) : weekDailyReports.length === 0 ? (
-                <p style={{ fontSize: 12, color: '#64748B', marginBottom: 14 }}>No daily reports logged for this week yet.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-                  {weekDailyReports.map((r) => (
-                    <div
-                      key={`${r.report_date}-${r.author_id}`}
-                      style={{ border: '1px solid #E9EDF7', borderRadius: 10, padding: '10px 12px', background: '#FAFBFF' }}
-                    >
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#1B2559', marginBottom: 4 }}>{r.report_date}</div>
-                      <div style={{ fontSize: 12.5, color: '#2B3674', lineHeight: 1.5 }}>
-                        {[r.observations, r.assessment, r.follow_up, r.notes].filter((v) => v && String(v).trim()).join(' · ') || '—'}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                <button
-                  type="button"
-                  className="btn-summary"
-                  disabled={aiDraftLoading || weekDailyReports.length === 0}
-                  onClick={handleGenerateAiDraft}
-                  title={weekDailyReports.length === 0 ? 'Log at least one daily report this week to draft a summary' : 'Draft a reference summary from this week’s daily reports'}
-                >
-                  {aiDraftLoading ? 'Generating…' : 'Generate AI Summary'}
-                </button>
-                {aiDraftError ? <span style={{ fontSize: 12, fontWeight: 700, color: '#991B1B' }}>{aiDraftError}</span> : null}
-              </div>
-
-              {aiDraftText ? (
-                <div>
-                  <FormLabel style={{ marginBottom: 8 }}>AI draft (reference only — not saved, not part of this report):</FormLabel>
-                  <div
-                    style={{
-                      border: '1px dashed #CBD5E1',
-                      borderRadius: 10,
-                      padding: '10px 12px',
-                      background: '#F8FAFC',
-                      color: '#334155',
-                      fontSize: 12.5,
-                      lineHeight: 1.5,
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {aiDraftText}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
             {/* Ongoing Medical Concern */}
             <div className="form-section">
               <SectionTitle required>Ongoing Medical Concern</SectionTitle>
@@ -2120,9 +2344,19 @@ const NurseMedicalReportPage = () => {
               ) : null}
               {showConfirm ? (
                 <div className="confirm-bar">
-                  <span className="confirm-text">Ready to submit the medical report?</span>
+                  <span className="confirm-text">Save this week&apos;s report as a draft?</span>
                   <button type="button" className="confirm-btn-cancel" onClick={() => setShowConfirm(false)}>Cancel</button>
-                  <button type="button" className="confirm-btn-ok" onClick={persistWeeklyReport}>Confirm</button>
+                  <button type="button" className="confirm-btn-ok" onClick={() => persistWeeklyReport()}>Save draft</button>
+                </div>
+              ) : concludeConfirm ? (
+                <div className="confirm-bar">
+                  <span className="confirm-text">
+                    Conclude {reportBasics.weekLabel || 'this week'}? It becomes visible to the family. You can still edit it later.
+                  </span>
+                  <button type="button" className="confirm-btn-cancel" onClick={() => setConcludeConfirm(false)} disabled={concluding}>Cancel</button>
+                  <button type="button" className="confirm-btn-ok" onClick={handleConcludeWeek} disabled={concluding}>
+                    {concluding ? 'Concluding…' : 'Conclude Weekly Report'}
+                  </button>
                 </div>
               ) : (
                 <>
@@ -2135,12 +2369,22 @@ const NurseMedicalReportPage = () => {
                   >
                     Create Summary
                   </button>
-                  <button type="submit" className="btn-submit">Submit Medical Report</button>
+                  <button type="submit" className="btn-summary">Save draft</button>
+                  <button
+                    type="button"
+                    className="btn-submit"
+                    disabled={!activeReportPatientId}
+                    onClick={() => { setSubmitError(''); setConcludeConfirm(true); }}
+                  >
+                    {currentWeekConcludedAt ? 'Re-conclude Weekly Report' : 'Conclude Weekly Report'}
+                  </button>
                 </>
               )}
             </div>
 
           </form>
+          </>
+          )}
         </div>
       </main>
 

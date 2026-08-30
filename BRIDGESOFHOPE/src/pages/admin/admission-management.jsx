@@ -83,6 +83,8 @@ import {
 } from '@/lib/notificationTemplates';
 import { AdmissionAttachedFilesList } from '@/components/admin/AdmissionAttachedFilesList';
 import { RowActionsMenu } from '@/components/admin/RowActionsMenu';
+import BulletedListFieldInput from '@/components/clinical/BulletedListFieldInput';
+import { formatBulletedListInline } from '@/lib/bulletedListField';
 import { resolveAdmissionDocumentsForView } from '@/lib/admissionDocumentAccess';
 import {
   REFERRAL_SUMMARY_FIELDS,
@@ -700,7 +702,10 @@ export function AdmissionManagementContent() {
       void insertFamilyNotification({
         familyId: docNotesRow.familyId,
         templateKey: 'admission_docs_needed',
-        vars: { patient_name: docNotesRow.patientName, notes: docNotesText.trim() },
+        vars: {
+          patient_name: docNotesRow.patientName,
+          notes: formatBulletedListInline(docNotesText) || docNotesText.trim(),
+        },
         relatedType: 'admission_request',
         relatedId: docNotesRow.requestId,
       });
@@ -1629,10 +1634,19 @@ export function AdmissionManagementContent() {
             </div>
             <div className="am-modal-body" style={{ gridTemplateColumns: '1fr' }}>
               {!docNotesRow._markDocsComplete && (
-                <label className="am-modal-field">
-                  <span className="am-modal-label">What documents are needed?</span>
-                  <textarea className="am-input" rows={4} value={docNotesText} onChange={(e) => setDocNotesText(e.target.value)} placeholder="List IDs, medical records, etc." />
-                </label>
+                <div className="am-modal-field">
+                  <span className="am-modal-label">What documents or requirements are needed?</span>
+                  <BulletedListFieldInput
+                    value={docNotesText}
+                    onChange={setDocNotesText}
+                    inputClassName="am-input"
+                    addLabel="Add Other Requirement"
+                    placeholder="e.g. Valid government ID"
+                  />
+                  <span style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
+                    Add a field for each document or requirement — the family gets them all in one request.
+                  </span>
+                </div>
               )}
               {docNotesRow._markDocsComplete && (
                 <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
