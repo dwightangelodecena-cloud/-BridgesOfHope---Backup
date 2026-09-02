@@ -692,6 +692,33 @@ export default function ReportsScreen() {
                       icon="calendar"
                     />
                   </View>
+                  {Array.isArray(weeklyReport?.compiled_daily_reports) &&
+                  (weeklyReport?.compiled_daily_reports as any[]).length > 0 ? (
+                    <View style={{ marginTop: 16 }}>
+                      <Text style={styles.detailIntro}>Daily notes this week</Text>
+                      {(weeklyReport?.compiled_daily_reports as any[]).map((d: any, i: number) => {
+                        const parts = [
+                          d?.observations && `Observations: ${d.observations}`,
+                          d?.assessment && `Assessment: ${d.assessment}`,
+                          d?.follow_up && `Follow-up: ${d.follow_up}`,
+                          d?.notes && `Notes: ${d.notes}`,
+                        ].filter(Boolean);
+                        return (
+                          <View key={`${d?.report_date || 'day'}-${i}`} style={[styles.fieldCard, { width: '100%', marginTop: 8 }]}>
+                            <View style={styles.fieldCardHead}>
+                              <Ionicons name="calendar-outline" size={13} color="#F54E25" />
+                              <Text style={styles.fieldCardLbl}>
+                                {d?.report_date ? formatDate(String(d.report_date)) : 'Undated'}
+                              </Text>
+                            </View>
+                            <Text style={styles.fieldCardVal}>
+                              {parts.length > 0 ? parts.join('\n') : 'No details recorded.'}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
                 </>
               ) : (
                 <Text style={styles.muted}>Select a report above to view details.</Text>

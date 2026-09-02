@@ -52,6 +52,7 @@ import BehaviorProgressBoard, {
 } from '@/components/admin/BehaviorProgressBoard';
 import BulletedListDisplay from '@/components/clinical/BulletedListDisplay';
 import MedicationTableDisplay from '@/components/clinical/MedicationTableDisplay';
+import CompiledDailyReportsList from '@/components/clinical/CompiledDailyReportsList';
 import { formatBulletedListNoteSection, bulletedListHasContent } from '@/lib/bulletedListField';
 import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
 import {
@@ -1137,7 +1138,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
       if (isSupabaseConfigured() && isSupabasePatientId(pidStr)) {
         let { data, error } = await supabase
           .from('weekly_reports')
-          .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent, current_medications, medication_intervention, dietary_restrictions, ongoing_medical_concern, created_at, vitals_weight, vitals_height, vitals_bmi, vitals_bp, vitals_pr, vitals_rr, vitals_spo2, vitals_temperature')
+          .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent, current_medications, medication_intervention, dietary_restrictions, ongoing_medical_concern, created_at, concluded_at, compiled_daily_reports, vitals_weight, vitals_height, vitals_bmi, vitals_bp, vitals_pr, vitals_rr, vitals_spo2, vitals_temperature')
           .eq('patient_id', pid);
         if (error && /column .* does not exist/i.test(String(error.message || ''))) {
           ({ data, error } = await supabase
@@ -1185,10 +1186,14 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
               vitals_spo2: e.vitalsSpo2 ?? e.vitals_spo2 ?? null,
               vitals_temperature: e.vitalsTemperature ?? e.vitals_temperature ?? null,
               created_at: e.createdAt ?? e.created_at ?? null,
+              concluded_at: e.concludedAt ?? e.concluded_at ?? null,
+              compiled_daily_reports: e.compiledDailyReports ?? e.compiled_daily_reports ?? null,
             };
             if (map[n]) {
               map[n] = {
                 ...map[n],
+                concluded_at: firstNonEmpty(map[n].concluded_at, localRow.concluded_at),
+                compiled_daily_reports: map[n].compiled_daily_reports || localRow.compiled_daily_reports,
                 nurse_name: firstNonEmpty(map[n].nurse_name, localRow.nurse_name),
                 report_date: firstNonEmpty(map[n].report_date, localRow.report_date),
                 submitted_at: firstNonEmpty(map[n].submitted_at, localRow.submitted_at),
@@ -3096,13 +3101,13 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                                   <p style={{ color: '#64748B', fontSize: 12, fontWeight: 600 }}>Week {w}</p>
                                   <p
                                     style={{
-                                      color: '#1D7A68',
+                                      color: row?.concluded_at ? '#1D7A68' : '#B45309',
                                       fontSize: 11,
                                       fontWeight: 700,
                                       marginTop: 6,
                                     }}
                                   >
-                                    Submitted
+                                    {row?.concluded_at ? 'Concluded' : 'Draft'}
                                   </p>
                                   {row?.report_date ? (
                                     <p style={{ color: '#94a3b8', fontSize: 10, marginTop: 4 }}>{row.report_date}</p>
@@ -3279,13 +3284,13 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                                   <p style={{ color: '#64748B', fontSize: 12, fontWeight: 600 }}>Week {w}</p>
                                   <p
                                     style={{
-                                      color: '#1D7A68',
+                                      color: row?.concluded_at ? '#1D7A68' : '#B45309',
                                       fontSize: 11,
                                       fontWeight: 700,
                                       marginTop: 6,
                                     }}
                                   >
-                                    Submitted
+                                    {row?.concluded_at ? 'Concluded' : 'Draft'}
                                   </p>
                                   {row?.report_date ? (
                                     <p style={{ color: '#94a3b8', fontSize: 10, marginTop: 4 }}>{row.report_date}</p>
@@ -3882,6 +3887,27 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                   <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 700, color: '#475569', background: '#F4F7FE', border: '1px solid #E5ECFA', borderRadius: 999, padding: '5px 10px' }}>
                     {weeklyReportModalRow ? 'Filed report' : 'No report filed'}
                   </div>
+                  {weeklyReportModalRow ? (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        marginLeft: 8,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        fontSize: 11,
+                        fontWeight: 800,
+                        borderRadius: 999,
+                        padding: '5px 10px',
+                        ...(weeklyReportModalRow.concluded_at
+                          ? { color: '#15803D', background: '#DCFCE7', border: '1px solid #86EFAC' }
+                          : { color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D' }),
+                      }}
+                    >
+                      {weeklyReportModalRow.concluded_at
+                        ? `Concluded ${formatDate(weeklyReportModalRow.concluded_at)}`
+                        : 'Draft — not visible to family'}
+                    </div>
+                  ) : null}
                 </div>
                 <button
                   type="button"
@@ -3944,6 +3970,19 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
                     <div className="report-row">
                       <div className="report-label">Recommendations</div>
                       <div className="report-value">{weeklyReportModalRow.recommendations || weeklyReportModalRow.plan_next_week || 'No recommendations provided.'}</div>
+                    </div>
+                    <div className="report-row">
+                      <div className="report-label">Compiled Daily Reports</div>
+                      <div className="report-value">
+                        <CompiledDailyReportsList
+                          entries={weeklyReportModalRow.compiled_daily_reports}
+                          emptyText={
+                            weeklyReportModalRow.concluded_at
+                              ? 'No daily reports were compiled for this week.'
+                              : 'Not compiled yet — the week is still a draft.'
+                          }
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
