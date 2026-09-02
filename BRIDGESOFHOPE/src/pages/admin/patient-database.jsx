@@ -796,7 +796,7 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
         .from('patients')
         .select(`
           *,
-          profiles (
+          profiles!family_id (
             full_name,
             phone
           )
