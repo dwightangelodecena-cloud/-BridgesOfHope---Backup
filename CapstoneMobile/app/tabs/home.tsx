@@ -3,6 +3,7 @@ import {
   View,
   Text,
   Image,
+  ImageBackground,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -48,12 +49,10 @@ const { width } = Dimensions.get('window');
 const isCompactScreen = width <= 380;
 const BG = BH.surface2;
 
-// Native pixel size of assets/images/home-header.png. resizeMode="cover" renders as a
-// non-uniform stretch on web (RNW quirk: falls back to CSS object-fit:fill instead of
-// cover), so instead of relying on it, the image is rendered at its full aspect-correct
-// size (HOME_HERO_IMAGE_HEIGHT) and the shorter banner box crops off the top of it (sky) —
-// a manual "cover, anchored to bottom" that keeps the bridge visible and the artwork
-// undistorted either way.
+// Native pixel size of assets/images/home-header.png. The banner box is set to
+// ~0.95 of the image's aspect-correct height for the current width, so
+// resizeMode="cover" (which fills + center-crops) only trims a few px top/bottom
+// — the bridge stays visible and the artwork isn't distorted.
 const HOME_HERO_NATURAL_W = 1672;
 const HOME_HERO_NATURAL_H = 941;
 const HOME_HERO_IMAGE_HEIGHT = width * (HOME_HERO_NATURAL_H / HOME_HERO_NATURAL_W);
@@ -521,12 +520,12 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.heroBanner, { height: heroHeight }]}>
-          <Image
-            source={require('../../assets/images/home-header.png')}
-            style={[styles.heroBannerImage, { height: heroImageHeight }]}
-            resizeMode="cover"
-          />
+        <ImageBackground
+          source={require('../../assets/images/home-header.png')}
+          style={[styles.heroBanner, { height: heroHeight }]}
+          imageStyle={styles.heroBannerImage}
+          resizeMode="cover"
+        >
           <View style={styles.heroInner}>
             <Text style={styles.heroKicker}>{greeting},</Text>
             <View style={styles.heroTitleRow}>
@@ -535,7 +534,7 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.heroSub}>Here&apos;s an overview of your loved one&apos;s care today.</Text>
           </View>
-        </View>
+        </ImageBackground>
 
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeadRow}>
@@ -1229,15 +1228,15 @@ const styles = StyleSheet.create({
     paddingBottom: isCompactScreen ? 18 : 24,
     marginBottom: 0,
     overflow: 'hidden',
-    backgroundColor: '#0f172a',
+    // Matches the navy in home-header.png so any sub-pixel seam is invisible.
+    backgroundColor: '#12275C',
     justifyContent: 'center',
   },
+  // ImageBackground's inner <Image>. It's auto-filled to the container box, so
+  // no width:'100%' (which under-resolves on Fabric and leaves a right strip).
   heroBannerImage: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    width: '100%',
-    height: HOME_HERO_IMAGE_HEIGHT,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
   },
   heroInner: { gap: 1, maxWidth: '58%', marginTop: -8 },
   heroKicker: {

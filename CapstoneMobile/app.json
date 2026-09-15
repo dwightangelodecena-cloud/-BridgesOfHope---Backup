@@ -20,18 +20,35 @@
         "backgroundImage": "./assets/images/kalingalogo.png",
         "monochromeImage": "./assets/images/kalingalogo.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.CapstoneMobile"
+      "package": "com.anonymous.CapstoneMobile",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
       "favicon": "./assets/images/kalingalogo.png"
     },
     "plugins": [
+      "./plugins/withCmakeVersion",
       "expo-router",
       "expo-font",
       "expo-web-browser",
+      "expo-audio",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/kalingalogo.png",
+          "color": "#F54E25",
+          "sounds": [
+            "./assets/sounds/ding.wav",
+            "./assets/sounds/chime.wav",
+            "./assets/sounds/bell.wav",
+            "./assets/sounds/ping.wav",
+            "./assets/sounds/pop.wav",
+            "./assets/sounds/soft.wav"
+          ]
+        }
+      ],
       [
         "expo-splash-screen",
         {

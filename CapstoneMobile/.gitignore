@@ -34,6 +34,11 @@ yarn-error.*
 .env
 .env*.local
 
+# Firebase / FCM (device-specific, never commit)
+google-services.json
+GoogleService-Info.plist
+*firebase-adminsdk*.json
+
 # typescript
 *.tsbuildinfo
 

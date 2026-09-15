@@ -23,7 +23,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { FamilyBottomSheet } from '../../components/family/FamilyBottomSheet';
-import { ProfileChangePasswordPanel } from '../../components/family/ProfileChangePasswordPanel';
 import { ProfileNotificationSettingsPanel } from '../../components/family/ProfileNotificationSettingsPanel';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
@@ -81,7 +80,7 @@ export default function ProfileScreen() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
-  const [settingsSheet, setSettingsSheet] = useState<null | 'password' | 'notifications'>(null);
+  const [settingsSheet, setSettingsSheet] = useState<null | 'notifications'>(null);
   const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -549,7 +548,7 @@ export default function ProfileScreen() {
 
             <Text style={styles.groupLabel}>Settings</Text>
             <View style={styles.settingsGroup}>
-              <TouchableOpacity style={styles.settingsRow} onPress={() => setSettingsSheet('password')}>
+              <TouchableOpacity style={styles.settingsRow} onPress={() => router.push('/change-password')}>
                 <View style={styles.settingsIconWrap}>
                   <Ionicons name="lock-closed-outline" size={18} color="#4338CA" />
                 </View>
@@ -626,23 +625,12 @@ export default function ProfileScreen() {
       </Modal>
 
       <FamilyBottomSheet
-        visible={settingsSheet === 'password'}
-        onClose={() => setSettingsSheet(null)}
-        title="Change Password"
-        subtitle="Update your account password"
-        icon="lock-closed-outline"
-        sheetHeight={Math.min(580, Dimensions.get('window').height * 0.78)}
-      >
-        <ProfileChangePasswordPanel onClose={() => setSettingsSheet(null)} />
-      </FamilyBottomSheet>
-
-      <FamilyBottomSheet
         visible={settingsSheet === 'notifications'}
         onClose={() => setSettingsSheet(null)}
         title="Notification Settings"
-        subtitle="Sounds and mute preferences"
+        subtitle="Customize how you receive alerts"
         icon="notifications-outline"
-        sheetHeight={340}
+        sheetHeight={Math.min(530, Dimensions.get('window').height * 0.76)}
       >
         <ProfileNotificationSettingsPanel />
       </FamilyBottomSheet>

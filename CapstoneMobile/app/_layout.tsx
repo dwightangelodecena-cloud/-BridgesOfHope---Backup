@@ -19,6 +19,7 @@ import { ToastHost } from "../components/ToastHost";
 import { rootStackScreenOptions } from "../lib/navigationConfig";
 import { ensureAuthSessionHealthy } from "../lib/supabase";
 import { applyInterFontDefault } from "../lib/interFont";
+import { initNotifications } from "../lib/notifications";
 
 WebBrowser.maybeCompleteAuthSession();
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -51,6 +52,7 @@ const fadeScreen = {
 function AuthSessionRecovery() {
   useEffect(() => {
     void ensureAuthSessionHealthy();
+    void initNotifications();
   }, []);
   return null;
 }
@@ -90,6 +92,7 @@ export default function RootLayout() {
           <Stack.Screen name="forget" options={fadeScreen} />
           <Stack.Screen name="verification" options={fadeScreen} />
           <Stack.Screen name="newpassword" options={fadeScreen} />
+          <Stack.Screen name="change-password" options={fadeScreen} />
           <Stack.Screen name="privacypolicy" options={fadeScreen} />
           <Stack.Screen name="terms" options={fadeScreen} />
           <Stack.Screen name="notification" options={fadeScreen} />
