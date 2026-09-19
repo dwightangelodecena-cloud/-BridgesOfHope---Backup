@@ -71,7 +71,11 @@ export function FamilyWebMobileNav({ active }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const go = (route: string) => {
+  const go = (route: string, alreadyActive: boolean) => {
+    // Navigating to the already-focused tab makes expo-router dispatch a
+    // `POP_TO_TOP` action that no leaf screen handles ("...was not handled by
+    // any navigator"). Skip the no-op navigation instead.
+    if (alreadyActive) return;
     router.navigate(route as never);
   };
 
@@ -86,7 +90,7 @@ export function FamilyWebMobileNav({ active }: Props) {
               <TouchableOpacity
                 key={item.key}
                 style={styles.poppedItem}
-                onPress={() => go(item.route)}
+                onPress={() => go(item.route, isActive)}
                 accessibilityRole="button"
                 accessibilityLabel={item.a11y}
                 accessibilityState={{ selected: isActive }}
@@ -113,7 +117,7 @@ export function FamilyWebMobileNav({ active }: Props) {
             <TouchableOpacity
               key={item.key}
               style={styles.navItem}
-              onPress={() => go(item.route)}
+              onPress={() => go(item.route, isActive)}
               accessibilityRole="button"
               accessibilityLabel={item.a11y}
               accessibilityState={{ selected: isActive }}

@@ -1,6 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { appendFamilyNotificationsIfNewMobile } from "./familyNotificationsMobile";
+import { playNotificationSound } from "./notificationSound";
+import { notifyNewAlert } from "./notifications";
 
 const LEGACY_ENTITY_STATE_KEY = "bh_family_notif_entity_state_v1";
 const ENTITY_STATE_PREFIX = "bh_family_notif_entity_state_v2:";
@@ -177,5 +179,15 @@ export async function runFamilyNotificationSyncMobile(userId?: string | null): P
   (patRows || []).filter((r) => !r.discharged_at).forEach((row) => pushProgress(row));
 
   await writeState(uid, next);
-  if (toAdd.length) await appendFamilyNotificationsIfNewMobile(toAdd, uid);
+  if (toAdd.length) {
+    await appendFamilyNotificationsIfNewMobile(toAdd, uid);
+    // In-app chime (respects the "Notification sounds" toggle + mute window),
+    // plus a banner so it's visible if the user isn't looking at the inbox.
+    void playNotificationSound();
+    const first = toAdd[0]?.text ?? "You have a new update.";
+    void notifyNewAlert(
+      toAdd.length > 1 ? `${toAdd.length} new updates` : "New update",
+      first
+    );
+  }
 }

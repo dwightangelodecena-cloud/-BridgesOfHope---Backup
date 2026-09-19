@@ -387,6 +387,12 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Called by the family_notifications_push DB trigger (pg_net) with a shared
+# secret in the Authorization header, not a Supabase user JWT — so the gateway
+# JWT check must be off for this one function.
+[functions.send-push-notification]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

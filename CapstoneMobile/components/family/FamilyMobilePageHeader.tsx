@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 import { KalingaLogoMark } from './KalingaLogoMark';
 import { FamilyHeaderBrand, FamilyPageTitleBrand } from './FamilyHeaderBrand';
 import { FamilyHeaderAvatarMobile } from './FamilyHeaderAvatarMobile';
@@ -46,13 +46,19 @@ export function FamilyMobilePageHeader({
 }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const pathname = usePathname();
   const { userId, initials } = useFamilyUserMobile();
   const notif = useFamilyNotificationsInbox(userId);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
-  const onProfile = () => router.navigate(TAB_ROUTES.profile as never);
+  const onProfile = () => {
+    // Avoid re-navigating to Profile when it's already the active screen —
+    // expo-router would dispatch an unhandled `POP_TO_TOP` action.
+    if (pathname === TAB_ROUTES.profile) return;
+    router.navigate(TAB_ROUTES.profile as never);
+  };
   const isHomeBrand = showLogo && !title;
 
   const visibleNotifItems = notif.items.filter((i) => !dismissedIds.has(i.id)).slice(0, 6);
