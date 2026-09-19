@@ -1419,46 +1419,11 @@ export function StaffManagementContent() {
                   Login details were emailed to <strong>{staffWelcomeModal.personalEmail}</strong>.
                 </p>
               ) : (
-                <>
-                  <p style={{ fontSize: 14, color: '#b45309', lineHeight: 1.5, marginBottom: staffWelcomeModal.skipped ? 0 : 10 }}>
-                    {staffWelcomeModal.skipped
-                      ? 'Welcome email is not configured (deploy the Edge Function and set RESEND_API_KEY). Share the credentials below securely.'
-                      : staffWelcomeModal.sendError || 'The welcome email could not be sent. Share the credentials below securely.'}
-                  </p>
-                  {!staffWelcomeModal.skipped && (
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: '#475569',
-                        lineHeight: 1.55,
-                        padding: '12px 14px',
-                        background: '#f8fafc',
-                        borderRadius: 12,
-                        border: '1px solid #e2e8f0',
-                        marginBottom: 4,
-                      }}
-                    >
-                      <strong style={{ color: '#1B2559' }}>Why inbox is empty (Resend)</strong>
-                      <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-                        <li>
-                          In <strong>test / unverified domain</strong> mode, Resend often only delivers to{' '}
-                          <strong>your own account email</strong>. Put that address in <strong>Personal email</strong> when
-                          creating staff, or verify your domain at{' '}
-                          <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer">
-                            resend.com/domains
-                          </a>{' '}
-                          and set <code style={{ fontSize: 12 }}>RESEND_FROM</code> or{' '}
-                          <code style={{ fontSize: 12 }}>RESEND_FROM_EMAIL</code> (Supabase secrets) to an address on that
-                          domain.
-                        </li>
-                        <li>
-                          Check spam for{' '}
-                          <strong>{staffWelcomeModal.personalEmail || 'the personal email you entered'}</strong>.
-                        </li>
-                      </ul>
-                    </div>
-                  )}
-                </>
+                <p style={{ fontSize: 14, color: '#b45309', lineHeight: 1.5 }}>
+                  {staffWelcomeModal.skipped
+                    ? 'Welcome email is not configured (deploy the Edge Function and set SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD). Share the credentials below securely.'
+                    : staffWelcomeModal.sendError || 'The welcome email could not be sent. Share the credentials below securely.'}
+                </p>
               )}
               <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
                 Staff member: <strong>{staffWelcomeModal.fullName}</strong>
