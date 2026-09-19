@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.CapstoneMobile"
+      "bundleIdentifier": "com.bridgesofhope.capstonemobile"
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
@@ -21,7 +21,7 @@
         "monochromeImage": "./assets/images/kalingalogo.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.CapstoneMobile",
+      "package": "com.bridgesofhope.capstonemobile",
       "googleServicesFile": "./google-services.json"
     },
     "web": {
@@ -33,6 +33,7 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
+      "expo-image",
       "expo-audio",
       [
         "expo-notifications",
