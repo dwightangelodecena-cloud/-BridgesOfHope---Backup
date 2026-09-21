@@ -1,9 +1,9 @@
-import type { Router } from 'expo-router';
+import type { ImperativeRouter } from 'expo-router';
 import { supabase } from './supabase';
 import { invalidateFamilyUserCacheMobile } from './useFamilyUserMobile';
 
 /** Sign out and return to login — works on native and web. */
-export async function performFamilyLogoutMobile(router: Router): Promise<void> {
+export async function performFamilyLogoutMobile(router: ImperativeRouter): Promise<void> {
   try {
     await supabase.auth.signOut({ scope: 'global' });
   } catch {

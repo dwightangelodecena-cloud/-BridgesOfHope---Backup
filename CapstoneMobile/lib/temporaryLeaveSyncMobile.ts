@@ -80,13 +80,13 @@ export async function fetchActiveTemporaryLeaveFromRequests(
   const patientName = String(options.patientName || '').trim().toLowerCase();
 
   if (pid) {
-    let { data, error } = await supabase
+    let { data, error } = (await supabase
       .from('discharge_requests')
       .select(DISCHARGE_LEAVE_SELECT)
       .eq('patient_id', pid)
       .eq('status', 'approved')
       .order('decided_at', { ascending: false })
-      .limit(10);
+      .limit(10)) as { data: Record<string, unknown>[] | null; error: { message: string } | null };
     if (error && /leave_returned_at|decision_note|column|schema cache|does not exist/i.test(error.message)) {
       ({ data, error } = await supabase
         .from('discharge_requests')

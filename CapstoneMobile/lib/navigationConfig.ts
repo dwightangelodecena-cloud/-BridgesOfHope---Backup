@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
-import type { Href, Router } from "expo-router";
+import type { Href, ImperativeRouter } from "expo-router";
 
-export function goBackOrReplace(router: Router, fallback: Href) {
+export function goBackOrReplace(router: ImperativeRouter, fallback: Href) {
   if (router.canGoBack()) {
     router.back();
   } else {

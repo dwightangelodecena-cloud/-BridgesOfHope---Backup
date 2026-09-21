@@ -30,6 +30,10 @@ subprojects { subproject ->
 `;
 
 module.exports = function withCmakeVersion(config) {
+  // Windows-only workaround — EAS cloud builds run on Linux and don't have
+  // this pinned CMake version installed, so leave those untouched.
+  if (process.platform !== "win32") return config;
+
   return withProjectBuildGradle(config, (cfg) => {
     if (cfg.modResults.language !== "groovy") return cfg;
     let src = cfg.modResults.contents;
