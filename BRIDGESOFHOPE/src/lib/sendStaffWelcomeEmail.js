@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase';
 
 /**
- * Calls Edge Function `send-staff-welcome-email` (Resend). Deploy function and set RESEND_API_KEY secret.
+ * Calls Edge Function `send-staff-welcome-email` (sends via SMTP, e.g. your bridgesofhope.ph mailbox).
+ * Deploy the function and set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM secrets.
  * @param {{ personalEmail: string, institutionalEmail: string, temporaryPassword: string, fullName: string }} params
  * @returns {Promise<{ ok: boolean, skipped?: boolean, error?: string }>}
  */

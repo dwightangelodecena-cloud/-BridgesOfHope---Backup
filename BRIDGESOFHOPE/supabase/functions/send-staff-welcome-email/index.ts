@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +20,19 @@ function escapeAttr(s: string) {
   return String(s || '')
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * Collapses the template's indentation/blank lines into one line. Blank/whitespace-only lines
+ * (e.g. left behind by an empty ${logoBlock}) trip a quoted-printable encoding bug in the SMTP
+ * client that leaks literal "=20" sequences into the rendered email, so none may reach client.send.
+ */
+function minifyHtmlForEmail(html: string): string {
+  return html
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join('');
 }
 
 function buildStaffWelcomeEmailHtml(params: {
@@ -57,6 +71,8 @@ function buildStaffWelcomeEmailHtml(params: {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="x-ua-compatible" content="ie=edge" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
   <title>Your staff account</title>
 </head>
 <body style="margin:0;padding:0;background-color:#eef2ff;-webkit-text-size-adjust:100%;">
@@ -132,17 +148,6 @@ function buildStaffWelcomeEmailHtml(params: {
 }
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** Resend expects `from` like `Name <addr@domain>`. Full `RESEND_FROM` wins; else `RESEND_FROM_EMAIL` only. */
-function resolveResendFromHeader(): string {
-  const full = Deno.env.get('RESEND_FROM')?.trim();
-  if (full) return full;
-  const emailOnly = Deno.env.get('RESEND_FROM_EMAIL')?.trim();
-  if (emailOnly && emailRe.test(emailOnly)) {
-    return `Bridges of Hope <${emailOnly}>`;
-  }
-  return 'Bridges of Hope <onboarding@resend.dev>';
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -231,19 +236,24 @@ Deno.serve(async (req) => {
     });
   }
 
-  const resendKey = Deno.env.get('RESEND_API_KEY');
-  if (!resendKey) {
+  const smtpHost = Deno.env.get('SMTP_HOST')?.trim();
+  const smtpUser = Deno.env.get('SMTP_USERNAME')?.trim();
+  const smtpPass = Deno.env.get('SMTP_PASSWORD');
+  const smtpPort = Number(Deno.env.get('SMTP_PORT')?.trim() || '465');
+  const smtpFrom = Deno.env.get('SMTP_FROM')?.trim() || smtpUser || '';
+
+  if (!smtpHost || !smtpUser || !smtpPass) {
     return new Response(
       JSON.stringify({
         ok: false,
         skipped: true,
-        reason: 'RESEND_API_KEY is not set on the Edge Function (supabase secrets set RESEND_API_KEY=...).',
+        reason:
+          'SMTP is not configured on the Edge Function (supabase secrets set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM).',
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
 
-  const from = resolveResendFromHeader();
   const safeName = escapeHtml(fullName || 'there');
   const safeLogin = escapeHtml(institutionalEmail);
   const safePw = escapeHtml(temporaryPassword);
@@ -255,47 +265,60 @@ Deno.serve(async (req) => {
     safeHref = '';
   }
 
-  /** Optional HTTPS URL to a hosted logo (e.g. CDN). Supabase: `supabase secrets set RESEND_BRAND_LOGO_URL=https://...` */
-  const logoUrl = String(Deno.env.get('RESEND_BRAND_LOGO_URL') || '').trim().slice(0, 512);
-  const html = buildStaffWelcomeEmailHtml({
-    safeName,
-    safeLogin,
-    safePw,
-    safeHref,
-    logoUrl,
+  const logoUrl = String(Deno.env.get('EMAIL_BRAND_LOGO_URL') || '').trim().slice(0, 512);
+  const html = minifyHtmlForEmail(
+    buildStaffWelcomeEmailHtml({
+      safeName,
+      safeLogin,
+      safePw,
+      safeHref,
+      logoUrl,
+    }),
+  );
+  const text = [
+    `Hello ${fullName || 'there'},`,
+    '',
+    'Your staff account is ready. Use the credentials below to sign in, then update your password from your profile or security settings when you can.',
+    '',
+    `Login email: ${institutionalEmail}`,
+    `Initial password: ${temporaryPassword}`,
+    ...(safeHref ? ['', `Sign in: ${safeHref}`] : []),
+    '',
+    'If you did not expect this message, contact your administrator.',
+  ].join('\n');
+
+  const client = new SMTPClient({
+    connection: {
+      hostname: smtpHost,
+      port: smtpPort,
+      tls: smtpPort === 465,
+      auth: { username: smtpUser, password: smtpPass },
+    },
   });
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from,
-      to: [to],
+  try {
+    await client.send({
+      from: smtpFrom,
+      to,
       subject: 'Welcome — your Bridges of Hope staff login',
       html,
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error('[send-staff-welcome-email] Resend error', res.status, errText);
-    let msg =
-      'Resend rejected the request. Verify RESEND_API_KEY, RESEND_FROM, and domain/DNS in the Resend dashboard.';
-    try {
-      const j = JSON.parse(errText) as Record<string, unknown>;
-      const m = j?.message;
-      if (typeof m === 'string' && m.trim()) msg = m.trim();
-    } catch {
-      /* use default */
-    }
-    // 200 so supabase-js returns JSON in `data` and the admin UI can show `error`.
-    return new Response(JSON.stringify({ ok: false, error: msg }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      content: text,
     });
+    await client.close();
+  } catch (err) {
+    console.error('[send-staff-welcome-email] SMTP error', err);
+    try {
+      await client.close();
+    } catch {
+      /* already closed */
+    }
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Mail server rejected the request.',
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
   }
 
   return new Response(JSON.stringify({ ok: true }), {
