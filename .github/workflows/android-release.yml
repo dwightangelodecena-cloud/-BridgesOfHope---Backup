@@ -1,0 +1,66 @@
+name: Android Release (AAB)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: CapstoneMobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: CapstoneMobile/package-lock.json
+
+      - run: npm ci
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build AAB on EAS
+        run: |
+          eas build --platform android --profile production --non-interactive --wait --json > build-output.json
+
+      - name: Extract build artifact URL
+        id: artifact
+        run: |
+          URL=$(node -e "
+            const b = JSON.parse(require('fs').readFileSync('build-output.json'))[0];
+            const url = b.artifacts?.applicationArchiveUrl || b.artifacts?.buildUrl;
+            if (!url) { throw new Error('No artifact URL in build output'); }
+            console.log(url);
+          ")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Download AAB
+        run: curl -L "${{ steps.artifact.outputs.url }}" -o app-release.aab
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=build-$(date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish GitHub Release with AAB
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: Android build ${{ steps.tag.outputs.name }}
+          files: CapstoneMobile/app-release.aab
