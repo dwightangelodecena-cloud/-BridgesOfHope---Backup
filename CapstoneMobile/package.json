@@ -12,7 +12,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit --ignoreDeprecations 6.0",
-    "sync-env": "node ./scripts/sync-web-supabase-env.mjs"
+    "sync-env": "node ./scripts/sync-web-supabase-env.mjs",
+    "release:aab": "powershell -ExecutionPolicy Bypass -File ./scripts/upload-aab.ps1"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

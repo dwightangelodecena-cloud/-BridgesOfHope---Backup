@@ -21,7 +21,7 @@
         "monochromeImage": "./assets/images/kalingalogo.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.bridgesofhope.capstonemobile",
+      "package": "com.anonymous.CapstoneMobile",
       "googleServicesFile": "./google-services.json"
     },
     "web": {

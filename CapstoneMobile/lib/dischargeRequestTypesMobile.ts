@@ -59,7 +59,7 @@ export function isPatientOnTemporaryLeave(patient: Record<string, unknown> | nul
 
 export function patientTemporaryDischargeStatusLabel(patient: Record<string, unknown> | null | undefined): string | null {
   if (!isPatientOnTemporaryLeave(patient)) return null;
-  const leave = temporaryLeaveLabel(patient.temporaryLeaveType ?? patient.temporary_leave_type);
+  const leave = temporaryLeaveLabel(patient?.temporaryLeaveType ?? patient?.temporary_leave_type);
   return leave ? `Temporarily discharged · ${leave}` : 'Temporarily discharged';
 }
 
