@@ -4,7 +4,6 @@ import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
 import { useNavigate } from 'react-router-dom';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
-import logoBH from '@/assets/kalingalogo.png';
 
 /** Inline SVG so the X is always visible (avoids Lucide + global `button` / `currentColor` quirks). */
 function ModalCloseGlyph() {

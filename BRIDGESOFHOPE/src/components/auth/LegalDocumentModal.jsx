@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 
 const SCROLL_END_THRESHOLD_PX = 32;
@@ -13,9 +13,14 @@ export default function LegalDocumentModal({
   const scrollRef = useRef(null);
   const [scrolledToEnd, setScrolledToEnd] = useState(false);
 
-  useEffect(() => {
+  // Reset scroll-tracking whenever the modal opens or shows a different document
+  // (React-recommended "adjust state when a prop changes" pattern).
+  const scrollResetKey = `${open}|${document?.title ?? ''}`;
+  const [prevScrollResetKey, setPrevScrollResetKey] = useState(scrollResetKey);
+  if (scrollResetKey !== prevScrollResetKey) {
+    setPrevScrollResetKey(scrollResetKey);
     if (open) setScrolledToEnd(false);
-  }, [open, document?.title]);
+  }
 
   const checkScrollEnd = useCallback((el) => {
     if (!el) return;

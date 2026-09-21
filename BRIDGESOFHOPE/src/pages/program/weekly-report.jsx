@@ -497,13 +497,13 @@ const ProgramWeeklyReport = () => {
 
   // All weekly_reports rows for the selected patient (folder view + auto week numbering).
   useEffect(() => {
-    if (!activeReportPatientId || !isSupabaseConfigured()) {
-      setPatientWeeklyRows([]);
-      return;
-    }
     let cancelled = false;
-    setPatientWeeklyLoading(true);
     (async () => {
+      if (!activeReportPatientId || !isSupabaseConfigured()) {
+        setPatientWeeklyRows([]);
+        return;
+      }
+      setPatientWeeklyLoading(true);
       let { data, error } = await supabase
         .from('weekly_reports')
         .select('week_number, concluded_at, report_date, submitted_at')
@@ -527,12 +527,12 @@ const ProgramWeeklyReport = () => {
 
   // All daily-report rows for the selected patient (folder-view week counts).
   useEffect(() => {
-    if (!activeReportPatientId || !isSupabaseConfigured()) {
-      setPatientDailyRows([]);
-      return;
-    }
     let cancelled = false;
     (async () => {
+      if (!activeReportPatientId || !isSupabaseConfigured()) {
+        setPatientDailyRows([]);
+        return;
+      }
       const byPatient = await fetchDailyReportsForPatients([activeReportPatientId]);
       if (!cancelled) setPatientDailyRows(byPatient[activeReportPatientId] || []);
     })();
@@ -613,6 +613,10 @@ const ProgramWeeklyReport = () => {
   // Sync selected resident + week from the URL. Re-hydrate the form (incl. the nurse-filed
   // prefill) only when the patient/week actually changes.
   useEffect(() => {
+    // Deliberately synchronous: activeReportPatientId must track the URL before the
+    // ref-guarded hydration below reads it, and the guard itself needs history
+    // (hydratedKeyRef) a pure render-time key comparison can't express here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveReportPatientId(urlPatient || null);
     const patient = admittedPatients.find((x) => String(x.id) === String(urlPatient));
     const key = `${urlPatient}|${urlWeek || ''}`;
@@ -666,16 +670,6 @@ const ProgramWeeklyReport = () => {
       }));
     })();
   }, [urlPatient, urlWeek, admittedPatients]);
-
-  const handleVitalsFieldChange = (field, value) => {
-    setVitals((prev) => {
-      const next = { ...prev, [field]: value };
-      if (field === 'weight' || field === 'height') {
-        next.bmi = computeBmiFromWeightHeight(next.weight, next.height);
-      }
-      return next;
-    });
-  };
 
   const handleSaveDailyReport = async () => {
     setDailySaveMessage('');

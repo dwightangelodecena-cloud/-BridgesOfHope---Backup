@@ -68,7 +68,6 @@ import {
 import { TwoFactorApproveModal } from '@/components/TwoFactorApproveModal';
 import { verifyAdminApprovalPin } from '@/lib/adminApprovalPin';
 import {
-  admissionStatusLabel,
   admissionStatusPillClass,
   canApproveAdmission,
   canScheduleMeeting,

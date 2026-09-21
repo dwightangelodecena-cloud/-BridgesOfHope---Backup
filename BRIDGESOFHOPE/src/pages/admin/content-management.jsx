@@ -26,11 +26,9 @@ import {
   Construction,
   Bed,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
-import logoBH from '@/assets/kalingalogo.png';
 import {
   loadSiteContent,
   saveMergedSiteContent,
@@ -164,14 +162,17 @@ const PRESS_OUTLET_LABELS = [
  * Clamps 12–maxPx on blur. Uses text + inputMode (no number spinners).
  */
 function BrandingLogoPxInput({ label, path, valuePx, maxPx, placeholder, setField }) {
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(() => (valuePx > 0 ? String(valuePx) : ''));
   const [focused, setFocused] = useState(false);
 
-  useEffect(() => {
-    if (!focused) {
-      setDraft(valuePx > 0 ? String(valuePx) : '');
-    }
-  }, [valuePx, focused]);
+  // Keep `draft` primed from `valuePx` whenever the field isn't focused (so it's ready to
+  // show as soon as the user clicks in), re-priming once more right after blur/commit.
+  const syncKey = `${valuePx}|${focused}`;
+  const [lastSyncKey, setLastSyncKey] = useState(syncKey);
+  if (syncKey !== lastSyncKey) {
+    setLastSyncKey(syncKey);
+    if (!focused) setDraft(valuePx > 0 ? String(valuePx) : '');
+  }
 
   const display = focused ? draft : valuePx > 0 ? String(valuePx) : '';
 
@@ -219,7 +220,6 @@ function BrandingLogoPxInput({ label, path, valuePx, maxPx, placeholder, setFiel
 }
 
 function ContentManagement() {
-  const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [content, setContent] = useState(() => loadSiteContent());
   const [facility, setFacility] = useState(() => loadFacilitySettings());

@@ -52,21 +52,21 @@ function DonutChart({ segments, size = 130, stroke = 16 }) {
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
-  let offset = 0;
+  const arcs = segments.reduce((acc, seg) => {
+    const len = (seg.value / total) * circ;
+    const prev = acc[acc.length - 1];
+    const offset = prev ? prev.offset + prev.len : 0;
+    return [...acc, { ...seg, len, offset }];
+  }, []);
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block' }}>
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#F1F5F9" strokeWidth={stroke} />
-      {segments.map((seg) => {
-        const len = (seg.value / total) * circ;
-        const node = (
-          <circle key={seg.label} cx={size/2} cy={size/2} r={r} fill="none" stroke={seg.color}
-            strokeWidth={stroke} strokeDasharray={`${len} ${circ - len}`}
-            strokeDashoffset={-offset} strokeLinecap="butt"
-            transform={`rotate(-90 ${size/2} ${size/2})`} />
-        );
-        offset += len;
-        return node;
-      })}
+      {arcs.map((seg) => (
+        <circle key={seg.label} cx={size/2} cy={size/2} r={r} fill="none" stroke={seg.color}
+          strokeWidth={stroke} strokeDasharray={`${seg.len} ${circ - seg.len}`}
+          strokeDashoffset={-seg.offset} strokeLinecap="butt"
+          transform={`rotate(-90 ${size/2} ${size/2})`} />
+      ))}
       <text x={size/2} y={size/2 - 4} textAnchor="middle" fontSize="18" fontWeight="800" fill="#0F172A">{total}</text>
       <text x={size/2} y={size/2 + 14} textAnchor="middle" fontSize="9" fill="#94A3B8" fontWeight="600" letterSpacing="0.08em">TOTAL</text>
     </svg>

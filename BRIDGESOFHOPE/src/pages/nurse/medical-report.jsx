@@ -323,6 +323,10 @@ const NurseMedicalReportPage = () => {
   const hydratedKeyRef = useRef('');
   const prefilledKeyRef = useRef('');
   useEffect(() => {
+    // Deliberately synchronous: activeReportPatientId must track the URL before the
+    // ref-guarded hydration below reads it, and the guard itself needs history
+    // (hydratedKeyRef) a pure render-time key comparison can't express here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveReportPatientId(urlPatient || null);
     const patient = admittedPatients.find((x) => String(x.id) === String(urlPatient));
     const key = `${urlPatient}|${urlWeek || ''}`;
@@ -393,12 +397,12 @@ const NurseMedicalReportPage = () => {
 
   // All daily-report rows for the selected patient (folder-view week counts).
   useEffect(() => {
-    if (!activeReportPatientId || !isSupabaseConfigured()) {
-      setPatientDailyRows([]);
-      return;
-    }
     let cancelled = false;
     (async () => {
+      if (!activeReportPatientId || !isSupabaseConfigured()) {
+        setPatientDailyRows([]);
+        return;
+      }
       const byPatient = await fetchDailyReportsForPatients([activeReportPatientId]);
       if (!cancelled) setPatientDailyRows(byPatient[activeReportPatientId] || []);
     })();
@@ -410,15 +414,15 @@ const NurseMedicalReportPage = () => {
   // Continuity of care: load every prior weekly_reports row for the selected resident so a
   // reassigned nurse can see what previous nurses (possibly a different nurse_name) recorded.
   useEffect(() => {
-    if (!activeReportPatientId || !isSupabaseConfigured()) {
-      setPreviousReports([]);
-      setPreviousReportsError('');
-      return;
-    }
     let cancelled = false;
-    setPreviousReportsLoading(true);
-    setPreviousReportsError('');
     (async () => {
+      if (!activeReportPatientId || !isSupabaseConfigured()) {
+        setPreviousReports([]);
+        setPreviousReportsError('');
+        return;
+      }
+      setPreviousReportsLoading(true);
+      setPreviousReportsError('');
       let { data, error } = await supabase
         .from('weekly_reports')
         .select('week_number, nurse_name, report_date, submitted_at, summary, nurse_note, notes, behavior_observation, recommendations, progress_percent, concluded_at, compiled_daily_reports, current_medications, dietary_restrictions, food_allergies, ongoing_medical_concern, vitals_weight, vitals_height, vitals_bmi, vitals_bp, vitals_pr, vitals_rr, vitals_spo2, vitals_temperature')
@@ -448,15 +452,15 @@ const NurseMedicalReportPage = () => {
   // Load the selected week's daily_reports (by explicit week_number) — shown on the form and
   // compiled into the weekly report on Conclude.
   useEffect(() => {
-    if (!activeReportPatientId || !activeWeekNumber || !isSupabaseConfigured()) {
-      setWeekDailyReports([]);
-      setWeekDailyReportsError('');
-      return;
-    }
     let cancelled = false;
-    setWeekDailyReportsLoading(true);
-    setWeekDailyReportsError('');
     (async () => {
+      if (!activeReportPatientId || !activeWeekNumber || !isSupabaseConfigured()) {
+        setWeekDailyReports([]);
+        setWeekDailyReportsError('');
+        return;
+      }
+      setWeekDailyReportsLoading(true);
+      setWeekDailyReportsError('');
       let result = await fetchDailyReportsForWeek(activeReportPatientId, activeWeekNumber);
       // Fallback for un-migrated rows (week_number still null): use the admission-date window.
       if (result.ok && result.rows.length === 0) {
@@ -527,6 +531,9 @@ const NurseMedicalReportPage = () => {
     if (prefilledKeyRef.current === key) return;
     prefilledKeyRef.current = key;
     const r = currentWeekReport;
+    // Runs at most once per patient|week (see prefilledKeyRef guard above) so it won't
+    // clobber in-progress edits — not expressible as a pure render-time key comparison.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setReportDetails((prev) => ({
       ...prev,
       currentMedications: r.current_medications || prev.currentMedications,

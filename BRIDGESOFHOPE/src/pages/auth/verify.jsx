@@ -24,7 +24,7 @@ const VerifyStep2 = () => {
   const [verifyError, setVerifyError] = useState('');
   const [googleBusy, setGoogleBusy] = useState(false);
 
-  const inputRefs = Array.from({ length: otpLength }, () => useRef());
+  const inputRefs = useRef([]);
 
   const handleChange = (index, value) => {
     if (isNaN(value)) return;
@@ -34,13 +34,13 @@ const VerifyStep2 = () => {
     setOtp(newOtp);
 
     if (value && index < otp.length - 1) {
-      inputRefs[index + 1].current.focus();
+      inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handleKeyDown = (index, e) => {
     if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      inputRefs[index - 1].current.focus();
+      inputRefs.current[index - 1]?.focus();
     }
   };
 
@@ -474,7 +474,9 @@ const VerifyStep2 = () => {
                     maxLength="1"
                     className={`otp-input${digit ? ' otp-input--filled' : ''}`}
                     value={digit}
-                    ref={inputRefs[index]}
+                    ref={(el) => {
+                      inputRefs.current[index] = el;
+                    }}
                     onChange={(e) => handleChange(index, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(index, e)}
                   />

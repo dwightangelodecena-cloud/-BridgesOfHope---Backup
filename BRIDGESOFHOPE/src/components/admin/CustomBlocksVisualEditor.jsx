@@ -687,15 +687,22 @@ export default function CustomBlocksVisualEditor({
   const useSplit = Boolean(splitLayout && livePreviewSlot);
   const emptyDropMin = useSplit ? 140 : 260;
 
+  const handleIframeRef = useCallback(
+    (node) => {
+      iframeMountRef.current = node;
+      const orig = livePreviewSlot?.props?.onIframeRef;
+      if (typeof orig === 'function') orig(node);
+    },
+    [livePreviewSlot],
+  );
+
   const previewWithIframeRef =
     useSplit && React.isValidElement(livePreviewSlot)
-      ? React.cloneElement(livePreviewSlot, {
-          onIframeRef: (node) => {
-            iframeMountRef.current = node;
-            const orig = livePreviewSlot.props.onIframeRef;
-            if (typeof orig === 'function') orig(node);
-          },
-        })
+      ? // handleIframeRef only *writes* iframeMountRef.current when React invokes it as a
+        // ref callback (mount/unmount) — never read here during render. The lint rule can't
+        // see that through the cloneElement prop-forwarding boundary.
+        // eslint-disable-next-line react-hooks/refs
+        React.cloneElement(livePreviewSlot, { onIframeRef: handleIframeRef })
       : livePreviewSlot;
 
   const renderPaletteCanvas = () => (

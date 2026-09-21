@@ -7,10 +7,9 @@ import AdminSidebar from '@/components/admin/AdminSidebar';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import logoBH from '@/assets/kalingalogo.png';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { resolveAccountRole } from '@/components/RoleGuard';
+import { resolveAccountRole } from '@/lib/accountRole';
 import {
   isPatientOnTemporaryLeave,
-  mergePatientTemporaryDischargeFields,
   patientTemporaryDischargeStatusLabel,
   temporaryLeaveLabel,
 } from '@/lib/dischargeRequestTypes';
@@ -46,10 +45,11 @@ import {
   unassignPatientFromRoom,
 } from '@/lib/roomAssignment';
 import { generateWeeklyReportDigest } from '@/lib/weeklyReportDigest';
-import BehaviorProgressBoard, {
+import BehaviorProgressBoard from '@/components/admin/BehaviorProgressBoard';
+import {
   emptyBehaviorChecks,
   computeBehaviorBoardProgressPercent,
-} from '@/components/admin/BehaviorProgressBoard';
+} from '@/lib/behaviorChecklist';
 import BulletedListDisplay from '@/components/clinical/BulletedListDisplay';
 import MedicationTableDisplay from '@/components/clinical/MedicationTableDisplay';
 import CompiledDailyReportsList from '@/components/clinical/CompiledDailyReportsList';
@@ -101,7 +101,6 @@ function mergeNurseRecoveryLadderProgress(patients, ladderByPatientId) {
   return patients.map((p) => {
     const ladder = ladderByPatientId[String(p.id)];
     if (!ladder) return p;
-    const pos = Math.max(1, Math.min(50, Number(ladder.current_position) || 1));
     const rawChecks =
       ladder.checks && typeof ladder.checks === 'object' && !Array.isArray(ladder.checks) ? ladder.checks : {};
     const normalized = normalizeLadderChecksFromDb(rawChecks);
@@ -333,10 +332,6 @@ const loadProgressGovernance = () => {
   } catch {
     return {};
   }
-};
-
-const saveProgressGovernance = (map) => {
-  localStorage.setItem(PROGRESS_GOVERNANCE_STORAGE_KEY, JSON.stringify(map || {}));
 };
 
 const applyRoomAssignmentOverrides = (patients) => {
@@ -748,12 +743,6 @@ function PatientDatabaseShell({ mode = 'admin', staffLimited = false }) {
   useEffect(() => {
     setStaffAssignmentModalOpen(false);
   }, [selectedPatient?.id]);
-
-  const upsertName = (bucket, name) => {
-    const v = String(name || '').trim();
-    if (!v) return;
-    if (!bucket.some((n) => n.toLowerCase() === v.toLowerCase())) bucket.push(v);
-  };
 
   const syncPatientsLocalCache = (uiRows) => {
     try {

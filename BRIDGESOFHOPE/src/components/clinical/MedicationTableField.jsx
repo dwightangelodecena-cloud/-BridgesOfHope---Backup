@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { MEDICATION_OPTIONS } from '@/lib/medicationCatalog';
 import { MEDICATION_INTERVAL_OPTIONS, getMedicationIntervalHourOptions } from '@/lib/medicationInterval';
@@ -16,19 +16,22 @@ export default function MedicationTableField({
   emptyText = 'Not recorded by nurse yet.',
 }) {
   const [rows, setRows] = useState(() => parseMedicationTableFieldForEdit(value));
-  const lastEmittedRef = useRef(serializeMedicationTableField(parseMedicationTableFieldForEdit(value)));
+  const [lastEmitted, setLastEmitted] = useState(() =>
+    serializeMedicationTableField(parseMedicationTableFieldForEdit(value))
+  );
 
-  useEffect(() => {
-    const nextSerialized = serializeMedicationTableField(parseMedicationTableFieldForEdit(value));
-    if (nextSerialized !== lastEmittedRef.current) {
-      setRows(parseMedicationTableFieldForEdit(value));
-      lastEmittedRef.current = nextSerialized;
-    }
-  }, [value]);
+  // Re-sync local rows only when `value` changed for a reason other than our own last
+  // `onChange` echoing back — otherwise an in-progress edit would get clobbered by
+  // re-parsing the serialized string on every parent re-render.
+  const nextSerialized = serializeMedicationTableField(parseMedicationTableFieldForEdit(value));
+  if (nextSerialized !== lastEmitted) {
+    setRows(parseMedicationTableFieldForEdit(value));
+    setLastEmitted(nextSerialized);
+  }
 
   const emitChange = (nextRows) => {
     const serialized = serializeMedicationTableField(nextRows);
-    lastEmittedRef.current = serialized;
+    setLastEmitted(serialized);
     onChange(serialized);
   };
 

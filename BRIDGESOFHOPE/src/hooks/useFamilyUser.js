@@ -61,10 +61,8 @@ export function useFamilyUser() {
   );
 
   useEffect(() => {
-    if (cachedUser) {
-      setState({ ...cachedUser, loading: false });
-      return undefined;
-    }
+    // Already reflected by the lazy useState initializer above — nothing to sync.
+    if (cachedUser) return undefined;
 
     let mounted = true;
     if (!loadPromise) {

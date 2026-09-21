@@ -19,7 +19,9 @@ export function useAdminUnreadMessages() {
   }, []);
 
   useEffect(() => {
-    refresh();
+    (async () => {
+      await refresh();
+    })();
     const unsubRealtime = subscribeAdminInbox(() => refresh());
     const onChanged = () => refresh();
     window.addEventListener(SUPPORT_MESSAGES_CHANGED, onChanged);

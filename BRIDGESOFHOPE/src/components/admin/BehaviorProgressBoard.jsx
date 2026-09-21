@@ -1,133 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
-
-const INTERVENTION_SUFFIX = ' — Intervention';
-
-/** True when this tile is an intervention observation (no % weight toward the 100% total). */
-export function isInterventionLabel(label) {
-  return typeof label === 'string' && label.endsWith(INTERVENTION_SUFFIX);
-}
-
-/** Equal split of 100% across non-intervention squares only (basis points so totals stay exact). */
-function buildPercentWeightByIndex(items) {
-  /** @type {Record<number, number>} */
-  const weights = {};
-  const indices = [];
-  items.forEach((label, i) => {
-    if (!isInterventionLabel(label)) indices.push(i);
-  });
-  const n = indices.length;
-  if (n === 0) return weights;
-  const basisTotal = 10000;
-  const base = Math.floor(basisTotal / n);
-  let remainder = basisTotal - base * n;
-  indices.forEach((idx) => {
-    const bp = base + (remainder > 0 ? 1 : 0);
-    if (remainder > 0) remainder -= 1;
-    weights[idx] = bp / 100;
-  });
-  return weights;
-}
-
-/** Behavioral observations & interventions — order matches the physical board (1–50). */
-export const BEHAVIOR_CHECKLIST_ITEMS = [
-  'Obeys Basic Instruction',
-  'Follows House Rules Daily Schedule',
-  'Show Respect Toward Other',
-  'Participates Without Resistance',
-  'Takes Responsibility for Hygiene and Assigned Chores',
-  'Respectful Relationships with Peers and Authority Figures',
-  'Shows Signs of Emotional Regulation',
-  'Consistently Performs Team Tasks',
-  'Arrogant — Intervention',
-  'Practices Discipline, Punctuality, and Follows Routines',
-  'Disobedient — Intervention',
-  'Displays Cooperation and Willingness',
-  'Disrespectful — Intervention',
-  'Starts Showing Initiative',
-  'Dishonest — Intervention',
-  'Applying Recovery Principle',
-  'Irresponsible — Intervention',
-  'Completes Personal and Group Tasks Without Reminders',
-  'People Pleasing — Intervention',
-  'Lazy — Intervention',
-  'Shows Increasing Self-Awareness',
-  'Non-Caring — Intervention',
-  'Power Tripping — Intervention',
-  'Demonstrates Thoughtful Decision-Making and Accountability',
-  'Begins Applying Recovery Principles',
-  'Leads Calmly and Responsibly',
-  'Coaches and Corrects Peers Respectfully and Firmly',
-  'Sneaky — Intervention',
-  'Lazy — Intervention',
-  'Maintains High Standards of Behavior and Consistency',
-  'Power Tripping — Intervention',
-  'Shows Self-Discipline and Emotional Maturity',
-  'Irresponsible — Intervention',
-  'Trusted with Small Leadership Roles',
-  'Opens Up Vulnerably in Group and Written Reflections',
-  'Handles Confrontation with Humility',
-  'Owns Up to Past Behaviors Without Blaming Others',
-  'Lazy — Intervention',
-  'Neglectful — Intervention',
-  'Maintains a Consistent and Respectful Presence',
-  'Arrogant — Intervention',
-  'Practices Daily Accountability and Internal Motivation',
-  'People Pleasing — Intervention',
-  'Demonstrates Integrity, Responsibility, and Compassion',
-  'Sneaky — Intervention',
-  'Actively Mentors Others and Models Recovery Behavior',
-  'Power Tripping — Intervention',
-  'Maintains Balance Under Pressure and in Conflict',
-  'Neglectful — Intervention',
-  'Upholds Program Structure and Values Consistently',
-];
-
-const PERCENT_WEIGHT_BY_INDEX = buildPercentWeightByIndex(BEHAVIOR_CHECKLIST_ITEMS);
-
-/**
- * @param {Record<number|string, boolean> | null | undefined} checked
- * @returns {number} 0–100; only non-intervention (weighted) tiles count.
- */
-export function computeBehaviorBoardProgressPercent(checked) {
-  if (!checked || typeof checked !== 'object') return 0;
-  let sum = 0;
-  for (let i = 0; i < BEHAVIOR_CHECKLIST_ITEMS.length; i++) {
-    const w = PERCENT_WEIGHT_BY_INDEX[i];
-    if (w != null && checked[i]) sum += w;
-  }
-  return Math.min(100, Math.round(sum * 100) / 100);
-}
-
-/** Unchecked ladder — used until program/nurse explicitly saves checks in the database. */
-export function emptyBehaviorChecks() {
-  /** @type {Record<number|string, boolean>} */
-  const next = {};
-  for (let i = 0; i < BEHAVIOR_CHECKLIST_ITEMS.length; i++) {
-    next[i] = false;
-  }
-  next.completion = false;
-  next.reintegration = false;
-  return next;
-}
-
-/** Checklist state for “all non-intervention tiles through `stageNumber` checked” (intervention tiles never checked). */
-export function buildBehaviorChecksForStage(stageNumber) {
-  const normalizedStage = Math.max(1, Math.min(50, Number(stageNumber) || 1));
-  /** @type {Record<number|string, boolean>} */
-  const next = {};
-  for (let i = 0; i < BEHAVIOR_CHECKLIST_ITEMS.length; i++) {
-    if (!isInterventionLabel(BEHAVIOR_CHECKLIST_ITEMS[i])) {
-      next[i] = i + 1 <= normalizedStage;
-    } else {
-      next[i] = false;
-    }
-  }
-  next.completion = false;
-  next.reintegration = false;
-  return next;
-}
+import {
+  isInterventionLabel,
+  BEHAVIOR_CHECKLIST_ITEMS,
+  PERCENT_WEIGHT_BY_INDEX,
+  buildBehaviorChecksForStage,
+} from '@/lib/behaviorChecklist';
+import { renderBehaviorChecklistLabel } from '@/lib/renderBehaviorChecklistLabel';
 
 function normalizeFailedInterventionMap(raw) {
   if (!raw || typeof raw !== 'object') return {};
@@ -234,47 +114,6 @@ function tierForSquare(n) {
   return 'head';
 }
 
-export const renderBehaviorChecklistLabel = (text, interventionStatus = 'pending') => {
-  const isIntervention = text.endsWith(INTERVENTION_SUFFIX);
-  const display = isIntervention ? text.slice(0, -INTERVENTION_SUFFIX.length) : text;
-
-  if (!isIntervention) {
-    return <span style={{ fontWeight: 600, fontSize: '0.8em', color: '#1E293B' }}>{display}</span>;
-  }
-
-  const palette =
-    interventionStatus === 'current'
-      ? { fg: '#854D0E', bg: '#FEF9C3', border: '#EAB308' }
-      : interventionStatus === 'passed'
-        ? { fg: '#166534', bg: '#ECFDF3', border: '#22C55E' }
-        : interventionStatus === 'failed'
-          ? { fg: '#991B1B', bg: '#FEE2E2', border: '#EF4444' }
-          : { fg: '#991B1B', bg: '#FEF2F2', border: '#DC2626' };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <span style={{ fontWeight: 600, fontSize: '0.8em', color: '#1E293B' }}>{display}</span>
-      <span
-        style={{
-          alignSelf: 'flex-start',
-          fontSize: '0.65em',
-          fontWeight: 700,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          color: palette.fg,
-          background: palette.bg,
-          border: `1px solid ${palette.border}`,
-          padding: '3px 7px',
-          borderRadius: 4,
-          lineHeight: 1.2,
-        }}
-      >
-        Intervention
-      </span>
-    </div>
-  );
-};
-
 /**
  * @param {Object} props
  * @param {Record<number|string, boolean>} props.checked
@@ -334,14 +173,15 @@ export default function BehaviorProgressBoard({
   const reintegrationDisplayName =
     patientName != null && String(patientName).trim() !== '' ? String(patientName).trim() : 'this resident';
 
-  useEffect(() => {
-    if (persistenceId == null || String(persistenceId).trim() === '') {
-      setFailedInterventionSteps({});
-      return;
-    }
-    const prof = loadLadderProfiles()[String(persistenceId)];
+  // Re-derive failed-intervention markers whenever the resident changes (React-recommended
+  // "adjust state when a prop changes" pattern — see react.dev/learn/you-might-not-need-an-effect).
+  const [failedStepsKey, setFailedStepsKey] = useState(persistenceId);
+  if (persistenceId !== failedStepsKey) {
+    setFailedStepsKey(persistenceId);
+    const hasId = persistenceId != null && String(persistenceId).trim() !== '';
+    const prof = hasId ? loadLadderProfiles()[String(persistenceId)] : null;
     setFailedInterventionSteps(normalizeFailedInterventionMap(prof?.failedInterventionSteps));
-  }, [persistenceId]);
+  }
 
   /**
    * @param {number} stageNumber

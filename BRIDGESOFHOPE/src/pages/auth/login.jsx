@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
 import { appendActivityFeed } from '@/lib/activityFeed';
-import { resolveAccountRole, getAccountTypeFromUser } from '@/components/RoleGuard';
+import { resolveAccountRole, getAccountTypeFromUser } from '@/lib/accountRole';
 import { takeOAuthExpectedRole, startGoogleOAuthWeb } from '@/lib/oauthWeb';
 import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
 import AuthPageBackground from '@/components/auth/AuthPageBackground';
@@ -16,16 +16,39 @@ const Login = () => {
   const REMEMBER_LOGIN_PAYLOAD_KEY = 'bh_remembered_login_payload';
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [formData, setFormData] = useState({
-    identifier: '',
-    password: '',
-    rememberMe: false,
+  const [formData, setFormData] = useState(() => {
+    const rawPayload = localStorage.getItem(REMEMBER_LOGIN_PAYLOAD_KEY);
+    if (rawPayload) {
+      try {
+        const parsed = JSON.parse(rawPayload);
+        const identifier = String(parsed?.identifier || '').trim();
+        const password = String(parsed?.password || '');
+        if (identifier) {
+          return { identifier, password, rememberMe: true };
+        }
+      } catch {
+        // Fall back to legacy remember keys if payload parsing fails.
+      }
+    }
+    const savedIdentifier =
+      localStorage.getItem(REMEMBER_LOGIN_KEY) ||
+      localStorage.getItem(LEGACY_REMEMBER_EMAIL_KEY) ||
+      '';
+    if (savedIdentifier) {
+      return { identifier: savedIdentifier, password: '', rememberMe: true };
+    }
+    return { identifier: '', password: '', rememberMe: false };
   });
 
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [signupNotice, setSignupNotice] = useState('');
+  const [signupNotice, setSignupNotice] = useState(() => {
+    const v = sessionStorage.getItem('bh_post_signup');
+    if (v === 'check_email') return 'Check your email and confirm your account, then sign in below.';
+    if (v === 'welcome') return 'Account created. You can sign in now.';
+    return '';
+  });
   const [submitting, setSubmitting] = useState(false);
 
   const touchPresence = async (userId) => {
@@ -46,47 +69,6 @@ const Login = () => {
   };
 
   useEffect(() => {
-    const rawPayload = localStorage.getItem(REMEMBER_LOGIN_PAYLOAD_KEY);
-    if (rawPayload) {
-      try {
-        const parsed = JSON.parse(rawPayload);
-        const identifier = String(parsed?.identifier || '').trim();
-        const password = String(parsed?.password || '');
-        if (identifier) {
-          setFormData((prev) => ({
-            ...prev,
-            identifier,
-            password,
-            rememberMe: true,
-          }));
-          return;
-        }
-      } catch {
-        // Fall back to legacy remember keys if payload parsing fails.
-      }
-    }
-
-    const savedIdentifier =
-      localStorage.getItem(REMEMBER_LOGIN_KEY) ||
-      localStorage.getItem(LEGACY_REMEMBER_EMAIL_KEY) ||
-      '';
-    if (savedIdentifier) {
-      setFormData((prev) => ({
-        ...prev,
-        identifier: savedIdentifier,
-        rememberMe: true,
-      }));
-    }
-  }, []);
-
-  useEffect(() => {
-    const v = sessionStorage.getItem('bh_post_signup');
-    if (!v) return;
-    if (v === 'check_email') {
-      setSignupNotice('Check your email and confirm your account, then sign in below.');
-    } else if (v === 'welcome') {
-      setSignupNotice('Account created. You can sign in now.');
-    }
     sessionStorage.removeItem('bh_post_signup');
   }, []);
 

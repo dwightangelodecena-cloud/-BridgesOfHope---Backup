@@ -6,7 +6,6 @@ import {
   Trash2, ArrowRightSquare,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import logo from '@/assets/kalingalogo.png';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import { ProgramMobileBottomNav } from '@/components/program/ProgramSidebar';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';

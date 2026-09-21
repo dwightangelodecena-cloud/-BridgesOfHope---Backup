@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import {
   parseBulletedListFieldForEdit,
@@ -22,19 +22,22 @@ export default function BulletedListFieldInput({
   emptyText = '—',
 }) {
   const [items, setItems] = useState(() => parseBulletedListFieldForEdit(value));
-  const lastEmittedRef = useRef(serializeBulletedListField(parseBulletedListFieldForEdit(value)));
+  const [lastEmitted, setLastEmitted] = useState(() =>
+    serializeBulletedListField(parseBulletedListFieldForEdit(value))
+  );
 
-  useEffect(() => {
-    const nextSerialized = serializeBulletedListField(parseBulletedListFieldForEdit(value));
-    if (nextSerialized !== lastEmittedRef.current) {
-      setItems(parseBulletedListFieldForEdit(value));
-      lastEmittedRef.current = nextSerialized;
-    }
-  }, [value]);
+  // Re-sync local rows only when `value` changed for a reason other than our own last
+  // `onChange` echoing back — otherwise an in-progress edit (e.g. a blank draft row) would
+  // get clobbered by re-parsing the serialized string on every parent re-render.
+  const nextSerialized = serializeBulletedListField(parseBulletedListFieldForEdit(value));
+  if (nextSerialized !== lastEmitted) {
+    setItems(parseBulletedListFieldForEdit(value));
+    setLastEmitted(nextSerialized);
+  }
 
   const emitChange = (nextItems) => {
     const serialized = serializeBulletedListField(nextItems);
-    lastEmittedRef.current = serialized;
+    setLastEmitted(serialized);
     onChange(serialized);
   };
 

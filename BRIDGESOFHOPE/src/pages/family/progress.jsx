@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Home, TrendingUp, User, LogOut, Calendar, Plus, X, Activity, Bed, UserCheck } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 // Assets
 import logo from '@/assets/logo2.png';
@@ -9,7 +9,6 @@ import activityIcon from '@/assets/activity.png';
 
 const Progress = () => {
     const navigate = useNavigate();
-    const location = useLocation();
 
     // --- STATE ---
     const [isExpanded, setIsExpanded] = useState(false);

@@ -1,17 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { LayoutGrid, BookUser, LogOut, Users, ArrowRightSquare, Stethoscope, LayoutTemplate, ClipboardList, User, Calendar, FileText, MessageCircle, KeyRound } from 'lucide-react';
 import { AdminMessagesNavItem } from '@/components/admin/AdminMessagesNavItem';
-import { useNavigate } from 'react-router-dom';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
-import logoBH from '@/assets/kalingalogo.png';
 import { supabase } from '@/lib/supabase';
 import { clearAdminApprovalPin, getAdminApprovalPin, setAdminApprovalPin, verifyAdminApprovalPin } from '@/lib/adminApprovalPin';
 import { getPasswordPolicyError, getPasswordStrengthChecks, PASSWORD_MIN_LENGTH } from '@/lib/passwordPolicy';
 import { formatAuthError } from '@/lib/authErrors';
 
 const AdminProfile = () => {
-  const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [userId, setUserId] = useState('');
   const [savedPinExists, setSavedPinExists] = useState(false);

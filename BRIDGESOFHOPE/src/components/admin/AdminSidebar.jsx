@@ -70,8 +70,6 @@ const NAV_SECTIONS = [
   },
 ];
 
-export const ADMIN_SIDEBAR_WIDTH = { collapsed: 110, expanded: 292 };
-
 function isNavActive(pathname, path) {
   if (path === '/admin-dashboard') {
     return pathname === '/admin-dashboard' || pathname === '/admin-dashboard/';

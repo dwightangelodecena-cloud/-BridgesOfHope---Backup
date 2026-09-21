@@ -4,7 +4,7 @@ import AdminSidebar from '@/components/admin/AdminSidebar';
 import { AdminWorkspaceTabs } from '@/components/admin/AdminWorkspaceTabs';
 import { familySidebarStyle } from '@/lib/familySidebarStyle';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { resolveAccountRole } from '@/components/RoleGuard';
+import { resolveAccountRole } from '@/lib/accountRole';
 import { useAdminUnreadMessages } from '@/hooks/useAdminUnreadMessages';
 import { useUnreadStaffNotifications } from '@/hooks/useAdminUnreadStaffNotifications';
 import { AdminMessagesContent } from './admin-messages';

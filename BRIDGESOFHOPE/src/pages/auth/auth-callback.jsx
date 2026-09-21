@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { resolveAccountRole } from '@/components/RoleGuard';
+import { resolveAccountRole } from '@/lib/accountRole';
 
 function navigateForRole(navigate, role) {
   const r = (role ?? 'family').toLowerCase();

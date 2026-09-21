@@ -22,7 +22,9 @@ export function useUnreadStaffNotifications() {
   }, []);
 
   useEffect(() => {
-    refresh();
+    (async () => {
+      await refresh();
+    })();
     const unsubRealtime = subscribeStaffNotifications(() => refresh());
     const onChanged = () => refresh();
     window.addEventListener(STAFF_NOTIFICATIONS_CHANGED, onChanged);

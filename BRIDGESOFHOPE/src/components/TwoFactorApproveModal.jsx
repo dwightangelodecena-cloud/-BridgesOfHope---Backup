@@ -20,9 +20,16 @@ export function TwoFactorApproveModal({
   const [digits, setDigits] = useState(['', '', '', '']);
   const inputRefs = [useRef(), useRef(), useRef(), useRef()];
 
+  // Reset the code whenever the modal transitions to open (React-recommended
+  // "adjust state when a prop changes" pattern — see react.dev/learn/you-might-not-need-an-effect).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setDigits(['', '', '', '']);
+  }
+
   useEffect(() => {
     if (!open) return;
-    setDigits(['', '', '', '']);
     const t = setTimeout(() => inputRefs[0].current?.focus(), 50);
     return () => clearTimeout(t);
   }, [open]);

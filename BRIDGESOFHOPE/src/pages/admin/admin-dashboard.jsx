@@ -11,7 +11,6 @@ import { verifyAdminApprovalPin } from '@/lib/adminApprovalPin';
 import {
   uiPatientFromRow,
   uiAdmissionRequestFromRow,
-  uiDischargeRequestFromRow,
 } from '@/lib/dbMappers';
 import { loadWorkflowOverrides, loadDischargeRecords } from '@/lib/admissionDischargeStore';
 import { approveAdmissionInDatabase } from '@/lib/approveAdmissionSupabase';
@@ -587,13 +586,6 @@ const AdminDashboard = () => {
     if (!user) {
       return { ok: false, error: 'You are not signed in. Log in again as admin.' };
     }
-    const adminId = user?.id ?? null;
-    let decidedBy = adminId;
-    if (adminId) {
-      const { data: profileRow } = await supabase.from('profiles').select('id').eq('id', adminId).maybeSingle();
-      if (!profileRow) decidedBy = null;
-    }
-    const decidedAt = new Date().toISOString();
 
     if (type === 'admission') {
       const adm = await approveAdmissionInDatabase(req);
