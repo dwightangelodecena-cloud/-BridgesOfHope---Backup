@@ -21,6 +21,7 @@ import Constants from "expo-constants";
 import { useTerms } from "../contexts/TermsContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { getMobileOAuthRedirectUrl } from "../lib/googleAuth";
 import { formatAuthError } from "../lib/authErrors";
 import { goBackOrReplace } from "../lib/navigationConfig";
 import { SIGNUP_CONSENT_STORAGE_KEY } from "../lib/legalDocuments";
@@ -332,6 +333,7 @@ export default function SignupScreen() {
         email: email.trim(),
         password,
         options: {
+          emailRedirectTo: getMobileOAuthRedirectUrl(),
           data: {
             first_name: first,
             last_name: last,
