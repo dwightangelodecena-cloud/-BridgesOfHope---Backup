@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import logoBH from '@/assets/kalingalogo.png';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { supabase, supabaseEmailLinkSender, isSupabaseConfigured } from '@/lib/supabase';
 import { APP_DATA_REFRESH, refreshAppData } from '@/lib/appDataRefresh';
 
 const USER_STATUS_OPTIONS = ['Active', 'Inactive'];
@@ -425,7 +425,7 @@ export function UserManagementContent() {
     try {
       const email = String(selectedUser.email).trim().toLowerCase();
       const redirectTo = `${window.location.origin}${RESET_PASSWORD_REDIRECT_PATH}`;
-      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      const { error } = await supabaseEmailLinkSender.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
       setFormError(`Password reset link sent.`);
     } catch (err) {

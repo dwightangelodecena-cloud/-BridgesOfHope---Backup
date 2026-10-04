@@ -1,5 +1,6 @@
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { groqTextModel, groqVisionModel, groqReasoningParams } from '@/lib/groqModels';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -33,14 +34,6 @@ function groqApiKey() {
     );
   }
   return key;
-}
-
-function visionModel() {
-  return import.meta.env.VITE_GROQ_REFERRAL_SCAN_MODEL?.trim() || 'llama-3.2-11b-vision-preview';
-}
-
-function textModel() {
-  return import.meta.env.VITE_GROQ_REFERRAL_TEXT_MODEL?.trim() || 'llama-3.3-70b-versatile';
 }
 
 function fileToDataUrl(file) {
@@ -100,6 +93,7 @@ async function groqChat({ messages, model }) {
     },
     body: JSON.stringify({
       model,
+      ...groqReasoningParams(model),
       temperature: 0.1,
       max_tokens: 2200,
       response_format: { type: 'json_object' },
@@ -136,7 +130,7 @@ export async function scanHospitalReferralFromFile(file) {
   if (isImageFile(file)) {
     const dataUrl = await fileToDataUrl(file);
     const content = await groqChat({
-      model: visionModel(),
+      model: groqVisionModel(),
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         {
@@ -154,7 +148,7 @@ export async function scanHospitalReferralFromFile(file) {
   if (isPdfFile(file)) {
     const extracted = await extractPdfText(file);
     const content = await groqChat({
-      model: textModel(),
+      model: groqTextModel(),
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         {

@@ -123,6 +123,8 @@ export default function LoginScreen() {
           setSignupNotice("Check your email and confirm your account, then sign in.");
         } else if (v === "welcome") {
           setSignupNotice("Account created. You can sign in now.");
+        } else if (v === "email_confirmed") {
+          setSignupNotice("Email confirmed! You can sign in now.");
         }
         await AsyncStorage.removeItem(POST_SIGNUP_KEY);
       } catch {

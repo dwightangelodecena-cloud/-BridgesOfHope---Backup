@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Lock, CheckCircle, XCircle, ChevronLeft, KeyRound } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -7,16 +7,42 @@ import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
 import AuthPageBackground from '@/components/auth/AuthPageBackground';
 import { AUTH_SHELL_STYLES } from '@/components/auth/authShellStyles';
 
+function readEmailLinkHash() {
+  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+  const params = new URLSearchParams(hash);
+  const error = params.get('error_description');
+  const accessToken = params.get('access_token');
+  if (!error && !accessToken) return null;
+  return { error, accessToken, refreshToken: params.get('refresh_token') };
+}
+
 const NewPass = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from || 'forgot';
+  // Email links (see supabaseEmailLinkSender) arrive as /newpass#access_token=...&type=recovery
+  // or #error_description=... The main client is PKCE-only and ignores that hash, so read it here.
+  const [emailLink] = useState(readEmailLinkHash);
+  const fromEmailLink = Boolean(emailLink?.accessToken);
 
   const [formData, setFormData] = useState({
     password: '',
     confirmPassword: ''
   });
-  const [saveError, setSaveError] = useState('');
+  const [saveError, setSaveError] = useState(() =>
+    emailLink?.error ? `${emailLink.error}. Request a new password reset link.` : ''
+  );
+
+  useEffect(() => {
+    if (!emailLink) return;
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+    if (!emailLink.accessToken || !emailLink.refreshToken || !isSupabaseConfigured()) return;
+    void supabase.auth
+      .setSession({ access_token: emailLink.accessToken, refresh_token: emailLink.refreshToken })
+      .then(({ error }) => {
+        if (error) setSaveError(`${error.message}. Request a new password reset link.`);
+      });
+  }, [emailLink]);
 
   const confirmRef = useRef(null);
 
@@ -45,6 +71,8 @@ const NewPass = () => {
         setSaveError(error.message || 'Could not update password.');
         return;
       }
+      // Link-based resets leave the user signed in on this device; make them log in with the new password.
+      if (fromEmailLink) await supabase.auth.signOut();
     }
 
     navigate(from === 'changepass' ? '/profile' : from === 'nursechangepass' ? '/nurseprofile' : '/login');

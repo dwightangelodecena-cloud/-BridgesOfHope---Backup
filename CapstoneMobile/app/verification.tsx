@@ -20,6 +20,7 @@ import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { goBackOrReplace } from "../lib/navigationConfig";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { getMobileEmailLinkRedirectUrl } from "../lib/googleAuth";
 import { ScalePressable } from "../components/auth/ScalePressable";
 import { RecoveryStepBar } from "../components/auth/RecoveryStepBar";
 
@@ -151,7 +152,10 @@ export default function VerificationScreen() {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: recoveryEmail,
-        options: { shouldCreateUser: false },
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: getMobileEmailLinkRedirectUrl("reset"),
+        },
       });
       if (error) {
         setVerifyError(error.message || "Could not resend code.");

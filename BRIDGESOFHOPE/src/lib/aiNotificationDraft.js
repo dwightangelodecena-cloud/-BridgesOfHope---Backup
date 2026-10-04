@@ -1,3 +1,4 @@
+import { groqTextModel, groqReasoningParams } from '@/lib/groqModels';
 // Same Groq call pattern as hospitalReferralScan.js (client-side, text-only here — no vision model needed).
 
 function groqApiKey() {
@@ -8,10 +9,6 @@ function groqApiKey() {
     );
   }
   return key;
-}
-
-function textModel() {
-  return import.meta.env.VITE_GROQ_REFERRAL_TEXT_MODEL?.trim() || 'llama-3.3-70b-versatile';
 }
 
 const CATEGORY_TONE = {
@@ -52,9 +49,10 @@ async function groqChat(messages) {
       Authorization: `Bearer ${groqApiKey()}`,
     },
     body: JSON.stringify({
-      model: textModel(),
+      model: groqTextModel(),
+      ...groqReasoningParams(groqTextModel()),
       temperature: 0.4,
-      max_tokens: 400,
+      max_tokens: 1000,
       response_format: { type: 'json_object' },
       messages,
     }),

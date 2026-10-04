@@ -21,6 +21,7 @@ import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { TAB_ROUTES, goBackOrReplace } from "../lib/navigationConfig";
 import {
   ensureFamilyAccountOrSignOut,
+  getMobileEmailLinkRedirectUrl,
   signInWithGoogleMobile,
 } from "../lib/googleAuth";
 import { LoginField } from "../components/auth/LoginField";
@@ -84,7 +85,11 @@ export default function ForgetPasswordScreen() {
     try {
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email: trimmedEmail,
-        options: { shouldCreateUser: false },
+        options: {
+          shouldCreateUser: false,
+          // Tapping the link in the email opens the app straight on the new password screen.
+          emailRedirectTo: getMobileEmailLinkRedirectUrl("reset"),
+        },
       });
 
       if (otpErr) {

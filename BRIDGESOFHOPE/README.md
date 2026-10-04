@@ -32,8 +32,8 @@ Admission Management can scan a hospital referral PDF or image and show a struct
 
 ```env
 VITE_GROQ_API_KEY=gsk_...
-VITE_GROQ_REFERRAL_SCAN_MODEL=llama-3.2-11b-vision-preview
-VITE_GROQ_REFERRAL_TEXT_MODEL=llama-3.3-70b-versatile
+VITE_GROQ_REFERRAL_SCAN_MODEL=qwen/qwen3.8-27b
+VITE_GROQ_REFERRAL_TEXT_MODEL=openai/gpt-oss-120b
 ```
 
 Restart `npm run dev` after changing `.env`.

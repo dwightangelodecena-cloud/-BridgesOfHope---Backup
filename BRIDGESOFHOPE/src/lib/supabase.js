@@ -22,6 +22,23 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+/**
+ * Sends auth emails (password reset / OTP) whose link must work on any device.
+ * The main client uses PKCE, which ties the emailed link to the code verifier stored in
+ * *this* browser — so a link opened on a phone, or a reset an admin triggers for someone
+ * else, can never be exchanged. Implicit flow puts the session in the URL hash instead,
+ * which /newpass picks up directly. Never persists a session of its own.
+ */
+export const supabaseEmailLinkSender = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    flowType: 'implicit',
+    detectSessionInUrl: false,
+    persistSession: false,
+    autoRefreshToken: false,
+    storageKey: 'bh-email-link-sender',
+  },
+});
+
 export function isSupabaseConfigured() {
   return Boolean(supabaseUrl && supabaseAnonKey);
 }

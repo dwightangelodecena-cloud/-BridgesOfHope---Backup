@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Mail, KeyRound, ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseEmailLinkSender, isSupabaseConfigured } from '@/lib/supabase';
 import { startGoogleOAuthWeb } from '@/lib/oauthWeb';
 import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
 import AuthPageBackground from '@/components/auth/AuthPageBackground';
@@ -69,9 +69,14 @@ const Forgot = () => {
     setSending(true);
     try {
       const email = formData.email.trim().toLowerCase();
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
+      // The email carries both the 6-digit code (entered on /verify) and a link; the link
+      // must land on /newpass rather than the dashboard Site URL.
+      const { error: otpErr } = await supabaseEmailLinkSender.auth.signInWithOtp({
         email,
-        options: { shouldCreateUser: false },
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: `${window.location.origin}/newpass`,
+        },
       });
       if (otpErr) {
         setError(otpErr.message || 'Could not send email code.');

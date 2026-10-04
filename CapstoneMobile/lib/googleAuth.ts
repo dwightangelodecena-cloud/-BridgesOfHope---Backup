@@ -7,6 +7,15 @@ export function getMobileOAuthRedirectUrl(): string {
   return Linking.createURL("auth/callback");
 }
 
+/**
+ * Deep link for emailed auth links. `next` tells app/auth/callback where to land:
+ * "signup" -> login screen (email confirmed), "reset" -> new password screen.
+ * Supabase only honours it if capstonemobile://** is in the dashboard Redirect URLs.
+ */
+export function getMobileEmailLinkRedirectUrl(next: "signup" | "reset"): string {
+  return Linking.createURL("auth/callback", { queryParams: { next } });
+}
+
 export type MobileGoogleResult =
   | { status: "signed_in" }
   | { status: "cancelled" }

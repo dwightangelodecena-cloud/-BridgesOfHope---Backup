@@ -1,3 +1,4 @@
+import { groqTextModel, groqReasoningParams } from '@/lib/groqModels';
 // Same Groq call pattern as hospitalReferralScan.js / aiNotificationDraft.js — client-side, text-only.
 
 function groqApiKey() {
@@ -8,10 +9,6 @@ function groqApiKey() {
     );
   }
   return key;
-}
-
-function textModel() {
-  return import.meta.env.VITE_GROQ_REFERRAL_TEXT_MODEL?.trim() || 'llama-3.3-70b-versatile';
 }
 
 const SYSTEM_PROMPT =
@@ -75,9 +72,10 @@ export async function generateWeeklyReportDigest(patientName, weeklyReportsByWee
       Authorization: `Bearer ${groqApiKey()}`,
     },
     body: JSON.stringify({
-      model: textModel(),
+      model: groqTextModel(),
+      ...groqReasoningParams(groqTextModel()),
       temperature: 0.2,
-      max_tokens: 500,
+      max_tokens: 1200,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
@@ -141,9 +139,10 @@ export async function draftWeeklyReportFromDailyReports(patientName, weekNumber,
       Authorization: `Bearer ${groqApiKey()}`,
     },
     body: JSON.stringify({
-      model: textModel(),
+      model: groqTextModel(),
+      ...groqReasoningParams(groqTextModel()),
       temperature: 0.2,
-      max_tokens: 400,
+      max_tokens: 1000,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: DAILY_DRAFT_SYSTEM_PROMPT },
