@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveAccountRole } from '@/lib/accountRole';
+import { clearAllAdminSessionLocks } from '@/lib/adminSessionLock';
 
 function navigateForRole(navigate, role) {
   const r = (role ?? 'family').toLowerCase();
@@ -55,6 +56,9 @@ export default function AuthCallback() {
             await supabase.auth.exchangeCodeForSession(window.location.href);
           if (!exchangeError && exchangeData?.session) {
             session = exchangeData.session;
+            // Fresh Google login proves identity — release any idle lock. (Reusing an
+            // existing session below must not, or visiting this URL would bypass the lock.)
+            clearAllAdminSessionLocks();
           } else if (exchangeError) {
             const { data: fallback } = await supabase.auth.getSession();
             session = fallback?.session ?? null;

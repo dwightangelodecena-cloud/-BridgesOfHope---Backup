@@ -3,6 +3,7 @@ import { Mail, Lock, Eye, EyeOff, Shield, UserPlus, ChevronRight } from 'lucide-
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/lib/authErrors';
+import { clearAllAdminSessionLocks } from '@/lib/adminSessionLock';
 import { appendActivityFeed } from '@/lib/activityFeed';
 import { resolveAccountRole, getAccountTypeFromUser } from '@/lib/accountRole';
 import { takeOAuthExpectedRole, startGoogleOAuthWeb } from '@/lib/oauthWeb';
@@ -178,6 +179,7 @@ const Login = () => {
       setError(formatAuthError(authError));
       return;
     }
+    clearAllAdminSessionLocks();
 
     const accountRole = await resolveAccountRole(data.user);
 

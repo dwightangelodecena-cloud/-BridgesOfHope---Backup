@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { getAccountTypeFromUser, resolveAccountRole } from '@/lib/accountRole';
+import {
+  adminSessionLockKey,
+  isAdminSessionLocked,
+  setAdminSessionLocked,
+} from '@/lib/adminSessionLock';
 
 const DESKTOP_IDLE_MS = 3 * 60 * 1000;
 const MOBILE_IDLE_MS = 12 * 60 * 1000;
@@ -55,7 +60,10 @@ export function RoleGuard({ children, allowedRoles }) {
         return;
       }
       const role = await resolveAccountRole(user);
-      if (!cancelled) setState({ loading: false, user, role });
+      if (cancelled) return;
+      // Restore a lock from before a refresh / in another tab, in the same render as the page.
+      if (role === 'admin' && isAdminSessionLocked(user.id)) setLocked(true);
+      setState({ loading: false, user, role });
     };
 
     void (async () => {
@@ -134,11 +142,20 @@ export function RoleGuard({ children, allowedRoles }) {
    *  after a successful unlock, instead of waiting for the next mouse move. */
   useEffect(() => {
     if (!state.user || state.role !== 'admin') return;
+    const userId = state.user.id;
     let idleTimer = null;
 
     const armIdleTimer = () => {
       if (idleTimer) window.clearTimeout(idleTimer);
-      idleTimer = window.setTimeout(() => setLocked(true), ADMIN_LOCK_IDLE_MS);
+      idleTimer = window.setTimeout(() => {
+        setAdminSessionLocked(userId, true);
+        setLocked(true);
+      }, ADMIN_LOCK_IDLE_MS);
+    };
+
+    // Keep every open admin tab in step: lock/unlock in one applies to all.
+    const onStorage = (e) => {
+      if (e.key === adminSessionLockKey(userId)) setLocked(e.newValue === '1');
     };
 
     const onActivity = () => {
@@ -150,10 +167,12 @@ export function RoleGuard({ children, allowedRoles }) {
     armIdleTimer();
     const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'];
     events.forEach((evt) => window.addEventListener(evt, onActivity, { passive: true }));
+    window.addEventListener('storage', onStorage);
 
     return () => {
       if (idleTimer) window.clearTimeout(idleTimer);
       events.forEach((evt) => window.removeEventListener(evt, onActivity));
+      window.removeEventListener('storage', onStorage);
     };
     // state.user is a fresh object on every Supabase auth event (token refresh, tab
     // re-sync, ...) even for the same logged-in user — depending on it directly would
@@ -178,10 +197,12 @@ export function RoleGuard({ children, allowedRoles }) {
     }
     setUnlockPassword('');
     setUnlockError('');
+    setAdminSessionLocked(state.user.id, false);
     setLocked(false);
   };
 
   const handleLockedLogout = async () => {
+    setAdminSessionLocked(state.user?.id, false);
     await supabase.auth.signOut();
     window.location.href = '/login';
   };
