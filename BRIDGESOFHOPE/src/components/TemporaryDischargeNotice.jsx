@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { UserCheck, X, FileText } from 'lucide-react';
 import { temporaryLeaveLabel } from '@/lib/dischargeRequestTypes';
 import { temporaryLeaveNoteLines } from '@/lib/temporaryLeaveDisplay';
+import { appModalPanelStyle } from '@/lib/appFormStyles';
 
 const bannerStyle = {
   margin: '-22px -22px 14px',
@@ -191,6 +192,7 @@ export function ResidentReturnedConfirmModal({
       <div
         className="app-modal-panel"
         style={{
+          ...appModalPanelStyle,
           maxWidth: 400,
           padding: '24px 24px 20px',
           position: 'relative',

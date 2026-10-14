@@ -175,6 +175,10 @@ const AdminDashboard = () => {
       forDischarge: forDischargeCount,
       readyDischarge: ready,
       dischargedDone: done,
+      familyDischargeRequests: (() => {
+        const pd = parseJson('bh_pending_discharges', []);
+        return Array.isArray(pd) ? pd.length : 0;
+      })(),
     });
     try {
       const raw = localStorage.getItem('bh_staff_directory');
@@ -216,18 +220,28 @@ const AdminDashboard = () => {
     );
 
     const { count: admTotal } = await supabase.from('admission_requests').select('*', { count: 'exact', head: true });
+    const { count: familyDisPending, error: familyDisErr } = await supabase
+      .from('discharge_requests')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending');
+    if (familyDisErr) console.warn('[dashboard] discharge_requests count:', familyDisErr.message);
     const ov = loadWorkflowOverrides();
     const forDischargeCount = Object.values(ov).filter((x) => x.workflowStatus === 'For Discharge' && !x.archived).length;
     const dr = loadDischargeRecords();
     const ready = dr.filter((r) => !r.archived && r.finalStatus === 'Ready for Discharge').length;
-    const done = dr.filter(
+    const doneLocal = dr.filter(
       (r) => !r.archived && (r.finalStatus === 'Completed' || r.finalStatus === 'Discharged')
-    ).length;
+    );
+    // Mirror Discharge Management's table: residents with discharged_at but no local discharge record
+    // still show there as "Discharged" (history rows), so count them here too.
+    const localPatientIds = new Set(dr.map((r) => r.patientId).filter(Boolean));
+    const doneHistory = (p || []).filter((row) => row.discharged_at && !localPatientIds.has(row.id)).length;
     setPipelineMetrics({
       totalAdmissions: admTotal ?? 0,
       forDischarge: forDischargeCount,
       readyDischarge: ready,
-      dischargedDone: done,
+      dischargedDone: doneLocal.length + doneHistory,
+      familyDischargeRequests: familyDisErr ? null : familyDisPending ?? 0,
     });
 
     const { data: rpcStaff, error: rpcStaffErr } = await supabase.rpc('bh_dashboard_staff_count');
@@ -1024,7 +1038,7 @@ const AdminDashboard = () => {
                     <span className="metric-badge" style={{ background: '#EEF2FF', color: '#4338CA' }}>Program</span>
                   </div>
                   <div>
-                    <div className="metric-value">—</div>
+                    <div className="metric-value">{pipelineMetrics.familyDischargeRequests ?? '—'}</div>
                     <div className="metric-title">Family discharge requests</div>
                     <div className="metric-subtitle">Reviewed by assigned program staff</div>
                   </div>
