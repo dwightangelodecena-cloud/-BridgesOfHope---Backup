@@ -1,11 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Check, ChevronRight, MapPin, Trophy, Undo2 } from 'lucide-react';
 import { loadLadderProfiles, saveLadderProfiles } from '@/lib/recoveryLadderStorage';
 import {
   isInterventionLabel,
   BEHAVIOR_CHECKLIST_ITEMS,
   PERCENT_WEIGHT_BY_INDEX,
+  INTERVENTION_SUFFIX,
   buildBehaviorChecksForStage,
+  computeBehaviorBoardProgressPercent,
 } from '@/lib/behaviorChecklist';
 import { renderBehaviorChecklistLabel } from '@/lib/renderBehaviorChecklistLabel';
 
@@ -71,6 +74,33 @@ const BOARD_ROWS = [
 /** Path reads top → bottom: square 1 at top, Completion / Reintegration at bottom. */
 const DISPLAY_ROWS = [...BOARD_ROWS].reverse();
 
+/** Space between tiles; path connectors are drawn inside it. */
+const BOARD_GAP = 16;
+
+/** Square number → { row, col } in DISPLAY_ROWS, used to draw path connectors. */
+const SQUARE_POS = (() => {
+  /** @type {Record<number, { row: number, col: number }>} */
+  const out = {};
+  DISPLAY_ROWS.forEach((row, ri) =>
+    row.forEach((cell, ci) => {
+      if (cell.kind === 'square') out[cell.n] = { row: ri, col: ci };
+    })
+  );
+  return out;
+})();
+
+/** Which way square n leads to n+1: 'right' | 'left' | 'down' | 'down-right' | 'down-left' | null (end of path). */
+function pathDirection(n) {
+  const a = SQUARE_POS[n];
+  const b = SQUARE_POS[n + 1];
+  if (!a || !b) return null;
+  if (b.row > a.row) {
+    if (b.col === a.col) return 'down';
+    return b.col > a.col ? 'down-right' : 'down-left';
+  }
+  return b.col > a.col ? 'right' : 'left';
+}
+
 const TILE_FILL = '#FFFFFF';
 const TILE_FILL_ALT = '#FAFBFC';
 
@@ -112,6 +142,201 @@ function tierForSquare(n) {
   if (head.has(n)) return 'head';
   if ([35, 36, 37, 40, 42].includes(n)) return 'senior';
   return 'head';
+}
+
+/** 8-digit hex: tier color at low alpha, for tinted fills and focus rings. */
+function tint(hex, alpha) {
+  return `${hex}${alpha}`;
+}
+
+/** Pulse ring on the "you are here" tile; disabled for reduced-motion users. */
+const BOARD_STATE_CSS = `
+@keyframes bh-ladder-pulse {
+  0% { box-shadow: 0 0 0 0 var(--bh-ladder-ring); }
+  70% { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.bh-ladder-current { animation: bh-ladder-pulse 2.2s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .bh-ladder-current { animation: none; }
+}
+.bh-ladder-state-btn:focus-visible { outline: 2px solid #1B2559; outline-offset: 2px; }
+`;
+
+/**
+ * Tile progress marker that replaces the old checkbox: filled check when done,
+ * a pin when it is the resident's current stage, an empty ring when upcoming.
+ * Still toggles like the checkbox did when the board is editable.
+ */
+function StageMarker({ state, color, n, readOnly, onToggle }) {
+  const done = state === 'done' || state === 'current';
+  const size = 20;
+  const visual =
+    state === 'current' ? (
+      <span
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          background: color,
+          color: '#fff',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <MapPin size={12} strokeWidth={2.75} />
+      </span>
+    ) : state === 'done' ? (
+      <span
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          background: '#16A34A',
+          color: '#fff',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Check size={12} strokeWidth={3} />
+      </span>
+    ) : (
+      <span
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          border: '2px dashed #CBD5E1',
+          boxSizing: 'border-box',
+          display: 'inline-block',
+        }}
+      />
+    );
+
+  const label =
+    state === 'current'
+      ? `Stage ${n}: current stage`
+      : state === 'done'
+        ? `Stage ${n}: completed`
+        : `Stage ${n}: not yet reached`;
+
+  if (readOnly) {
+    return (
+      <span role="img" aria-label={label} title={label} style={{ display: 'inline-flex', flexShrink: 0 }}>
+        {visual}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={done}
+      aria-label={label}
+      title={done ? `Uncheck to move back to stage ${Math.max(1, n - 1)}` : `Mark progress through stage ${n}`}
+      className="bh-ladder-state-btn"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(!done);
+      }}
+      style={{
+        display: 'inline-flex',
+        flexShrink: 0,
+        padding: 0,
+        border: 'none',
+        background: 'none',
+        borderRadius: '50%',
+        cursor: 'pointer',
+      }}
+    >
+      {visual}
+    </button>
+  );
+}
+
+/** Rotation of the right-pointing connector for each path direction. */
+const CONNECTOR_ROTATION = { right: 0, 'down-right': 45, down: 90, 'down-left': 135, left: 180 };
+
+/**
+ * Flow-chart connector drawn in the gap after a tile, pointing at the next stage.
+ * walked = path already travelled (solid green), next = current → next stage (tier color),
+ * ahead = not reached yet (dashed slate).
+ */
+function PathConnector({ direction, variant, color }) {
+  const stroke = variant === 'walked' ? '#16A34A' : variant === 'next' ? color : '#A3B1C2';
+  const len = BOARD_GAP + 6;
+  const placement =
+    direction === 'down'
+      ? { left: '50%', bottom: -BOARD_GAP / 2 }
+      : direction === 'left'
+        ? { top: '50%', left: -BOARD_GAP / 2 }
+        : direction === 'right'
+          ? { top: '50%', right: -BOARD_GAP / 2 }
+          : direction === 'down-right'
+            ? { right: -BOARD_GAP / 2, bottom: -BOARD_GAP / 2 }
+            : { left: -BOARD_GAP / 2, bottom: -BOARD_GAP / 2 };
+  return (
+    <svg
+      aria-hidden
+      width={len}
+      height={12}
+      viewBox={`0 0 ${len} 12`}
+      style={{
+        position: 'absolute',
+        ...placement,
+        zIndex: 2,
+        overflow: 'visible',
+        pointerEvents: 'none',
+        transform: `translate(${placement.right != null ? '50%' : '-50%'}, ${placement.bottom != null ? '50%' : '-50%'}) rotate(${CONNECTOR_ROTATION[direction]}deg)`,
+      }}
+    >
+      <line
+        x1={1}
+        y1={6}
+        x2={len - 6}
+        y2={6}
+        stroke={stroke}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeDasharray={variant === 'ahead' ? '2.5 3' : undefined}
+      />
+      <path
+        d={`M${len - 8} 1.5 L${len - 1} 6 L${len - 8} 10.5 Z`}
+        fill={stroke}
+        stroke={stroke}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Pill shown on the tile the resident currently stands on. */
+function YouAreHerePill({ color }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 3,
+        fontSize: 8,
+        fontWeight: 800,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        color: '#fff',
+        background: color,
+        borderRadius: 999,
+        padding: '3px 7px',
+        lineHeight: 1.2,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      You are here
+    </span>
+  );
 }
 
 /**
@@ -205,13 +430,9 @@ export default function BehaviorProgressBoard({
     setBoardPosition(normalizedStage);
   };
 
-  /** Checkbox: check → progress through n; uncheck → progress through n−1 (min 1). */
-  const handleMilestoneCheckboxChange = (n) => (e) => {
-    if (readOnly) {
-      e.preventDefault();
-      return;
-    }
-    const want = e.target.checked;
+  /** Stage marker: mark → progress through n; unmark → progress through n−1 (min 1). */
+  const handleMilestoneToggle = (n) => (want) => {
+    if (readOnly) return;
     if (want) {
       applyStageProgress(n);
     } else {
@@ -299,6 +520,21 @@ export default function BehaviorProgressBoard({
     return () => window.removeEventListener('keydown', onKey);
   }, [completionModalMode, pendingInterventionDemotion, reintegrationModalStep]);
 
+  /** Tile (or Completion cell) the resident stands on; centred horizontally when the board scrolls sideways. */
+  const currentTileRef = useRef(null);
+  const completionFlag = !!checked.completion;
+  useEffect(() => {
+    const tile = currentTileRef.current;
+    if (!tile) return;
+    let scroller = tile.parentElement;
+    while (scroller && scroller.scrollWidth <= scroller.clientWidth + 1) scroller = scroller.parentElement;
+    if (!scroller || scroller === document.body || scroller === document.documentElement) return;
+    const tileBox = tile.getBoundingClientRect();
+    const scrollerBox = scroller.getBoundingClientRect();
+    const offset = tileBox.left - scrollerBox.left - (scrollerBox.width - tileBox.width) / 2;
+    scroller.scrollBy({ left: offset, behavior: 'smooth' });
+  }, [currentBoardPosition, completionFlag]);
+
   const confirmInterventionDemotion = () => {
     if (readOnly) return;
     if (!pendingInterventionDemotion) return;
@@ -326,8 +562,138 @@ export default function BehaviorProgressBoard({
     setCompletionModalMode('clear');
   };
 
+  const isCompleted = !!checked.completion;
+  const progressPct = isCompleted ? 100 : computeBehaviorBoardProgressPercent(checked);
+  const currentLabelRaw = BEHAVIOR_CHECKLIST_ITEMS[currentBoardPosition - 1] ?? '';
+  const currentLabel = currentLabelRaw.endsWith(INTERVENTION_SUFFIX)
+    ? currentLabelRaw.slice(0, -INTERVENTION_SUFFIX.length)
+    : currentLabelRaw;
+  const currentTier = isCompleted
+    ? TIERS.completion
+    : TIERS[isInterventionLabel(currentLabelRaw) ? 'intervention' : tierForSquare(currentBoardPosition)];
+
+  /** Next checkable milestone after the current stage (interventions are skipped). */
+  let nextStage = null;
+  for (let m = currentBoardPosition + 1; m <= BEHAVIOR_CHECKLIST_ITEMS.length; m++) {
+    if (!isInterventionLabel(BEHAVIOR_CHECKLIST_ITEMS[m - 1])) {
+      nextStage = { n: m, label: BEHAVIOR_CHECKLIST_ITEMS[m - 1] };
+      break;
+    }
+  }
+
+  /** done | current | upcoming for a numbered square. */
+  const squareState = (n, idx) => {
+    if (isCompleted) return 'done';
+    if (n === currentBoardPosition) return 'current';
+    if (checked[idx] || n < currentBoardPosition) return 'done';
+    return 'upcoming';
+  };
+
   return (
     <div>
+      <style>{BOARD_STATE_CSS}</style>
+
+      <div
+        aria-live="polite"
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 16,
+          marginBottom: 14,
+          padding: '14px 16px',
+          borderRadius: 12,
+          background: tint(currentTier.border, '0F'),
+          border: `1px solid ${tint(currentTier.border, '40')}`,
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            background: currentTier.border,
+            color: '#fff',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          {isCompleted ? <Trophy size={20} /> : <MapPin size={20} />}
+        </span>
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: currentTier.border,
+            }}
+          >
+            {isCompleted ? 'Program completed' : `Current stage · ${currentTier.label}`}
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#0F172A', marginTop: 2, lineHeight: 1.3 }}>
+            {isCompleted ? 'All milestones reached' : `Stage ${currentBoardPosition} of 50 — ${currentLabel}`}
+          </div>
+          {!isCompleted ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#64748B',
+                marginTop: 4,
+                lineHeight: 1.35,
+              }}
+            >
+              <ChevronRight size={14} strokeWidth={2.5} style={{ flexShrink: 0 }} aria-hidden />
+              <span>
+                <span style={{ fontWeight: 700, color: '#334155' }}>Next:</span>{' '}
+                {nextStage ? `Stage ${nextStage.n} — ${nextStage.label}` : 'Program completion'}
+              </span>
+            </div>
+          ) : null}
+        </div>
+        <div style={{ flex: '1 1 200px', minWidth: 160 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontSize: 11,
+              fontWeight: 700,
+              color: '#475569',
+              marginBottom: 6,
+            }}
+          >
+            <span>Recovery progress</span>
+            <span style={{ color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>{progressPct.toFixed(0)}%</span>
+          </div>
+          <div
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progressPct)}
+            aria-label="Recovery progress"
+            style={{ height: 8, borderRadius: 999, background: '#E2E8F0', overflow: 'hidden' }}
+          >
+            <div
+              style={{
+                width: `${progressPct}%`,
+                height: '100%',
+                borderRadius: 999,
+                background: currentTier.border,
+                transition: 'width 300ms ease-out',
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
       {!embedded ? (
         <div
           style={{
@@ -349,7 +715,7 @@ export default function BehaviorProgressBoard({
           display: 'grid',
           gridTemplateColumns: 'repeat(9, minmax(0, 1fr))',
           gridAutoRows: 'minmax(100px, auto)',
-          gap: 4,
+          gap: BOARD_GAP,
           width: '100%',
           maxWidth: '100%',
           margin: '0 auto',
@@ -384,20 +750,25 @@ export default function BehaviorProgressBoard({
                   return (
                     <div
                       key={`completion-${ri}`}
+                      ref={isCompleted ? currentTileRef : undefined}
+                      className={isCompleted ? 'bh-ladder-current' : undefined}
                       style={{
+                        '--bh-ladder-ring': tint(t.border, '55'),
                         minHeight: 96,
                         height: '100%',
                         borderRadius: 8,
-                        background: TILE_FILL,
-                        border: `2px solid ${t.border}`,
+                        background: isCompleted ? tint(t.border, '14') : TILE_FILL,
+                        border: `${isCompleted ? 3 : 2}px solid ${t.border}`,
                         padding: 8,
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'space-between',
                         alignItems: 'center',
+                        gap: 4,
                         boxShadow: '0 1px 2px rgba(15, 23, 42, 0.05)',
                       }}
                     >
+                      {isCompleted ? <YouAreHerePill color={t.border} /> : null}
                       <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                         Completion
                       </span>
@@ -499,6 +870,9 @@ export default function BehaviorProgressBoard({
                 const t = TIERS[tierKey];
                 const snake = SNAKES.find((s) => s.from === n);
                 const idx = n - 1;
+                const state = squareState(n, idx);
+                const isCurrent = state === 'current';
+                const isUpcoming = state === 'upcoming';
                 const tileWeightPct = PERCENT_WEIGHT_BY_INDEX[idx];
                 const badgeStatus = interventionBadgeStatus(n, isInterventionTile, currentBoardPosition, failedInterventionSteps);
                 const demotionBadgeStatus = snake
@@ -514,6 +888,9 @@ export default function BehaviorProgressBoard({
                 return (
                   <div
                     key={`${ri}-${ci}-${n}`}
+                    ref={isCurrent ? currentTileRef : undefined}
+                    className={isCurrent ? 'bh-ladder-current' : undefined}
+                    aria-current={isCurrent ? 'step' : undefined}
                     onClick={(e) => {
                       if (readOnly) return;
                       const el = e.target;
@@ -529,53 +906,52 @@ export default function BehaviorProgressBoard({
                       }
                     }}
                     style={{
+                      '--bh-ladder-ring': tint(t.border, '55'),
                       position: 'relative',
                       minHeight: 96,
                       height: '100%',
                       borderRadius: 8,
-                      background: TILE_FILL,
-                      border: `2px solid ${t.border}`,
-                      padding: '8px 8px 26px',
+                      background: isCurrent
+                        ? tint(t.border, '14')
+                        : state === 'done' && !isInterventionTile
+                          ? '#F7FEF9'
+                          : TILE_FILL,
+                      border: `${isCurrent ? 3 : 2}px solid ${t.border}`,
+                      padding: isCurrent ? '7px 7px 25px' : '8px 8px 26px',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 6,
                       boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+                      zIndex: isCurrent ? 1 : undefined,
                       cursor: readOnly ? 'default' : !isInterventionTile || snake ? 'pointer' : undefined,
                     }}
                   >
                     <div
                       style={{
                         display: 'flex',
-                        alignItems: 'flex-start',
+                        alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: 6,
                         width: '100%',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                         {isInterventionTile ? (
                           <span
-                            style={{ width: 14, height: 14, flexShrink: 0 }}
+                            style={{ width: 20, height: 20, flexShrink: 0 }}
                             aria-hidden
                             title="Observation only — no checklist"
                           />
                         ) : (
-                          <input
-                            type="checkbox"
-                            checked={!!checked[idx]}
-                            disabled={readOnly}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={handleMilestoneCheckboxChange(n)}
-                            aria-label={`Square ${n}`}
-                            style={{
-                              width: 14,
-                              height: 14,
-                              accentColor: t.border,
-                              cursor: readOnly ? 'not-allowed' : 'pointer',
-                              flexShrink: 0,
-                            }}
+                          <StageMarker
+                            state={state}
+                            color={t.border}
+                            n={n}
+                            readOnly={readOnly}
+                            onToggle={handleMilestoneToggle(n)}
                           />
                         )}
+                        {isCurrent ? <YouAreHerePill color={t.border} /> : null}
                       </div>
                       {snake && !isInterventionTile ? (
                         <button
@@ -628,9 +1004,41 @@ export default function BehaviorProgressBoard({
                         </button>
                       ) : null}
                     </div>
-                    <div style={{ flex: 1, minHeight: 0, lineHeight: 1.3, overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        flex: 1,
+                        minHeight: 0,
+                        lineHeight: 1.3,
+                        overflow: 'hidden',
+                        opacity: isUpcoming && !isInterventionTile ? 0.6 : 1,
+                      }}
+                    >
                       {renderBehaviorChecklistLabel(label, badgeStatus)}
+                      {snake && isInterventionTile ? (
+                        <div
+                          title={`If triggered, the resident moves back to stage ${snake.to}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            marginTop: 5,
+                            fontSize: 10,
+                            fontWeight: 600,
+                            color: '#94A3B8',
+                          }}
+                        >
+                          <Undo2 size={11} strokeWidth={2.5} aria-hidden />
+                          Sends back to {snake.to}
+                        </div>
+                      ) : null}
                     </div>
+                    {pathDirection(n) ? (
+                      <PathConnector
+                        direction={pathDirection(n)}
+                        variant={isCurrent ? 'next' : state === 'done' ? 'walked' : 'ahead'}
+                        color={t.border}
+                      />
+                    ) : null}
                     <div
                       style={{
                         position: 'absolute',
@@ -640,21 +1048,21 @@ export default function BehaviorProgressBoard({
                         lineHeight: 1.15,
                       }}
                     >
-                      {tileWeightPct != null ? (
-                        <div style={{ fontSize: 9, fontWeight: 700, color: '#475569', marginBottom: 3 }}>
-                          {`${tileWeightPct.toFixed(2)}%`}
-                        </div>
-                      ) : null}
                       <span
+                        title={
+                          tileWeightPct != null
+                            ? `Stage ${n} · worth ${tileWeightPct.toFixed(2)}% of recovery progress`
+                            : `Stage ${n} · observation only`
+                        }
                         style={{
                           display: 'inline-block',
                           fontSize: 13,
                           fontWeight: 800,
-                          color: '#0F172A',
+                          color: isCurrent ? '#FFFFFF' : '#0F172A',
                           fontVariantNumeric: 'tabular-nums',
                           letterSpacing: '-0.02em',
-                          background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)',
-                          border: '1px solid #CBD5E1',
+                          background: isCurrent ? t.border : 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)',
+                          border: `1px solid ${isCurrent ? t.border : '#CBD5E1'}`,
                           borderRadius: 6,
                           padding: '3px 9px',
                           minWidth: 28,
@@ -705,6 +1113,19 @@ export default function BehaviorProgressBoard({
             </div>
           );
         })}
+        <span aria-hidden style={{ width: 1, height: 16, background: '#E2E8F0' }} />
+        {[
+          { key: 'done', label: 'Completed' },
+          { key: 'current', label: 'You are here' },
+          { key: 'upcoming', label: 'Not yet reached' },
+        ].map(({ key, label }) => (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span aria-hidden style={{ display: 'inline-flex' }}>
+              <StageMarker state={key} color={currentTier.border} n={0} readOnly />
+            </span>
+            <span style={{ fontWeight: 600, color: '#475569' }}>{label}</span>
+          </div>
+        ))}
       </div>
 
       {pendingInterventionDemotion
