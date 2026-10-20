@@ -1,67 +1,36 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Modal, ActivityIndicator, Platform, Dimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Pressable,
+  ActivityIndicator,
+  RefreshControl,
+  Image,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { useFamilyNotificationsInbox, type InboxItem } from '../../lib/useFamilyNotificationsInbox';
-import { fetchAnnouncementById, type DbAnnouncement } from '../../lib/announcementsDb';
-import { AnnouncementCardView } from './AnnouncementCard';
+import { isAnnouncementNotification, type NotificationTarget } from '../../lib/notificationRouting';
+import {
+  NOTIF_GROUPS,
+  dateGroupLabel,
+  getNotifVisual,
+  notifGroup,
+  relativeTime,
+} from '../../lib/notificationVisuals';
+import { useActiveAnnouncements } from '../../lib/useActiveAnnouncements';
+import { NotificationDetailSheet } from './NotificationDetailSheet';
+import { NotificationAnnouncementModal } from './NotificationAnnouncementModal';
 import { BH, RADIUS, SHADOW } from '../../theme/tokens';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const DETAIL_CARD_WIDTH = SCREEN_WIDTH - 32;
+// Kept for existing importers (header dropdown).
+export { getNotifVisual, type NotifVisual } from '../../lib/notificationVisuals';
 
-function relativeTime(ts: number): string {
-  const diffMs = Date.now() - ts;
-  const min = Math.floor(diffMs / 60000);
-  if (min < 1) return 'Just now';
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day < 7) return `${day}d ago`;
-  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-export type NotifVisual = { icon: keyof typeof Ionicons.glyphMap; bg: string; color: string; accent: string; label: string };
-
-/** Primary lookup: the notification's own `category` column. Covers every new send path. */
-const CATEGORY_CFG: Record<string, NotifVisual> = {
-  admission: { icon: 'document-text', bg: BH.brandSurface, color: BH.brand700, accent: BH.brand, label: 'Admission' },
-  visitation: { icon: 'calendar', bg: BH.indigoTint, color: BH.indigo, accent: BH.indigo500, label: 'Visitation' },
-  promo: { icon: 'megaphone', bg: '#FCE7F3', color: '#BE185D', accent: '#EC4899', label: 'Promo' },
-  clinical: { icon: 'medkit', bg: '#CCFBF1', color: '#0F766E', accent: '#14B8A6', label: 'Clinical' },
-  progress: { icon: 'trending-up', bg: BH.infoBg, color: BH.info, accent: '#3B82F6', label: 'Progress' },
-  discharge: { icon: 'exit-outline', bg: '#FFE4D6', color: '#9A3412', accent: '#F0851F', label: 'Discharge' },
-};
-const RELATED_CFG: Record<string, NotifVisual> = {
-  admission_request: CATEGORY_CFG.admission,
-  visitation_request: CATEGORY_CFG.visitation,
-  discharge_pickup: CATEGORY_CFG.discharge,
-};
-const DEFAULT_CFG: NotifVisual = { icon: 'notifications-outline', bg: BH.slate100, color: BH.slate500, accent: BH.slate400, label: 'General' };
-
-/** Category-first lookup; falls back to the old title/related-type heuristics for rows without a meaningful category. */
-export function getNotifVisual(item: InboxItem): NotifVisual {
-  if (item.category && CATEGORY_CFG[item.category]) {
-    return CATEGORY_CFG[item.category];
-  }
-  const t = item.title.toLowerCase();
-  if (t.includes('approved') || t.includes('confirmed')) {
-    return { icon: 'checkmark-circle', bg: BH.successBg, color: BH.successText, accent: BH.success, label: 'Approved' };
-  }
-  if (t.includes('rejected') || t.includes('declined')) {
-    return { icon: 'close-circle', bg: BH.dangerBg, color: BH.danger, accent: BH.dangerStrong, label: 'Declined' };
-  }
-  if (t.includes('documents needed') || t.includes('required')) {
-    return { icon: 'alert-circle', bg: BH.warningBg, color: BH.warning, accent: '#F59E0B', label: 'Action needed' };
-  }
-  if (t.includes('rescheduled')) {
-    return { icon: 'time', bg: BH.indigoTint, color: BH.indigo, accent: BH.indigo500, label: 'Rescheduled' };
-  }
-  return RELATED_CFG[item.relatedType || ''] || DEFAULT_CFG;
-}
+const SECTION_ORDER = ['Today', 'Yesterday', 'This week', 'Earlier'];
 
 type NotificationsPanelProps = {
   userId: string;
@@ -72,60 +41,71 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const inbox = useFamilyNotificationsInbox(userId);
-  const [openItem, setOpenItem] = useState<InboxItem | null>(null);
-  const [announcementDetail, setAnnouncementDetail] = useState<DbAnnouncement | null>(null);
-  const [announcementLoading, setAnnouncementLoading] = useState(false);
-  const isAnnouncement = openItem?.relatedType === 'announcement';
+  const { all: activeAnnouncements } = useActiveAnnouncements(userId);
+  const [filter, setFilter] = useState<string>('all');
+  const [refreshing, setRefreshing] = useState(false);
+  const [detailItem, setDetailItem] = useState<InboxItem | null>(null);
+  const [announcementItem, setAnnouncementItem] = useState<InboxItem | null>(null);
 
   useEffect(() => {
     void inbox.markAllLegacyRead();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Tapping a promo notification linked to a still-active announcement shows the real premium
-  // card (image + pill + caption) instead of the plain title/body text. If the announcement has
-  // since expired or been removed, RLS returns nothing and the plain text view is used instead.
-  useEffect(() => {
-    if (!openItem || openItem.relatedType !== 'announcement' || !openItem.relatedId) {
-      setAnnouncementDetail(null);
-      setAnnouncementLoading(false);
-      return undefined;
-    }
-    let cancelled = false;
-    setAnnouncementLoading(true);
-    fetchAnnouncementById(openItem.relatedId).then((row) => {
-      if (cancelled) return;
-      setAnnouncementDetail(row);
-      setAnnouncementLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [openItem]);
+  const announcementImageById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of activeAnnouncements) if (a.imageUrl) map.set(a.id, a.imageUrl);
+    return map;
+  }, [activeAnnouncements]);
 
-  const openDetail = (item: InboxItem) => {
-    setOpenItem(item);
+  const chips = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of inbox.items) {
+      const g = notifGroup(item);
+      counts.set(g, (counts.get(g) ?? 0) + 1);
+    }
+    return [
+      { key: 'all', label: 'All', count: inbox.items.length },
+      { key: 'unread', label: 'Unread', count: inbox.unreadCount },
+      ...NOTIF_GROUPS.filter((g) => counts.has(g.key)).map((g) => ({ ...g, count: counts.get(g.key) ?? 0 })),
+    ];
+  }, [inbox.items, inbox.unreadCount]);
+
+  const filtered = useMemo(() => {
+    if (filter === 'all') return inbox.items;
+    if (filter === 'unread') return inbox.items.filter((i) => !i.isRead);
+    return inbox.items.filter((i) => notifGroup(i) === filter);
+  }, [inbox.items, filter]);
+
+  const sections = useMemo(() => {
+    const bySection = new Map<string, InboxItem[]>();
+    for (const item of filtered) {
+      const label = dateGroupLabel(item.createdAt);
+      if (!bySection.has(label)) bySection.set(label, []);
+      bySection.get(label)!.push(item);
+    }
+    return SECTION_ORDER.filter((s) => bySection.has(s)).map((s) => ({ title: s, items: bySection.get(s)! }));
+  }, [filtered]);
+
+  const openItem = (item: InboxItem) => {
     void inbox.markRead(item);
+    if (isAnnouncementNotification(item)) setAnnouncementItem(item);
+    else setDetailItem(item);
   };
 
-  const goToRelated = (item: InboxItem) => {
-    setOpenItem(null);
+  const navigateTo = (target: NotificationTarget) => {
+    setDetailItem(null);
     onClose();
-    if (item.relatedType === 'visitation_request' || item.relatedType === 'discharge_pickup') {
-      router.navigate(TAB_ROUTES.appointments as never);
-    } else if (item.relatedType === 'admission_request') {
-      // "admission_request" covers both meeting-scheduling notifications and document-request
-      // notifications — they need different destinations. Title text is the only signal
-      // available (category is a coarse 'admission' bucket for both), matching the same
-      // heuristic getNotifVisual already uses to tell them apart for icon selection.
-      const t = item.title.toLowerCase();
-      const needsDocs = t.includes('documents needed') || t.includes('missing documents');
-      router.push({
-        pathname: needsDocs ? TAB_ROUTES.progress : TAB_ROUTES.admissionMeetingRequest,
-        params: item.relatedId ? { requestId: item.relatedId } : {},
-      } as never);
-    }
+    router.push({ pathname: target.pathname, params: target.params ?? {} } as never);
   };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await inbox.reload();
+    setRefreshing(false);
+  };
+
+  const activeChip = chips.find((c) => c.key === filter);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -133,229 +113,277 @@ export function NotificationsPanel({ userId, onClose }: NotificationsPanelProps)
         <TouchableOpacity onPress={onClose} style={styles.headerBack} hitSlop={12} accessibilityLabel="Close">
           <Ionicons name="arrow-back" size={20} color={BH.textStrong} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
-        <View style={{ width: 28 }} />
+        <View style={styles.headerText}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            Notifications
+          </Text>
+          <View style={styles.headerSubRow}>
+            {inbox.unreadCount > 0 ? <View style={styles.headerSubDot} /> : null}
+            <Text style={styles.headerSub} numberOfLines={1}>
+              {inbox.unreadCount > 0 ? `${inbox.unreadCount} unread` : "You're all caught up"}
+            </Text>
+          </View>
+        </View>
+        {inbox.unreadCount > 0 ? (
+          <TouchableOpacity
+            onPress={() => void inbox.markAllRead()}
+            style={styles.markAllBtn}
+            hitSlop={8}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Mark all as read"
+          >
+            <Ionicons name="checkmark-done" size={15} color={BH.brand700} />
+            <Text style={styles.markAllTxt} numberOfLines={1}>
+              Mark all read
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
+
+      {inbox.items.length > 0 ? (
+        <View style={styles.chipsBar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContent}>
+            {chips.map((chip) => {
+              const active = chip.key === filter;
+              return (
+                <Pressable
+                  key={chip.key}
+                  onPress={() => setFilter(chip.key)}
+                  style={[styles.chip, active && styles.chipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.chipTxt, active && styles.chipTxtActive]}>{chip.label}</Text>
+                  {chip.count > 0 ? (
+                    <View style={[styles.chipCount, active && styles.chipCountActive]}>
+                      <Text style={[styles.chipCountTxt, active && styles.chipCountTxtActive]}>{chip.count}</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
 
       {inbox.loading ? (
         <ActivityIndicator color={BH.brand} style={{ marginTop: 40 }} />
-      ) : inbox.items.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Ionicons name="mail-open-outline" size={40} color={BH.slate300} />
-          <Text style={styles.emptyTxt}>No notifications yet.</Text>
-        </View>
       ) : (
         <ScrollView
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 28 }]}
           showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BH.brand} colors={[BH.brand]} />}
         >
-          {inbox.items.map((item) => {
-            const cfg = getNotifVisual(item);
-            return (
-              <Pressable
-                key={item.id}
-                style={({ pressed }) => [
-                  styles.card,
-                  !item.isRead && styles.cardUnread,
-                  { borderLeftColor: !item.isRead ? cfg.accent : BH.border },
-                  pressed && styles.rowPressed,
-                ]}
-                onPress={() => openDetail(item)}
-              >
-                <View style={[styles.rowIconWrap, { backgroundColor: cfg.bg }]}>
-                  <Ionicons name={cfg.icon} size={18} color={cfg.color} />
+          {sections.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <View style={styles.emptyIcon}>
+                <Ionicons
+                  name={filter === 'unread' ? 'checkmark-done-circle-outline' : 'notifications-off-outline'}
+                  size={34}
+                  color={BH.slate400}
+                />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {filter === 'unread'
+                  ? "You're all caught up"
+                  : filter === 'all'
+                    ? 'No notifications yet'
+                    : `No ${activeChip?.label.toLowerCase() ?? ''} notifications`}
+              </Text>
+              <Text style={styles.emptySub}>
+                {filter === 'all'
+                  ? 'Updates about admissions, visits and your resident will appear here.'
+                  : 'Try another filter to see the rest of your notifications.'}
+              </Text>
+              {filter !== 'all' ? (
+                <Pressable onPress={() => setFilter('all')} style={styles.emptyBtn}>
+                  <Text style={styles.emptyBtnTxt}>Show all</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : (
+            sections.map((section) => (
+              <View key={section.title}>
+                <Text style={styles.sectionTitle}>{section.title}</Text>
+                <View style={styles.sectionCard}>
+                  {section.items.map((item, idx) => {
+                    const cfg = getNotifVisual(item);
+                    const thumb = item.relatedId ? announcementImageById.get(item.relatedId) : undefined;
+                    return (
+                      <Pressable
+                        key={item.id}
+                        style={({ pressed }) => [
+                          styles.row,
+                          idx > 0 && styles.rowDivider,
+                          !item.isRead && styles.rowUnread,
+                          pressed && styles.rowPressed,
+                        ]}
+                        onPress={() => openItem(item)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.isRead ? '' : 'Unread. '}${item.title}. ${item.body}`}
+                      >
+                        {thumb ? <Image source={{ uri: thumb }} style={styles.rowThumb} /> : null}
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <View style={styles.rowTop}>
+                            {!item.isRead ? <View style={[styles.unreadDot, { backgroundColor: cfg.accent }]} /> : null}
+                            <Text style={[styles.rowTitle, !item.isRead && styles.rowTitleUnread]} numberOfLines={1}>
+                              {item.title}
+                            </Text>
+                            <Text style={styles.rowTime}>{relativeTime(item.createdAt)}</Text>
+                          </View>
+                          {item.body && item.body !== item.title ? (
+                            <Text style={styles.rowSnippet} numberOfLines={2}>
+                              {item.body}
+                            </Text>
+                          ) : null}
+                          <Text style={[styles.rowPill, { color: cfg.color, backgroundColor: cfg.bg }]}>{cfg.label}</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
                 </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={styles.rowTop}>
-                    <Text style={[styles.categoryPill, { color: cfg.color, backgroundColor: cfg.bg }]}>
-                      {cfg.label.toUpperCase()}
-                    </Text>
-                    {!item.isRead ? <View style={[styles.unreadDot, { backgroundColor: cfg.accent }]} /> : null}
-                  </View>
-                  <Text style={[styles.rowTitle, !item.isRead && styles.rowTitleUnread]} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.rowSender}>Bridges of Hope · {relativeTime(item.createdAt)}</Text>
-                  <Text style={styles.rowSnippet} numberOfLines={2}>
-                    {item.body}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={BH.slate300} style={{ marginTop: 2 }} />
-              </Pressable>
-            );
-          })}
+              </View>
+            ))
+          )}
         </ScrollView>
       )}
 
-      <Modal visible={Boolean(openItem)} transparent animationType="fade" onRequestClose={() => setOpenItem(null)}>
-        <View style={styles.detailRoot}>
-          <Pressable style={styles.detailBackdrop} onPress={() => setOpenItem(null)} />
-          {isAnnouncement ? (
-            <View style={[styles.detailCard, styles.detailCardMedia, { marginBottom: insets.bottom + 24 }]}>
-              <Pressable style={styles.detailCloseFloating} onPress={() => setOpenItem(null)} hitSlop={10}>
-                <Ionicons name="close" size={18} color="#FFFFFF" />
-              </Pressable>
-              {announcementLoading ? (
-                <ActivityIndicator color={BH.brand} style={{ marginVertical: 48 }} />
-              ) : announcementDetail ? (
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  <AnnouncementCardView
-                    title={announcementDetail.title}
-                    caption={announcementDetail.caption}
-                    imageUrl={announcementDetail.imageUrl}
-                    cardWidth={DETAIL_CARD_WIDTH}
-                  />
-                  <View style={{ height: 22 }} />
-                </ScrollView>
-              ) : (
-                <View style={{ padding: 20 }}>
-                  <Text style={styles.detailTitle}>{openItem?.title}</Text>
-                  <Text style={[styles.detailBody, { marginTop: 8 }]}>{openItem?.body}</Text>
-                </View>
-              )}
-            </View>
-          ) : (
-          <View style={[styles.detailCard, { marginBottom: insets.bottom + 24 }]}>
-            <View style={styles.detailHead}>
-              <View style={[styles.detailAvatar, { backgroundColor: openItem ? getNotifVisual(openItem).accent : BH.brand }]}>
-                <Ionicons name={openItem ? getNotifVisual(openItem).icon : 'business'} size={16} color={BH.brandContrast} />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                {openItem ? (
-                  <Text style={[styles.categoryPill, styles.detailCategoryPill, { color: getNotifVisual(openItem).color, backgroundColor: getNotifVisual(openItem).bg }]}>
-                    {getNotifVisual(openItem).label.toUpperCase()}
-                  </Text>
-                ) : null}
-                <Text style={styles.detailTitle}>{openItem?.title}</Text>
-                <Text style={styles.detailFrom}>
-                  From Bridges of Hope{openItem ? ` · ${relativeTime(openItem.createdAt)}` : ''}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setOpenItem(null)} hitSlop={10}>
-                <Ionicons name="close" size={22} color={BH.slate500} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.detailBodyScroll} showsVerticalScrollIndicator={false}>
-              <Text style={styles.detailBody}>{openItem?.body}</Text>
-            </ScrollView>
-            {openItem?.relatedType ? (
-              <Pressable style={styles.detailActionBtn} onPress={() => openItem && goToRelated(openItem)}>
-                <Text style={styles.detailActionTxt}>
-                  {openItem.relatedType === 'visitation_request' || openItem.relatedType === 'discharge_pickup'
-                    ? 'View appointment'
-                    : 'View admission request'}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-          )}
-        </View>
-      </Modal>
+      <NotificationDetailSheet item={detailItem} onClose={() => setDetailItem(null)} onNavigate={navigateTo} />
+      {announcementItem ? (
+        <NotificationAnnouncementModal
+          key={announcementItem.id}
+          userId={userId}
+          item={announcementItem}
+          onClose={() => setAnnouncementItem(null)}
+        />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: BH.surface2 },
+  screen: { flex: 1, backgroundColor: BH.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 8,
-    backgroundColor: BH.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: BH.slate100,
-  },
-  headerBack: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 14.5, fontWeight: '800', color: BH.textStrong },
-  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  emptyTxt: { fontSize: 13, color: BH.textSubtle, fontWeight: '600' },
-  listContent: { padding: 14, paddingBottom: 28 },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: BH.surface,
+  },
+  headerBack: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: BH.slate100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerText: { flex: 1, minWidth: 0 },
+  headerTitle: { fontSize: 18, fontWeight: '900', color: BH.textStrong, letterSpacing: -0.2 },
+  headerSubRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
+  headerSubDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: BH.brand },
+  headerSub: { fontSize: 12, fontWeight: '600', color: BH.textMuted },
+  markAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: RADIUS.pill,
+    backgroundColor: BH.brandSurface,
+    borderWidth: 1,
+    borderColor: BH.brandSurfaceBorder,
+    flexShrink: 0,
+  },
+  markAllTxt: { fontSize: 12, fontWeight: '800', color: BH.brand700 },
+  chipsBar: { backgroundColor: BH.surface, borderBottomWidth: 1, borderBottomColor: BH.border },
+  chipsContent: { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 12, gap: 8, alignItems: 'center' },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: RADIUS.pill,
+    backgroundColor: BH.slate100,
+  },
+  chipActive: { backgroundColor: BH.textStrong },
+  chipTxt: { fontSize: 12.5, fontWeight: '700', color: BH.slate600 },
+  chipTxtActive: { color: '#FFFFFF' },
+  chipCount: {
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 9,
+    backgroundColor: BH.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipCountActive: { backgroundColor: 'rgba(255,255,255,0.18)' },
+  chipCountTxt: { fontSize: 10.5, fontWeight: '800', color: BH.slate600 },
+  chipCountTxtActive: { color: '#FFFFFF' },
+  listContent: { paddingHorizontal: 14, paddingTop: 6 },
+  sectionTitle: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: BH.textSubtle,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginTop: 16,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  sectionCard: {
     backgroundColor: BH.surface,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: 'rgba(233, 237, 247, 0.9)',
-    borderLeftWidth: 3,
-    padding: 13,
-    marginBottom: 10,
+    borderColor: BH.border,
+    overflow: 'hidden',
     ...SHADOW.sm,
   },
-  cardUnread: { backgroundColor: '#FFFBF9' },
-  rowPressed: { opacity: 0.75 },
-  rowIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.md + 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    marginTop: 1,
-  },
-  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
-  categoryPill: {
-    fontSize: 9.5,
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 14, paddingVertical: 14 },
+  rowDivider: { borderTopWidth: 1, borderTopColor: BH.slate100 },
+  rowUnread: { backgroundColor: '#FFFBF8' },
+  rowPressed: { backgroundColor: BH.slate50 },
+  rowThumb: { width: 56, height: 56, borderRadius: 12, backgroundColor: BH.brandSurface },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, alignSelf: 'center' },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  rowTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: BH.slate600 },
+  rowTitleUnread: { fontWeight: '800', color: BH.textStrong },
+  rowTime: { fontSize: 11, fontWeight: '600', color: BH.textSubtle },
+  rowSnippet: { fontSize: 13, color: BH.textMuted, marginTop: 3, lineHeight: 18 },
+  rowPill: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.3,
-    paddingHorizontal: 7,
-    paddingVertical: 2.5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: RADIUS.pill,
     overflow: 'hidden',
   },
-  detailCategoryPill: { alignSelf: 'flex-start', marginBottom: 3 },
-  rowTitle: { fontSize: 13.5, fontWeight: '700', color: BH.slate600 },
-  rowTitleUnread: { fontWeight: '800', color: BH.textStrong },
-  rowSender: { fontSize: 10.5, color: BH.textSubtle, fontWeight: '700', marginTop: 1 },
-  rowSnippet: { fontSize: 12.5, color: BH.textMuted, marginTop: 3, lineHeight: 17 },
-  unreadDot: { width: 7, height: 7, borderRadius: 4, marginLeft: 'auto', flexShrink: 0 },
-  detailRoot: { flex: 1, justifyContent: 'flex-end' },
-  detailBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(15,23,42,0.4)' },
-  detailCard: {
-    backgroundColor: BH.surface,
-    borderRadius: RADIUS['2xl'] - 4,
-    marginHorizontal: 16,
-    padding: 20,
-    maxHeight: '70%',
-    ...SHADOW.lg,
-  },
-  detailCardMedia: { padding: 0, overflow: 'hidden' },
-  detailCloseFloating: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    zIndex: 2,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(15,23,42,0.45)',
+  emptyWrap: { alignItems: 'center', paddingTop: 64, paddingHorizontal: 32 },
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: BH.slate100,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 16,
   },
-  detailHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
-  detailAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  detailTitle: { fontSize: 15, fontWeight: '800', color: BH.textStrong },
-  detailFrom: { fontSize: 11, color: BH.textSubtle, fontWeight: '600', marginTop: 2 },
-  detailBodyScroll: { maxHeight: 260 },
-  detailBody: { fontSize: 14, color: BH.text, lineHeight: 21 },
-  detailActionBtn: {
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: BH.textStrong, textAlign: 'center' },
+  emptySub: { fontSize: 13, color: BH.textMuted, textAlign: 'center', lineHeight: 19, marginTop: 6 },
+  emptyBtn: {
     marginTop: 16,
-    backgroundColor: BH.brand,
-    borderRadius: RADIUS.lg,
-    paddingVertical: 13,
-    alignItems: 'center',
-    ...SHADOW.brand,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: RADIUS.pill,
+    backgroundColor: BH.brandSurface,
   },
-  detailActionTxt: { color: BH.brandContrast, fontWeight: '800', fontSize: 14 },
+  emptyBtnTxt: { fontSize: 13, fontWeight: '800', color: BH.brand700 },
 });

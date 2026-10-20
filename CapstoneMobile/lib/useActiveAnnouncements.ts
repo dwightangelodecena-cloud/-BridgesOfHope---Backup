@@ -92,5 +92,6 @@ export function useActiveAnnouncements(userId: string) {
   // announcement would briefly count as unseen, flash open, then vanish the instant the real
   // seen-ids load and filter it back out.
   const ready = seenIdsLoaded;
-  return { unseen: ready ? unseen : [], loading, dismiss, ready };
+  /** `all`: every currently-active announcement (live), regardless of whether it was dismissed. */
+  return { unseen: ready ? unseen : [], all: items, loading, dismiss, ready };
 }

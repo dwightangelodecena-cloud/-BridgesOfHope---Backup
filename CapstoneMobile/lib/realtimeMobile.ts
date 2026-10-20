@@ -15,8 +15,11 @@ export function subscribeToTableChanges(
   onChange: () => void
 ): () => void {
   if (!isSupabaseConfigured()) return () => {};
+  // Unique per subscription: several mounted screens may watch the same table (e.g. the header
+  // bell and the Notifications screen), and reusing one channel name would hand the second caller
+  // the first caller's already-subscribed channel.
   const channel = supabase
-    .channel(channelName)
+    .channel(`${channelName}-${Math.random().toString(36).slice(2, 10)}`)
     .on('postgres_changes', { event: '*', schema: 'public', table, filter }, () => onChange())
     .subscribe();
   return () => {

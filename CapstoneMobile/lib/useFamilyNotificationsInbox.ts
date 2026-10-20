@@ -115,5 +115,15 @@ export function useFamilyNotificationsInbox(userId: string) {
     setLegacyLastReadAt(Date.now());
   }, [userId, legacyItems]);
 
-  return { items, unreadCount, loading, reload, markRead, markAllLegacyRead };
+  const markAllRead = useCallback(async () => {
+    const unreadDbIds = dbItems.filter((n) => n.readAt == null).map((n) => n.id);
+    if (unreadDbIds.length > 0) {
+      const now = Date.now();
+      setDbItems((prev) => prev.map((n) => (n.readAt == null ? { ...n, readAt: now } : n)));
+      await Promise.all(unreadDbIds.map((id) => markDbFamilyNotificationRead(id)));
+    }
+    await markAllLegacyRead();
+  }, [dbItems, markAllLegacyRead]);
+
+  return { items, unreadCount, loading, reload, markRead, markAllRead, markAllLegacyRead };
 }

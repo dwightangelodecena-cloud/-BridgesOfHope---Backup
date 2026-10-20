@@ -8,6 +8,7 @@ import {
   Pressable,
   ScrollView,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,10 +18,16 @@ import { KalingaLogoMark } from './KalingaLogoMark';
 import { FamilyHeaderBrand, FamilyPageTitleBrand } from './FamilyHeaderBrand';
 import { FamilyHeaderAvatarMobile } from './FamilyHeaderAvatarMobile';
 import { NotificationsPanel, getNotifVisual } from './NotificationsPanel';
+import { NotificationDetailSheet } from './NotificationDetailSheet';
+import { NotificationAnnouncementModal } from './NotificationAnnouncementModal';
 import { useFamilyUserMobile } from '../../lib/useFamilyUserMobile';
-import { useFamilyNotificationsInbox } from '../../lib/useFamilyNotificationsInbox';
+import { useFamilyNotificationsInbox, type InboxItem } from '../../lib/useFamilyNotificationsInbox';
+import { isAnnouncementNotification, notificationTarget, type NotificationTarget } from '../../lib/notificationRouting';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
+import { relativeTime } from '../../lib/notificationVisuals';
 import { BH } from '../../theme/tokens';
+
+const NOTIF_PANEL_WIDTH = Math.min(Dimensions.get('window').width - 32, 360);
 
 type Props = {
   /** Page title — inner pages use unified title brand (no subtitle on mobile). */
@@ -51,6 +58,10 @@ export function FamilyMobilePageHeader({
   const notif = useFamilyNotificationsInbox(userId);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+  /** Tapped dropdown item without a destination screen — shown in the detail sheet. */
+  const [notifDetailItem, setNotifDetailItem] = useState<InboxItem | null>(null);
+  /** Tapped announcement — shown as the live announcement popup. */
+  const [notifAnnouncementItem, setNotifAnnouncementItem] = useState<InboxItem | null>(null);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   const onProfile = () => {
@@ -81,6 +92,32 @@ export function FamilyMobilePageHeader({
     setNotifOpen(true);
   };
 
+  const goToTarget = (target: NotificationTarget) => {
+    setNotifDetailItem(null);
+    router.push({ pathname: target.pathname, params: target.params ?? {} } as never);
+  };
+
+  /**
+   * Tap a dropdown row: announcements open the live popup, notifications about a screen go
+   * straight there, and anything else opens its detail sheet.
+   */
+  const openNotification = (item: InboxItem) => {
+    void notif.markRead(item);
+    setNotifDropdownOpen(false);
+    if (isAnnouncementNotification(item)) {
+      setNotifAnnouncementItem(item);
+      return;
+    }
+    const target = notificationTarget(item);
+    if (target) {
+      goToTarget(target);
+      return;
+    }
+    setNotifDetailItem(item);
+  };
+
+  const closeFullNotifications = () => setNotifOpen(false);
+
   return (
     <>
       <Modal
@@ -93,49 +130,91 @@ export function FamilyMobilePageHeader({
           <Pressable style={styles.notifBackdrop} onPress={() => setNotifDropdownOpen(false)} />
           <View style={[styles.notifPanel, { top: insets.top + 46, right: 16 }]}>
             <View style={styles.notifHead}>
-              <View style={styles.notifTitleRow}>
-                <Ionicons name="notifications" size={16} color={BH.brand} />
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.notifTitle}>Notifications</Text>
+                <View style={styles.notifSubRow}>
+                  {notif.unreadCount > 0 ? <View style={styles.notifSubDot} /> : null}
+                  <Text style={styles.notifSub}>
+                    {notif.unreadCount > 0 ? `${notif.unreadCount} unread` : "You're all caught up"}
+                  </Text>
+                </View>
               </View>
               {visibleNotifItems.length > 0 ? (
-                <TouchableOpacity onPress={clearAllNotifs} accessibilityRole="button">
+                <TouchableOpacity
+                  onPress={clearAllNotifs}
+                  style={styles.clearAllBtn}
+                  accessibilityRole="button"
+                  hitSlop={6}
+                  activeOpacity={0.8}
+                >
                   <Text style={styles.clearAll}>Clear all</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
             {visibleNotifItems.length === 0 ? (
-              <Text style={styles.notifEmpty}>No notifications.</Text>
+              <View style={styles.notifEmptyWrap}>
+                <Text style={styles.notifEmptyTitle}>No new notifications</Text>
+                <Text style={styles.notifEmpty}>Updates about admissions and visits will show up here.</Text>
+              </View>
             ) : (
-              <>
-                <ScrollView
-                  style={styles.notifScroll}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                >
-                  {visibleNotifItems.map((item) => {
-                    const cfg = getNotifVisual(item);
-                    return (
-                      <View key={item.id} style={styles.notifRow}>
-                        <View style={[styles.notifRowIconWrap, { backgroundColor: cfg.bg }]}>
-                          <Ionicons name={cfg.icon} size={13} color={cfg.color} />
-                        </View>
-                        <Text style={styles.notifText}>{item.body || item.title}</Text>
+              <ScrollView
+                style={styles.notifScroll}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {visibleNotifItems.map((item, idx) => {
+                  const cfg = getNotifVisual(item);
+                  const hasTarget = notificationTarget(item) != null;
+                  const showSnippet = Boolean(item.body) && item.body !== item.title;
+                  return (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => openNotification(item)}
+                      style={({ pressed }) => [
+                        styles.notifRow,
+                        idx > 0 && styles.notifRowDivider,
+                        !item.isRead && styles.notifRowUnread,
+                        pressed && styles.notifRowPressed,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${item.isRead ? '' : 'Unread. '}${item.title}. ${item.body}`}
+                      accessibilityHint={hasTarget ? 'Opens the related page' : 'Opens the notification'}
+                    >
+                      <View style={styles.notifRowTop}>
+                        {!item.isRead ? <View style={[styles.notifUnreadDot, { backgroundColor: cfg.accent }]} /> : null}
+                        <Text style={[styles.notifRowTitle, !item.isRead && styles.notifRowTitleUnread]} numberOfLines={1}>
+                          {item.title}
+                        </Text>
+                        <Text style={styles.notifRowTime}>{relativeTime(item.createdAt)}</Text>
                         <TouchableOpacity
                           onPress={() => dismissItem(item.id)}
                           accessibilityRole="button"
                           accessibilityLabel="Remove notification"
+                          hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                          style={styles.notifDismissBtn}
                         >
-                          <Text style={styles.notifDismiss}>×</Text>
+                          <Ionicons name="close" size={14} color={BH.slate400} />
                         </TouchableOpacity>
                       </View>
-                    );
-                  })}
-                </ScrollView>
-                <TouchableOpacity onPress={openFullNotifications} style={styles.notifShowMore} accessibilityRole="button">
-                  <Text style={styles.notifShowMoreTxt}>Show more</Text>
-                </TouchableOpacity>
-              </>
+                      {showSnippet ? (
+                        <Text style={styles.notifRowSnippet} numberOfLines={2}>
+                          {item.body}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             )}
+            <TouchableOpacity
+              onPress={openFullNotifications}
+              style={styles.notifShowMore}
+              accessibilityRole="button"
+              activeOpacity={0.8}
+            >
+              <Text style={styles.notifShowMoreTxt}>See all notifications</Text>
+              <Ionicons name="arrow-forward" size={14} color={BH.brand} />
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -143,10 +222,24 @@ export function FamilyMobilePageHeader({
       <Modal
         visible={notifOpen}
         animationType="slide"
-        onRequestClose={() => setNotifOpen(false)}
+        onRequestClose={closeFullNotifications}
       >
-        <NotificationsPanel userId={userId} onClose={() => setNotifOpen(false)} />
+        <NotificationsPanel userId={userId} onClose={closeFullNotifications} />
       </Modal>
+
+      <NotificationDetailSheet
+        item={notifDetailItem}
+        onClose={() => setNotifDetailItem(null)}
+        onNavigate={goToTarget}
+      />
+      {notifAnnouncementItem ? (
+        <NotificationAnnouncementModal
+          key={notifAnnouncementItem.id}
+          userId={userId}
+          item={notifAnnouncementItem}
+          onClose={() => setNotifAnnouncementItem(null)}
+        />
+      ) : null}
 
       <View style={[styles.headerShell, transparent && styles.headerShellTransparent]}>
         <View style={[styles.bar, transparent && styles.barTransparent, { paddingTop: Math.max(insets.top, 8) }]}>
@@ -341,48 +434,71 @@ const styles = StyleSheet.create({
   notifBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'transparent' },
   notifPanel: {
     position: 'absolute',
-    width: Math.min(320, 340),
-    maxHeight: 380,
+    width: NOTIF_PANEL_WIDTH,
+    maxHeight: 460,
     backgroundColor: BH.surface,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: BH.border,
-    padding: 16,
+    overflow: 'hidden',
     shadowColor: BH.slate900,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 28,
     elevation: 12,
   },
   notifHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: BH.slate100,
   },
-  notifTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  notifTitle: { fontSize: 15, fontWeight: '800', color: BH.slate900 },
-  clearAll: { fontSize: 12, fontWeight: '700', color: BH.brand },
-  notifEmpty: { fontSize: 12, color: BH.slate500, fontWeight: '600', paddingVertical: 8 },
-  notifScroll: { maxHeight: 280 },
-  notifRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
-  notifRowIconWrap: {
+  notifTitle: { fontSize: 16, fontWeight: '900', color: BH.textStrong, letterSpacing: -0.2 },
+  notifSubRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
+  notifSubDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: BH.brand },
+  notifSub: { fontSize: 11.5, fontWeight: '600', color: BH.textMuted },
+  clearAllBtn: {
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: BH.slate100,
+  },
+  clearAll: { fontSize: 11.5, fontWeight: '800', color: BH.slate600 },
+  notifEmptyWrap: { paddingHorizontal: 16, paddingVertical: 22, alignItems: 'center' },
+  notifEmptyTitle: { fontSize: 14, fontWeight: '800', color: BH.textStrong },
+  notifEmpty: { fontSize: 12, color: BH.textMuted, textAlign: 'center', marginTop: 4, lineHeight: 17 },
+  notifScroll: { maxHeight: 340 },
+  notifRow: { paddingHorizontal: 16, paddingVertical: 12 },
+  notifRowDivider: { borderTopWidth: 1, borderTopColor: BH.slate100 },
+  notifRowUnread: { backgroundColor: '#FFFBF8' },
+  notifRowPressed: { backgroundColor: BH.slate50 },
+  notifRowTop: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  notifUnreadDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  notifRowTitle: { flex: 1, fontSize: 13.5, fontWeight: '700', color: BH.slate600 },
+  notifRowTitleUnread: { fontWeight: '800', color: BH.textStrong },
+  notifRowTime: { fontSize: 11, fontWeight: '600', color: BH.textSubtle },
+  notifDismissBtn: {
     width: 22,
     height: 22,
-    borderRadius: 8,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
-    flexShrink: 0,
+    marginLeft: 2,
   },
-  notifText: { flex: 1, fontSize: 13, color: BH.slate700, lineHeight: 18 },
-  notifDismiss: { fontSize: 18, lineHeight: 18, color: BH.slate400, fontWeight: '700', paddingHorizontal: 2 },
+  notifRowSnippet: { fontSize: 12.5, color: BH.textMuted, lineHeight: 17, marginTop: 3 },
   notifShowMore: {
-    marginTop: 8,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    flexDirection: 'row',
+    gap: 6,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    borderTopWidth: 1,
+    borderTopColor: BH.slate100,
+    backgroundColor: BH.surface2,
   },
-  notifShowMoreTxt: { fontSize: 12.5, fontWeight: '800', color: BH.brand },
+  notifShowMoreTxt: { fontSize: 13, fontWeight: '800', color: BH.brand },
 });

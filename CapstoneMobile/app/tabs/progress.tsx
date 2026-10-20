@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
 import { TAB_ROUTES } from '../../lib/navigationConfig';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
@@ -176,6 +176,26 @@ export default function ProgressScreen() {
   const visibleSubmitted = visibleFamilyAdmissionRequests(submittedAdmissions, familyUserId).filter(
     (r) => !dischargedNames.has(String((r as Record<string, unknown>).patient_name || '').trim().toLowerCase())
   );
+
+  // Opened from a notification (e.g. "documents needed", "pre-admission summary ready"):
+  // open that request's detail sheet once its row has loaded, then drop the param so
+  // returning to this tab later doesn't reopen it.
+  const { requestId: requestIdParam } = useLocalSearchParams<{ requestId?: string }>();
+  const wantedRequestId = String(requestIdParam || '');
+  const [openedRequestId, setOpenedRequestId] = useState('');
+  if (!wantedRequestId && openedRequestId) setOpenedRequestId('');
+  if (wantedRequestId && openedRequestId !== wantedRequestId) {
+    const row = submittedAdmissions.find((r) => String(r.id) === wantedRequestId);
+    if (row) {
+      setOpenedRequestId(wantedRequestId);
+      setSelectedRequest(row);
+    }
+  }
+  useEffect(() => {
+    if (wantedRequestId && openedRequestId === wantedRequestId) {
+      router.setParams({ requestId: undefined } as never);
+    }
+  }, [wantedRequestId, openedRequestId, router]);
 
   const uploadSupplementalDocuments = async (requestId: string) => {
     if (!requestId || !familyUserId) return;
