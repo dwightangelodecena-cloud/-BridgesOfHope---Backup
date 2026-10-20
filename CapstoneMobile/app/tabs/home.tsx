@@ -3,7 +3,6 @@ import {
   View,
   Text,
   Image,
-  ImageBackground,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -520,12 +519,15 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        <ImageBackground
-          source={require('../../assets/images/home-header.png')}
-          style={[styles.heroBanner, { height: heroHeight }]}
-          imageStyle={styles.heroBannerImage}
-          resizeMode="cover"
-        >
+        {/* Plain View + positioned Image, not ImageBackground: ImageBackground doesn't size its
+            inner image reliably (web and Fabric), which hid the bridge in the bottom-right. The
+            image gets an explicit pixel width/height so it can't under-resolve and leave a strip. */}
+        <View style={[styles.heroBanner, { height: heroHeight }]}>
+          <Image
+            source={require('../../assets/images/home-header.png')}
+            style={[styles.heroBannerImage, { width: liveWidth, height: heroImageHeight }]}
+            resizeMode="cover"
+          />
           <View style={styles.heroInner}>
             <Text style={styles.heroKicker}>{greeting},</Text>
             <View style={styles.heroTitleRow}>
@@ -534,7 +536,7 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.heroSub}>Here&apos;s an overview of your loved one&apos;s care today.</Text>
           </View>
-        </ImageBackground>
+        </View>
 
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeadRow}>
@@ -1232,11 +1234,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#12275C',
     justifyContent: 'center',
   },
-  // ImageBackground's inner <Image>. It's auto-filled to the container box, so
-  // no width:'100%' (which under-resolves on Fabric and leaves a right strip).
+  // Pinned to the bottom so the bridge (bottom-right of the artwork) always shows; width/height
+  // are set inline from the live window width. The banner clips it to the rounded corners.
   heroBannerImage: {
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 26,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
   },
   heroInner: { gap: 1, maxWidth: '58%', marginTop: -8 },
   heroKicker: {
