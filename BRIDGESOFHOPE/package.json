@@ -17,6 +17,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@supabase/supabase-js": "^2.100.1",
     "@tailwindcss/postcss": "^4.2.1",
+    "@vercel/analytics": "^2.0.1",
     "framer-motion": "^12.35.2",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
