@@ -39,6 +39,43 @@ import { FamilyWebMobileNav } from '../../components/family/FamilyWebMobileNav';
 import { KalingaLogoMark } from '../../components/family/KalingaLogoMark';
 import { FamilyMobilePageHeader } from '../../components/family/FamilyMobilePageHeader';
 import { useFamilyPageScroll } from '../../lib/useFamilyPageScroll';
+/** "2026-10-21" → "Tue, Oct 21, 2026"; anything unparseable is returned as-is. */
+function formatRequestDate(raw: unknown, withWeekday = true): string {
+  const s = String(raw || '').trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return s;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleDateString('en-US', {
+    ...(withWeekday ? { weekday: 'short' as const } : {}),
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+/** "09:00" / "09:00:00" → "9:00 AM"; anything else is returned as-is. */
+function formatRequestTime(raw: unknown): string {
+  const s = String(raw || '').trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return s;
+  return new Date(2000, 0, 1, Number(m[1]), Number(m[2])).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+/** Whole years since a YYYY-MM-DD birthday, or null. */
+function ageFromBirthday(raw: unknown): number | null {
+  const m = String(raw || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const born = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const now = new Date();
+  let age = now.getFullYear() - born.getFullYear();
+  if (now.getMonth() < born.getMonth() || (now.getMonth() === born.getMonth() && now.getDate() < born.getDate())) age--;
+  return age >= 0 && age < 130 ? age : null;
+}
+
 function deriveInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
   return parts.map((p) => (p[0] ? p[0].toUpperCase() : '')).join('') || 'FU';
@@ -260,53 +297,62 @@ export default function ProgressScreen() {
           </View>
         ) : null}
 
-        <TouchableOpacity
-          style={[styles.hubCard, styles.hubCardFirst, { borderLeftWidth: 4, borderLeftColor: '#F54E25' }]}
-          onPress={() => router.navigate(TAB_ROUTES.admission)}
-          activeOpacity={0.9}
-        >
-          <View style={[styles.hubIcon, { backgroundColor: '#F54E25' }]}>
-            <Image
-              source={require('../../assets/images/admission.png')}
-              style={styles.hubIconImage}
-              resizeMode="contain"
-              tintColor="#FFFFFF"
-            />
-          </View>
-          <View style={styles.hubTextCol}>
-            <Text style={styles.hubTitle}>Admission Request</Text>
-            <Text style={styles.hubDesc}>Full intake form with address and patient details.</Text>
-            <View style={styles.hubBadge}>
-              <Ionicons name="time-outline" size={12} color="#92400E" />
-              <Text style={styles.hubBadgeText}>{pendingAdmissions} pending</Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={22} color="#A3AED0" />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.hubCard, { borderLeftWidth: 4, borderLeftColor: '#2B31ED' }]}
-          onPress={() => router.navigate(TAB_ROUTES.discharge)}
-          activeOpacity={0.9}
-        >
-          <View style={[styles.hubIcon, { backgroundColor: '#2B31ED' }]}>
-            <Image
-              source={require('../../assets/images/dismiss.png')}
-              style={styles.hubIconImage}
-              resizeMode="contain"
-              tintColor="#FFFFFF"
-            />
-          </View>
-          <View style={styles.hubTextCol}>
-            <Text style={styles.hubTitle}>Discharge Request</Text>
-            <Text style={styles.hubDesc}>Plan pickup, escort, medications, and follow-up care.</Text>
-            <View style={[styles.hubBadge, { backgroundColor: '#EEF2FF' }]}>
-              <Ionicons name="time-outline" size={12} color="#3730A3" />
-              <Text style={[styles.hubBadgeText, { color: '#3730A3' }]}>{pendingDischarges} pending</Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={22} color="#A3AED0" />
-        </TouchableOpacity>
+        <View style={styles.hubHeadRow}>
+          <Text style={styles.hubHead}>Start a request</Text>
+          {pendingAdmissions + pendingDischarges > 0 ? (
+            <Text style={styles.hubHeadSub}>{pendingAdmissions + pendingDischarges} pending review</Text>
+          ) : null}
+        </View>
+        <View style={styles.hubList}>
+          {[
+            {
+              key: 'admission',
+              title: 'Admission',
+              desc: 'Intake form for a new resident',
+              image: require('../../assets/images/admission.png'),
+              accent: '#F54E25',
+              tint: '#FFF1EB',
+              pending: pendingAdmissions,
+              route: TAB_ROUTES.admission,
+            },
+            {
+              key: 'discharge',
+              title: 'Discharge',
+              desc: 'Plan pickup and follow-up care',
+              image: require('../../assets/images/dismiss.png'),
+              accent: '#4338CA',
+              tint: '#EEF2FF',
+              pending: pendingDischarges,
+              route: TAB_ROUTES.discharge,
+            },
+          ].map((hub, idx) => (
+            <Pressable
+              key={hub.key}
+              style={({ pressed }) => [styles.hubRow, idx > 0 && styles.hubRowDivider, pressed && styles.hubRowPressed]}
+              onPress={() => router.navigate(hub.route)}
+              accessibilityRole="button"
+              accessibilityLabel={`New ${hub.title.toLowerCase()} request. ${hub.pending} pending.`}
+            >
+              <View style={[styles.hubIcon, { backgroundColor: hub.tint }]}>
+                <Image source={hub.image} style={styles.hubIconImage} resizeMode="contain" tintColor={hub.accent} />
+              </View>
+              <View style={styles.hubText}>
+                <Text style={styles.hubTitle} numberOfLines={1}>
+                  {hub.title} request
+                </Text>
+                <Text style={styles.hubDesc} numberOfLines={1}>
+                  {hub.desc}
+                </Text>
+              </View>
+              {hub.pending > 0 ? (
+                <View style={styles.hubPending}>
+                  <Text style={styles.hubPendingTxt}>{hub.pending}</Text>
+                </View>
+              ) : null}
+              <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            </Pressable>
+          ))}
+        </View>
 
         <View style={styles.noteCard}>
           <View style={styles.noteIconWrap}>
@@ -333,10 +379,12 @@ export default function ProgressScreen() {
           <View style={styles.listCard}>
             <View style={styles.reqListHeaderRow}>
               <View style={styles.reqListHeaderLeft}>
-                <View style={styles.reqListHeaderIconWrap}>
-                  <Ionicons name="clipboard" size={16} color="#4F46E5" />
-                </View>
-                <Text style={styles.reqListHeaderTitle}>Submitted Admission Requests</Text>
+                <Text style={styles.reqListHeaderTitle} numberOfLines={1}>
+                  Admission requests
+                </Text>
+                <Text style={styles.reqListHeaderSub}>
+                  {visibleSubmitted.length} submitted · tap a request for details
+                </Text>
               </View>
               <Pressable
                 style={styles.viewAllRow}
@@ -352,6 +400,8 @@ export default function ProgressScreen() {
               const { formData, files, st, inReview, statusColor, gender } = describeAdmissionRequest(row);
               const statusKey = String(row.status || '').toLowerCase();
               const avatar = REQUEST_AVATAR_PALETTE[idx % REQUEST_AVATAR_PALETTE.length];
+              const birthdayRaw = formData.patientBirthday || row.patient_birth_date;
+              const age = ageFromBirthday(birthdayRaw);
               return (
                 <Pressable
                   key={String(row.id)}
@@ -370,27 +420,58 @@ export default function ProgressScreen() {
                     </Text>
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.requestName} numberOfLines={1}>
-                      {String(row.patient_name || 'Resident')}
+                    <View style={styles.requestTopRow}>
+                      <Text style={styles.requestName} numberOfLines={1}>
+                        {String(row.patient_name || 'Resident')}
+                      </Text>
+                      <View
+                        style={[styles.statusPill, { backgroundColor: `${statusColor}1A`, borderColor: `${statusColor}33` }]}
+                      >
+                        <Text style={[styles.statusPillTxt, { color: statusColor }]}>{st}</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.requestSummary} numberOfLines={1}>
+                      {[
+                        String(formData.reasonForAdmission || row.reason_for_admission || '').trim(),
+                        gender,
+                        age != null ? `${age} yrs` : formatRequestDate(birthdayRaw, false),
+                      ]
+                        .filter(Boolean)
+                        .join('  ·  ') || 'No details yet'}
                     </Text>
+
                     {row.meeting_date ? (
-                      <View style={styles.requestMetaRow}>
-                        <Ionicons name="calendar-outline" size={15} color="#64748B" />
-                        <Text style={styles.requestMeta} numberOfLines={1}>
-                          <Text style={styles.requestMetaLabel}>Meeting with BOH: </Text>
-                          {String(row.meeting_date)}
-                          {row.meeting_time ? ` at ${String(row.meeting_time)}` : ''}
-                          {statusKey === 'processing' && !row.meeting_confirmed_by_family
-                            ? ' (awaiting your confirmation)'
-                            : ''}
+                      <View style={styles.meetingChip}>
+                        <Text style={styles.meetingChipLabel}>MEETING</Text>
+                        <Text style={styles.meetingChipValue} numberOfLines={1}>
+                          {formatRequestDate(row.meeting_date)}
+                          {row.meeting_time ? ` · ${formatRequestTime(row.meeting_time)}` : ''}
                         </Text>
                       </View>
                     ) : null}
+                    {statusKey === 'processing' && row.meeting_date && !row.meeting_confirmed_by_family ? (
+                      <Text style={styles.requestNotice}>Waiting for your confirmation</Text>
+                    ) : null}
+
+                    {row.required_document_notes && inReview ? (
+                      <View style={styles.requiredBox}>
+                        <Text style={styles.requiredLabel}>Required documents</Text>
+                        <Text style={styles.requiredTxt}>{String(row.required_document_notes)}</Text>
+                      </View>
+                    ) : null}
+                    {files.length > 0 ? (
+                      <Text style={styles.requestFiles} numberOfLines={1}>
+                        {files.length === 1 ? '1 file attached' : `${files.length} files attached`}
+                      </Text>
+                    ) : null}
+
                     {statusKey === 'processing' ||
                     statusKey === 'awaiting_schedule_review' ||
                     statusKey === 'awaiting_guardian_response' ? (
                       <TouchableOpacity
-                        style={styles.uploadBtn}
+                        style={styles.rowActionBtn}
+                        activeOpacity={0.85}
                         onPress={() =>
                           router.push({
                             pathname: TAB_ROUTES.admissionMeetingRequest,
@@ -398,7 +479,7 @@ export default function ProgressScreen() {
                           } as never)
                         }
                       >
-                        <Text style={styles.uploadBtnText}>
+                        <Text style={styles.rowActionTxt}>
                           {statusKey === 'awaiting_guardian_response'
                             ? 'Respond to suggested meeting time'
                             : row.preferred_meeting_date
@@ -407,53 +488,19 @@ export default function ProgressScreen() {
                         </Text>
                       </TouchableOpacity>
                     ) : null}
-                    <View style={styles.requestMetaRow}>
-                      <Ionicons name="document-text-outline" size={15} color="#64748B" />
-                      <Text style={styles.requestMeta} numberOfLines={1}>
-                        <Text style={styles.requestMetaLabel}>Reason: </Text>
-                        {String(formData.reasonForAdmission || row.reason_for_admission || '—')}
-                      </Text>
-                    </View>
-                    <View style={styles.requestMetaRow}>
-                      <Ionicons name={genderIcon(gender)} size={15} color="#64748B" />
-                      <Text style={styles.requestMeta} numberOfLines={1}>
-                        <Text style={styles.requestMetaLabel}>Gender: </Text>
-                        {gender || '—'}
-                      </Text>
-                    </View>
-                    <View style={styles.requestMetaRow}>
-                      <Ionicons name="calendar-outline" size={15} color="#64748B" />
-                      <Text style={styles.requestMeta} numberOfLines={1}>
-                        <Text style={styles.requestMetaLabel}>Birthday: </Text>
-                        {String(formData.patientBirthday || row.patient_birth_date || '—')}
-                      </Text>
-                    </View>
-                    {row.required_document_notes && inReview ? (
-                      <Text style={[styles.requestMeta, { color: '#B45309', marginTop: 3 }]}>
-                        Required: {String(row.required_document_notes)}
-                      </Text>
-                    ) : null}
-                    {files.length > 0 ? (
-                      <Text style={styles.requestMeta} numberOfLines={1}>
-                        Attached files: {files.map((f) => f.name).join(', ')}
-                      </Text>
-                    ) : null}
                     {inReview && !row.documents_complete ? (
                       <TouchableOpacity
-                        style={[styles.uploadBtn, uploadingRequestId === String(row.id) && { opacity: 0.7 }]}
+                        style={[styles.rowActionBtn, uploadingRequestId === String(row.id) && { opacity: 0.7 }]}
+                        activeOpacity={0.85}
                         onPress={() => void uploadSupplementalDocuments(String(row.id))}
                         disabled={uploadingRequestId === String(row.id)}
                       >
-                        <Text style={styles.uploadBtnText}>
+                        <Text style={styles.rowActionTxt}>
                           {uploadingRequestId === String(row.id) ? 'Uploading…' : 'Upload additional documents'}
                         </Text>
                       </TouchableOpacity>
                     ) : null}
                   </View>
-                  <View style={[styles.statusPill, { backgroundColor: `${statusColor}1A`, borderColor: `${statusColor}33` }]}>
-                    <Text style={[styles.statusPillTxt, { color: statusColor }]}>{st}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
                 </Pressable>
               );
             })}
@@ -690,46 +737,61 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 18, paddingTop: 8 },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
   loadingText: { color: '#64748B', fontWeight: '700' },
-  hubCard: {
+  hubHeadRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginTop: 12,
-    padding: 16,
-    borderRadius: 16,
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+  hubHead: { fontSize: 16, fontWeight: '900', color: '#1B2559', letterSpacing: -0.2 },
+  hubHeadSub: { fontSize: 12, fontWeight: '700', color: '#B45309' },
+  hubList: {
+    borderRadius: 18,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E9EDF7',
+    overflow: 'hidden',
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
-    shadowRadius: 12,
+    shadowRadius: 16,
     elevation: 2,
   },
-  hubCardFirst: { marginTop: 0 },
+  hubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    minHeight: 72,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  hubRowDivider: { borderTopWidth: 1, borderTopColor: '#F1F3FA' },
+  hubRowPressed: { backgroundColor: '#F8FAFC' },
   hubIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  hubIconImage: { width: 26, height: 26 },
-  hubTextCol: { flex: 1, minWidth: 0 },
-  hubTitle: { fontSize: 17, fontWeight: '800', color: '#1B2559' },
-  hubDesc: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 4, lineHeight: 18 },
-  hubBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-start',
-    marginTop: 10,
+  hubIconImage: { width: 22, height: 22 },
+  hubText: { flex: 1, minWidth: 0 },
+  hubTitle: { fontSize: 15.5, fontWeight: '800', color: '#1B2559' },
+  hubDesc: { fontSize: 12.5, color: '#64748B', fontWeight: '600', marginTop: 2 },
+  hubPending: {
+    minWidth: 24,
+    height: 24,
+    paddingHorizontal: 7,
+    borderRadius: 12,
     backgroundColor: '#FEF3C7',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  hubBadgeText: { fontSize: 11, fontWeight: '800', color: '#92400E', textTransform: 'uppercase', letterSpacing: 0.3 },
+  hubPendingTxt: { fontSize: 12, fontWeight: '900', color: '#92400E' },
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -788,42 +850,73 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    gap: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F3FA',
   },
-  reqListHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
-  reqListHeaderIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 11,
-    backgroundColor: '#E0E7FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  reqListHeaderTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: '#1B2559' },
+  reqListHeaderLeft: { flex: 1, minWidth: 0 },
+  reqListHeaderSub: { fontSize: 11.5, fontWeight: '600', color: '#94A3B8', marginTop: 2 },
+  reqListHeaderTitle: { fontSize: 16, fontWeight: '900', color: '#1B2559', letterSpacing: -0.2 },
   viewAllRow: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
   viewAllTxt: { fontSize: 12.5, fontWeight: '800', color: '#F54E25' },
   requestRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 14,
   },
   requestRowPressed: { opacity: 0.7 },
   requestRowDivider: { borderBottomWidth: 1, borderBottomColor: '#F1F3FA' },
   requestAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  requestAvatarTxt: { fontSize: 12, fontWeight: '800' },
-  requestName: { fontSize: 14, fontWeight: '800', color: '#1B2559' },
-  requestMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 9 },
-  requestMeta: { fontSize: 12, color: '#64748B', fontWeight: '500', lineHeight: 16 },
-  requestMetaLabel: { fontWeight: '700', color: '#334155' },
+  requestAvatarTxt: { fontSize: 13, fontWeight: '800' },
+  requestTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  requestName: { flex: 1, fontSize: 15, fontWeight: '800', color: '#1B2559' },
+  requestSummary: { fontSize: 12.5, color: '#64748B', fontWeight: '600', marginTop: 3 },
+  meetingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#F4F7FE',
+    borderWidth: 1,
+    borderColor: '#E9EDF7',
+  },
+  meetingChipLabel: { fontSize: 9.5, fontWeight: '900', color: '#94A3B8', letterSpacing: 0.6 },
+  meetingChipValue: { flexShrink: 1, fontSize: 12.5, fontWeight: '800', color: '#1B2559' },
+  requestNotice: { fontSize: 11.5, fontWeight: '700', color: '#B45309', marginTop: 6 },
+  requiredBox: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  requiredLabel: { fontSize: 10, fontWeight: '900', color: '#92400E', letterSpacing: 0.4, textTransform: 'uppercase' },
+  requiredTxt: { fontSize: 12.5, color: '#78350F', fontWeight: '600', marginTop: 2, lineHeight: 17 },
+  requestFiles: { fontSize: 11.5, color: '#94A3B8', fontWeight: '600', marginTop: 8 },
+  rowActionBtn: {
+    marginTop: 10,
+    backgroundColor: '#F54E25',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  rowActionTxt: { color: '#FFFFFF', fontSize: 12.5, fontWeight: '800' },
   statusPill: {
     borderRadius: 999,
     borderWidth: 1,
